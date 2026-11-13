@@ -1,4 +1,3 @@
-// Made-up notes for plugin previews (Plugins → a plugin).
 import { addDays, today, type Store } from "@vaultite"
 import type { Note } from "./types"
 

@@ -1,5 +1,3 @@
-// Notes: Notes/<Title>.md (format: AGENTS.md), upserted on `ext_id`, ordered by `updated`. A journal entry is a note
-// tagged journal.
 import fs from "node:fs"
 import { OpError, Plugin } from "../../../core/plugins.ts"
 import { hasTag, isArchived, type Item, Kind, nowStamp, safeName, slug, sortBy, splitTags, str, tagsOf, truthy } from "../../../core/vault.ts"
@@ -35,32 +33,27 @@ function render(n: Item): [Item, string] {
     aliases: splitTags(n.aliases),
   }
   if (safeName(n.title) !== n.title) {
-    owned.title = n.title // the file name can't hold it; so [[Real: title]] resolves in Obsidian too
+    owned.title = n.title // Obsidian resolves [[Real: title]] by alias when the file name can't hold it
     owned.aliases = [n.title, ...owned.aliases.filter((a: string) => a !== n.title)]
   }
   return [owned, n.body || ""]
 }
 
-/** A new note's id from its title, unique among the notes (note-untitled, note-untitled-2...). */
 function newId(title: unknown, taken: Set<string>) {
-  // Accents come off their letters (Café résumé: note-cafe-resume, like note.create's ids), not the letters with them.
   const base = "note-" + (slug(title) || "untitled")
   let out = base, n = 2
   while (taken.has(out)) out = `${base}-${n++}`
   return out
 }
 
-/** A note's id; plain Markdown (no `id`) has its title's, never written to it. */
 const keyOf = (n: Item): string | null => n.ext_id ?? (n.id ? newId(n.title, new Set()) : null)
 
 const ids = (but: string | null = null) =>
   new Set(plugin.vault.items("notes").filter((n) => n.id !== but).map(keyOf).filter((k): k is string => k !== null))
 
-/** Another note has this one's id (a file duplicated in the app, or copied in Finder) and is older: this copy needs its
- *  own id (the oldest file keeps it, so links and upserts by id still mean the original). */
 function copied(n: Item) {
   if (!n.ext_id) return false
-  const others: Item[] = [] // (not items(): this runs for every note read, and needs no order)
+  const others: Item[] = []
   for (const { kind, item } of plugin.vault.entries.values()) {
     if (kind?.collection === "notes" && item && item.ext_id === n.ext_id && item.id !== n.id) others.push(item)
   }
@@ -79,13 +72,12 @@ plugin.kind(new Kind({
   type: "note", collection: "notes", folder: "Notes", parse, render,
   prepare(n, before) {
     n.title ??= "Untitled"
-    // `kind: journal` from the API (or `vau note --kind journal`): a note tagged Journal.
     if (n.kind === "journal") {
       n.kind = "note"
       const tags = splitTags(n.tags)
       if (!tags.some((t) => t.toLowerCase() === "journal")) n.tags = [...tags, "Journal"].join(", ")
     }
-    if (before !== null && n.ext_id === before.ext_id && copied(before)) { // a copy's first edit: a new note, its own id and dates
+    if (before !== null && n.ext_id === before.ext_id && copied(before)) {
       n.ext_id = newId(before.id.split("/").pop(), ids(before.id))
       n.created_at = n.updated_at = nowStamp()
       return n
@@ -93,15 +85,13 @@ plugin.kind(new Kind({
     n.ext_id = n.ext_id || before?.ext_id || newId(n.title, ids())
     n.created_at = n.created_at || nowStamp()
     if (before === null) n.updated_at = n.updated_at || n.created_at
-    else if (changed(n, before) && (n.updated_at ?? null) === (before.updated_at ?? null)) n.updated_at = nowStamp() // content changed
+    else if (changed(n, before) && (n.updated_at ?? null) === (before.updated_at ?? null)) n.updated_at = nowStamp()
     return n
   },
-  /** A file edited in the app: give it an id and times, bumping `updated` if its content changed without it. A copy of
-   *  another note (same id) gets a new id and dates; plain Markdown (no `type`, no `id`) is never rewritten. */
   fill(n, before) {
     if (!n.ext_id && plugin.vault.entries.get(`${n.id}.md`)?.fm.type == null) return null
     const out = { ...n }
-    if (copied(n)) { // a copy: a new note, with its own id and dates
+    if (copied(n)) {
       out.ext_id = newId(n.id.split("/").pop(), ids(n.id))
       out.created_at = out.updated_at = nowStamp()
       return out
@@ -117,7 +107,6 @@ plugin.kind(new Kind({
   order: (ns) => sortBy(sortBy(ns, (n) => n.id, true), (n) => n.updated_at || n.modified || "", true),
 }))
 
-/** ?q=words (all must appear in title, body or tags), ?kind=idea, ?tag=Startup; archived notes only with ?archived=true */
 plugin.route("GET", "notes", (req) => {
   let out = plugin.vault.items("notes")
   if (req.query.archived !== "true") out = out.filter((n) => !isArchived(n))
@@ -129,9 +118,6 @@ plugin.route("GET", "notes", (req) => {
   return out
 })
 
-// ---------- operations (core/ops.ts): `vau note`, MCP's write_note, POST /api/ops/note.create ----------
-
-/** A JSON object written as text ('{"title": ...}': the API's JSON given as `vau note`'s one argument), or null. */
 function jsonObject(v: unknown): Item | null {
   if (typeof v !== "string" || !v.trim().startsWith("{")) return null
   try { const o = JSON.parse(v); return o && typeof o === "object" && !Array.isArray(o) ? o : null } catch { return null }

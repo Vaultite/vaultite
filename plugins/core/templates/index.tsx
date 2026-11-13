@@ -1,5 +1,3 @@
-// Templates: start a note from one or insert one, placeholders filled in the settings' formats. A new
-// note goes where files of its `type` live, else beside the open file, else where new notes go.
 import { CalendarDays, Clock, FilePlus2 } from "lucide-react"
 import {
   activeFile, besideActive, choose, createFile, definePlugin, folderOf, formatDate, freeName, get, getStore, newNoteFolder, notify, notifyError,
@@ -10,7 +8,6 @@ import { fillVars, FORMATS, fromTemplate, mergeFm } from "./fill"
 let folder = "Templates"
 let formats = FORMATS
 let asked = 0
-/** The settings (asked again at most every 10 s). */
 async function settings() {
   if (Date.now() - asked > 10_000) {
     asked = Date.now()
@@ -18,14 +15,12 @@ async function settings() {
       const s = await get<{ folder: string; dateFormat?: string; timeFormat?: string }>("templates")
       folder = s.folder || folder
       formats = { date: s.dateFormat || FORMATS.date, time: s.timeFormat || FORMATS.time }
-    } catch { /* keep the last ones */ }
+    } catch {}
   }
   return { folder, formats }
 }
-/** The templates folder. */
 const templatesFolder = async () => (await settings()).folder
 
-/** Type the date or time now at the cursor, in the settings' format. */
 async function insertNow(what: "date" | "time") {
   const { formats: f } = await settings()
   activeFile()?.insert(formatDate(new Date(), f[what]))
@@ -42,12 +37,10 @@ const EXAMPLES: [string, string][] = [
 async function makeExamples() {
   const dir = await templatesFolder()
   const made: string[] = []
-  for (const [name, text] of EXAMPLES) { try { made.push((await createFile(dir, name, text)).path) } catch { /* taken */ } }
+  for (const [name, text] of EXAMPLES) { try { made.push((await createFile(dir, name, text)).path) } catch {} }
   void pickTemplate("new", made)
 }
 
-/** Where a new note from this template goes: its `type`'s folder (a kind's, as its settings show it), else the folder
- *  most files of that type are in (the files' type is the core's, core/fileprops.ts). */
 function folderFor(s: Store, template: string, dir: string) {
   const type = /^type:[ \t]*["']?([\w-]+)/m.exec(splitFm(template).fm)?.[1]
   const home = type && s.filing?.homes.find((h) => h.type.toLowerCase() === type.toLowerCase())
@@ -61,8 +54,6 @@ function folderFor(s: Store, template: string, dir: string) {
   return besideActive(null, (p) => p.startsWith(`${dir}/`)) ?? newNoteFolder(s)
 }
 
-/** The text as other plugins expand it further (the server's `template:expand`: Templater's `<% %>`), and the note's
- *  path, which they may change; null when the user cancelled. */
 async function expand(text: string, template: string, path: string, mode: "new" | "insert") {
   try {
     const r = await post<{ text: string; path?: string; notice?: string } | null>("templates/expand", { text, template, path, mode })
@@ -87,7 +78,6 @@ async function newFrom(path: string) {
   openNew(f.path)
 }
 
-/** Put a template into the file being edited: its body at the cursor, its new frontmatter keys added. */
 async function insertInto(path: string, put?: (text: string) => void) {
   const f = activeFile()
   if (!f) return
@@ -104,7 +94,6 @@ async function insertInto(path: string, put?: (text: string) => void) {
   if (r.path !== f.path) { await f.settle(); await op("file.move", { from: f.path, to: r.path }) }
 }
 
-/** `made`: templates just written, which the store may not have yet. */
 async function pickTemplate(how: "new" | "insert", made: string[] = []) {
   const s = getStore()
   if (!s) return

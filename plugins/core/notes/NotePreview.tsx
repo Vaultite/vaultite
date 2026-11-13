@@ -1,6 +1,5 @@
 import { ink } from "@vaultite"
 
-/** For the Plugins page: a made-up note, as it looks when opened. */
 export function NotePreview() {
   return (
     <article className="p-5">

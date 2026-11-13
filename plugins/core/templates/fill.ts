@@ -1,11 +1,6 @@
-// A template's text made into a note's: {{title}}, {{date}}, {{time}} and {{date:YYYY-MM-DD}}-style formats filled
-// in (Obsidian's syntax), and the keys every note gets on its own (id, dates) left out so the new note gets fresh ones.
-
-/** The formats {{date}} and {{time}} use without one of their own (the settings'). */
 export type Formats = { date: string; time: string }
 export const FORMATS: Formats = { date: "YYYY-MM-DD", time: "HH:mm" }
 
-/** `format`: the plugin API's formatDate (this file is both sides', so it imports neither's). */
 export function fillVars(text: string, title: string, format: (d: Date, fmt: string) => string, now = new Date(), formats = FORMATS) {
   return text.replace(/\{\{\s*(title|date|time)(?::([^}]*))?\s*\}\}/gi, (_m, name: string, fmt?: string) => {
     const n = name.toLowerCase()
@@ -14,10 +9,8 @@ export function fillVars(text: string, title: string, format: (d: Date, fmt: str
   })
 }
 
-// Keys the app fills in itself for each file.
-const OWN = new Set(["id", "created", "updated", "added"]) // (added: what books called created before)
+const OWN = new Set(["id", "created", "updated", "added"])
 
-/** Top-level keys of a frontmatter block's inner text, each with its lines (the key's line and what's indented under it). */
 function entries(inner: string) {
   const out: [string, string][] = []
   for (const line of inner.split("\n")) {
@@ -30,8 +23,6 @@ function entries(inner: string) {
 
 const inner = (fm: string) => { const m = /^---\n([\s\S]*?)\n?---/.exec(fm); return m ? m[1] : "" }
 
-/** The template's frontmatter merged into a file's: its keys the file doesn't have yet are added at the end (the
- *  file's own values win), the app's own keys left out. Returns the new frontmatter block ("" if there's none). */
 export function mergeFm(file: string, template: string) {
   const have = entries(inner(file))
   const keys = new Set(have.map(([k]) => k))
@@ -42,11 +33,8 @@ export function mergeFm(file: string, template: string) {
 }
 
 const FM = /^---\n(?:[\s\S]*?\n)?---[ \t]*(?:\n|$)/
-/** A template's text (filled in) as a new note's: its frontmatter merged into `into`'s (the keys a new file has of its
- *  own, which win), and the rest as the template has it, blank lines and all, as Obsidian copies it. */
 export function fromTemplate(text: string, into = "") {
   const fm = FM.exec(text)?.[0] ?? "", own = FM.exec(into)?.[0] ?? ""
   const head = fm ? mergeFm(own, fm) : own, rest = text.slice(fm.length)
-  // (a frontmatter of only the app's own keys leaves nothing above the text: no blank line to start the note)
   return head + (head ? rest : rest.replace(/^\n+/, ""))
 }

@@ -1,5 +1,3 @@
-// Notes: what a note is (kind, status, id and dates filled by the server).
-// Notes themselves are core: every Markdown file is one.
 import { NotebookText } from "lucide-react"
 import { definePlugin, detailPath, plainText, stampMs } from "@vaultite"
 import { lookOf } from "./format"
@@ -8,7 +6,6 @@ import { mockNotes } from "./mock"
 
 export default definePlugin({
   mock: mockNotes,
-  // Old #…/note/<id> addresses and links open the file.
   details: {
     note: {
       render: () => null,

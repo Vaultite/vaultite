@@ -1,5 +1,4 @@
-// A book (untrusted) drawn with foliate-js, which renders pages in same-origin frames with scripts on (a WebKit bug),
-// so every page is cleaned first (`safe`: no scripts, frames, handlers or javascript: links; a blocking CSP).
+// foliate-js renders pages in same-origin frames with scripts on (a WebKit bug), so `safe` cleans every page first.
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, List } from "lucide-react"
 import { Bar, cn, Loading, menuBelow, openWebLink, errorText } from "@vaultite"
@@ -17,7 +16,6 @@ type Relocate = { fraction?: number; cfi?: string; tocItem?: { label?: string } 
 
 const PLACE = (path: string) => `vau:ebooks:place:${path}`
 
-/** The name foliate-js's metadata gives (a string, a language map, a list of contributors). */
 function named(x: unknown): string {
   if (!x) return ""
   if (typeof x === "string") return x
@@ -30,7 +28,7 @@ function named(x: unknown): string {
   return String(x)
 }
 
-/** The book's file, named so foliate-js knows a comic book or a FictionBook by it. */
+// foliate-js knows a comic book or a FictionBook by its file name.
 async function bookFile(url: string, path: string) {
   const r = await fetch(url)
   if (!r.ok) throw new Error(r.statusText)
@@ -39,7 +37,6 @@ async function bookFile(url: string, path: string) {
 
 const CSP = "default-src 'none'; img-src blob: data:; media-src blob: data:; style-src blob: data: 'unsafe-inline'; font-src blob: data:"
 
-/** A page of the book, cleaned: no scripts, frames, objects, event attributes or javascript: links, and a CSP first. */
 async function safe(src: string): Promise<string> {
   const r = await fetch(src)
   const type = (r.headers.get("content-type") || "application/xhtml+xml").split(";")[0]
@@ -69,7 +66,6 @@ async function safe(src: string): Promise<string> {
   return URL.createObjectURL(new Blob([out], { type: xml ? type : "text/html" }))
 }
 
-/** Every section's page cleaned before it's drawn (and its URL let go of with it). */
 function guard(book: Book) {
   for (const s of book.sections) {
     const load = s.load.bind(s), unload = s.unload?.bind(s)
@@ -88,7 +84,6 @@ function guard(book: Book) {
   }
 }
 
-/** The app's colours and text size, for the book's pages. */
 function pageStyle() {
   const css = getComputedStyle(document.documentElement)
   const fg = css.getPropertyValue("--foreground").trim()
@@ -112,7 +107,6 @@ function Pages({ url, path }: { url: string; path: string }) {
   const [state, setState] = useState<"loading" | "ok" | string>("loading")
   const [where, setWhere] = useState<{ fraction: number; label: string }>({ fraction: 0, label: "" })
   const [toc, setToc] = useState<TocItem[]>([])
-  // ← and → turn pages, in the reader and inside its pages (their frames get the keys once clicked).
   const keys = (e: KeyboardEvent | React.KeyboardEvent) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return
     if (e.key === "ArrowLeft") { e.preventDefault(); void view.current?.goLeft() }
@@ -136,9 +130,8 @@ function Pages({ url, path }: { url: string; path: string }) {
       v.addEventListener("relocate", (e) => {
         const d = (e as CustomEvent<Relocate>).detail
         setWhere({ fraction: d.fraction ?? 0, label: d.tocItem?.label?.trim() ?? "" })
-        if (d.cfi) try { localStorage.setItem(PLACE(path), d.cfi) } catch { /* storage full: not kept */ }
+        if (d.cfi) try { localStorage.setItem(PLACE(path), d.cfi) } catch { /* localStorage full */ }
       })
-      // Links outside the book: to the web like any link in the app, nothing else (inside it, foliate-js turns to the page).
       v.addEventListener("external-link", (e) => {
         e.preventDefault()
         const href = String((e as CustomEvent<{ href: string }>).detail.href ?? "")
@@ -147,7 +140,6 @@ function Pages({ url, path }: { url: string; path: string }) {
       v.addEventListener("load", (e) => {
         const doc = (e as CustomEvent<{ doc: Document }>).detail.doc
         doc.addEventListener("keydown", keys)
-        // A finger's tap on a page's outer thirds turns it, as book apps do (a swipe turns it too: foliate-js).
         if (matchMedia("(pointer: coarse)").matches) doc.addEventListener("click", (ev) => {
           if ((ev.target as Element | null)?.closest?.("a") || doc.getSelection()?.toString()) return
           const frame = (doc.defaultView?.frameElement as HTMLElement | null)?.getBoundingClientRect(), r = box.current?.getBoundingClientRect()
@@ -164,7 +156,7 @@ function Pages({ url, path }: { url: string; path: string }) {
       if (!on) return
       setToc(book.toc ?? [])
       let last: string | null = null
-      try { last = localStorage.getItem(PLACE(path)) } catch { /* no storage */ }
+      try { last = localStorage.getItem(PLACE(path)) } catch { /* localStorage throws in private mode */ }
       await v.init({ lastLocation: last ?? undefined, showTextStart: !last })
       if (on) setState("ok")
     })().catch((e) => { if (on) setState(String(e?.message ?? e)) })
@@ -199,7 +191,6 @@ function Pages({ url, path }: { url: string; path: string }) {
   )
 }
 
-/** A book embedded in a note: its cover, title and authors. */
 function Card({ url, path }: { url: string; path: string }) {
   const [info, setInfo] = useState<{ title: string; author: string; cover: string | null } | null>(null)
   const [error, setError] = useState<string | null>(null)

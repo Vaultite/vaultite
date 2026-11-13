@@ -1,10 +1,7 @@
-// E-books' server side: an EPUB's or FictionBook's text (title, authors, chapters in spine order, all of it) for
-// /api/render and search. Kindle files and comics are only drawn.
 import { Plugin, unzip, xmlDecode, zipText } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** (X)HTML as Markdown-ish text: headings as headings, blocks a paragraph apart, every other tag gone. */
 export function htmlText(html: string) {
   const body = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(html)?.[1] ?? html
   return xmlDecode(body
@@ -25,7 +22,6 @@ const resolve = (dir: string, href: string) => {
   return parts.join("/")
 }
 
-/** An EPUB's metadata and text as Markdown. */
 export function epubMarkdown(bytes: Buffer): string {
   const zip = unzip(bytes)
   const container = zipText(zip, "META-INF/container.xml")
@@ -52,7 +48,6 @@ export function epubMarkdown(bytes: Buffer): string {
   return [head.join("\n\n"), ...chapters].join("\n\n")
 }
 
-/** A FictionBook's title, authors and text as Markdown. */
 export function fb2Markdown(xml: string): string {
   const title = /<book-title>([\s\S]*?)<\/book-title>/.exec(xml)?.[1]
   const authors = [...(/<title-info>([\s\S]*?)<\/title-info>/.exec(xml)?.[1] ?? "").matchAll(/<author>([\s\S]*?)<\/author>/g)]

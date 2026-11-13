@@ -1,5 +1,3 @@
-// Day planner: a note's timed list items and its day's calendar events drawn as blocks on the day's hours, side by side
-// where they overlap, with a line at the time it is now on the note's own day (a daily note's date, else today).
 import { useEffect, useState } from "react"
 import { CalendarClock, Check } from "lucide-react"
 import { cn, currentEditor, definePlugin, get, Loading, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
@@ -7,7 +5,6 @@ import { type CalEvent, dayOf, type Entry, eventsOf, hhmm, merged, nextStart, pl
 
 const TINT = "var(--day-planner)"
 const HOUR = 48
-/** Calendar events' colour, apart from the note's own items. */
 const EVENT = "var(--blue)"
 
 const nowMinutes = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
@@ -18,7 +15,6 @@ function useNow() {
   return now
 }
 
-/** Each entry's lane among those it overlaps, and how many lanes its cluster has. */
 function lanes(plan: Entry[]) {
   const out = plan.map(() => ({ lane: 0, of: 1 }))
   let cluster: number[] = [], until = -1
@@ -37,7 +33,6 @@ function lanes(plan: Entry[]) {
 }
 
 const NO_EVENTS = { timed: [] as Entry[], allDay: [] as string[] }
-/** The day's calendar events (none when no calendar answers; null until it does), read when the day changes. */
 function useEvents(day: string, on: boolean) {
   const [events, setEvents] = useState<typeof NO_EVENTS | null>(on ? null : NO_EVENTS)
   useEffect(() => {
@@ -49,7 +44,6 @@ function useEvents(day: string, on: boolean) {
   return events
 }
 
-/** Tick an item in its note (or untick it): its line, found by its text as it was drawn. */
 async function tick(path: string, e: Entry) {
   try {
     const { text } = await readFile(path)
@@ -78,7 +72,6 @@ function Timeline({ path, body, options, editable }: { path: string; body: strin
   )
   if (!plan.length) {
     if (allDay) return allDay
-    // (an empty day only once its calendar has answered: until then it may have events)
     if (!cal) return <Loading />
     return <p className="text-[15px] leading-[20px] text-muted-foreground">Nothing planned yet: list items that start with a time, like - 09:00 - 10:00 Standup, show here.</p>
   }
@@ -126,8 +119,6 @@ function Timeline({ path, body, options, editable }: { path: string; body: strin
 
 const MOCK = "- [x] 08:30 Run\n- 09:00 - 10:00 Standup and planning\n- [ ] 10:00 - 12:00 Write the launch post\n- 12:30 Lunch with Alice Park\n- 14:00 - 15:30 Design review\n- 14:30 Call the bank\n"
 
-/** A time block started at the cursor (`- [ ] 14:30 `, after the note's last one or at the next half hour): on the
- *  cursor's line when it's empty, else on a new line under it. */
 function insertBlock() {
   const ed = currentEditor()
   if (!ed || ed.kind !== "markdown") return notify("Open a note to plan in it")
@@ -142,7 +133,6 @@ function insertBlock() {
 export default definePlugin({
   commands: [{ id: "day-planner:insert", name: "Insert time block", when: () => currentEditor()?.kind === "markdown", run: insertBlock, icon: CalendarClock }],
   blocks: {
-    // ```block-day-planner: the note's plan.
     "day-planner": ({ path, body, options, setProperty }) => (
       <Panel title="Day plan" icon={CalendarClock} tint={TINT}><Timeline path={path} body={body} options={options} editable={!!setProperty} /></Panel>
     ),

@@ -1,11 +1,8 @@
-// Day planner's block as text, and the day's calendar events for its timeline: the note's timed items beside what a
-// calendar plugin answers (calendar.events: read live, never written), the item going on now marked.
 import { Plugin } from "../../../core/plugins.ts"
 import { type CalEvent, dayOf, eventsOf, merged, planOf, planText } from "./plan.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** A day's events, or none when no calendar answers (its plugin off) or it fails. */
 async function events(day: string): Promise<CalEvent[]> {
   if (!plugin.host.catalog().some((o) => o.id === "calendar.events")) return []
   try { return ((await plugin.runOp("calendar.events", { from: day })).result as { events?: CalEvent[] }).events ?? [] } catch { return [] }

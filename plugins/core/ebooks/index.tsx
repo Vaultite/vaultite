@@ -1,5 +1,3 @@
-// E-books open in a paging reader (Reader.tsx, its own chunk) and embed as a cover card. Off, a book is a file
-// card.
 import { lazy, Suspense } from "react"
 import { BookOpen } from "lucide-react"
 import { definePlugin, Loading, type FileFormat } from "@vaultite"

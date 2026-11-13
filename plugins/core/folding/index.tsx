@@ -1,12 +1,9 @@
 import { FoldVertical, UnfoldVertical } from "lucide-react"
 import { currentEditor, definePlugin, trackSoon } from "@vaultite"
 
-// Folding: headings and list items fold from a chevron or commands, remembered per file on this
-// device. fold.ts loads when a note first needs it.
 let loading: Promise<typeof import("./fold")> | null = null
 const load = () => (loading ??= import("./fold"))
 
-/** The note being read or edited (folding is for Markdown). */
 const note = () => { const ed = currentEditor(); return ed?.kind === "markdown" ? ed.view : null }
 const run = (what: "foldAll" | "unfoldAll" | "toggleHere") => () => {
   const v = note()

@@ -1,17 +1,13 @@
-// Templates' server side: which folder it is, so the vault never reads the notes there as people or logs
-// (`templates:folder`), and the hook other plugins expand templates through (`template:expand`); the app does the rest.
 import { formatDate, Plugin } from "../../../core/plugins.ts"
 import { fillVars, FORMATS, fromTemplate } from "./fill.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The templates folder, without slashes at either end (Obsidian's templates.json's when unset: plugin.seeded). */
 export function folder() {
   const f = plugin.seeded().folder
   return typeof f === "string" && f.trim() ? f.trim().replace(/^\/+|\/+$/g, "") : "Templates"
 }
 
-/** A format setting, or its default. */
 const format = (key: string, d: string) => { const f = plugin.seeded()[key]; return typeof f === "string" && f.trim() ? f : d }
 
 plugin.route("GET", "templates", () => ({ folder: folder(), dateFormat: format("dateFormat", "YYYY-MM-DD"), timeFormat: format("timeFormat", "HH:mm") }))
@@ -19,14 +15,12 @@ plugin.route("GET", "templates", () => ({ folder: folder(), dateFormat: format("
 /** Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person). */
 plugin.provide("templates:folder", folder)
 
-/** Other plugins expand a template further (Templater's `<% %>`): service `template:expand` gets {text, template, path,
- *  mode} and the request, answering {text, path?, notice?} or null if cancelled. Without one the text stays. */
+/** Service `template:expand` gets {text, template, path, mode} and the request; answers {text, path?, notice?}, null if cancelled. */
 plugin.route("POST", "templates/expand", (req) => {
   const fn = plugin.service("template:expand")
   return fn ? fn(req.body, req) : { text: req.body.text }
 }, { lock: false })
 
-/** A template's text as a note's, as the app makes it (fill.ts), its frontmatter merged into `into`'s (a new file's
- *  own keys win): for plugins that make notes on the server. `now`: what {{date}} is (a daily note's day). */
+/** A template's text as a new note's, its frontmatter merged into `into`'s (whose keys win); `now` is {{date}}. */
 plugin.exports.fill = (text: string, title: string, into = "", now = new Date()) =>
   fromTemplate(fillVars(text, title, formatDate, now, { date: format("dateFormat", FORMATS.date), time: format("timeFormat", FORMATS.time) }), into)
