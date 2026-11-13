@@ -35,22 +35,33 @@ async function take(dir: string, count: number, label: string, what: string): Pr
   return (await within(dir, count, label, what, Infinity))!
 }
 
+const put = (f: string) => { try { fs.writeFileSync(f, String(process.pid), { flag: "wx" }); return true } catch { return false } }
+
+export function claim(dir: string, count: number): (() => void) | null {
+  fs.mkdirSync(dir, { recursive: true })
+  for (let i = 0; i < count; i++) {
+    const f = path.join(dir, String(i))
+    if (!put(f)) {
+      const pid = owner(f)
+      if (!pid || alive(pid)) continue
+      reap(f, pid)
+      if (!put(f)) continue
+    }
+    mine.add(f)
+    return () => { mine.delete(f); if (owner(f) === process.pid) fs.rmSync(f, { force: true }) }
+  }
+  return null
+}
+
 /** A free one of `count` slots in `dir`, waited for till `deadline` (then null). */
 async function within(dir: string, count: number, label: string, what: string, deadline: number): Promise<(() => void) | null> {
-  fs.mkdirSync(dir, { recursive: true })
   let said = false
   const asked = Date.now()
   for (;;) {
-    for (let i = 0; i < count; i++) {
-      const f = path.join(dir, String(i))
-      try { fs.writeFileSync(f, String(process.pid), { flag: "wx" }) } catch {
-        const pid = owner(f)
-        if (pid && !alive(pid)) reap(f, pid)
-        continue
-      }
-      mine.add(f)
+    const release = claim(dir, count)
+    if (release) {
       if (said) console.error(`${label}: got ${what.replace(/ \(.*$/, "")} after waiting ${((Date.now() - asked) / 1000).toFixed(0)} s`)
-      return () => { mine.delete(f); if (owner(f) === process.pid) fs.rmSync(f, { force: true }) }
+      return release
     }
     if (Date.now() >= deadline) return null
     if (!said) { console.error(`${label}: waiting for ${what}`); said = true }
@@ -78,5 +89,4 @@ export async function alone(label: string, wait = 600_000): Promise<{ release: (
 }
 
 let held: Promise<() => void> | undefined
-/** One slot for this whole process, held to its exit. */
 export const hold = () => (held ??= slot())

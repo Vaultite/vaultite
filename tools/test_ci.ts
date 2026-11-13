@@ -1,7 +1,7 @@
 // What keeps main green across OSes: the OS-sensitive rule (osrisk.ts), main's red notice (mainci.ts), the try run's
 // verdict and record (try.ts) and verify's passes (verify_passed.ts), on made-up runs and scratch repositories. No network. In npm test.
 import { check, exit, section, summary, tempDir } from "./test/lib.ts"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { gitEnv } from "../core/gitenv.ts"
@@ -9,7 +9,8 @@ import { alsoTry, describe, osRisk, parseDiff } from "./osrisk.ts"
 import { filesState, passes, workTree } from "./verify_passed.ts"
 import { failuresOf, mainRed, nightlyRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
 import { ATTEMPT_MIN, checkPush, judge, loadTry, riskKey, startTry, sweep, tried, waitTry } from "./try.ts"
-import { MACHINE_REF, STEPS, machinesOff, parseJob, type Machine, type Os, type Part } from "./try_machines.ts"
+import { AWAY_MS, MACHINE_REF, STEPS, machinesOff, parseJob, patient, unfit, type Machine, type Os, type Part } from "./try_machines.ts"
+import { room, vmStatFree } from "./verify_room.ts"
 const t0 = Date.now()
 
 section("osrisk")
@@ -307,6 +308,79 @@ section("verify passes")
   now += 8 * 86_400_000
   check("a week on, it's forgotten", passes(r, { now: () => now }).passedAt(state, cmd) === null)
   check("outside a checkout, nothing is told", workTree(tempDir("nogit-")) === null)
+}
+
+section("verify room")
+{
+  const GB = 2 ** 30, dir = tempDir("verifyslots-"), logs: string[] = []
+  let clock = 0, free: number | null = 8 * GB, onPause = () => {}
+  const o = { dir, slots: 2, floor: 4 * GB, waitMs: 60_000, free: () => free, now: () => clock, log: (l: string) => logs.push(l),
+    pause: async (ms: number) => { clock += ms; onPause() } }
+  const slots = () => fs.readdirSync(dir).sort().map((f) => `${f}=${fs.readFileSync(path.join(dir, f), "utf8")}`).join()
+  const a = await room("verify: a", o), b = await room("verify: b", o)
+  check("room: a free slot and enough memory, taken at once and nothing said", a.release && b.release && !logs.length && slots() === `0=${process.pid},1=${process.pid}`, [logs, slots()])
+  let pauses = 0
+  onPause = () => { if (++pauses === 3) a.release?.() }
+  const c = await room("verify: c", o)
+  check("room: every slot running, it waits, says so once, and takes the one freed, saying how long it waited", !!c.release
+    && logs.join("|") === "verify: c: waiting for a verify slot (all 2 on this machine are running tests; VAULTITE_VERIFY_SLOTS)|verify: c: room after waiting 6 s", logs)
+  b.release?.(); c.release?.(); logs.length = 0
+  const gone = spawnSync(process.execPath, ["-e", "0"]).pid ?? 0, sleeper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"])
+  fs.writeFileSync(path.join(dir, "0"), String(gone)); fs.writeFileSync(path.join(dir, "1"), String(sleeper.pid))
+  const d = await room("verify: d", o)
+  check("room: a slot whose process is gone is freed and taken", !!d.release && !logs.length && slots() === `0=${process.pid},1=${sleeper.pid}`, [logs, slots()])
+  fs.writeFileSync(path.join(dir, "0"), String(sleeper.pid)); d.release?.()
+  const e = await room("verify: e", o)
+  check("room: none freed in its time: busy, why said, the wait said once", !e.release && e.busy === "no room on this machine in 60 s: still waiting for a verify slot"
+    && logs.length === 1, [e, logs])
+  fs.rmSync(path.join(dir, "0")); logs.length = 0; free = 1 * GB; pauses = 0
+  onPause = () => { if (++pauses === 2) free = 6 * GB }
+  const f = await room("verify: f", o)
+  check("room: a slot, then free memory waited for, said with how much there is", !!f.release
+    && logs.join("|") === "verify: f: waiting for 4.0 GB of free memory (1.0 GB now; VAULTITE_VERIFY_FREE_GB)|verify: f: room after waiting 4 s", logs)
+  f.release?.(); free = 1 * GB; onPause = () => {}
+  const g = await room("verify: g", o)
+  check("room: memory never freed: busy, and the slot it held let go", g.busy === "no room on this machine in 60 s: still waiting for 4.0 GB of free memory" && slots() === `1=${sleeper.pid}`, [g, slots()])
+  free = null
+  const h = await room("verify: h", o)
+  check("room: where the OS doesn't say its free memory, a slot is enough", !!h.release)
+  h.release?.(); sleeper.kill()
+}
+
+section("a machine's room for a try")
+{
+  const GB = 2 ** 30, idle = { platform: "darwin", node: "26.1.0", load: 0.2, running: 0, free: 6 * GB }
+  check("an idle machine with room takes a try", unfit(idle, 26) === null)
+  check("one short of memory doesn't, saying how much it has", unfit({ ...idle, free: 0.4 * GB }, 26) === "low memory: 0.4 GB free, a try needs 5" && unfit({ ...idle, free: undefined }, 26)?.startsWith("low memory"))
+  check("one running a try doesn't: one at a time", unfit({ ...idle, running: 1 }, 26) === "busy: another try runs there")
+  const vm = "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               3000.\nPages active:                           200000.\nPages inactive:                          60000.\nPages speculative:                        1000.\n"
+  check("macOS' free memory: its free, inactive and speculative pages", vmStatFree(vm) === 64_000 * 16384 && vmStatFree("") === null)
+  const job = path.join(import.meta.dirname, "try_job.cjs"), home = tempDir("tryhome-")
+  const probe = /try-job: probe (\{.*\})/.exec(spawnSync(process.execPath, [job], { encoding: "utf8" }).stdout)?.[1]
+  check("a machine's probe says its free memory", Number(JSON.parse(probe ?? "{}").free) > 0, probe)
+  const spec = { mode: "run", sha: "a".repeat(40), source: path.join(home, "none.git"), ref: "refs/x", steps: [], again: [], jobMin: 1, deadlineMin: 1 }
+  const run = () => spawnSync(process.execPath, [job, `try-job-args=${Buffer.from(JSON.stringify(spec)).toString("base64")}`], { encoding: "utf8", env: { ...process.env, HOME: home, USERPROFILE: home } }).stdout
+  const sleeper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"]), lock = path.join(home, ".vaultite-try", "lock")
+  fs.mkdirSync(path.dirname(lock), { recursive: true }); fs.writeFileSync(lock, String(sleeper.pid))
+  const busy = run()
+  check("a try job while another runs there: not run, saying so", /try-job: setup busy: another try runs on this machine/.test(busy) && fs.readFileSync(lock, "utf8") === String(sleeper.pid), busy)
+  sleeper.kill(); fs.writeFileSync(lock, String(spawnSync(process.execPath, ["-e", "0"]).pid))
+  const after = run()
+  check("… one whose process is gone: it runs, and lets go at its end", /try-job: setup can't fetch/.test(after) && !fs.existsSync(lock), after)
+}
+
+section("a machine away mid-try")
+{
+  let clock = 0, calls = 0
+  const o = { now: () => clock, pause: async (ms: number) => { clock += ms } }
+  const flaky = (fails: number) => () => { calls++; return calls <= fails ? Promise.reject(new Error("the server answered 502, with no reason")) : Promise.resolve("exit") }
+  check("a machine's server restarting: asked again till it answers", await patient(flaky(3), 25 * 60_000, o) === "exit" && calls === 4 && clock === 30_000, [calls, clock])
+  calls = 0; clock = 0
+  const lost = await patient(flaky(1000), 25 * 60_000, o).catch((e: Error) => e.message)
+  check("… away longer than AWAY_MS: its error", lost === "the server answered 502, with no reason" && clock >= AWAY_MS && clock < AWAY_MS + 20_000, [lost, clock])
+  calls = 0; clock = 0
+  const late = await patient(flaky(1000), 60_000, o).catch((e: Error) => e.message)
+  check("… never past the part's deadline", late === "the server answered 502, with no reason" && clock >= 60_000 && clock < 80_000, clock)
 }
 
 await exit(summary("ci", t0))

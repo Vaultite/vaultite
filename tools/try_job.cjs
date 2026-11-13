@@ -11,7 +11,6 @@ const spec = arg ? JSON.parse(Buffer.from(arg.slice("try-job-args=".length), "ba
 const say = (s) => process.stdout.write(`try-job: ${s}\n`)
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch (e) { return e.code === "EPERM" } }
 
-/** Other tries running here now (their pid files, the dead ones removed). */
 function running() {
   let n = 0
   for (const f of fs.existsSync(RUNNING) ? fs.readdirSync(RUNNING) : []) {
@@ -21,9 +20,17 @@ function running() {
   return n
 }
 
+function available() {
+  if (process.platform === "linux") { const kb = /^MemAvailable:\s+(\d+)/m.exec(fs.readFileSync("/proc/meminfo", "utf8")); return kb ? Number(kb[1]) * 1024 : os.freemem() }
+  if (process.platform !== "darwin") return os.freemem()
+  const text = spawnSync("vm_stat", { encoding: "utf8" }).stdout || "", page = Number((/page size of (\d+) bytes/.exec(text) || [])[1])
+  const n = ["free", "inactive", "speculative"].reduce((sum, k) => sum + Number((new RegExp(`^Pages ${k}:\\s+(\\d+)`, "m").exec(text) || [])[1]), 0)
+  return page && Number.isFinite(n) ? n * page : os.freemem()
+}
+
 if (spec.mode === "probe") {
   const load = os.loadavg()[0] / Math.max(1, os.cpus().length)
-  say(`probe ${JSON.stringify({ platform: process.platform, node: process.versions.node, cpus: os.cpus().length, load: Math.round(load * 100) / 100, running: running() })}`)
+  say(`probe ${JSON.stringify({ platform: process.platform, node: process.versions.node, cpus: os.cpus().length, load: Math.round(load * 100) / 100, running: running(), free: available() })}`)
   process.exit(0)
 }
 
@@ -48,6 +55,18 @@ Object.assign(env, { CI: "true", GITHUB_ACTIONS: "true", ELECTRON_SKIP_BINARY_DO
 // (CI's steps run in bash, Git Bash on Windows: its Unix tools on PATH as there)
 const gitBash = ["ProgramFiles", "ProgramW6432"].map((k) => process.env[k] && path.join(process.env[k], "Git", "bin", "bash.exe")).find((p) => p && fs.existsSync(p))
 const bash = process.platform === "win32" ? gitBash : ["/bin/bash", "/usr/bin/bash"].find((p) => fs.existsSync(p))
+
+const LOCK = path.join(HOME, "lock")
+function lock() {
+  for (let i = 0; i < 2; i++) {
+    try { fs.writeFileSync(LOCK, String(process.pid), { flag: "wx" }); return true } catch {
+      const pid = Number(fs.readFileSync(LOCK, "utf8")) || 0
+      if (!pid || alive(pid)) return false
+      fs.rmSync(LOCK, { force: true })
+    }
+  }
+  return false
+}
 
 /** A step's command, its output said as it comes; its annotated failures (test/lib.ts' `::error` lines) kept. */
 function run(cmd, until) {
@@ -79,6 +98,7 @@ function kill(p) {
 
 const steps = []
 async function main() {
+  if (!lock()) return { setup: "busy: another try runs on this machine (one at a time; a try again goes to GitHub's runners)" }
   if (!fs.existsSync(repo)) git(["init", "-q", "--bare", repo], HOME)
   const got = git(["fetch", "-q", "--no-tags", spec.source, `+${spec.ref}:refs/try/${short}`])
   if (got.status !== 0) return { setup: `can't fetch ${spec.ref}: ${(got.stderr || "").trim().split("\n").pop()}` }
@@ -110,6 +130,7 @@ async function main() {
 main().catch((e) => ({ setup: String(e && e.message || e) })).then((r) => {
   git(["worktree", "remove", "--force", wt]); git(["worktree", "prune"]); git(["update-ref", "-d", `refs/try/${short}`])
   fs.rmSync(mark, { force: true })
+  try { if (Number(fs.readFileSync(LOCK, "utf8")) === process.pid) fs.rmSync(LOCK, { force: true }) } catch { /* not taken */ }
   // (the summary last, short lines: a terminal's capture reads its end)
   say("summary")
   if (r.setup) say(`setup ${r.setup}`)

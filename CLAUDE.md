@@ -87,7 +87,8 @@ is its point.
   the user's live session).
 - Many agents share one machine, often a small one: before heavy work (QA, builds, perf runs) check `uptime` and what
   else runs (`pgrep -fl "Chrome for Testing"`), close every browser and server you start, and don't raise `--jobs`.
-  QA browsers queue for the machine's slots (`tools/qa_slots.ts`); a run waiting for one is normal.
+  QA browsers queue for the machine's slots (`tools/qa_slots.ts`), verify's tests for its own and free memory
+  (`tools/verify_room.ts`); a run waiting for one is normal, and verify's `NOT DONE` (exit 3) after 6 min of it means run it again.
 - Stop a server by its port: `kill $(lsof -tiTCP:<port> -sTCP:LISTEN)`, then its terminal server (the pid in
   `vaultite-termd<PROTOCOL>-vaultite-<port>.sock.pid` (termd/protocol.ts) under `core/runtime.ts`' dir).
   Pattern kills (`pkill -f`, `killall`) hit the user's own apps.

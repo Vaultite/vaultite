@@ -12,6 +12,7 @@ import { WAIT_SECONDS, startTry, waitTry, type Waited } from "./try.ts"
 import { findMachines } from "./try_machines.ts"
 // (a stage that passed on the same files isn't run again; --fresh: every one is)
 import { filesState, passes } from "./verify_passed.ts"
+import { room } from "./verify_room.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
@@ -83,17 +84,24 @@ say(`${changed.length} files changed since ${base}`)
 if (risks.length) say(`OS-sensitive: ${describe(risks)}`)
 const rows: { name: string; why: string; s: string; ok: boolean | null; cmd: string[] }[] = []
 const t0 = Date.now(), also = argv.includes("--surfaces") ? ["surfaces"] : []
-let trying = false
+let trying = false, noRoom = ""
 for (const [i, st] of stages.entries()) {
   const at = before[i], gated = rows.some((r) => GATES.has(r.name) && r.ok === false)
   if (at !== null) rows.push({ name: st.name, why: `passed on these files ${ago(at)}: ${st.why}`, s: "-", ok: true, cmd: st.cmd })
   else if (dry) rows.push({ name: st.name, why: st.why, s: "-", ok: null, cmd: st.cmd })
   else if (gated && !GATES.has(st.name)) rows.push({ name: st.name, why: "not run: build or check fails (above)", s: "-", ok: null, cmd: st.cmd })
+  else if (noRoom) rows.push({ name: st.name, why: "not run: no room (above)", s: "-", ok: null, cmd: st.cmd })
   else {
+    const got = GATES.has(st.name) ? { release: () => {} } : await room(`verify: ${st.name}`, { log: say })
+    if (got.busy !== undefined) {
+      noRoom = got.busy
+      rows.push({ name: st.name, why: `not run: ${got.busy}`, s: "-", ok: null, cmd: st.cmd })
+      continue
+    }
     say(`\n== ${st.name}: ${st.cmd.join(" ")}`)
     const t = Date.now(), ok = (await run(st.cmd)) === 0, s = (Date.now() - t) / 1000
+    got.release()
     rows.push({ name: st.name, why: st.why, s: s.toFixed(1), ok, cmd: st.cmd })
-    // (kept only if the files are still the ones it started on: none changed while it ran)
     if (ok && state && filesState(ROOT) === state) kept.pass(state, st.cmd, s)
   }
   // (the try starts once build and check pass, what would fail its every job; the other stages run while it does)
@@ -116,7 +124,8 @@ const failed = rows.filter((r) => r.ok === false)
 if (risks.length && !tryIt) say("\nOS-sensitive (above): before it lands, try HEAD on Linux, macOS and Windows: npm run verify -- --try (pre-push asks)")
 // (while fixing, the failed stage alone is the quick loop; verify again at the end runs only what hasn't passed on the files)
 if (failed.some((r) => r.cmd.length)) say(`\nwhile fixing, rerun just what failed: ${failed.filter((r) => r.cmd.length).map((r) => r.cmd.join(" ")).join("; ")}`)
-// (the last line says it all, read alone: exit 0 ok, 1 failed, 3 the try still running)
+// (the last line says it all, read alone: exit 0 ok, 1 failed, 3 not done: no room for the tests yet, or the try still running)
 say(`\n${dry ? "verify: dry run" : failed.length ? `verify: FAIL (${failed.map((r) => r.name).join(", ")})${waited?.status === "failed" ? `; ${waited.line}` : ""}; its output: ${logFile}`
+  : noRoom ? `verify: NOT DONE: ${noRoom}; run it again (what passed is kept)${waited ? `; ${waited.line}` : ""}`
   : waited?.status === "running" ? `verify: ok here; ${waited.line}` : `verify: ok${waited ? `; ${waited.line}` : ""}`}`)
-process.exit(failed.length ? 1 : waited?.status === "running" ? 3 : 0)
+process.exit(failed.length ? 1 : noRoom || waited?.status === "running" ? 3 : 0)

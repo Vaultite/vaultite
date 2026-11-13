@@ -26,6 +26,8 @@ export const STEPS = [
 ]
 /** A machine over this load (a minute's, per core) is busy: its user's or another agent's work, not a try's. */
 const BUSY_LOAD = 0.75
+/** The memory a machine has free for a try (VAULTITE_TRY_FREE_GB): the job's and the 2 GB its user's own apps keep. */
+const TRY_FREE = (Number(process.env.VAULTITE_TRY_FREE_GB) || 5) * 2 ** 30
 /** The Machines' list (plugins/core/machines): its entries with `ssh` (no Vaultite there) and `"try": false` are read here. */
 const SETTINGS = ".vaultite/plugins/machines/data.json"
 /** The hidden ref a machine fetches the commit from (no workflow runs on it). */
@@ -59,8 +61,16 @@ const op = (url: string, id: string, params: object) => new Ctx({ url, env: plai
 const job = (spec: object) => `node -e "eval(Buffer.from('${fs.readFileSync(JOB).toString("base64")}','base64').toString())" ${argOf(spec)}`
 const sshArgs = (dest: string, spec: object) => ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=30", dest, "node", "-", argOf(spec)]
 
-/** What a machine says of itself (try_job.cjs probe), or why it didn't. */
-async function probe(m: Omit<Machine, "os">): Promise<{ platform: string; node: string; load: number; running: number } | string> {
+export type Probe = { platform: string; node: string; load: number; running: number; free?: number }
+export function unfit(p: Probe, ciNode: number): string | null {
+  if (nodeMajor(p.node) < ciNode) return `Node ${p.node}, CI's is ${ciNode}`
+  if (p.running) return "busy: another try runs there"
+  if (p.load >= BUSY_LOAD) return `busy: load ${p.load} per core`
+  if ((p.free ?? 0) < TRY_FREE) return `low memory: ${((p.free ?? 0) / 2 ** 30).toFixed(1)} GB free, a try needs ${TRY_FREE / 2 ** 30}`
+  return null
+}
+
+async function probe(m: Omit<Machine, "os">): Promise<Probe | string> {
   const said = (text: string) => { const l = /try-job: probe (\{.*\})/.exec(text)?.[1]; try { return l ? JSON.parse(l) : "no answer" } catch { return "no answer" } }
   if (m.reach.kind === "vau") {
     try { return said(String((await op(m.reach.url, "terminal.start", { command: job({ mode: "probe" }), name: "try probe", wait: true, timeout: 20 })).output ?? "")) }
@@ -103,9 +113,8 @@ export async function findMachines(root: string, oses: Os[], log: (s: string) =>
     const p = said[i]
     if (typeof p === "string") return passed.push(`${m.label} (${p})`)
     if (!want(p.platform)) return
-    if (nodeMajor(p.node) < node) return passed.push(`${m.label} (Node ${p.node}, CI's is ${node})`)
-    if (p.running) return passed.push(`${m.label} (busy: another try runs there)`)
-    if (p.load >= BUSY_LOAD) return passed.push(`${m.label} (busy: load ${p.load} per core)`)
+    const why = unfit(p, node)
+    if (why) return passed.push(`${m.label} (${why})`)
     out.push({ ...m, os: p.platform as Os, load: p.load + (m.reach.kind === "here" ? -1 : 0) })
   })
   if (passed.length) log(`try: machines passed over: ${passed.join(", ")}`)
@@ -137,7 +146,6 @@ export function stopPart(file: string) {
   if (p && !p.ended && p.pid && alive(p.pid)) try { process.kill(p.pid, "SIGTERM") } catch { /* gone */ }
 }
 
-/** A job's `try-job:` summary, read. */
 export function parseJob(text: string): Pick<Part, "steps" | "failures" | "flaky" | "why" | "log" | "ok"> {
   const lines = text.split(/\r?\n/).map((l) => /try-job: (.*)$/.exec(l)?.[1]?.trimEnd()).filter((l): l is string => !!l)
   const from = lines.lastIndexOf("summary"), sum = from >= 0 ? lines.slice(from + 1) : []
@@ -153,6 +161,20 @@ export function parseJob(text: string): Pick<Part, "steps" | "failures" | "flaky
   }
   if (from < 0) r.why = "it ended without its summary"
   return r
+}
+
+export const AWAY_MS = 5 * 60_000
+/** Asked again while the machine's server is away (restarting on a push: the part's terminal outlives it). */
+export async function patient<T>(call: () => Promise<T>, deadline: number, o: { now?: () => number; pause?: (ms: number) => Promise<void> } = {}): Promise<T> {
+  const now = o.now ?? Date.now, pause = o.pause ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  let away = 0
+  for (;;) {
+    try { return await call() } catch (e) {
+      away ||= now()
+      if (now() - away >= AWAY_MS || now() >= deadline) throw e
+    }
+    await pause(10_000)
+  }
 }
 
 /** The runner: the part's job where it runs, its whole output kept beside the part, how it ended written there. */
@@ -172,11 +194,11 @@ async function runPart(file: string) {
       savePart(file, p)
       process.on("SIGTERM", () => { void op(url, "terminal.end", { id: p.terminal }).finally(() => process.exit(1)) })
       for (;;) {
-        const w = await op(url, "terminal.wait", { id: p.terminal, for: ["exit"], timeout: Math.max(5, Math.min(300, (deadline - Date.now()) / 1000)) })
+        const w = await patient(() => op(url, "terminal.wait", { id: p.terminal, for: ["exit"], timeout: Math.max(5, Math.min(300, (deadline - Date.now()) / 1000)) }), deadline)
         if (w.met === "exit" || w.exit || w.lost) break
         if (Date.now() >= deadline) { why = "not done in time (stopped)"; await op(url, "terminal.end", { id: p.terminal }).catch(() => {}); break }
       }
-      text = String((await op(url, "terminal.capture", { id: p.terminal, lines: 400 })).text ?? "")
+      text = String((await patient(() => op(url, "terminal.capture", { id: p.terminal, lines: 400 }), deadline + AWAY_MS)).text ?? "")
     } catch (e) { why = `${p.label} stopped answering: ${(e as Error).message.slice(0, 120)}` }
     fs.writeFileSync(outFile, text)
   } else {
