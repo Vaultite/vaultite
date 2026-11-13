@@ -6,7 +6,10 @@ import { gitEnv } from "../core/gitenv.ts"
 const base = process.argv[2] ?? "origin/main"
 const git = (...a: string[]) => execFileSync("git", a, { encoding: "utf8", env: gitEnv(), maxBuffer: 1 << 28 })
 const POSITIONS = new Set(["start", "end", "range", "loc"])
-const tree = (file: string, text: string) => JSON.stringify(parseSync(file, text).program, (k, v) => (POSITIONS.has(k) ? undefined : v))
+// A BigInt literal's `value` is a bigint, which JSON can't write: its `raw` says the same
+// oxlint-disable-next-line anti-slop/no-object-parameters, anti-slop/no-unknown-parameters -- JSON.stringify's replacer: any node of the tree
+function drop(this: object, k: string, v: unknown) { return POSITIONS.has(k) || (k === "value" && "bigint" in this) ? undefined : v }
+const tree = (file: string, text: string) => JSON.stringify(parseSync(file, text).program, drop)
 
 const changed = git("diff", "--name-only", "--diff-filter=M", base, "--").split("\n").filter((f) => /\.(m?ts|tsx|mjs)$/.test(f))
 const other = git("diff", "--name-only", "--diff-filter=ADR", base, "--").split("\n").filter(Boolean)
