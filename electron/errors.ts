@@ -1,6 +1,6 @@
 import { app, clipboard, dialog, shell } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { hangReport, hangStarted, LONG_FRAME_LIST, LONG_FRAMES, MAX_SAMPLES, SAMPLE_EVERY_MS, sampled, type Hang, type HangEnd, type LongFrame } from "./hang.ts"
+import { hangReport, hangStarted, LONG_FRAME_LIST, LONG_FRAMES, LOOK_MS, MAX_SAMPLES, SAMPLE_EVERY_MS, sampled, type Hang, type HangEnd, type LongFrame } from "./hang.ts"
 import os from "node:os"
 import { CODE, HOST } from "./identity.ts"
 import { launchedFrom, updatesReady } from "./updates.ts"
@@ -49,12 +49,13 @@ export function failedBox(title: string, e: unknown, o: { why?: string; log?: st
 
 export function hangs(win: AppWindow, name: string) {
   let asking: AbortController | null = null
-  let hang: Hang | null = null, reported = false, timer: NodeJS.Timeout | undefined
+  let hang: Hang | null = null, reported = false, timer: NodeJS.Timeout | undefined, due = 0
   const sample = async () => {
+    const lateMs = Math.max(0, Date.now() - due)
     const pid = win.webContents.getOSProcessId()
-    const stack = await Promise.race([win.webContents.mainFrame.collectJavaScriptCallStack(), new Promise<undefined>((r) => setTimeout(r, 2500))]).catch(() => undefined)
+    const stack = await Promise.race([win.webContents.mainFrame.collectJavaScriptCallStack(), new Promise<undefined>((r) => setTimeout(r, LOOK_MS))]).catch(() => undefined)
     const m = app.getAppMetrics().find((x) => x.pid === pid)
-    if (hang) hang = sampled(hang, { at: Date.now(), stack: stack ?? "", cpuSeconds: m?.cpu.cumulativeCPUUsage ?? null, memoryMB: m ? Math.round(m.memory.workingSetSize / 1024) : null })
+    if (hang) hang = sampled(hang, { at: Date.now(), stack: stack ?? "", cpuSeconds: m?.cpu.cumulativeCPUUsage ?? null, cpuPercent: m ? m.cpu.percentCPUUsage : null, lateMs, memoryMB: m ? Math.round(m.memory.workingSetSize / 1024) : null })
   }
   const report = async (how: HangEnd) => {
     if (!hang || reported) return
@@ -70,7 +71,7 @@ export function hangs(win: AppWindow, name: string) {
     if (!hang || reported || win.isDestroyed()) return
     await sample()
     if (!hang || reported) return
-    if (hang.samples.length < MAX_SAMPLES) timer = setTimeout(() => void look(), SAMPLE_EVERY_MS)
+    if (hang.samples.length < MAX_SAMPLES) { due = Date.now() + SAMPLE_EVERY_MS; timer = setTimeout(() => void look(), SAMPLE_EVERY_MS) }
     else void report("still")
   }
   const ended = async (how: HangEnd) => {
@@ -79,7 +80,7 @@ export function hangs(win: AppWindow, name: string) {
     hang = null
   }
   win.webContents.on("unresponsive", async () => {
-    if (!hang) { hang = hangStarted(Date.now()); reported = false; void look() }
+    if (!hang) { hang = hangStarted(Date.now()); reported = false; due = Date.now(); void look() }
     if (asking || win.isDestroyed()) return
     const ask = (asking = new AbortController())
     const r = await dialog.showMessageBox(win, { type: "warning", message: `${name} isn't responding`, detail: "Wait for it, or reload its page.",
