@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The sidebar's search field sits evenly under its header**: first in the sidebar, it's as far under the header's
+  icons as it is in from the sidebar's edge, no longer low.
+- **A browser page under its toolbar has square top corners**: with panes as cards, its top corners no longer curve a
+  second time below the toolbar's rounded ones.
 - **The "Closed 3 tabs" toast goes once they're back, however late**: held under the pointer past 10 seconds, it
   stayed after ⌘⇧T reopened them, its Undo doing nothing.
 - **The Mac's traffic lights sit cleanly beside a sidebar rail with panes as cards**: with no tab bar they and the

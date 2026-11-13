@@ -61,14 +61,14 @@ function pageArea(r: DOMRect) {
   return new DOMRect(r.left, r.top, r.width, Math.max(0, Math.min(...over.map((bar) => bar.top)) - r.top))
 }
 
-/** The page's corners (Electron rounds all four alike): its card's curve where it meets the card's top or foot (panes
- *  as cards, a tiled one), else square. Under a bar its top corners round too: a view can't go under the window's page. */
+/** The page's corners (Electron rounds all four alike): its card's curve where it fills the card (panes as cards, a
+ *  tiled one), else square: under a bar, rounded tops would curve a second time below the bar's. */
 function corners(box: HTMLElement, r: DOMRect) {
   const card = box.closest<HTMLElement>("[data-pane-frame]")
   if (!card || card.hasAttribute("data-floating")) return 0
   const radius = parseFloat(getComputedStyle(card).borderBottomLeftRadius) || 0
   const c = card.getBoundingClientRect(), at = (a: number, b: number) => Math.abs(a - b) < 1
-  return radius && at(r.left, c.left) && at(r.right, c.right) && (at(r.top, c.top) || at(r.bottom, c.bottom)) ? radius : 0
+  return radius && at(r.left, c.left) && at(r.right, c.right) && at(r.top, c.top) && at(r.bottom, c.bottom) ? radius : 0
 }
 const spot = (r: Box, radius: number) => ({ x: r.left, y: r.top, width: r.width, height: r.height, radius })
 

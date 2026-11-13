@@ -73,6 +73,7 @@
   over it), as it tells the window's edges for the sidebars. The pane's top above it (Tabs.tsx's `data-pane-bar`
   strip, title or tabs, and as cards the gap above the card, Workspace.tsx's `data-pane-gap`: the window's to hear) brings
   it too, one band with the page's top, and its menu ends with the bar's switch (the view's `paneMenu`), with the tab bar's and pane tab bars': every menu that has it puts it last.
-- As cards, a page's corners follow its card's where it meets them (WebPage's `corners`, `setBorderRadius`). Electron
-  rounds all four alike, and on a Mac a parent View clips no page (tried), nor can a view go under the window's page
-  short of raising it: under a bar its top corners round too. Raised, the hole keeps what's outside them painted.
+- As cards, a page's corners follow its card's only where it fills the card (WebPage's `corners`, `setBorderRadius`).
+  Electron rounds all four alike, and on a Mac a parent View clips no page (tried), nor can a view go under the window's
+  page short of raising it: under a bar a page is square, its foot over the card's curve, as rounded tops under the
+  bar's rounded ones looked doubled. Raised, the hole keeps what's outside a rounded page's corners painted.
