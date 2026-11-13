@@ -1,7 +1,7 @@
 // The window over its pages (electron/appwindow.ts): raised while anything of it covers a page, see-through behind
 // each so the live page shows there, passing the pointer on where nothing of it is (but under a menu, dialog or drag).
 import { webPages } from "@vaultite"
-import { overlap, sameBox, type Box, type Change, type Cover } from "./placement.ts"
+import { overlap, sameBox, type Box, type Change, type Cover } from "./box.ts"
 
 
 const covers = new Map<number, Cover>()

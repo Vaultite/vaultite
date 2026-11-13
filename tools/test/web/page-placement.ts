@@ -3,7 +3,7 @@ import { same } from "./lib.ts"
 
 // ---------- Browser: a page kept over its box (plugins/core/web-viewer/placement.ts) ----------
 {
-  const pl = await import("../../../plugins/core/web-viewer/placement.ts")
+  const pl = { ...await import("../../../plugins/core/web-viewer/placement.ts"), ...await import("../../../plugins/core/web-viewer/box.ts") }
   type S = ReturnType<typeof pl.placementStart>
   type E = Parameters<typeof pl.placeStep>[1]
   type Cover = "app" | "through" | null
