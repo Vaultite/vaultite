@@ -86,7 +86,7 @@ async function mergeCopies(rel: string) {
       if (next === null) continue
       if (next !== text) await plugin.host.api("PUT", "file", { path: rel, text: next, base: text })
       await plugin.runOp("archive.add", { path: copy.rel })
-    } catch (err) { console.error(`daily-notes: couldn't merge ${copy.rel} into ${rel}: ${(err as Error).message}`) }
+    } catch (err) { console.error(`daily-notes: couldn't merge ${copy.rel} into ${rel}: ${err instanceof Error ? err.message : String(err)}`) }
   }
 }
 function merged(text: string, e: Entry, copy: Entry): string | null {
