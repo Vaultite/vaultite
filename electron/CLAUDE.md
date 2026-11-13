@@ -3,6 +3,8 @@
 - Each vault is a window with its own `server.ts` (forked with `ELECTRON_RUN_AS_NODE`, a port kept per vault so each
   keeps its localStorage), dying with its window, unless a server here already serves it (its service): then the window
   attaches to that one and answers its browser calls (host.ts). `vaults.json` is this Mac's, never a vault's.
+- A window's own server is kept running by serverwatch.ts (restarts, unheard exits, a start that fails); what the main
+  process does with servers is in main.log in the logs folder (mainlog.ts), as its console goes nowhere.
 - An update's relaunch (the store's, a Dev instance's) keeps the servers: told `desktop:relaunching` first, each waits
   30 s with its claim naming this app's data as heir, and the next launch takes it over (heir.ts: its own from then on,
   told things over the host socket, as no IPC can be had again). So a server's output is a file, never a pipe to main.

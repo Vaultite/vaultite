@@ -43,6 +43,7 @@ export type UpdatesHost = {
   ownsServer(w: UpdateWindow): boolean
   servers: StoreHost["servers"]
   restartServers(): void
+  restartServer(w: UpdateWindow, why: string): void
   adoptWeb(dist: string, commit: string): void
   path(): string
 }
@@ -193,7 +194,7 @@ export function checkInstalled(w: UpdateWindow) {
     if (restart && w.server?.exitCode === null) {
       restartedOnto.add(p)
       fs.writeSync(log, `${at} ${host.nameOf(p)}'s server runs ${server}, not the installed ${installed}: restarting it\n`)
-      w.server.kill()
+      host.restartServer(w, `it runs ${server?.slice(0, 7)}, not the installed ${installed?.slice(0, 7)}`)
     }
     fs.closeSync(log)
   })(), 15_000)

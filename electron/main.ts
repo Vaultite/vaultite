@@ -17,7 +17,7 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import type { Adopted } from "./heir.ts"
-import { servingOf, type Serving } from "../core/serving.ts"
+import { answers, servingOf, type Serving } from "../core/serving.ts"
 import { talkCall } from "./talklog.ts"
 import { CODE, DEV, HOST, WORKTREE } from "./identity.ts"
 import { codeRoot, commitAt, hold } from "./storehost.ts"
@@ -39,8 +39,12 @@ import * as Setup from "./setup.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { vauEntry } from "../core/appentry.ts"
 import { strings } from "../core/values.ts"
+import { mainLog, openMainLog } from "./mainlog.ts"
+import { ServerWatch } from "./serverwatch.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+openMainLog(app.getPath("logs"))
+mainLog(`started: ${CODE?.commit.slice(0, 7) ?? "no build stamp"} from ${ROOT}`)
 const PRELOAD = path.join(ROOT, "electron", "preload.cjs")
 const DIST = path.join(ROOT, "web", "dist")
 const ICON = path.join(ROOT, "web", "public", "icon-512.png")
@@ -105,7 +109,7 @@ async function openLink(url: string) {
 // Electron's error box for an uncaught exception stops everything and shows even over the QA scripts' quiet windows.
 function uncaught(kind: "uncaught" | "rejection", e: unknown) {
   const err = e instanceof Error ? e : new Error(String(e))
-  console.error(`main process, ${kind}:`, err)
+  mainLog(`main process, ${kind}: ${err.stack ?? err.message}`)
   reportError(kind, `Main process: ${err.message}`, err.stack ?? "")
 }
 function reportError(kind: string, message: string, stack: string) {
@@ -134,7 +138,7 @@ function failedBox(title: string, e: unknown, o: { why?: string; log?: string } 
   const { reason, detail } = plainError(e)
   const box = { type: "warning" as const, message: title, detail: reason ? sentence(reason) : o.why ?? "Something went wrong.",
     buttons: ["OK", "Copy details", ...(o.log ? ["Show log"] : [])], defaultId: 0, cancelId: 0 }
-  console.error(`vaultite: ${title}:`, detail)
+  mainLog(`told the user: ${title}: ${detail}`)
   void dialog.showMessageBox(box).then((r) => {
     if (r.response === 1) clipboard.writeText(`${title}\n${detail}`)
     if (r.response === 2 && o.log) void shell.openPath(o.log)
@@ -228,7 +232,7 @@ class PortTaken extends Error {}
 
 type Win = { vault: Known; win: AppWindow; server: ChildProcess | null; link: Link | null; port: number; ready: boolean; queue: string[]
   ending?: boolean
-  restarting?: boolean
+  watch?: ServerWatch<ChildProcess>
   web?: string
   welcome?: boolean
   menu?: MenuSnapshot }
@@ -316,6 +320,8 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
     },
   })
   fs.closeSync(fd)
+  const name = nameOf(v.path), began = Date.now()
+  mainLog(`${name}: server forked (pid ${child.pid ?? "none"}, port ${port}, ${commitAt(root)?.slice(0, 7) ?? root})`)
   rootOf.set(child, root)
   logFrom.set(child, from)
   ownServer(child.pid, child)
@@ -329,15 +335,21 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
   })
   return new Promise((ok, fail) => {
     const said = () => logSince(logFile, from)
-    const timer = setTimeout(() => { clearInterval(look); fail(new Error(`the server didn't start in time\n${said()}`)) }, 120_000)
+    const timer = setTimeout(() => {
+      clearInterval(look)
+      mainLog(`${name}: server pid ${child.pid} didn't listen in 120 s: stopped`)
+      child.kill("SIGKILL")
+      fail(new Error(`the server didn't start in time\n${said()}`))
+    }, 120_000)
     let up = false
     const listening = () => {
       if (up) return
       up = true
       clearTimeout(timer)
       clearInterval(look)
+      mainLog(`${name}: server pid ${child.pid} listens (${((Date.now() - began) / 1000).toFixed(1)} s)`)
       if (spoke === DESKTOP_PROTOCOL) return ok(child)
-      console.error(`vaultite: ${nameOf(v.path)}'s server from ${root} speaks protocol ${String(spoke ?? "?")}, this app ${DESKTOP_PROTOCOL}: its own code instead`)
+      mainLog(`${name}'s server from ${root} speaks protocol ${String(spoke ?? "?")}, this app ${DESKTOP_PROTOCOL}: its own code instead`)
       const c = commitAt(root)
       if (c) mainBehind(c)
       child.removeAllListeners("exit")
@@ -346,13 +358,22 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
     }
     child.on("message", (m: { type?: string }) => { if (m?.type === "desktop:listening") listening() })
     const look = setInterval(() => { if (/vaultite on http/.test(said())) listening() }, 500)
-    child.once("exit", (code) => {
+    child.once("exit", (code, signal) => {
       clearTimeout(timer)
       clearInterval(look)
       const out = said()
-      fail(/EADDRINUSE/.test(out) ? new PortTaken(`port ${port} is taken`) : new Error(`the server stopped (exit ${code})\n${out}`))
+      if (!up) mainLog(`${name}: server pid ${child.pid} stopped before it listened (exit ${signal ?? code})`)
+      fail(/EADDRINUSE/.test(out) ? new PortTaken(`port ${port} is taken`) : new Error(`the server stopped (exit ${signal ?? code})\n${out}`))
     })
-    if (v.outside?.length) child.send({ type: "allow", paths: v.outside })
+    child.on("error", (e) => {
+      mainLog(`${name}: server pid ${child.pid ?? "none"}: ${e.message}`)
+      const forkFailedSoNoExitComes = !child.pid
+      if (!forkFailedSoNoExitComes) return
+      clearTimeout(timer)
+      clearInterval(look)
+      fail(new Error(`the server couldn't be started: ${e.message}`))
+    })
+    if (v.outside?.length && child.pid) child.send({ type: "allow", paths: v.outside })
   })
 }
 
@@ -486,8 +507,10 @@ async function openVault(p: string, file?: string) {
   lastFocused = p
   win.on("closed", () => {
     wins.delete(p)
+    w.watch?.stop()
     if (helperOn() && !quitting && !w.ending && (w.link || w.server?.exitCode === null)) keepServer(p, { server: w.server, link: w.link, port: w.port })
     else {
+      if (w.server) mainLog(`${nameOf(p)}: its window closed: server pid ${w.server.pid} ${handingOver ? "left for the next launch" : "stopped"}`)
       booting.delete(p)
       if (!handingOver) w.server?.kill()
       else if (adopted(w.server)) w.server.release()
@@ -496,41 +519,9 @@ async function openVault(p: string, file?: string) {
     homeChanged()
     buildMenu()
   })
-  let since = Date.now(), restarts: number[] = []
-  const watchServer = (child: ChildProcess) => {
-    child.on("exit", (code) => {
-      const said = logSince(serverLog(p), logFrom.get(child) ?? Infinity)
-      if (win.isDestroyed() || quitting || child !== w.server) return
-      const now = Date.now(), meant = !!w.restarting
-      w.restarting = false
-      restarts = restarts.filter((t) => now - t < 60_000)
-      const fail = (why: string) => {
-        if (win.isDestroyed()) return
-        const starting = now - since < 10_000 && !restarts.length
-        failedBox(`Couldn't ${starting ? "open" : "keep running"} ${nameOf(p)}`, new Error(why),
-          { why: starting ? "Its server stopped as it started." : "Its server stopped three times in a minute.", log: serverLog(p) })
-        win.close()
-      }
-      if (!meant && (now - since < 10_000 || restarts.length >= 3)) return fail(`the server stopped (exit ${code})\n${said}`)
-      if (!meant) restarts.push(now)
-      console.error(`vaultite: ${nameOf(p)}'s server stopped (${meant ? "to run new code" : `exit ${code}`}), starting it again`)
-      const at = w.port, started = startServer(v, at)
-      const up = started.then((c): [ChildProcess, number] => [c, at])
-      up.catch(() => {})
-      booting.set(p, up)
-      started.then((next) => {
-        if (win.isDestroyed()) return void next.kill()
-        w.server = next
-        since = Date.now()
-        watchServer(next)
-        // (a page that tried to load while it was down is Chromium's error page, which can't reconnect)
-        if (!win.webContents.getURL().startsWith(`http://127.0.0.1:${at}/`) || loadFailed) { w.ready = false; void win.loadURL(`http://127.0.0.1:${at}/`).catch(() => {}) }
-      }, (e) => { booting.delete(p); fail(String((e as Error).message ?? e)) })
-    })
-  }
   win.webContents.on("did-start-loading", () => { loadFailed = false })
   win.webContents.on("did-fail-load", (_e, code, _d, _u, main) => { if (main && code !== -3) loadFailed = true })
-  if (server) watchServer(server)
+  if (server) w.watch = watchServer(w, server, () => loadFailed)
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(zoom))
   revive(win.webContents, () => { w.ready = false }, crashedFor(win, nameOf(p)))
   hangs(win, nameOf(p))
@@ -545,6 +536,35 @@ async function openVault(p: string, file?: string) {
   return w
 }
 
+function watchServer(w: Win, first: ChildProcess, loadFailed: () => boolean) {
+  const p = w.vault.path, name = nameOf(p)
+  return new ServerWatch<ChildProcess>(first, {
+    start: () => {
+      const at = w.port, started = startServer(w.vault, at)
+      const up = started.then((c): [ChildProcess, number] => [c, at])
+      up.catch(() => booting.delete(p))
+      booting.set(p, up)
+      return started
+    },
+    answers: () => answers(w.port),
+    took: (next) => {
+      w.server = next
+      // (a page that tried to load while it was down is Chromium's error page, which can't reconnect)
+      const url = `http://127.0.0.1:${w.port}/`
+      if (!w.win.webContents.getURL().startsWith(url) || loadFailed()) { w.ready = false; void w.win.loadURL(url).catch(() => {}) }
+    },
+    failed: (why, starting) => {
+      if (w.win.isDestroyed()) return
+      const said = why.includes("\n") ? "" : `\n${logSince(serverLog(p), (w.server && logFrom.get(w.server)) ?? Infinity)}`
+      failedBox(`Couldn't ${starting ? "open" : "keep running"} ${name}`, new Error(why + said),
+        { why: starting ? "Its server stopped as it started." : "Its server kept stopping, or didn't start again.", log: serverLog(p) })
+      w.win.close()
+    },
+    over: () => (w.win.isDestroyed() ? "its window closed" : quitting ? "the app quits" : null),
+    log: (line) => mainLog(`${name}: ${line}`),
+  })
+}
+
 const heirHere = (s: Serving) => !!s.heir && s.app && s.heir.app === app.getPath("userData")
 async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
   let a: Adopted | null = null
@@ -554,14 +574,16 @@ async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
   ownServer(s.pid, a)
   rootOf.set(child, s.heir!.root)
   logFrom.set(child, (() => { try { return fs.statSync(serverLog(v.path)).size } catch { return 0 } })())
-  console.error(`vaultite: ${nameOf(v.path)}'s server (pid ${s.pid}) kept running through the relaunch: taken over`)
+  mainLog(`${nameOf(v.path)}: server pid ${s.pid} kept running through the relaunch: taken over (${commitAt(s.heir!.root)?.slice(0, 7) ?? s.heir!.root})`)
   return child
 }
 
 function handOver() {
   handingOver = true
   const m = { type: "desktop:relaunching", app: app.getPath("userData") }
-  for (const w of [...wins.values(), ...kept.values()]) if (w.server?.exitCode === null) w.server.send(m)
+  const told = [...wins.values(), ...kept.values()].flatMap((w) => (w.server?.exitCode === null ? [w.server] : []))
+  for (const s of told) s.send(m)
+  mainLog(`relaunching: servers told to wait for the next launch (pids ${told.map((s) => s.pid).join(", ") || "none"})`)
 }
 
 function keepServer(p: string, k: Kept) {
@@ -581,7 +603,7 @@ async function helperHome() {
     lastFocused = v.path
     homeChanged()
     return true
-  } catch (e) { console.error("vaultite: the helper's vault didn't start:", e); return false }
+  } catch (e) { mainLog(`the helper's vault didn't start: ${e instanceof Error ? e.stack : String(e)}`); return false }
 }
 function openHome() {
   const p = (lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : null) ?? [...kept.keys()][0]
@@ -1248,7 +1270,7 @@ initUpdates({
   mode: () => updates,
   busy: () => engineBusy(),
   quitting: () => quitting,
-  beginQuit: () => { quitting = true },
+  beginQuit: () => { mainLog("quitting for an update"); quitting = true },
   handOver,
   flush: () => unloadOnce().then(() => engineFlush()),
   buildMenu,
@@ -1264,7 +1286,8 @@ initUpdates({
     const code = commitAt(root)
     return { code, web: own[0].web ?? code }
   },
-  restartServers: () => { for (const w of wins.values()) if (w.server?.exitCode === null) { w.restarting = true; w.web = undefined; w.server.kill() } },
+  restartServers: () => { for (const w of wins.values()) { w.watch?.restart("an update", (s) => rootOf.get(s) !== codeRoot()); w.web = undefined } },
+  restartServer: (u, why) => { for (const w of wins.values()) if (w === u) w.watch?.restart(why) },
   adoptWeb: (dist, commit) => { for (const w of wins.values()) if (w.server?.exitCode === null && w.server.connected) { w.server.send({ type: "adopt-web", dist }); w.web = commit } },
   path: () => [...pathDirs(), process.env.PATH].filter(Boolean).join(path.delimiter),
 })
@@ -1278,7 +1301,7 @@ async function startWorktree() {
     root: WORKTREE!, userData: app.getPath("userData"), headless: QUIET, debugPort: devtools ?? null, shellPrint: HOST?.shell.fingerprint,
     info: worktreeNow,
     changed: (what) => { worktreeChanged(what); if (QUIET) restartToUpdate() },
-    restartServers: () => { for (const w of wins.values()) if (w.server?.exitCode === null) { w.restarting = true; w.server.kill() } },
+    restartServers: () => { for (const w of wins.values()) w.watch?.restart("the worktree changed") },
     say: (text) => { for (const w of wins.values()) if (w.ready) w.win.webContents.send("vaultite", { type: "update-status", text, done: true }) },
   })
 }
@@ -1498,12 +1521,14 @@ app.on("second-instance", (_e, argv, cwd) => {
 })
 
 app.on("before-quit", (e) => {
+  if (!quitting) mainLog("quitting")
   quitting = true
   if (unloaded) return
   e.preventDefault()
   void unloadOnce().finally(() => app.quit())
 })
 app.on("will-quit", () => {
+  mainLog(handingOver ? "quit: its servers left running for the next launch" : "quit: its servers stopped")
   for (const w of [...wins.values(), ...kept.values()]) {
     if (!handingOver) w.server?.kill()
     else if (adopted(w.server)) w.server.release()

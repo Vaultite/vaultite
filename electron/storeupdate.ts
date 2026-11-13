@@ -43,20 +43,23 @@ export async function look(h: StoreHost) {
   opts.restarts = () => false
   opts.apply = (u) => apply(h, store, u)
   const s = await lookOnce(opts)
-  for (const fn of after.splice(0)) setTimeout(fn, 500)
+  for (const fn of afterLook.splice(0)) setTimeout(fn, 500)
   return s
 }
 let follows = ""
-/** Its servers restarted onto the new root once nothing a restart cuts short runs (an agent at work in the browser). */
-async function restartWhenIdle(h: StoreHost) {
-  for (let busy = await h.busy(), said = false; busy; busy = await h.busy()) {
-    if (!said) { said = true; h.log(`store: its servers restart once idle (${busy})`) }
-    await new Promise((r) => setTimeout(r, 30_000))
-  }
-  h.restartServers()
+/** Its servers restarted onto the current root once nothing a restart cuts short runs, once however many updates ask. */
+let restartWaits: Promise<void> | null = null
+function restartWhenIdle(h: StoreHost) {
+  if (restartWaits) return h.log("store: its servers restart once idle, as already asked")
+  restartWaits = (async () => {
+    for (let busy = await h.busy(), said = false; busy; busy = await h.busy()) {
+      if (!said) { said = true; h.log(`store: its servers restart once idle (${busy})`) }
+      await new Promise((r) => setTimeout(r, 30_000))
+    }
+  })().catch((e) => h.log(`store: whether it's idle wasn't told (${errText(e)}): its servers restart now`))
+    .finally(() => { restartWaits = null; h.restartServers() })
 }
-/** What a look's update does once the look has answered. */
-const after: (() => void)[] = []
+const afterLook: (() => void)[] = []
 
 /** When the last shell was built (kept across launches: a relaunch doesn't build again at once). */
 const SHELL_AT = () => path.join(userData(), "shell-built")
@@ -88,8 +91,8 @@ async function apply(h: StoreHost, store: RootStore, u: Update): Promise<Applied
     running: { main, helper, ...(s ? { server: s.code && s.web ? { code: s.code, web: s.web } : null, ui: s.web } : {}) } })
   h.log(`store: ${u.to.slice(0, 7)} is current: ui ${plan.ui}, server ${plan.server}, main ${plan.main}, helper ${plan.helper}${Object.entries(plan.why).map(([k, w]) => `; ${k}: ${w}`).join("")}`)
   // (once the look has answered: a `vau update` asked through a server that restarts gets its answer first)
-  after.push(() => {
-    if (plan.server === "restart") void restartWhenIdle(h)
+  afterLook.push(() => {
+    if (plan.server === "restart") restartWhenIdle(h)
     else if (plan.server === "adopt-web") h.adoptWeb(path.join(r.dir, "web", "dist"), u.to)
     if (plan.main === "relaunch") h.offerRelaunch(u.to, plan.why.main)
     // (once idle: never mid-press, dictation or voice; helperload.ts)

@@ -23,6 +23,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A site's style opens beside its page**: "Style this site…" no longer shows its new file as gone, a style's
   shorthand holding a variable (`background: var(--vault-background)`) applies with longhands after it, and agents and
   the companion are told to fix a page's dark mode through its style.
+- **An update's server restart always brings the desktop window's server back**: a restart whose server didn't come
+  back (its exit unheard, a start that failed, one that won't stop or doesn't answer) is started again, and only
+  repeated failures tell the user; restarts asked together are one; the main process logs its servers' lives in main.log.
 - **A plugin's scheduled job can run at a time the user picks in its settings**: a manifest's `at` of `"{morning}"`
   follows that setting, so a brief's time changes in its settings sheet; a value that isn't HH:MM holds the job, saying why.
 - **The sidebar's search field sits evenly under its header**: first in the sidebar, it's as far under the header's
