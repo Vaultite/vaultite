@@ -1,9 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
 import { byUser, localDate, localTime, opcodes, OpError, Plugin, vaultPath, whoOf } from "../../../core/plugins.ts"
-import { isHiddenPath, readText, requestWriter, setPropertyText, type Vault, writeAtomic, type Writer } from "../../../core/vault.ts"
+import { isHiddenPath, type Item, readText, requestWriter, setPropertyText, type Vault, writeAtomic, type Writer } from "../../../core/vault.ts"
 import { type Author, authorText, MAX_SPANS, type Mark, resolve, type Span, written } from "./authorship.ts"
 import { saysAi } from "./xmp.ts"
+import { z } from "zod"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -18,7 +19,7 @@ export const values = () => {
   const v = plugin.settings().values
   return Array.isArray(v) && v.length ? v : DEFAULT_VALUES
 }
-const valueNames = () => values().map((v: unknown) => String(v && typeof v === "object" ? (v as { value?: unknown }).value ?? "" : v)).filter(Boolean)
+const valueNames = () => values().map((v: unknown) => String(v && typeof v === "object" ? ("value" in v && v.value != null ? v.value : "") : v)).filter(Boolean)
 
 const aiValue = () => {
   const a = plugin.settings().agent
@@ -64,10 +65,12 @@ plugin.onCreate((path, fm, writer) => {
 const FILES = "files"
 type List = Record<string, string>
 
-const listed = () => plugin.settings({}, FILES) as List
+const FileList = z.record(z.string(), z.string().nullable().catch(null)).catch({})
+const listOf = (o: Item | null): List => Object.fromEntries(Object.entries(FileList.parse(o ?? {})).filter((e): e is [string, string] => e[1] !== null))
+const listed = () => listOf(plugin.settings({}, FILES))
 
 function relist(change: (list: List) => void) {
-  const cur = (plugin.readSettings(FILES) ?? {}) as List, next = { ...cur }
+  const cur = listOf(plugin.readSettings(FILES)), next = { ...cur }
   change(next)
   if (JSON.stringify(next) === JSON.stringify(cur)) return
   const keys = Object.keys(next).sort()
@@ -84,7 +87,7 @@ plugin.onCreateFile((rel, file, writer) => {
   const label = agent ? agentValue() : says() ? "" : userValue()
   try {
     relist((l) => { if (label) l[rel] = label; else delete l[rel] })
-  } catch (e) { console.error(`provenance: couldn't label ${rel}: ${(e as Error).message}`) }
+  } catch (e) { console.error(`provenance: couldn't label ${rel}: ${e instanceof Error ? e.message : String(e)}`) }
 })
 
 plugin.onMove((from, to, trashed) => {
@@ -111,9 +114,9 @@ let readVersion = 0
 function seen() {
   if (!read) {
     const files = plugin.readCache()?.files
-    read = new Map(files && typeof files === "object" ? Object.entries(files as Record<string, string>).map(([k, v]) => {
+    read = new Map(files && typeof files === "object" ? Object.entries(files).map(([k, v]): [string, [string, boolean]] => {
       const [stamp, ai] = String(v).split(" ")
-      return [k, [stamp, ai === "1"]] as [string, [string, boolean]]
+      return [k, [stamp, ai === "1"]]
     }) : [])
   }
   return read
