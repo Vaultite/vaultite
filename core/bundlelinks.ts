@@ -1,5 +1,3 @@
-// A bundle shared as a link (core/docs/bundles.md), its file in a GitHub repository: owner/name[/folder]. No Node: the
-// app, the demo and the desktop app's main process read these.
 const SITE = "https://vaultite.com"
 
 export type Repo = { owner: string; name: string; dir: string | null; tag: string | null }
@@ -25,8 +23,6 @@ export function parseRepo(given: string): Repo | null {
   return { owner, name, dir: dir.join("/") || null, tag }
 }
 
-/** owner/name[/folder][@tag], as the app's import takes it. */
 export const repoText = (r: Repo, withTag = true) => `${r.owner}/${r.name}${r.dir ? `/${r.dir}` : ""}${withTag && r.tag ? `@${r.tag}` : ""}`
 
-/** The page that shows a bundle and tries it live: vaultite.com/b/owner/name[/folder]. */
 export const webLink = (r: Repo) => `${SITE}/b/${repoText(r, false)}`

@@ -1,6 +1,3 @@
-// A pinned list changed one pin at a time, so an old copy never brings back a page unpinned elsewhere. Pure: both
-// sides, so whether a path is a file or a folder comes from the vault (the app's file list, the disk), not its name.
-
 /** A search pinned: "search:<query>". */
 export const SEARCH = "search:"
 /** A view pinned, as a tab's target: "view:<name>" or "view:<name>/<arg>" (view:web/<address>: a web page). */

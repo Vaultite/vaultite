@@ -1,5 +1,3 @@
-// What the server knows of the app only from its source (commands, sidebar panels, new tab sections, icons, schemes),
-// for the ops that list them; keep those greppable. The packaged app has no source: it reads electron/cli.json instead.
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -8,21 +6,16 @@ import { readJson } from "./jsonfile.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
-/** A plugin's folder, as these readers need it. */
 export type PluginDir = { id: string; tier: string; dir: string }
 
-/** A palette command with a fixed id: its default keys (none: []); `note`: "desktop app only". */
 const CommandDef = z.object({ id: z.string(), name: z.string(), keys: z.array(z.string()), note: z.string().optional() })
 export type CommandDef = z.infer<typeof CommandDef>
 
-/** A sidebar panel `<plugin>:<name>`: `heading` when it differs from its title ("Pinned"), `sort` its default place,
- *  `hidden` out of the default setup, `side` "right" if it starts there, `names` its other names, `dockable` by a phone. */
+/** `sort`: its default place; `hidden`: out of the default setup; `dockable`: by a phone. */
 const PanelDef = z.object({ key: z.string(), title: z.string(), heading: z.string().optional(), sort: z.number(), plugin: z.string(), hidden: z.boolean(),
   side: z.literal("right").optional(), names: z.array(z.string()), dockable: z.literal(true).optional() })
 export type PanelDef = z.infer<typeof PanelDef>
 
-/** A plugin's section of a new tab's page: `<plugin>:<name>`, its title, default place, whether it's out of the default
- *  page (`hidden`) and where it's drawn (`only`: phones or computers). */
 const SectionDef = z.object({ key: z.string(), title: z.string(), sort: z.number(), plugin: z.string(), hidden: z.boolean(), only: z.enum(["phone", "desktop"]).optional() })
 export type SectionDef = z.infer<typeof SectionDef>
 
@@ -37,18 +30,15 @@ function snapshot(): Snapshot | null {
   return snap ?? null
 }
 
-/** The app's source is here (a checkout), not only its build. */
 const hasSource = () => fs.existsSync(path.join(ROOT, "web", "src", "App.tsx"))
 
 const subdirs = (d: string) => {
   try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => path.join(d, e.name)).sort() } catch { return [] }
 }
 
-/** The app's built-in plugin folders (plugins/core/). */
 const appPluginDirs = (): PluginDir[] =>
   subdirs(path.join(ROOT, "plugins", "core")).filter((d) => fs.existsSync(path.join(d, "manifest.json"))).map((dir) => ({ id: path.basename(dir), tier: "core", dir }))
 
-/** The snapshot of this checkout's source (electron/stamp.ts writes it into electron/cli.json). */
 export function sourceSnapshot(): Snapshot {
   const plugins = appPluginDirs()
   return {
@@ -59,9 +49,6 @@ export function sourceSnapshot(): Snapshot {
   }
 }
 
-// ---------- reading object literals out of source ----------
-
-/** The text of the `{...}` that opens at `at` (strings skipped). */
 function braced(src: string, at: number) {
   let depth = 0
   for (let i = at; i < src.length; i++) {
@@ -74,7 +61,6 @@ function braced(src: string, at: number) {
   return src.slice(at)
 }
 
-/** The top-level `key: {...}` entries of an object literal's text. */
 function entries(obj: string): [string, string][] {
   const out: [string, string][] = []
   const re = /["']?([\w-]+)["']?\s*:\s*\{/g
@@ -107,7 +93,6 @@ function entries(obj: string): [string, string][] {
   return out
 }
 
-/** The keys of the object literal `<name> = {` or `<name>: {` opens in a file's source. */
 function keysOf(file: string, at: RegExp) {
   let src = ""
   try { src = fs.readFileSync(file, "utf8") } catch { return [] }
@@ -122,10 +107,6 @@ function walkSrc(d: string): string[] {
     .flatMap((e) => (e.isDirectory() ? walkSrc(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []))
 }
 
-// ---------- panels ----------
-
-/** A plugin's sidebar panels, read from its index.tsx (`sidebar: { <name>: { title, sort, hidden, side, heading, names, dockable } }`);
- *  an app plugin's from the build's snapshot when its source isn't here. */
 export function panelsOf(p: PluginDir): PanelDef[] {
   const found = declared(p, "sidebar")
   if (!found) return p.tier !== "vault" && !hasSource() ? snapshot()?.panels[p.id] ?? [] : []
@@ -145,8 +126,6 @@ export function panelsOf(p: PluginDir): PanelDef[] {
   })
 }
 
-/** A plugin's new tab sections from its index.tsx (`newTab: { <name>: {...} }`),
- *  or from the build's snapshot when its source isn't here. */
 export function sectionsOf(p: PluginDir): SectionDef[] {
   const found = declared(p, "newTab")
   if (!found) return p.tier !== "vault" && !hasSource() ? snapshot()?.sections?.[p.id] ?? [] : []
@@ -164,8 +143,7 @@ export function sectionsOf(p: PluginDir): SectionDef[] {
 
 const readSource = (p: PluginDir) => { try { return fs.readFileSync(path.join(p.dir, "index.tsx"), "utf8") } catch { return null } }
 
-/** The `<field>: { <name>: {...} }` entries of a plugin's definition (index.tsx): [name, body]; null when there's no
- *  source to read (an app plugin's in the packaged app: its snapshot), [] when it has none. */
+/** null: no source to read (an app plugin in the packaged app); []: none declared. */
 function declared(p: PluginDir, field: string): [string, string][] | null {
   const src = readSource(p)
   if (src === null) return null
@@ -173,10 +151,6 @@ function declared(p: PluginDir, field: string): [string, string][] | null {
   return m ? entries(braced(src, m.index + m[0].length - 1)) : []
 }
 
-// ---------- commands ----------
-
-/** The palette's commands with fixed ids, from the app's and plugins' source (made-up ids, like a view per file, aren't
- *  here); the packaged app's from its build's snapshot. */
 export function commandList(vaultPlugins: PluginDir[]): CommandDef[] {
   if (hasSource()) return scanCommands([...walkSrc(path.join(ROOT, "web", "src")), ...[...appPluginDirs(), ...vaultPlugins].map((p) => path.join(p.dir, "index.tsx"))])
   const own = scanCommands(vaultPlugins.map((p) => path.join(p.dir, "index.tsx")))
@@ -199,22 +173,18 @@ function scanCommands(files: string[]): CommandDef[] {
   return [...out.values()].sort((a, b) => a.id.localeCompare(b.id))
 }
 
-// ---------- icons and schemes ----------
-
 function appIcons(plugins: PluginDir[]) {
   const own = keysOf(path.join(ROOT, "web", "src", "core", "pages.ts"), /\bICONS\b[^=]*=\s*\{/)
   return [...own, ...plugins.flatMap((p) => keysOf(path.join(p.dir, "index.tsx"), /\bicons\s*:\s*\{/))]
 }
 
-/** The icons a page's `icon:` can name (ICONS in web/src/core/pages.ts and plugins' `icons`). Empty when unknown (an old
- *  packaged app): then any name may be one. */
+/** Empty when unknown (an old packaged app): then any name may be one. */
 export function pageIcons(vaultPlugins: PluginDir[]): string[] {
   const app = hasSource() ? appIcons(appPluginDirs()) : snapshot()?.icons ?? []
   if (!app.length) return []
   return [...new Set([...app, ...vaultPlugins.flatMap((p) => keysOf(path.join(p.dir, "index.tsx"), /\bicons\s*:\s*\{/))])]
 }
 
-/** The app's colour schemes: "default" (Classic) and one per web/src/themes/<name>.css (shipped with the packaged app). */
 export function schemes(): string[] {
   let names: string[] = []
   try { names = fs.readdirSync(path.join(ROOT, "web", "src", "themes")) } catch { /* none */ }

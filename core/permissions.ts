@@ -1,6 +1,3 @@
-// macOS's privacy permissions the desktop app uses (Settings > Permissions, `vau permissions`), and where System Settings
-// has each; no Node. electron/permissions.ts reads their state, core/coreops/permissions.ts adds the vault's.
-
 /** Allowed, not allowed, never asked (macOS asks on first use), or unknown: macOS has no way to tell without asking. */
 export type PermissionState = "allowed" | "denied" | "not-asked" | "unknown"
 /** How macOS gives it: its own prompt (asked once; after, only System Settings changes it), a list in System Settings the
@@ -53,7 +50,6 @@ export const VAULT_PANE = "Privacy_FilesAndFolders"
 /** System Settings at a Privacy & Security pane (macOS 13's form; older ones open Privacy & Security). */
 export const paneUrl = (pane: string) => `x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?${pane}`
 
-/** What the row's button does in a state: only what does something. */
 export function actionOf(def: PermissionDef, state: PermissionState): PermissionAction {
   if (state === "allowed") return "none"
   if (def.kind === "list") return "drag"
@@ -62,7 +58,6 @@ export function actionOf(def: PermissionDef, state: PermissionState): Permission
   return "none"
 }
 
-/** The button's words. */
 export const ACTION_TEXT: Record<PermissionAction, string> = { ask: "Allow…", drag: "Allow…", check: "Check", settings: "Open Settings", none: "" }
 
 /** The signing `codesign -dv --verbose=2` prints (to stderr) for the running app. */
@@ -77,10 +72,8 @@ export function signingOf(out: string): Signing {
   return { kind: "unknown", ...of }
 }
 
-/** Whether macOS keeps this app's permissions across its updates. */
 export const keepsPermissions = (s: Signing) => s.kind === "developer-id" || s.kind === "development"
 
-/** The signing in a line: what it means for the permissions. */
 export function signingText(s: Signing) {
   const who = s.authority?.replace(/^(Developer ID Application|Apple Development): /, "")
   switch (s.kind) {

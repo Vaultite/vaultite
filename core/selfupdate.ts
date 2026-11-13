@@ -1,5 +1,3 @@
-// A service install following a branch (`vau service install --updates main`: VAULTITE_UPDATES in the job's env, so
-// this machine's choice, not the vault's): the commit core/update/ picks is merged, built, and run by a restart.
 import { execFile } from "node:child_process"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -12,18 +10,13 @@ import { errText, toLog } from "./update/updater.ts"
 const exec = promisify(execFile)
 const MINUTE = 60_000
 
-/** Whether a change reaches the running server (and so needs a restart): anything but what's built into web/dist or
- *  never loaded by it (the desktop and iOS apps, tools, CI, docs for people). */
 export const backendChanged = (files: string[]) => files.some((f) =>
   !/^(web|electron|ios|tools|screenshots|examples|\.github|\.githooks)\//.test(f) && !/\.(tsx|css)$/.test(f) && !/^[^/]+\.md$/.test(f))
 
 export type InPlaceOptions = Omit<UpdaterOptions, "apply"> & {
-  /** Runs npm (install, run build) in the checkout. */
   npm?: (args: string[]) => Promise<unknown>
 }
 
-/** The updater for the service's own checkout: a commit is fast-forwarded to and built where the server runs (installed
- *  when the lock changed), and the server restarts only when the change reaches it. */
 export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
   const git = gitIn(o.root)
   // (Windows' npm is npm.cmd, which only a shell runs; the arguments are fixed words)
@@ -40,7 +33,6 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
       if (lock) await install()
       await npm(["run", "build"])
     } catch (e) {
-      // Back to what runs, built as it was: never half-updated.
       let back = ""
       const was = await isAncestor(git, running, head) ? running : head
       try {
@@ -59,11 +51,10 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
   return { ...o, apply, restarts: backendChanged }
 }
 
-/** The module graph's answer beside backendChanged's (core/update/closure.ts), said when they differ: evidence before
- *  the graph decides anything. The update acts on backendChanged. */
+/** Logs where the module graph disagrees with backendChanged; the update acts on backendChanged. */
 export async function shadow(root: string, files: string[], restart: boolean, log: (line: string) => void) {
   const mod = graphModule()
-  if (!mod) return // (a host without the graph: nothing to compare)
+  if (!mod) return
   try {
     const { diskTree, graphOf } = await mod
     const g = graphOf(diskTree(root)), hit = g.hit("server", files)

@@ -1,11 +1,9 @@
-// CI's verdict on a commit, from GitHub Actions: an update takes only commits whose test job for this server's OS passed.
 import { execFile } from "node:child_process"
 import path from "node:path"
 import { promisify } from "node:util"
 
 const exec = promisify(execFile)
 
-/** Where CI is with a commit: none when it has no run (a commit pushed under a newer one never gets one). */
 import type { CiState } from "../contracts/version.ts"
 /** A commit's verdict; ok null is not yet (running, not run, cancelled, GitHub not answering: no `state`). `elsewhere`:
  *  the jobs that failed besides the ones it waits for (another OS's tests, the demo), as far as GitHub said. */
@@ -16,8 +14,6 @@ export type Ci = (repo: string, sha: string, o?: { superseded?: boolean }) => Pr
 /** A workflow run, as GitHub's API gives it. */
 export type CiRun = { id?: number; path?: string; event?: string; status?: string; conclusion?: string | null; head_sha?: string; head_branch?: string | null }
 
-/** CI's workflow for pushes to main (.github/workflows/ci.yml): main is judged by its push and nightly runs, never by one
- *  run by hand (those are QA). */
 export const CI_WORKFLOW = ".github/workflows/ci.yml"
 /** A run's job, as GitHub's API gives it (its latest attempt's). */
 export type CiJob = { name: string; status?: string; conclusion?: string | null }
@@ -32,10 +28,9 @@ export function osGate(platform: NodeJS.Platform = process.platform): Gate | nul
   return f ? { label: `${f[1]} tests`, job: (name) => name.startsWith(`test (${f[0]}`) } : null
 }
 
-/** The branches a try run pushes (tools/try.ts): ci.yml runs its tests there. */
+/** tools/try.ts' branches. */
 export const TRY_PREFIX = "try/"
 
-/** "owner/repo" of a GitHub remote's url, or null. */
 export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1] ?? null
 
 /** Runs gh with these arguments: its stdout, or rejects as execFile does (`code`: the exit code or ENOENT, `killed`,
@@ -51,7 +46,6 @@ export function ghUnusable(e: unknown): boolean {
   return /gh auth login|not logged in|GH_TOKEN|HTTP 401|Bad credentials/i.test(String(err?.stderr ?? ""))
 }
 
-/** Why a gh call that could serve didn't answer, in githubApi's words. */
 function ghWhy(e: unknown, timeout: number): string {
   const err = e as { killed?: boolean; signal?: string | null; stderr?: unknown; message?: string }
   if (err?.killed || err?.signal) return `GitHub didn't answer about CI (gh got no answer in ${Math.round(timeout / 1000)} s)`
@@ -70,7 +64,6 @@ export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => 
   let state: { signedIn: boolean | null; at: number } = { signedIn: null, at: -Infinity }
   let asking: Promise<boolean | null> | null = null
   const set = (signedIn: boolean | null) => { state = { signedIn, at: now() }; return signedIn }
-  /** Whether gh is signed in, as gh says: asked at the first call, then again only while it isn't (every 10 min). */
   const login = (): Promise<boolean | null> => {
     if (state.signedIn === true || now() - state.at < LOGIN_RECHECK) return Promise.resolve(state.signedIn)
     return asking ??= gh(["auth", "status", "--hostname", "github.com"], 15_000)
@@ -85,7 +78,7 @@ export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => 
         return body
       } catch (e) {
         if (!ghUnusable(e)) return e instanceof SyntaxError ? "GitHub's answer about CI wasn't JSON" : ghWhy(e, timeout)
-        set(false) // (signed out or gone since: anonymously from now on, gh asked again in 10 min)
+        set(false)
       }
     }
     try {
@@ -99,9 +92,8 @@ export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => 
 }
 export type GithubClient = ReturnType<typeof githubClient>
 
-/** This process's. */
 const github = githubClient()
-/** GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is public): its answer, or why not. */
+/** Its answer, or why not. */
 export const githubApi = <T>(api: string, timeout?: number) => github.api<T>(api, timeout)
 
 /** GitHub's API allows 60 calls an hour without a login, per address, shared by every machine behind it: the updates
@@ -111,10 +103,9 @@ export const CI_CALLS_PER_HOUR = 20
 export const CI_CALLS_SIGNED_IN = 300
 const HOUR = 3_600_000
 
-/** The updates' calls an hour by how githubApi reaches GitHub: anonymous's until gh says it's signed in. */
 export const ciCallsPerHour = (viaGh: boolean | null = github.signedIn()) => viaGh ? CI_CALLS_SIGNED_IN : CI_CALLS_PER_HOUR
 
-/** At most `max` calls in any hour (a function: sized at each call): `take` says whether one more may go now. */
+/** A function `limit` is sized at each call. */
 export function callBudget(limit: number | (() => number) = CI_CALLS_PER_HOUR, now = Date.now) {
   const at: number[] = [], max = typeof limit === "number" ? () => limit : limit
   return {
@@ -129,7 +120,6 @@ export function callBudget(limit: number | (() => number) = CI_CALLS_PER_HOUR, n
   }
 }
 export type CallBudget = ReturnType<typeof callBudget>
-/** This process's, shared by every look (timed or asked for). */
 const hourly = callBudget(() => ciCallsPerHour())
 
 /** A red verdict is asked again after this (a re-run or the nightly may pass it); a pass is final. */
@@ -153,7 +143,6 @@ export function githubCi(branch: string, get: (api: string) => Promise<unknown> 
   return async (repo, sha, { superseded = false } = {}) => {
     const k = known.get(sha)
     if (k && (k.r.ok === true || (k.r.ok === false && now() - k.at < RED_RECHECK))) return k.r
-    // (a red asked again: a re-run's jobs or the nightly's run may pass it)
     if (k?.r.ok === false) { for (const r of seen.get(sha) ?? []) if (r.id) ended.delete(r.id); seen.delete(sha) }
     // (with a gate, a run's progress is read from its jobs, once it started; without, or before, from the list)
     let runs = gate && !seen.get(sha)?.some(waiting) ? seen.get(sha) : undefined

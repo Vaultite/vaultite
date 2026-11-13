@@ -1,17 +1,12 @@
-// Installed plugins updating on their own: which do (plugins.json's `updates`, and each plugin's own choice), and what's
-// new in an update (its commits' subjects, as release notes). No Node: the web imports it too.
-
 import { strings } from "./values.ts"
 
-/** One update of an installed plugin (its lock entry's `history`): from and to which version, when, how (on its own, by
- *  hand, rolled back), and what's new in it (its commits' subjects since the version it replaced). */
+/** A lock entry's `history` line. `notes`: its commits' subjects since the version it replaced. */
 export type Update = { from: string; to: string; at: string; how: "auto" | "manual" | "rollback"; notes: string[] }
 
 /** Which installed plugins update on their own: Vaultite's (the default), all of them, or none. */
 export type UpdatePolicy = "vaultite" | "all" | "off"
 const POLICIES: UpdatePolicy[] = ["vaultite", "all", "off"]
 
-/** Whether a source is Vaultite's own (its GitHub organisation): what updates on its own unless the user says otherwise. */
 export function official(source: string) {
   return /^vaultite\//i.test(source) || /^(https:\/\/(www\.)?github\.com\/|(ssh:\/\/)?git@github\.com[/:])vaultite\//i.test(source)
 }
@@ -24,11 +19,8 @@ export const policyOf = (c: UpdateConfig): UpdatePolicy => (POLICIES.includes(c.
 /** Whether a source can update at all: not a folder on this machine (its author's work) nor a zip (one version). */
 export const updatable = (source: string) => !/^(\/|~\/|\.\.?\/)/.test(source) && !/#sha256=/i.test(source)
 
-/** Whether the vault's policy alone has it update on its own. */
 export const byPolicy = (c: UpdateConfig, source: string) => { const p = policyOf(c); return p === "all" || (p === "vaultite" && official(source)) }
 
-/** Whether an installed plugin updates on its own: its own choice (plugins.json `updatesOn`, `updatesOff`), else the
- *  vault's policy. */
 export function autoUpdates(c: UpdateConfig, id: string, source: string) {
   if (!updatable(source) || strings(c.updatesOff).includes(id)) return false
   return strings(c.updatesOn).includes(id) || byPolicy(c, source)
@@ -37,8 +29,6 @@ export function autoUpdates(c: UpdateConfig, id: string, source: string) {
 const QUIET = new Set(["chore", "test", "tests", "ci", "build", "docs", "style"])
 const NOTES_MAX = 8
 
-/** Commit subjects as release notes, oldest first: a conventional prefix taken off ("feat(x): every app" is "Every app"),
- *  upkeep left out (chore, test, ci, build, docs), repeats once. */
 export function notesOf(subjects: string[]): string[] {
   const out: string[] = []
   for (const s of subjects) {

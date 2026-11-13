@@ -1,5 +1,3 @@
-// The core's operations (core/ops.ts), by area, each a function of the App; the bigger areas are in core/coreops/.
-// A new op goes here when it's the core's (files, docs, settings, plugins, the window), else in its plugin.
 import fs from "node:fs"
 import type { App } from "./app.ts"
 import { aiOps } from "./coreops/ai.ts"
@@ -28,13 +26,10 @@ import { topic, topics } from "./docs.ts"
 import { defineOp, type Op, OpError, quoted } from "./ops.ts"
 import { isOutside } from "./fileprops.ts"
 
-/** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
 export function coreOps(app: App): Op[] {
   return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...keptOps(app), ...itemOps(app),
     ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...updateOps(), ...opsOps(app)]
 }
-
-// ---------- ops: the catalog itself ----------
 
 function opsOps(app: App): Op[] {
   return [defineOp({
@@ -55,8 +50,6 @@ function opsOps(app: App): Op[] {
       : "No operation matches.",
   })]
 }
-
-// ---------- docs: the docs for AIs (core/docs.ts) ----------
 
 function docsOps(app: App): Op[] {
   return [defineOp({
@@ -93,10 +86,7 @@ or one of the app's (vault, app, vault-plugins, from-other-apps, api: every oper
   })]
 }
 
-// ---------- ui: the user's open window (core/live.ts) ----------
-
 function uiOps(app: App): Op[] {
-  /** A window's answer, or what to do when there's none open. */
   const noWindow = (e: unknown) => {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
     throw e
@@ -144,7 +134,6 @@ A pane or container nobody has is an error that lists the ones there are.
     },
     args: ["path"],
     run: async ({ path, split, newTab, in: into, container }, ctx) => {
-      // (showing a terminal tab starts its shell or agent, which only the owner may)
       const why = typeof path === "string" && path.startsWith("view:terminal/") ? await ctx.refusal?.("the terminal") : ""
       if (why) throw new OpError(why, 403)
       return ctx.ui({ action: "open", path, split: split ?? null, newTab: !!newTab, ...(into ? { in: into } : {}), ...(container ? { container } : {}) }).catch(noWindow)
@@ -167,7 +156,6 @@ has the toasts it showed (notices): one saying it couldn't means it didn't do it
     params: { id: { type: "string", required: true, description: "the command's id (sidebar:toggle)" } },
     args: ["id"],
     run: ({ id }, ctx) => ctx.ui({ action: "command", id }).catch(noWindow),
-    // (what it showed is how an agent knows it didn't work: "Claude isn't running")
     text: (r, p) => !r?.ran ? `Sent ${p.id}.` : `Ran ${p.id}.${r.notices?.length ? ` The app then showed: ${r.notices.map((n: Any) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`,
     did: ({ id }) => ({ action: "ui", text: `Ran the command ${id} in the app` }),
   }), defineOp({
@@ -226,7 +214,6 @@ it as an error (a red icon).
     },
     args: ["text"],
     run: async ({ text, actionOpen, error, terminal }, ctx) => {
-      // (events are toasts and notifications on this machine's screen: its owner's, as Inbox's own route says)
       const why = await ctx.refusal?.("the inbox")
       if (why) throw new OpError(why, 403)
       if (isOutside(actionOpen)) {
@@ -283,7 +270,6 @@ id, or nothing.
 }
 
 type ChoiceItem = { id: string; label: string; detail?: string; icon?: string }
-/** ui.choose's items as given (lines, strings, objects), each with a label and an id (its label when not given). */
 function chooseItems(items: unknown[]): ChoiceItem[] {
   const text = (v: unknown, most: number) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, most) : "")
   return items.flatMap((e): ChoiceItem[] => {

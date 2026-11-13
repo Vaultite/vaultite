@@ -1,5 +1,3 @@
-// The editor's settings (editor.json) and their defaults, one list for the app (web/src/core/editorPrefs.ts) and the
-// server (core/bundles.ts: a bundle setting one to its default removes the key). No Node: both use it.
 export type PropertiesShown = "visible" | "hidden" | "source"
 export type NoteView = "editing" | "reading"
 export type EditingMode = "live" | "source"

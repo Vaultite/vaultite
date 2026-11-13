@@ -1,5 +1,4 @@
-// Where a plugin may write outside .vaultite/ on its own (core/writegate.ts): its manifest's `writes`, answered once
-// per plugin in .vaultite/grants.json; "ask": a write wanted it before the user was asked; "not now": refused.
+// .vaultite/grants.json's answers: "ask": a write wanted it before the user was asked; "not now": refused.
 import type { Plugin } from "./plugins.ts"
 import { enabled } from "./plugins.ts"
 import type { Item, Vault } from "./vault.ts"
@@ -8,14 +7,12 @@ import { logger } from "./log.ts"
 
 const log = logger("grants")
 
-/** One place a plugin writes on its own: a folder (and what's in it) or one file, and why, said to the user. */
 export type WriteDecl = { folder?: string; file?: string; why: string
-  /** What it makes from the vault (a page rebuilt, a day's recap): written by one machine only, the writer (core/app.ts). */
+  /** Written by the writer machine only (core/app.ts). */
   generated?: boolean }
 export type Answer = "allowed" | "not now" | "ask"
-/** A declared write as the app lists it, with the user's answer (null: never asked). */
+/** `answer` null: never asked. */
 export type Grant = { plugin: string; name: string; on: boolean; place: string; folder: boolean; why: string; answer: Answer | null
-  /** Where it writes now: the declared folder, or where the user keeps that kind's files (Inbox/Recaps). */
   at: string }
 
 const GRANTS = "grants"
@@ -23,7 +20,6 @@ const ANSWERS: Answer[] = ["allowed", "not now", "ask"]
 
 const cleanPath = (s: string) => s.trim().replace(/^\/+|\/+$/g, "")
 
-/** A plugin's declared writes (the ones that read). */
 function writesOf(p: Plugin): WriteDecl[] {
   return (Array.isArray(p.manifest.writes) ? p.manifest.writes as unknown[] : []).flatMap((w): WriteDecl[] => {
     if (!isObj(w) || typeof w.why !== "string") return []
@@ -34,10 +30,8 @@ function writesOf(p: Plugin): WriteDecl[] {
   })
 }
 
-/** The name an answer is kept under: the folder or file as declared. */
 const keyOf = (w: WriteDecl) => (w.folder ?? w.file)!
 
-/** The user's answers, by plugin and declared place. */
 function answers(vault: Vault): Record<string, Record<string, Answer>> {
   let raw: Item = {}
   try { raw = vault.config(GRANTS) } catch { /* unreadable for now: nothing granted */ }
@@ -50,8 +44,6 @@ function answers(vault: Vault): Record<string, Record<string, Answer>> {
   return out
 }
 
-/** A declared folder and where the user keeps its files now (the folder set for, or most of, the kinds that default to
- *  it: the plugin's own first, then any's, so "Logs" is wherever the logs are), that first. */
 function foldersOf(vault: Vault, p: Plugin, w: WriteDecl) {
   const out: string[] = []
   for (const k of [...p.kinds, ...vault.kinds.filter((x) => !p.kinds.includes(x))]) {
@@ -61,7 +53,6 @@ function foldersOf(vault: Vault, p: Plugin, w: WriteDecl) {
   return [...new Set([...out, w.folder!])]
 }
 
-/** Whether a declared write covers `rel`: its file, or anything in its folder, wherever the user keeps it. */
 function covers(vault: Vault, p: Plugin, w: WriteDecl, rel: string) {
   if (w.file) return rel === w.file
   return foldersOf(vault, p, w).some((f) => rel === f || rel.startsWith(`${f}/`))
@@ -76,13 +67,11 @@ export function may(vault: Vault, plugins: Plugin[], id: string, rel: string, wr
   return writesOf(p).some((w) => mine[keyOf(w)] === "allowed" && covers(vault, p, w, rel) && (writerHere || !w.generated))
 }
 
-/** Whether `rel` is something plugin `id` generates (its writes say so): refused on other machines without asking. */
 export function generated(vault: Vault, plugins: Plugin[], id: string, rel: string) {
   const p = plugins.find((x) => x.id === id)
   return !!p && writesOf(p).some((w) => w.generated && covers(vault, p, w, rel))
 }
 
-/** Each declared write of the plugins given (`on`: of those that are on), with the user's answer. */
 export function grantList(vault: Vault, plugins: Plugin[]): Grant[] {
   const on = enabled(vault, plugins), all = answers(vault)
   return plugins.flatMap((p) => writesOf(p).map((w) => ({
@@ -91,7 +80,6 @@ export function grantList(vault: Vault, plugins: Plugin[]): Grant[] {
   })))
 }
 
-/** Record the user's answer for a plugin's declared writes (all of them, or `place`'s). Returns the writes answered. */
 export function answer(vault: Vault, p: Plugin, allow: boolean, place?: string) {
   const decls = writesOf(p).filter((w) => !place || keyOf(w) === place)
   if (!decls.length) return []
@@ -103,8 +91,6 @@ export function answer(vault: Vault, p: Plugin, allow: boolean, place?: string) 
 
 const told = new Set<string>()
 
-/** A write the gate refused: said in the log (once per plugin and place), and a declared write the user was never
- *  asked about is marked "ask", so the app asks. Returns whether it was marked. */
 export function refused(vault: Vault, plugins: Plugin[], id: string, rel: string) {
   const p = plugins.find((x) => x.id === id)
   const w = p ? writesOf(p).find((d) => covers(vault, p, d, rel)) : undefined

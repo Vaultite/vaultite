@@ -1,5 +1,3 @@
-// The coding agents API (@vaultite/core/agents.ts, built-in and vault plugins alike): what an agent plugin reads its tool
-// with (usage tallies, processes, transcripts, databases), its routes and blocks (codingAgent), and starting agents.
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
@@ -12,11 +10,8 @@ import { stableNode } from "./service.ts"
 import { vauEntry } from "./appentry.ts"
 import { KNOWN_AGENTS, MODEL_NAME, parseTerminal } from "./terminalids.ts"
 import { spawnBin } from "./winbin.ts"
-/** Starting programs on Windows by name (core/winbin.ts). */
 export { spawnBin, winCommand, withPath } from "./winbin.ts"
-/** A terminal's id and the agent it runs (core/terminalids.ts, which the web app shares). */
 export { agentIn, agentName, agentSite, KNOWN_AGENTS, MODEL_NAME, newTerminalId, parseTerminal, resumeTerminalId, TERMINAL_AGENT, type TerminalAgent } from "./terminalids.ts"
-/** An agent's own session's variables (core/sessionenv.ts). */
 export { agentSession, serversOwn } from "./sessionenv.ts"
 export { trustClaudeProject } from "./claudeconfig.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
@@ -27,7 +22,7 @@ import { atExit } from "./exit.ts"
 export const HOME = os.homedir()
 
 /** `vau mcp` as an agent's MCP server: by the Node running this server (an agent may pass its servers no PATH), told
- *  this server's address (another port isn't vau's default). OpenClaw and Hermes save it with their connect ops. */
+ *  this server's address (another port isn't vau's default). */
 export function vauMcpServer(): { command: string; args: string[]; env: Record<string, string> } {
   const env: Record<string, string> = { VAULTITE_URL: serverUrl() }
   if (process.env.ELECTRON_RUN_AS_NODE) env.ELECTRON_RUN_AS_NODE = "1"
@@ -37,11 +32,9 @@ const run = promisify(execFile)
 const pad = (n: number) => String(n).padStart(2, "0")
 /** Epoch ms -> ISO time, or null. */
 export const isoOf = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : null)
-/** How many days back the scans read: 35, and as far as a block or a query has asked for since the server started. */
 let reach = 35
 /** How many days back the scans read now. */
 export const scanDays = () => reach
-/** A block's or a query's `days`: 30 when unset, any range up to ten years; asking for more widens the scans. */
 function daysOf(v: unknown) {
   const n = Math.trunc(Number(v || 30))
   const days = Number.isFinite(n) ? Math.min(Math.max(n, 1), 3650) : 30
@@ -78,8 +71,6 @@ export function priceList<T>(table: Record<string, T>, sep = "") {
   }
 }
 
-/** `fn` run at most every `ms` (or sooner when `due`), callers sharing a run in progress; `now`: run it anyway, after
- *  one in progress (which may have started before what's wanted was there). */
 function throttled(ms: () => number, fn: () => Promise<void>, due?: () => boolean) {
   let at = 0, running: Promise<void> | null = null
   const go = (now = false): Promise<void> => {
@@ -90,8 +81,6 @@ function throttled(ms: () => number, fn: () => Promise<void>, due?: () => boolea
   }
   return go
 }
-
-// ---------- projects
 
 /** Folder -> its project's root. A worktree belongs to its repository: `own` maps the agent's own worktree folders,
  *  and a sibling <repo>-<task> of a folder that's also there counts as <repo>. */
@@ -126,21 +115,18 @@ export function repoName(cwd: string) {
   try {
     const m = /^gitdir:\s*(.+?)[\\/]\.git[\\/]worktrees[\\/]/m.exec(fs.readFileSync(path.join(cwd, ".git"), "utf8"))
     if (m) r = projectName(path.resolve(cwd, m[1]))
-  } catch { /* not a worktree's root */ }
+  } catch {}
   repos.set(cwd, r)
   if (repos.size > 500) repos.delete(repos.keys().next().value!)
   return r
 }
 
-/** The accounts `id` names ("" or none: all of them); none of them is a 404 that lists them. */
 function accountsNamed<A extends { id: string }>(all: A[], id: unknown, what: string): A[] {
   if (typeof id !== "string" || !id) return all
   const one = all.filter((a) => a.id === id)
   if (!one.length) throw new HTTPError(404, `no ${what} '${id}' here (they are: ${all.map((a) => a.id).join(", ") || "none"})`)
   return one
 }
-
-// ---------- usage
 
 /** A request as a tally counts it: when (epoch ms), its cost (null: no price for its model), tokens, cache reads, prompt
  *  tokens (cached or not), the model's name and the minutes it worked, when that's known per request. */
@@ -221,7 +207,6 @@ export class Tally {
       Object.assign(s, { lastTs: s.last, first: iso(s.first), last: iso(s.last) })
     }
     for (const p of this.projects.values()) Object.assign(p, { sessions: p.sessions.size, last: iso(p.last) })
-    // Two folders with the same name (Work/Acme, Documents/Acme) are told apart by their parent.
     const same = new Map<string, Item[]>()
     for (const p of this.projects.values()) same.set(p.name, [...(same.get(p.name) ?? []), p])
     for (const ps of [...same.values()].filter((ps) => ps.length > 1)) {
@@ -246,8 +231,6 @@ export class Tally {
 type Summary = ReturnType<Tally["result"]>
 /** What an agent's GET route answers: its tally, plan, limits and live sessions. */
 export type Usage = Summary & { plan: { name: string; monthly: number | null } | null; limits: Limits | null; live: Item[] } & Item
-
-// ---------- processes
 
 /** Every process on this machine: its pid, start (epoch ms) and command line. */
 export const processes = async () => [...await processTable()].map(([pid, p]) => ({ pid, started: p.started, command: p.args }))
@@ -319,7 +302,7 @@ export function sessionsOf<P extends { started: number }, S>(procs: P[], key: (s
  *  installers put it; null when it's nowhere. */
 export function findBin(name: string) {
   let npm = ""
-  try { npm = path.dirname(fs.realpathSync(process.execPath)) } catch { /* none */ }
+  try { npm = path.dirname(fs.realpathSync(process.execPath)) } catch {}
   const win = process.platform === "win32"
   // (Windows: npm's global folder, and its programs by their extensions: claude.exe, codex.cmd)
   const dirs = [...(process.env.PATH ?? "").split(path.delimiter), npm, path.join(HOME, ".local", "bin"), path.join(HOME, ".npm-global", "bin"),
@@ -361,8 +344,6 @@ export function jsonLines<T>(bin: string, args: string[], o: { env: NodeJS.Proce
     send(o.first)
   })
 }
-
-// ---------- Terminal runs them (the service "agent:<name>")
 
 /** A terminal's agent as the Terminals panel shows it. */
 export type AgentState = "working" | "waiting" | "idle"
@@ -494,8 +475,6 @@ export const agentRefusal = (text: string): AgentCommand => ({ command: `printf 
 /** A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell. */
 export const notOnThisMachine = (agent: string, id: string): AgentCommand => agentRefusal(`There's no ${agent} session ${id} on this machine to resume.`)
 
-// ---------- conversations (a session's view tab)
-
 /** A conversation's entries (a session's view tab): a tool call, what was said, and its head. */
 export type Tool = { kind: "tool"; id: string; name: string; summary: string; input: string; result: string | null; error: boolean; at: string }
 export type Said = { kind: "user" | "assistant"; text: string; at: string }
@@ -521,7 +500,6 @@ export function changedFiles(entries: Entry[]): string[] {
   const out = new Set<string>()
   for (const e of entries) {
     if (e.kind !== "tool" || e.error || !/^(Edit|MultiEdit|Write|NotebookEdit)$/.test(e.name)) continue
-    // (its input may be cut short: read the path, not the JSON)
     const m = /"(?:file_path|notebook_path)":\s*"((?:[^"\\]|\\.)+)"/.exec(e.input)
     if (m) out.add(m[1].replace(/\\(.)/g, "$1"))
     else for (const c of e.input.matchAll(/^(?:add|update|delete) (~[/\\].*|\/.*|[A-Za-z]:[/\\].*)$/gm)) out.add(c[1][0] === "~" ? path.join(HOME, c[1].slice(2)) : c[1])
@@ -545,8 +523,6 @@ export function toolSummary(input: unknown, keys: string[], where?: string[]) {
   return s.replace(/\s+/g, " ").trim().slice(0, 200)
 }
 
-/** A page of a conversation: the newest `limit` entries before entry `before` (the query's; 150, at most 500), and
- *  where it starts. */
 function page(entries: Entry[], req: Request) {
   const before = req.query.before !== undefined ? Math.trunc(Number(req.query.before)) : NaN
   const limit = Math.min(Math.max(Math.trunc(Number(req.query.limit || 150)) || 150, 1), 500)
@@ -562,7 +538,6 @@ export async function readLines(file: string, offset: number, line: (b: Buffer) 
   try {
     fh = await fs.promises.open(file, "r")
     const into = Buffer.alloc(chunk)
-    // A line longer than a chunk (a tool's whole output) is kept in pieces, joined once when it ends.
     let parts: Buffer[] = [], partLen = 0
     for (;;) {
       const { bytesRead } = await fh.read(into, 0, chunk, offset + partLen)
@@ -580,7 +555,6 @@ export async function readLines(file: string, offset: number, line: (b: Buffer) 
       if (start < got.length) { parts.push(Buffer.from(got.subarray(start))); partLen += got.length - start }
     }
   } catch {
-    // gone or unreadable: try again next time
   } finally {
     await fh?.close()
   }
@@ -604,7 +578,7 @@ export class Transcript<T extends Talk> {
     this.file = file; this.make = make; this.talk = make(); this.wanted = wanted.map((w) => Buffer.from(w))
   }
 
-  /** One read at a time: two at once would both feed the talk the lines after the same offset (each message twice). */
+  /** Reads on from where the last read stopped; reads run one at a time. */
   read(): Promise<this> {
     const r = this.reading.then(() => this.readOn())
     this.reading = r.catch(() => {})
@@ -614,7 +588,7 @@ export class Transcript<T extends Talk> {
   private async readOn() {
     const st = await fs.promises.stat(this.file)
     if (st.size === this.size && st.mtimeMs === this.mtime) return this
-    if (st.size < this.offset) { this.offset = 0; this.talk = this.make() } // rewritten: from the top
+    if (st.size < this.offset) { this.offset = 0; this.talk = this.make() }
     this.offset = await readLines(this.file, this.offset, (l) => {
       if (this.wanted.some((w) => l.includes(w))) this.talk.line(l.toString("utf8"))
     }, 1 << 20)
@@ -666,8 +640,8 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
   private loaded = false
   private running = false
   private saved = { version: 0, at: 0 }
-  private seen = new Set<string>() // the files the last run looked at (what's kept of the rest is read again if needed)
-  // keep: a file on the server's disk, so a restart reads on from there (a month of transcripts was gigabytes a start)
+  private seen = new Set<string>()
+  // keep: a file on the server's disk, so a restart reads on from there
   constructor(dirs: () => string[], keep?: () => string) {
     this.dirs = dirs
     this.keep = keep ?? null
@@ -718,8 +692,6 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
     }
   }
 
-  /** What's kept is this scan's own: the same code (its class's source, so a change to what it reads reads all again),
-   *  the same time zone (its days are local) and at least as many days back. */
   private stamp() {
     return createHash("sha1").update(`${KEEP_FORMAT}\0${this.constructor.toString()}\0${Intl.DateTimeFormat().resolvedOptions().timeZone}`).digest("hex").slice(0, 16)
   }
@@ -735,7 +707,7 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
     this.resp = new Map(k.resp)
     this.turns = new Map(k.turns)
     this.reach = k.reach
-    try { this.restore(k.extra) } catch { /* the rest still stands */ }
+    try { this.restore(k.extra) } catch {}
     this.version++
     this.saved = { version: this.version, at: Date.now() }
   }
@@ -750,12 +722,10 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
       writeAtomic(file, JSON.stringify({ stamp: this.stamp(), reach: this.reach, files: [...this.files].filter(([p]) => this.seen.has(p)),
         resp: fresh(this.resp), turns: fresh(this.turns), extra: this.extra() }))
       this.saved = { version: this.version, at: Date.now() }
-    } catch { /* read again next start */ }
+    } catch {}
   }
 }
-/** How often a scan that read something new is kept at most (and as the server stops). */
 const SAVE_MS = 30 * 60_000
-/** What's kept's own shape: bumped when JsonlScan keeps something else. */
 const KEEP_FORMAT = 1
 
 /** A session's first prompt as its title (`find` it by id), on one line and cut to 80 characters; kept once found. */
@@ -770,8 +740,6 @@ export function firstPrompts(find: (id: string) => string) {
     return kept.get(id)!
   }
 }
-
-// ---------- SQLite databases (Cursor, Hermes, OpenClaw, OpenCode keep theirs in one)
 
 let sqlite: typeof import("node:sqlite") | null | undefined
 /** Node's node:sqlite (22.13 and later), loaded when first needed (never while the plugins load); null without it. */
@@ -789,7 +757,7 @@ export class SqliteFile {
   private db: DatabaseSync | null = null
   private where: () => string | null
   private ino = 0
-  private frozen = "" // opened immutable: the file's size and time then
+  private frozen = ""
   private version = -1
   private at = 0
   private reach = 0
@@ -805,7 +773,7 @@ export class SqliteFile {
   open(): DatabaseSync | null {
     const file = this.where()
     let st: fs.Stats | null = null
-    try { st = file ? fs.statSync(file) : null } catch { /* no file */ }
+    try { st = file ? fs.statSync(file) : null } catch {}
     const sig = st ? `${st.size}:${st.mtimeMs}` : ""
     if (this.db && (file !== this.file || st?.ino !== this.ino || (this.frozen && this.frozen !== sig))) this.close()
     const sql = this.db || !file || !st ? null : nodeSqlite()
@@ -836,7 +804,7 @@ export class SqliteFile {
   }
 
   close() {
-    try { this.db?.close() } catch { /* already closed */ }
+    try { this.db?.close() } catch {}
     this.db = null
   }
 
@@ -893,8 +861,6 @@ export function buildCache<T>(keep = 4) {
     return data
   }
 }
-
-// ---------- blocks as text (GET /api/render)
 
 const fmt = (v: number, d: number) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })
 const money = (v: number) => (v < 100 ? `$${fmt(v, 2)}` : `$${fmt(v, 0)}`)
@@ -1044,7 +1010,6 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
     return { ...(await planOf(accts, by)), live: busyFirst(live), ...s }
   }
   plugin.route("GET", a.id, async (req) => await usage(daysOf(req.query.days), req.query.account, req.query.for))
-  // (the status bar's limits, asked every 15 s: not the sessions and costs the usage reads to answer)
   plugin.route("GET", `${a.id}/limits`, async (req) => await planOf(accountsFor(req.query.account), req.query.for))
   plugin.route("GET", `${a.id}/session/*`, async (req) => {
     const id = req.arg(0)
@@ -1055,7 +1020,6 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
       ...page(entries, req) }
   })
   if (a.accounts) plugin.route("GET", `${a.id}/accounts`, () => a.accounts!.all().map((x) => ({ id: x.id, label: x.label, ...(x.private ? { private: true } : {}) })))
-  // Refresh: what it remembers (its limits as the account last said them) is asked again, at most every 10 s.
   let forgot = 0
   plugin.route("POST", `${a.id}/refresh`, () => {
     if (Date.now() - forgot > 10_000) { forgot = Date.now(); plugin.forget(); a.forget?.() }
@@ -1106,7 +1070,6 @@ function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: un
     return section(`${w.name} by project, last ${days} days`, bullets(rows, `No ${noun}s yet.`), `_Costs ${w.value}._`)
   })
   plugin.block(project, async (ctx) => {
-    // The names a project file answers to: the block's `project`, else its name, its path's folder, its repo.
     const ks = new Set(ctx.options.project ? [String(ctx.options.project).toLowerCase()]
       : [path.basename(ctx.path).replace(/\.[^.]*$/, ""), ...[ctx.fm.path, ctx.fm.repo].filter(Boolean).map((v) => path.basename(String(v).replace(/\/+$/, "")))]
         .map((k) => k.toLowerCase()))

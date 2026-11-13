@@ -1,5 +1,3 @@
-// The docs for AIs, topics read on demand (`vau docs <topic>`: core/docs/, or a plugin's AGENTS.md with its manifest's
-// settings and blocks). The vault's short rules (core/AGENTS.md) are written by the Agent files plugin.
 import fs from "node:fs"
 import path from "node:path"
 import { closest } from "./blocks.ts"
@@ -8,13 +6,10 @@ import { readText } from "./vault.ts"
 
 export type Topic = { id: string; title: string; plugin: string | null; text: string }
 
-/** A doc's title: its first `## ` heading, else the fallback. */
 const titleOf = (text: string, fallback: string) => /^##\s+(.+)$/m.exec(text)?.[1].trim() ?? fallback
 
-/** Titles of core docs that open with a page, not a `## ` heading. */
 const TITLES: Record<string, string> = { design: "Design: the primitives and Markdown pages are made of, as a dashboard" }
 
-/** Every topic: the core's (core/docs/*.md), then each plugin's that has docs, an AGENTS.md or blocks or settings. */
 export function topics(plugins: Plugin[]): Topic[] {
   const dir = path.join(ROOT, "core", "docs")
   const core = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).map((f): Topic => {
@@ -25,7 +20,6 @@ export function topics(plugins: Plugin[]): Topic[] {
   core.sort((a, b) => a.id.localeCompare(b.id))
   return [...core, ...plugins.flatMap((p) => {
     const d = p.docs()
-    // (and its own topics, docs/<topic>.md: a short guide beside its full doc)
     const more = fs.existsSync(path.join(p.dir, "docs")) ? fs.readdirSync(path.join(p.dir, "docs")).filter((f) => f.endsWith(".md")).sort().map((f): Topic => {
       const text = readText(path.join(p.dir, "docs", f)).trim()
       return { id: f.slice(0, -3), title: titleOf(text, f.slice(0, -3)), plugin: p.id, text }
@@ -34,7 +28,6 @@ export function topics(plugins: Plugin[]): Topic[] {
   })]
 }
 
-/** One topic, by id or by its title's words ("database views"), or a 404 naming the nearest. */
 export function topic(plugins: Plugin[], name: string): Topic {
   const all = topics(plugins), q = name.trim().toLowerCase()
   const hit = all.find((t) => t.id === q) ?? all.find((t) => t.title.toLowerCase().startsWith(q))

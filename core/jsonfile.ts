@@ -3,7 +3,6 @@ import { z } from "zod"
 
 export type Read<T> = { ok: true; value: T } | { ok: false; why: string }
 
-/** `file` as `schema` reads it, or why not: it's missing or unreadable (`read`'s error), isn't JSON, or isn't that shape. */
 export function readJson<T extends z.ZodType>(file: string, schema: T, read: (file: string) => string = (f) => fs.readFileSync(f, "utf8")): Read<z.output<T>> {
   let raw: unknown
   try { raw = JSON.parse(read(file)) } catch (e) { return { ok: false, why: e instanceof Error ? e.message : String(e) } }

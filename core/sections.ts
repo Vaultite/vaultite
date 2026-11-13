@@ -1,12 +1,8 @@
-// The places inside a note that links name (headings, ^block ids, #tags, %%comments%%), shared by server and app so both
-// read a note alike: no Node here.
-
 export type Heading = { level: number; text: string; line: number }
 
 export const FENCE = /^\s{0,3}(`{3,}|~{3,})/
 const FRONT = /^---\n(?:[\s\S]*?\n)?---[ \t]*(?:\n|$)/
 const ATX = /^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/
-/** A block id: `^id` (letters, digits and dashes) at the end of a line, after a space or alone on it. */
 export const BLOCK_ID = /(?:^|[ \t])\^([A-Za-z0-9-]+)[ \t]*$/
 const LIST = /^([ \t]*)(?:[-*+]|\d+[.)])(?:[ \t]|$)/
 
@@ -26,7 +22,6 @@ export function scan(text: string): { lines: string[]; prose: boolean[]; code: b
   if (fm) for (const n = fm[0].replace(/\n$/, "").split("\n").length; i < n; i++) { prose[i] = false; code[i] = true; at += lines[i].length + 1 }
   let fence: string | null = null
   let comment = false
-  // (where the next ``` ~~~ and %% are: the regexes run only on their lines, a long note's scan most of an Enter)
   const next = (mark: string, from: number) => { const k = text.indexOf(mark, from); return k < 0 ? Infinity : k }
   let ticks = next("```", 0), tildes = next("~~~", 0), pcts = next("%%", 0)
   for (; i < lines.length; at += lines[i].length + 1, i++) {
@@ -44,7 +39,6 @@ export function scan(text: string): { lines: string[]; prose: boolean[]; code: b
       continue
     }
     if (fence !== null) { prose[i] = false; code[i] = true; continue }
-    // A %% on its own opens (or closes) a comment block; %%inline%% pairs on one line don't.
     const marks = pcts < end ? (l.replace(/`+[^`]*`+/g, "").match(/%%/g) ?? []).length : 0
     if (comment || marks % 2) prose[i] = false
     if (marks % 2) comment = !comment
@@ -52,12 +46,10 @@ export function scan(text: string): { lines: string[]; prose: boolean[]; code: b
   return { lines, prose, code, fences }
 }
 
-/** A ```block-<name> fence's name, from its info line (its first word, like a code fence's language), or null. */
 export function blockName(info: string): string | null {
   return /^block-([\w-]+)$/.exec(info.trim().split(/\s/)[0])?.[1] ?? null
 }
 
-/** The block a line opens (```block-person, ~~~block-person), or null. */
 export function blockOpening(line: string): string | null {
   const f = FENCE.exec(line)
   return f ? blockName(line.trim().slice(f[1].length)) : null
@@ -69,7 +61,7 @@ export type Placed = { name: string; text: string; open: number; close: number }
 /** The blocks a text places, in order: closed ```block-<name> fences (one being typed isn't one yet, one inside another
  *  fence is code). The one reading of blocks, for the server, the editor and the app. */
 export function blocksIn(text: string, scanned?: ReturnType<typeof scan>): Placed[] {
-  if (!text.includes("block-")) return [] // (before scanning: most notes place none)
+  if (!text.includes("block-")) return []
   const s = scanned ?? scan(text), out: Placed[] = []
   for (const f of s.fences) {
     const name = f.close !== null ? blockName(f.info) : null
@@ -78,7 +70,6 @@ export function blocksIn(text: string, scanned?: ReturnType<typeof scan>): Place
   return out
 }
 
-/** The views a text places: its blocks and its ```base fences (database views), which aren't its text either. */
 export function viewsIn(text: string, s = scan(text)): Placed[] {
   const base = (info: string) => info.trim().split(/\s/)[0].toLowerCase() === "base"
   return s.fences.flatMap((f) => {
@@ -89,7 +80,7 @@ export function viewsIn(text: string, s = scan(text)): Placed[] {
 
 /** A text without its views (each with the blank lines after it), and blank lines at its ends when it had any. */
 export function withoutBlocks(text: string): string {
-  if (!text.includes("```") && !text.includes("~~~")) return text // (no fence, no view: nothing to scan)
+  if (!text.includes("```") && !text.includes("~~~")) return text
   const s = scan(text), placed = viewsIn(text, s)
   if (!placed.length) return text
   const keep = s.lines.map(() => true)
@@ -101,9 +92,8 @@ export function withoutBlocks(text: string): string {
   return s.lines.filter((_, i) => keep[i]).join("\n").replace(/^\n+|\n+$/g, "")
 }
 
-/** The heading text as an anchor matches it: the link rules (no [[ ]], # | ^ : %%), any case, any spacing. */
-/** `[[target|shown]]` links as the text they show. */
 export const linkText = (s: string) => s.replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_, t: string, a?: string) => a || t)
+/** The heading text as an anchor matches it: the link rules (no [[ ]], # | ^ : %%), any case, any spacing. */
 export function anchorKey(s: string) {
   return linkText(s)
     .replace(/[*_=~`]/g, "")
@@ -141,7 +131,6 @@ function findHeading(text: string, name: string): Heading | null {
   return hit
 }
 
-/** A heading's section: its line up to the next heading of the same or a higher level (lines, end exclusive). */
 function sectionOf(text: string, h: Heading): [number, number] {
   const hs = headingsOf(text)
   const next = hs.find((x) => x.line > h.line && x.level <= h.level)
@@ -151,7 +140,6 @@ function sectionOf(text: string, h: Heading): [number, number] {
   return [h.line, end]
 }
 
-/** Where a block id is: the paragraph or list item it ends (lines, end exclusive), and the line it's written on. */
 function findBlock(text: string, id: string): { from: number; to: number; line: number } | null {
   const want = id.replace(/^\^/, "").toLowerCase()
   const { lines, prose } = scan(text)
@@ -160,7 +148,6 @@ function findBlock(text: string, id: string): { from: number; to: number; line: 
     if (!prose[i]) continue
     const m = BLOCK_ID.exec(lines[i])
     if (!m || m[1].toLowerCase() !== want) continue
-    // Alone on its line: the block just above it (a list, a table, a quote), past a blank line.
     if (lines[i].trim() === `^${m[1]}`) {
       let j = i - 1
       while (j >= 0 && blank(j)) j--
@@ -169,17 +156,15 @@ function findBlock(text: string, id: string): { from: number; to: number; line: 
       while (s > 0 && !blank(s - 1) && !ATX.test(lines[s - 1])) s--
       return { from: s, to: j + 1, line: i }
     }
-    // A list item: it and what's indented under it.
     const li = LIST.exec(lines[i])
     if (li) {
       let s = i
-      while (s > 0 && !LIST.test(lines[s]) && !blank(s - 1)) s-- // (a continuation line: its item starts above)
+      while (s > 0 && !LIST.test(lines[s]) && !blank(s - 1)) s--
       const indent = (LIST.exec(lines[s])?.[1] ?? "").length
       let e = i + 1
       while (e < lines.length && !blank(e) && !(LIST.exec(lines[e]) && LIST.exec(lines[e])![1].length <= indent)) e++
       return { from: s, to: e, line: i }
     }
-    // A paragraph: back to the blank line (or heading) above it.
     let s = i
     while (s > 0 && !blank(s - 1) && !ATX.test(lines[s - 1]) && prose[s - 1]) s--
     if (ATX.test(lines[i])) s = i
@@ -188,7 +173,6 @@ function findBlock(text: string, id: string): { from: number; to: number; line: 
   return null
 }
 
-/** The line to go to for an anchor (`Heading`, `A#B`, `^id`), or null. */
 export function anchorLine(text: string, anchor: string): number | null {
   const a = anchor.trim()
   if (!a) return null
@@ -229,7 +213,6 @@ export function sectionParts(text: string, heading: string): SectionParts | null
   return { before: text.slice(0, from), part: text.slice(from, to), after: text.slice(to), gap: false }
 }
 
-/** The text with a section's lines now `part`; one written where there were none gets its own lines. */
 export function joinSection(p: SectionParts, part: string): string {
   if (!p.gap || !part) return p.before + part + p.after
   const before = !p.before || p.before.endsWith("\n") ? p.before : `${p.before}\n`
@@ -242,22 +225,17 @@ export function splitAnchor(target: string): [string, string] {
   return i < 0 ? [target.trim(), ""] : [target.slice(0, i).trim(), target.slice(i + 1).trim()]
 }
 
-// ---------- tags ----------
-
-/** An inline #tag: after the line's start or a space; letters, digits, _ - and / (nesting), not only digits. */
 export const TAG = /(?<=^|[ \t])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu
 
 /** A tag written the way it's matched: no #, no slashes at its ends. */
 export const tagName = (t: string) => t.trim().replace(/^#/, "").replace(/^\/+|\/+$/g, "")
 
-/** The inline #tags in a body, each once (the first spelling kept): not in code, comments, links or URLs. */
 function tagsIn(body: string): string[] {
   if (!body.includes("#")) return []
   const { lines, prose } = scan(body)
   const out = new Map<string, string>()
   lines.forEach((l, i) => {
     if (!prose[i] || !l.includes("#")) return
-    // (each only on a line that has what it takes out: most have none of it)
     let clean = l
     if (clean.includes("`")) clean = clean.replace(/(`+)(?:(?!\1).)+?\1/g, " ")
     if (clean.includes("%%")) clean = clean.replace(/%%.*?%%/g, " ")
@@ -272,8 +250,6 @@ function tagsIn(body: string): string[] {
   return [...out.values()]
 }
 
-/** A body with #from, and the tags nested under it, renamed `to` where tagsIn reads tags (not in code, comments, links
- *  or URLs); the rest of each line as it was. */
 export function renameTagsIn(body: string, from: string, to: string): string {
   const f = tagName(from).toLowerCase(), t = tagName(to)
   if (!body.includes("#") || !f) return body
@@ -295,7 +271,6 @@ export function renameTagsIn(body: string, from: string, to: string): string {
   }).join("\n")
 }
 
-/** A frontmatter `tags` value as a list: a YAML list, or text split on commas (and spaces). */
 export function fmTags(v: unknown): string[] {
   const raw = Array.isArray(v) ? v.map((x) => String(x ?? "")) : typeof v === "string" ? v.split(/[,\s]+/) : v == null ? [] : [String(v)]
   return raw.map(tagName).filter(Boolean)
@@ -314,8 +289,6 @@ export function hasTag(tags: string[], want: string) {
   return tags.some((t) => { const x = t.toLowerCase(); return x === w || x.startsWith(`${w}/`) })
 }
 
-// ---------- what reading hides ----------
-
 /** A text as reading shows it: %%comments%% and block ids (`^id`) taken out, code and the frontmatter left alone. */
 export function stripHidden(text: string): string {
   if (!text.includes("%%") && !text.includes("^")) return text
@@ -333,7 +306,6 @@ export function stripHidden(text: string): string {
       inComment = !inComment
     }
     if (BLOCK_ID.test(kept)) kept = kept.replace(BLOCK_ID, "")
-    // A line that held only a comment or an id goes; a blank line stays.
     if (!kept.trim() && lines[i].trim()) continue
     out.push(kept.trimEnd())
   }

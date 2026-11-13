@@ -1,5 +1,3 @@
-// What a plugin's manifest says about it beyond what the app checks (its version, repository and disclosures), and
-// the directory's bundle places and blocklist (no Node, no packages: the server, app and tools/plugin-index.ts alike).
 import { isObj } from "./values.ts"
 
 export const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
@@ -11,7 +9,6 @@ export const HOST = /^(?:\*|(\*\.)?([a-z0-9-]+\.)*[a-z0-9-]+(:\d+)?)$/i
 export const DISCLOSURES = { network: "talks to", shell: "runs programs on this machine", outsideVault: "reads or writes files outside the vault",
   clipboard: "reads the clipboard" } as const
 export type Disclosures = { network?: string[]; shell?: boolean; outsideVault?: boolean; clipboard?: boolean }
-
 
 /** A manifest's (or an index entry's) `disclosures`, as far as they read (core/rules.ts says what's wrong). */
 export function disclosuresOf(m: Record<string, unknown>): Disclosures {

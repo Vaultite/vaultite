@@ -1,5 +1,3 @@
-// A headless Chrome the server drives over the DevTools protocol: never a window on the user's screen, never a sound.
-// What a job's proof video records in, and what turns a page (a mockup, a prototype) into a picture.
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -37,8 +35,6 @@ async function cdp(wsUrl: string): Promise<Cdp> {
 }
 
 export type Headless = { page: Cdp; stop: () => void; quit: () => Promise<void> }
-/** A headless, muted Chrome of its own profile, `size` large, and its first page; `quit()` ends it and removes its
- *  profile. Throws saying why it couldn't start. */
 export async function headless(size: { width: number; height: number }, signal?: AbortSignal): Promise<Headless> {
   try { return await launch(size, signal, false) } catch (e) {
     // (Ubuntu 24.04 keeps Chrome's sandbox from starting: AppArmor refuses it the user namespaces it needs)

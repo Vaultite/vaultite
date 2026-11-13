@@ -1,5 +1,3 @@
-// The desktop app's main process, asked from this server: its browser engine's agent calls (electron/browser/agent.ts)
-// and macOS's permissions. Its host: the app that forked this server (IPC), or one attached over /api/desktop/host.
 import type { WebSocket } from "ws"
 
 /** Raised when what the two sides say to each other changes: an app and a server that differ don't attach. */
@@ -15,7 +13,6 @@ const listeners = new Set<(name: string, data: unknown) => void>()
 const comings = new Set<(how: "ipc" | "socket") => void>(), goings = new Set<(how: "ipc" | "socket") => void>()
 let next = 1
 let attached: Host | null = null
-/** Why the last app to attach was turned away (another version), till one attaches. */
 let refused = ""
 
 const forked = (): Host | null => process.env.VAULTITE_DESKTOP === "1" && typeof process.send === "function" && process.connected
@@ -24,11 +21,9 @@ const host = () => forked() ?? attached
 
 export const inDesktop = () => !!host()
 
-/** Why no desktop app can be asked: none here (nor on an always-on machine Machines lists). */
 const NO_DESKTOP = "the browser is in Vaultite's desktop app, and none is attached to this server: open Vaultite on this Mac, or on an always-on one listed in Machines"
 export const noDesktop = () => refused || NO_DESKTOP
 
-/** What the host sends besides replies (`allow`: outside files a window may open; events). */
 export function onHostMessage(type: string, fn: (m: Msg) => void) {
   handlers.set(type, fn)
 }
@@ -43,14 +38,12 @@ function heard(m: Msg) {
 }
 process.on("message", heard)
 process.on("disconnect", () => { if (process.env.VAULTITE_DESKTOP === "1") for (const fn of goings) fn("ipc") })
-// (a server the app forked says its protocol first: one from another code root than the app's may speak another)
 forked()?.send({ type: "desktop:hello", protocol: DESKTOP_PROTOCOL })
 
 function gone(why: string) {
   for (const [rid, p] of pending) { pending.delete(rid); clearTimeout(p.timer); p.fail(new Error(why)) }
 }
 
-/** A desktop app on this machine attaching (its hello names its protocol): the latest one is the host. */
 export function attach(ws: WebSocket) {
   ws.once("message", (data) => {
     let hello: Msg = {}
@@ -70,7 +63,6 @@ export function attach(ws: WebSocket) {
   })
 }
 
-/** Let an attached app go (the server switched vaults): it attaches again if it should. */
 export function detach(why: string) {
   attached?.close(why)
 }
@@ -95,14 +87,11 @@ onHostMessage("desktop:event", (m) => {
   for (const fn of listeners) try { fn(m.name, m.data) } catch (e) { console.error("vaultite: a desktop event's listener failed:", e) }
 })
 
-/** `fn` hears what the desktop app's main process tells this server unasked (`desktop:event`: a live view's frames);
- *  returns how to stop. */
 export function onDesktopEvent(fn: (name: string, data: unknown) => void): () => void {
   listeners.add(fn)
   return () => { listeners.delete(fn) }
 }
 
-/** `came` hears an app attach, `went` the app that forked this server go (ipc) or an attached one's socket close. */
 export function onHost(came: (how: "ipc" | "socket") => void, went: (how: "ipc" | "socket") => void) {
   comings.add(came)
   goings.add(went)

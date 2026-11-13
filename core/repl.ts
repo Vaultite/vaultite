@@ -1,5 +1,3 @@
-// vau's prompt: `vau` with no arguments in a terminal. Each line runs as `vau <line>` would (core/cli.ts execute); Tab
-// completes commands, their flags and values (choices, the vault's files, palette commands) from the server's catalog.
 import fs from "node:fs"
 import path from "node:path"
 import readline from "node:readline"
@@ -9,8 +7,7 @@ import { camel, flagOf } from "./ops.ts"
 
 const GLOBAL_FLAGS = ["--json", "--copy", "--count", "--paths", "--help"]
 
-/** A line split like a shell does (quotes, backslashes): its words, and the last one as typed so far (`partial`, from
- *  `start`; "" after a space) with the quote it's open in. */
+/** `partial`: the last word as typed so far, from `start`; "" after a space. */
 export function split(line: string) {
   const words: string[] = []
   let cur = "", inWord = false, quote = "", start = line.length, opened = ""
@@ -31,21 +28,17 @@ export function split(line: string) {
     else if (ch === "\\" && i + 1 < line.length) cur += line[++i]
     else cur += ch
   }
-  if (inWord) words.push(cur) // (a quote left open ends with the line)
+  if (inWord) words.push(cur)
   return { words, partial: inWord ? cur : "", start: inWord ? start : line.length, quote: inWord ? opened : "" }
 }
 
-/** What Tab can offer: the catalog, and values fetched once when first needed. */
 export type Source = {
   ops: OpEntry[]
   local: string[]
-  /** The vault's file paths. */
   files: () => Promise<string[]>
-  /** The palette's command ids. */
   commandIds: () => Promise<string[]>
 }
 
-/** The op a line's words name (by id or cli name, the longest), and how many words named it. */
 function named(ops: OpEntry[], words: string[]): { op: OpEntry; used: number } | null {
   let best: { op: OpEntry; used: number } | null = null
   for (const op of ops) {
@@ -56,13 +49,11 @@ function named(ops: OpEntry[], words: string[]): { op: OpEntry; used: number } |
   return best
 }
 
-/** The values a parameter can take that are cheap to list. */
 async function valuesOf(key: string, s: Schema | undefined, src: Source, partial: string): Promise<string[]> {
   if (!s) return []
   if (s.enum) return s.enum.map(String)
   if (s.type === "boolean") return ["true", "false"]
   if (s.format === "path" || key === "path" || key === "folder") {
-    // One folder at a time: what's under the part typed (People/, then People/Alice Park.md).
     const files = await src.files()
     const dirs = key === "folder"
     const next = new Set<string>()
@@ -74,13 +65,12 @@ async function valuesOf(key: string, s: Schema | undefined, src: Source, partial
     }
     if (next.size) return [...next]
     const low = partial.toLowerCase()
-    return dirs ? [] : files.filter((f) => f.toLowerCase().includes(low)).slice(0, 50) // a name anywhere: Alice
+    return dirs ? [] : files.filter((f) => f.toLowerCase().includes(low)).slice(0, 50)
   }
   if ((key === "id" || key === "command") && /command|hotkey/.test(s.description ?? "")) return await src.commandIds()
   return []
 }
 
-/** What Tab completes the last word of a line with: the candidates, as they'd be typed (quoted when they need it). */
 export async function complete(line: string, src: Source): Promise<string[]> {
   const { words, partial, quote } = split(line)
   const before = partial || quote ? words.slice(0, -1) : words
@@ -91,7 +81,6 @@ export async function complete(line: string, src: Source): Promise<string[]> {
     return q ? `${q}${c}${c.endsWith("/") ? "" : q}` : c
   }
   const starts = (xs: string[]) => [...new Set(xs)].filter((x) => x.startsWith(partial)).sort()
-  // A command's words: the next word of the cli names that start with the words said so far (`inbox` then `add`).
   const n = said.length
   const next = src.ops.flatMap((e) => {
     const cli = (e.cli ?? "").split(" ").filter(Boolean)
@@ -100,7 +89,6 @@ export async function complete(line: string, src: Source): Promise<string[]> {
   const hit = named(src.ops, said)
   if (!hit) {
     if (!n) next.push(...src.local, ...(help ? [] : ["help", "exit"]))
-    // (ids too once one's being typed, or when no name fits: 120 of them would bury the names)
     if (!n && (partial.includes(".") || !starts(next).length)) next.push(...src.ops.map((e) => e.id))
     return starts(next)
   }
@@ -109,7 +97,6 @@ export async function complete(line: string, src: Source): Promise<string[]> {
   const rest = said.slice(used)
   if (help) return rest.length ? [] : starts(next)
   if (partial.startsWith("-")) return starts([...Object.keys(props).map(flagOf), ...GLOBAL_FLAGS])
-  // The flag before this word takes a value: its values; else the next positional parameter's.
   const prev = rest.at(-1)
   const flagged = prev?.startsWith("--") ? camel(prev.slice(2)) : null
   let key: string | undefined
@@ -123,7 +110,7 @@ export async function complete(line: string, src: Source): Promise<string[]> {
     key = op.args[Math.min(n, op.args.length - 1)]
     if (n >= op.args.length && !(key && (props[key]?.type === "array" || props[key]?.type === "string"))) key = undefined
   }
-  const sub = rest.length ? [] : starts(next) // (a group's own op, `inbox`, and its others, `inbox add`)
+  const sub = rest.length ? [] : starts(next)
   if (!key) return sub
   const values = await valuesOf(key, props[key], src, partial)
   const pre = values.filter((v) => v.startsWith(partial))
@@ -132,7 +119,6 @@ export async function complete(line: string, src: Source): Promise<string[]> {
 
 const HISTORY_MAX = 1000
 
-/** The prompt: runs until exit (or Ctrl-D, or Ctrl-C twice). */
 export async function repl(): Promise<number> {
   const ctx = new Ctx()
   let ops: OpEntry[] = []
@@ -178,7 +164,7 @@ export async function repl(): Promise<number> {
 
   let busy = false, interrupted = false
   rl.on("SIGINT", () => {
-    if (busy) process.exit(130) // (a command can't be stopped halfway: vau stops)
+    if (busy) process.exit(130)
     if (rl.line || !interrupted) {
       interrupted = !rl.line
       process.stdout.write(rl.line ? "\n" : "\n(Ctrl-C again or exit to leave)\n")

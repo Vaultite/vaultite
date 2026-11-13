@@ -1,5 +1,3 @@
-// What a vault file is by its name: how the app opens it and what the editor may write. Every file opens; a plugin may
-// draw a kind itself (`formats`), else it's what it is here. No Node: both sides use it.
 export type FileKind = "markdown" | "json" | "notebook" | "code" | "image" | "pdf" | "audio" | "video" | "binary" | "other"
 
 const KINDS: Record<string, FileKind> = {}
@@ -26,15 +24,12 @@ const NAMES: Record<string, FileKind> = {
   readme: "code", changelog: "code", authors: "code",
 }
 
-/** The extension, lower case, without the dot ("" for none; a leading dot isn't one: ".gitignore" has none). */
 export function extOf(path: string) {
   const name = path.slice(path.lastIndexOf("/") + 1)
   const dot = name.lastIndexOf(".")
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
 }
 
-/** A file's new path with its extension when `to` has none the app knows ("Notes/Better idea" keeps the .md). A
- *  double one's first part isn't one: "A.excalidraw.md" to "B.excalidraw" is B.excalidraw.md. */
 export function keepExt(from: string, to: string) {
   const ext = extOf(from), want = extOf(to)
   if (!ext || want === ext) return to

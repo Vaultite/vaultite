@@ -1,5 +1,3 @@
-// Following a branch: every few minutes a look at origin; a newer commit CI passed on this OS (ci.ts) goes to the host
-// (core/selfupdate.ts, in place). Each change of state or reason is logged, so why it waited can be read later.
 import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
@@ -15,9 +13,9 @@ const Kept = z.object({ last: UpdateStatus.shape.last.catch(undefined), error: U
 type Kept = z.infer<typeof Kept>
 const keptIn = (file: string): Kept => { const r = readJson(file, Kept); return r.ok ? r.value : {} }
 
-/** A commit to take: from what runs (`running`, which the checkout's `head` may be past) to `to`, and the files between. */
+/** The checkout's `head` may be past `running`. */
 export type Update = { head: string; running: string; to: string; files: string[] }
-/** Taken, and whether the server must restart to run it; or why not, having gone back to what runs. */
+/** `failed`: having gone back to what runs. */
 export type Applied = { restart: boolean; said?: string } | { failed: string; cause?: unknown }
 
 export type UpdaterOptions = {
@@ -28,7 +26,6 @@ export type UpdaterOptions = {
   branch: string
   /** The commit this server started on (what runs): a checkout moved past it, merged or pulled here, is run too. */
   running?: string
-  /** Where what lasts across restarts is kept (the last update, the one that failed). */
   stateFile: string
   /** Why the server shouldn't restart now (an agent at work in the browser), or null: it holds only an update that restarts. */
   busy: () => Promise<string | null>
@@ -39,23 +36,20 @@ export type UpdaterOptions = {
   restarts?: (files: string[]) => boolean
   /** Whether CI passed on a commit (default: GitHub Actions, core/update/ci.ts); ok null is not yet. */
   ci?: Ci
-  /** Takes a commit into the checkout and builds it, never leaving it half-updated. */
+  /** Never leaves the checkout half-updated. */
   apply: (u: Update) => Promise<Applied>
   /** Where a change of state goes (default: the server's log; a new failure as an error). */
   log?: (line: string, error?: unknown) => void
 }
 
 const MINUTE = 60_000
-/** The last lines of a failed command (its stderr) or an error, short enough for a status. */
 export const errText = (e: unknown) => String((e as { stderr?: string }).stderr || (e as Error).message || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
 
 let status: UpdateStatus = { branch: null, state: "off", why: "not a service install following a branch (vau service install --updates <branch>)", checked: null }
 let looking: Promise<UpdateStatus> | null = null
-/** The updates' state now (off unless this server follows a branch). */
 export const updateStatus = (): UpdateStatus => ({ ...status, looking: !!looking })
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
-/** Commits as a status names them: how many, and the newest few. */
 type Commits = { count: number; list: string[] }
 
 type Stop = { state: UpdateState; why: string; next?: string; fail?: true; blocked?: Blocked }
@@ -81,7 +75,6 @@ export function placed(p: { branch: string; head: string; remote: string; runnin
   return null
 }
 
-/** A change of state or reason as the log says it, with the commits involved; "" for none (a look like the last). */
 let said = ""
 function note(s: UpdateStatus, log: NonNullable<UpdaterOptions["log"]>, error?: unknown) {
   const key = `${s.state}|${s.why}|${s.next ?? ""}`
@@ -96,8 +89,7 @@ export function toLog(line: string, error?: unknown) {
   else log.error(message, error instanceof Error ? error : undefined)
 }
 
-/** One look: fetch, and update when the branch is ahead, CI passed, the tree is clean and nobody's busy. One at a time:
- *  a caller while a look runs gets that look's answer. Never throws. */
+/** Never throws. */
 export function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
   return looking ??= lookOnce(o).finally(() => { looking = null }).then(updateStatus)
 }
@@ -132,7 +124,6 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     if (stop) return stop.fail ? fail(remote, stop.why, undefined, stop.blocked) : set(stop.state, stop.why, stop)
     const dirty = o.bare ? [] : await dirtyFiles(git)
     if (dirty.length) return set("waiting", `the checkout has uncommitted changes (${capped(dirty)}): it updates once they're committed or undone`, { next: remote, blocked: { by: "uncommitted", files: dirty.slice(0, 20) } })
-    // (a host's own gate, the desktop app's, needs no GitHub: the default asks GitHub's Actions)
     const repo = await originRepo(git) ?? ""
     if (!repo && !o.ci) return set("waiting", "origin isn't on GitHub, so CI can't be checked", { next: remote })
     const ci = o.ci ??= githubCi(o.branch) // (kept: what CI said lasts across looks)
@@ -157,7 +148,6 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     keep()
     o.running = next // (a web-only update is live once built)
     const red = elsewhere.length ? `; CI is red on it elsewhere: ${elsewhere.join(", ")}` : ""
-    // (`said`: a host that acts by itself says what it did: the desktop app's, by process)
     set("current", `${applied.said ? `updated to ${short(next)}: ${applied.said}` : restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only${busy ? `, while busy: ${busy}` : ""})`}${red}`)
     if (restart) o.restart()
     return status
@@ -167,15 +157,13 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
   }
 }
 
-/** How often a look runs. A look where nothing moved is a git fetch; CI is asked only about a commit to take whose
- *  verdict isn't known yet (its run's jobs: one call a look), never more than ciCallsPerHour() in any hour (20 anonymously, 300 through a signed-in gh). */
+/** GitHub's rate limit allows it: CI is asked only about a commit whose verdict isn't known yet (one call a look), never
+ *  more than ciCallsPerHour() in any hour (20 anonymously, 300 through a signed-in gh). */
 export const LOOK_EVERY = 3 * MINUTE
 
 let following: UpdaterOptions | null = null
-/** A look now (`vau update`), as a timed one would: its status, or the updates' (off) when this server follows nothing. */
 export const checkNow = () => following ? checkForUpdate(following) : Promise.resolve(updateStatus())
 
-/** Look every few minutes (the first a minute after the start), one look at a time. */
 export function startUpdater(o: UpdaterOptions) {
   following = o
   status = { branch: o.branch, state: "waiting", why: "the first look is a minute after the server starts", checked: null }

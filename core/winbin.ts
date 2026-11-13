@@ -1,5 +1,4 @@
-// Starting programs on Windows by name, as its shells find them: Path with PATHEXT's extensions, and npm's .cmd shims
-// run as the Node script they start (cmd would mangle arguments: JSON, line breaks). Light: starter.ts runs it alone.
+// npm's .cmd shims run as the Node script they start: cmd would mangle arguments (JSON, line breaks).
 import { spawn, type ChildProcessByStdio, type SpawnOptionsWithStdioTuple } from "node:child_process"
 import type { Readable, Writable } from "node:stream"
 import fs from "node:fs"
@@ -7,7 +6,7 @@ import path from "node:path"
 
 const exists = (p: string) => { try { return fs.statSync(p).isFile() } catch { return false } }
 
-/** `name` as Windows finds it: a path, or on Path with one of PATHEXT's extensions (claude.exe, codex.cmd). */
+/** As Windows' shells find it: on Path with one of PATHEXT's extensions (claude.exe, codex.cmd). */
 function which(name: string, env: NodeJS.ProcessEnv): string | null {
   const exts = (env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
   const tries = (base: string) => [...(path.extname(base) ? [base] : []), ...exts.map((e) => base + e.toLowerCase())]

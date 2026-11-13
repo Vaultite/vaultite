@@ -1,5 +1,4 @@
-// A vault brought up to date when the app's defaults change under it (settings, the app's keys in files), once: a
-// step's id goes in .vaultite/migrations.json when it has run (a synced vault's other machine skips it); a new vault starts with all done.
+// A step's id goes in .vaultite/migrations.json once it has run, so a synced vault's other machine skips it.
 import fs from "node:fs"
 import path from "node:path"
 import { infoWithLayout, type LayoutKey, settingsOf } from "./blocks.ts"
@@ -16,17 +15,13 @@ const log = logger("migrations")
 const FILE = "migrations"
 
 
-/** Daily notes' settings and command, once Today's (daily-notes-2026-10). */
 const DAILY_KEYS = ["format", "template"], OLD_CMD = "today:daily-note", NEW_CMD = "daily-notes:today"
 
-/** A record with key `from` renamed `to` in its place (one `to` already there wins), or null when it has no `from`. */
 function renamedKey(o: Item, from: string, to: string): Item | null {
   if (!(from in o)) return null
   return Object.fromEntries(Object.entries(o).flatMap(([k, v]) => (k !== from ? [[k, v]] : to in o ? [] : [[to, v]])))
 }
 
-/** Today's daily note settings moved to Daily notes', and its command's id renamed, in one set of settings files read and
- *  written through `get` / `set` (the vault's, a saved bundle's, the setup a restore puts back). */
 function dailyNotesOut(get: (name: string) => Item | null, set: (name: string, value: Item) => void) {
   const today = get("plugins/today/data")
   const moving = today ? DAILY_KEYS.filter((k) => k in today) : []
@@ -46,23 +41,19 @@ function dailyNotesOut(get: (name: string) => Item | null, set: (name: string, v
   }
 }
 
-/** Who may reach a plugin's owner-only parts (`allowRemote`, `allowUsers`) is this machine's now (core/trust.ts), not the
- *  vault settings': copied once to each machine as they were, so no one let in is shut out (access-local-2026-10). */
 export function accessToMachine(vault: Vault, plugins: { id: string; manifest: Item }[]) {
   const trust = trustOf(vault.path), STEP = "access-local-2026-10"
   if (trust.ran(STEP)) return
   for (const p of plugins) {
     let set: Item | null
     try { set = vault.readConfig(`plugins/${p.id}/data`) } catch { return } // (mid-sync: next start)
-    // (one its manifest marked local was this machine's already: what the vault has for it never applied)
     const moving = ["allowRemote", "allowUsers"].filter((k) => set && k in set && !settingsOf(p.manifest)[k]?.local)
     if (moving.length) trust.patchLocal(p.id, Object.fromEntries(moving.map((k) => [k, set![k]])))
   }
   trust.ran(STEP, true)
 }
 
-/** Plugins' caches were .vaultite/cache/<id>.json: kept by the server now (core/kept.ts). Taken in at each start (an old
- *  app elsewhere writes one until it updates), the newer winning, then removed. */
+/** Taken in at each start: an old app on another machine writes one until it updates. */
 export function cachesToKept(vault: Vault) {
   const dir = vault.abs(".vaultite/cache")
   let names: string[] = []
@@ -74,20 +65,17 @@ export function cachesToKept(vault: Vault) {
     const file = path.join(dir, f), name = m[1] === "plugin-index" ? "core/plugin-index" : `${m[1]}/cache`
     let data: unknown, at: number
     try { at = Math.round(fs.statSync(file).mtimeMs); data = JSON.parse(fs.readFileSync(file, "utf8")) } catch (e) {
-      if (e instanceof SyntaxError) fs.rmSync(file, { force: true }) // (half written: a cache, made again)
+      if (e instanceof SyntaxError) fs.rmSync(file, { force: true })
       continue // (in iCloud only for now: the next start)
     }
-    // (provenance's is each machine's own: what its copies of the files say)
     if (kept.at(name) < at) kept.set(name, data, { shared: m[1] !== "provenance", at })
     fs.rmSync(file, { force: true })
   }
   try { fs.rmdirSync(dir) } catch { /* something else is in it */ }
 }
 
-/** Built-ins that were on from the start (`essential`) and became `offByDefault`: on where they weren't switched off. */
 export const NOW_OPT_IN = ["activity", "dispatch", "token-count", "workspaces", "codex", "cursor", "opencode", "openclaw", "hermes", "note-dates"]
 
-/** Every Markdown file of the vault's own, archived ones too (not .vaultite/, .trash or .git), relative paths. */
 function markdownFiles(root: string, rel = ""): string[] {
   let names: fs.Dirent[]
   try { names = fs.readdirSync(path.join(root, rel), { withFileTypes: true }) } catch { return [] }
@@ -106,7 +94,7 @@ async function eachMarkdown(v: Vault, only: string[] | undefined, change: (rel: 
     for (let rel = queue[at++]; rel !== undefined; rel = queue[at++]) {
       const abs = v.abs(rel)
       let data: Buffer | null
-      try { data = await readSoon(abs) } catch { continue } // (gone meanwhile, or not a file)
+      try { data = await readSoon(abs) } catch { continue }
       if (data === null) { later.push(rel); continue }
       const text = data.toString("utf8"), out = change(rel, text)
       if (out !== text) writeAtomic(abs, out)
@@ -131,8 +119,6 @@ function stampsToLocal(v: Vault, only?: string[]) {
   })
 }
 
-/** A text's ```base fences with their `wide: true` / `stack: true` (keys of its YAML, where the grid read them) moved to
- *  its info line, ```base wide, where a fence a plugin draws keeps its layout now (core/blocks.ts fenceLayout). */
 export function baseLayoutOut(text: string): string {
   if (!/(`{3,}|~{3,})\s*base/i.test(text)) return text
   const s = scan(text), lines = [...s.lines], drop = new Set<number>()
@@ -150,8 +136,6 @@ export function baseLayoutOut(text: string): string {
   return drop.size ? lines.filter((_, i) => !drop.has(i)).join("\n") : text
 }
 
-/** Dictation's `replacements` setting, now lines of the user's dictionary (Dictionary.md, plugins/core/dictation/words.ts)
- *  beside the words it learns; "at Claude: @claude" is the app's own. */
 function replacementsToDictionary(v: Vault) {
   const lines = strs(v.readConfig("plugins/dictation/data")?.replacements).map((l) => l.trim()).filter((l) => l.includes(": ") && l.toLowerCase() !== "at claude: @claude")
   if (lines.length) {
@@ -165,11 +149,8 @@ function replacementsToDictionary(v: Vault) {
   })
 }
 
-/** The Browser's blocked elements list, which was a note of the user's (type: blocked-elements) and is the app's now,
- *  in .vaultite (the web-viewer plugin's elements.ts BLOCKED). */
 const BLOCKED_LIST = ".vaultite/plugins/web-viewer/blocked-elements.md"
 
-/** The blocked elements note (at the top, or moved into a folder) into the Browser's list, the note to the trash. */
 async function blockedElementsIn(v: Vault): Promise<string[]> {
   const top = "Blocked elements.md"
   const found = fs.existsSync(v.abs(top)) ? [top] : markdownFiles(v.abs("")).filter((rel) => path.basename(rel) === top)
@@ -188,13 +169,10 @@ async function blockedElementsIn(v: Vault): Promise<string[]> {
   return []
 }
 
-/** The status bar's items for the file (Vim's mode, chips, the view, the counts) were always there; they're in its list
- *  now (appearance `statusBar`), which a saved one gets, where they were (status-bar-items-2026-10). */
 const FILE_ITEMS = ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"]
 const withFileItems = (look: Item | null) =>
   Array.isArray(look?.statusBar) ? { ...look, statusBar: [...look.statusBar.filter((k: unknown) => !FILE_ITEMS.includes(k as string)), ...FILE_ITEMS] } : null
 
-/** In the vault's settings, its saved bundles' and the setup a restore puts back (`bundles/previous`). */
 function eachSettings(v: Vault, change: (get: (name: string) => Item | null, set: (name: string, value: Item) => void) => void) {
   const inVault = (base: string) => change((n) => v.readConfig(base + n), (n, value) => v.setConfig(base + n, value))
   inVault("")
@@ -215,13 +193,10 @@ function bundlePicturesOut(v: Vault) {
   for (const b of saved) for (const f of ["preview.png", "preview-dark.png"]) fs.rmSync(v.abs(`.vaultite/bundles/${b}/${f}`), { force: true })
 }
 
-/** Built-ins `ids` became opt-in: on where they were on (not switched off), in `enabled`. */
 function nowOptIn(v: Vault, ids: string[]) {
   const conf = v.readConfig("plugins") ?? {}
   const disabled = strs(conf.disabled), enabled = strs(conf.enabled)
-  // (not one that moved out of the app since: on by default was never asking to install it)
   const on = ids.filter((id) => !disabled.includes(id) && !enabled.includes(id) && !Object.hasOwn(MOVED, id))
-  // (`disabled` no longer counts for them: off is out of `enabled`)
   if (on.length || disabled.some((id) => ids.includes(id))) v.patchConfig("plugins", { disabled: disabled.filter((id) => !ids.includes(id)), enabled: [...enabled, ...on] })
 }
 
@@ -231,11 +206,8 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
   { id: "stamps-local-2026-10", run: stampsToLocal },
   { id: "base-layout-2026-10", run: (v, only) => eachMarkdown(v, only, (_, text) => baseLayoutOut(text)) },
   { id: "plugins-opt-in-2026-10", run: (v) => nowOptIn(v, NOW_OPT_IN) },
-  // (Note dates: a new vault writes nothing into its notes unless asked)
   { id: "note-dates-opt-in-2026-11", run: (v) => nowOptIn(v, ["note-dates"]) },
   {
-    // Daily notes became their own plugin, apart from Today: its settings, hotkeys and buttons follow, in the vault and
-    // in the bundles saved in it.
     id: "daily-notes-2026-10",
     run: (v) => {
       const inVault = (base: string) => dailyNotesOut((n) => v.readConfig(base + n), (n, value) => {
@@ -246,7 +218,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       let saved: string[] = []
       try { saved = fs.readdirSync(v.abs(".vaultite/bundles"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) } catch { /* none */ }
       for (const b of saved) inVault(`bundles/${b}/`)
-      // (the setup before the last bundle applied: a restore puts back Daily notes' keys, not Today's)
       const prev = v.readConfig("bundles/previous")
       if (prev && isObj<Item>(prev.config)) {
         const config: Record<string, Item> = { ...prev.config }, absent = strs(prev.absent)
@@ -262,7 +233,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     run: (v) => eachSettings(v, (get, set) => { const look = withFileItems(get("appearance")); if (look) set("appearance", look) }),
   },
   {
-    // plugins.json's `order`, from when the Plugins page could be dragged: nothing reads it.
     id: "plugins-order-out-2026-10",
     run: (v) => eachSettings(v, (get, set) => {
       const conf = get("plugins")
@@ -270,7 +240,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
-    // The Inbox's show_read, from when reading an event took it out of the lists: what's listed is what isn't done now.
     id: "inbox-show-read-out-2026-10",
     run: (v) => eachSettings(v, (get, set) => {
       const conf = get("plugins/inbox/data")
@@ -278,7 +247,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
-    // appearance.json's `typingFade` (on or off), now one of fileBarFade's three: off, typing or always.
     id: "file-bar-fade-2026-11",
     run: (v) => eachSettings(v, (get, set) => {
       const look = get("appearance")
@@ -288,7 +256,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
-    // Watches' own folder setting, the same as its kind's folder (folders.json's watches): moved there.
     id: "watches-folder-2026-11",
     run: (v) => eachSettings(v, (get, set) => {
       const conf = get("plugins/watches/data")
@@ -299,7 +266,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
-    // The companion's notice mode, merged into pair: its setting and its palette command's keys.
     id: "companion-notice-pair-2026-11",
     run: (v) => eachSettings(v, (get, set) => {
       const conf = get("plugins/companion/data")
@@ -308,11 +274,8 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       if (hk) set("hotkeys", hk)
     }),
   },
-  // Saved bundles' screenshots (preview.png, preview-dark.png): their pictures are drawn now.
   { id: "bundle-pictures-out-2026-11", run: bundlePicturesOut },
   {
-    // Zen's "Floating panes" snippet (gone: it styled panes by a selector they no longer have, leaving the page on the
-    // window's colour under a page-coloured bar) for what it drew, the app's own pane cards.
     id: "zen-pane-cards-2026-11",
     run: (v) => eachSettings(v, (get, set) => {
       const look = get("appearance")
@@ -321,8 +284,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
-    // appearance.json's `paneTitles` (a split's panes named above them, only with the tab bar off: on, they always had
-    // their tabs' strip), now `paneTabBars` with the tab bar on or off: each keeps what it showed. Its switch's keys follow.
     id: "pane-tab-bars-2026-11",
     run: (v) => eachSettings(v, (get, set) => {
       const look = get("appearance")
@@ -335,8 +296,6 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
-    // The companion summoned (hold ⌃⌥): no cursor waits at rest (`screen_cursor` out), and double Control is no key: the
-    // companion's becomes ⌃⌥, dictation's goes (its default, fn⌃, if none is left).
     id: "summoned-keys-2026-11",
     run: (v) => eachSettings(v, (get, set) => {
       const keys = (x: unknown, to: string | null) => [...new Set(strs(x).flatMap((k) => (k === "double_control" ? (to ? [to] : []) : [k])))]
@@ -378,11 +337,8 @@ export const MOVED: Record<string, string> = {
 }
 const movedStep = (id: string) => `moved:${id}`
 
-/** Every step's id: what a vault made as the app's defaults are now has had (a new one, the sandbox). */
 export const DONE = [...STEPS.map((s) => s.id), ...Object.keys(MOVED).map(movedStep)]
 
-/** A vault made as the app's defaults are now (a new sandbox: core/sandbox.ts) has had every step, the moved plugins' too:
- *  none runs on it, and none installs what its sample turns on from where it moved. */
 export const allDone = (v: Vault) => v.patchConfig(FILE, { done: DONE, later: null })
 
 /** Run the steps this vault hasn't had; a new vault (`fresh`) has them marked done. One that can't run now (a settings
@@ -409,11 +365,8 @@ export async function migrate(v: Vault, fresh: boolean) {
   v.patchConfig(FILE, { done, later: Object.keys(later).length ? later : null })
 }
 
-/** What installing a moved plugin needs of the app (core/coreops/installs.ts installFrom). */
 export type Installer = { vault: Vault; has: (id: string) => boolean; install: (source: string) => Promise<unknown> }
 
-/** A moved plugin the vault had on is installed from where it went, once, keeping its settings and on-state; it waits
- *  for each machine's yes like any install. One that can't be fetched now (offline) is tried at the next start. */
 export async function migrateMoved(app: Installer) {
   let done: string[], conf: Record<string, unknown>
   try { done = strs(app.vault.readConfig(FILE)?.done); conf = app.vault.readConfig("plugins") ?? {} } catch { return }

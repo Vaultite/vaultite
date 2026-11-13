@@ -1,12 +1,11 @@
 // CSV (RFC 4180, CRLF or LF, BOM dropped), shared with plugins through the plugin API, so no Node. The separator is
 // the header's commonest of `,` `;` and tab, since spreadsheets in many languages export with `;`.
 
-/** Rows of fields. A trailing newline doesn't make an empty row. (Self-contained: artifacts get its source.) */
+/** Rows of fields. A trailing newline doesn't make an empty row. */
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = [], field = "", quoted = false, i = 0
   if (text.charCodeAt(0) === 0xfeff) i = 1
-  // The separator: the first line's commonest of , ; and tab, outside quotes.
   const count: Record<string, number> = { ",": 0, ";": 0, "\t": 0 }
   for (let j = i, q = false; j < text.length && j < i + 10_000; j++) {
     const c = text[j]
@@ -36,7 +35,6 @@ export function parseCsv(text: string): string[][] {
 export function csvRecords(text: string): Record<string, string>[] {
   const [head, ...rows] = parseCsv(text)
   if (!head) return []
-  // a repeated column name is numbered ("Tags 2") so neither column's values are lost
   const seen = new Map<string, number>()
   const keys = head.map((h) => { const n = (seen.get(h) ?? 0) + 1; seen.set(h, n); return n > 1 ? `${h} ${n}` : h })
   return rows.filter((r) => r.some((f) => f !== "")).map((r) => Object.fromEntries(keys.map((h, j) => [h, r[j] ?? ""])))

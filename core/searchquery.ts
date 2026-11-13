@@ -1,11 +1,9 @@
-// Search queries in Obsidian's syntax (help.obsidian.md/plugins/search), shared by the server and the app (no Node).
-// `parse` throws a SearchError saying what's wrong; terms match part of a word, without case unless asked.
+// Search queries in Obsidian's syntax (help.obsidian.md/plugins/search).
 
 export class SearchError extends Error {}
 
 type Field = "any" | "file" | "path" | "content"
 type Unit = "line" | "block" | "section" | "task" | "task-todo" | "task-done"
-/** How a term matches a piece of text: every place it does, as [from, to) ranges. */
 /** `ranges` where it matches (to mark), `test` whether it does (a file's match: the first one will do). */
 type Matcher = { label: string; ranges: (s: string) => [number, number][]; test?: (s: string) => boolean }
 
@@ -26,8 +24,6 @@ export type SearchDoc = { name: string; file: string; path: string; text: string
 
 const OPS = new Set(["file", "path", "content", "tag", "type", "folder", "line", "block", "section", "task", "task-todo", "task-done", "match-case", "ignore-case"])
 
-// ---------- reading a query ----------
-
 type Tok = { k: "word" | "phrase" | "regex" | "op" | "prop" | "(" | ")" | "-" | "or"; v: string; flags?: string; key?: string; neg?: boolean }
 
 function tokens(q: string): Tok[] {
@@ -42,7 +38,6 @@ function tokens(q: string): Tok[] {
     return s
   }
   const regex = (): { v: string; flags: string } | null => {
-    // /.../ when there's a closing slash; else the slash is just a character
     let j = i + 1, s = ""
     for (; j < q.length && q[j] !== "/"; j++) s += q[j] === "\\" && q[j + 1] === "/" ? (j++, "\\/") : q[j]
     if (j >= q.length || !s) return null
@@ -61,7 +56,6 @@ function tokens(q: string): Tok[] {
     if (c === '"') { out.push({ k: "phrase", v: quoted() }); continue }
     if (c === "/") { const r = regex(); if (r) { out.push({ k: "regex", v: r.v, flags: r.flags }); continue } }
     if (c === "[") {
-      // [key] or [key:value]: the value is read later, as a query of its own
       let depth = 0, j = i, s = ""
       for (; j < q.length; j++) {
         if (q[j] === '"') { const end = q.indexOf('"', j + 1); if (end < 0) break; s += q.slice(j, end + 1); j = end; continue }
@@ -77,7 +71,6 @@ function tokens(q: string): Tok[] {
       out.push({ k: "prop", v: colon < 0 ? "" : s.slice(colon + 1).trim(), key })
       continue
     }
-    // a word, maybe op: followed by its value
     let j = i
     while (j < q.length && !/[\s()]/.test(q[j]) && !(q[j] === '"' && j > i && q[j - 1] !== ":")) j++
     const word = q.slice(i, j)
@@ -97,7 +90,6 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 function textMatcher(s: string, matchCase: boolean): Matcher {
   const want = matchCase ? s : s.toLowerCase()
-  // (an ASCII word is found case-blind by a regex, without a lowercased copy of every file's text per query)
   const ascii = !matchCase && /^[\x20-\x7e]+$/.test(want) ? new RegExp(escapeRe(want), "i") : null
   return {
     label: `"${s}"${matchCase ? " (match case)" : ""}`,
@@ -162,7 +154,7 @@ class Parser {
     return this.primary(ctx)
   }
   group(ctx: Ctx): Node {
-    this.i++ // (
+    this.i++
     if (this.peek()?.k === ")") { this.i++; return { t: "all" } }
     const n = this.or(ctx, true)
     if (this.peek()?.k !== ")") throw new SearchError("A ( isn't closed")
@@ -184,7 +176,6 @@ class Parser {
       const op = tok.v
       const next = this.peek()
       const empty = !next || next.k === ")" || next.k === "or" || next.k === "op"
-      // an operator's value: a word, a phrase, a regex or a group, read with the operator's field and case
       const value = (c: Ctx): Node => (empty ? { t: "all" } : next.k === "-" ? this.unary(c) : this.primary(c))
       if (op === "tag") {
         if (empty) throw new SearchError("tag: needs a tag: tag:#project")
@@ -192,7 +183,6 @@ class Parser {
         this.i++
         return { t: "tag", tag: next.v.replace(/^#/, "") }
       }
-      // (type: and folder: are whole names, like tag:, not parts of words)
       if (op === "type" || op === "folder") {
         if (empty) throw new SearchError(op === "type" ? "type: needs a type: type:person" : "folder: needs a folder: folder:Notes")
         const of = (v: string): Node => (op === "type" ? { t: "type", type: v } : { t: "folder", folder: v.replace(/^\/+|\/+$/g, "") })
@@ -214,7 +204,6 @@ class Parser {
   }
 }
 
-/** A tag: written in a group (tag:(a OR b)), each term's text. */
 const tagOf = (n: Node) => (n.t === "term" ? n.m.label.replace(/^"|"( \(match case\))?$/g, "").replace(/^#/, "") : "")
 function mapTerms(n: Node, f: (n: Node) => Node): Node {
   if (n.t === "term") return f(n)
@@ -236,15 +225,12 @@ export function parse(q: string, opts: { matchCase?: boolean } = {}): Node {
   return parseWith(q, { field: "any", matchCase: !!opts.matchCase })
 }
 
-/** A query that's only words (no operator, quote, regex, OR or -): the quick switcher finds names for those. */
 export function isPlain(n: Node): boolean {
   if (n.t === "all") return true
   if (n.t === "term") return n.field === "any" && n.m.label.startsWith('"') && !n.m.label.includes(" (match case)") && !n.m.label.slice(1, -1).includes(" ")
   if (n.t === "and") return n.kids.every(isPlain)
   return false
 }
-
-// ---------- matching ----------
 
 const TASK = /^\s*(?:[-*+]|\d+[.)])\s+\[(.)\]\s?(.*)$/
 
@@ -317,10 +303,6 @@ export function matches(n: Node, d: SearchDoc): boolean {
   }
 }
 
-// ---------- marking what matched ----------
-
-/** The terms that say why a file matched, for marking: the ones not under a "not", in a file's text (`text`) or its
- *  name (`name`). A tag marks its #tag in the text. */
 function markers(n: Node, where: "text" | "name", out: Matcher[] = [], neg = false): Matcher[] {
   if (n.t === "and" || n.t === "or") for (const k of n.kids) markers(k, where, out, neg)
   else if (n.t === "not") markers(n.kid, where, out, !neg)
@@ -333,7 +315,6 @@ function markers(n: Node, where: "text" | "name", out: Matcher[] = [], neg = fal
   return out
 }
 
-/** A function giving the ranges to mark in a piece of text (sorted, merged), for a query. */
 export function highlighter(n: Node, where: "text" | "name" = "text"): (s: string) => [number, number][] {
   const ms = markers(n, where)
   return (s) => {
@@ -349,14 +330,11 @@ export function highlighter(n: Node, where: "text" | "name" = "text"): (s: strin
   }
 }
 
-// ---------- saying what a query does ----------
-
 const FIELD: Record<Field, string> = { any: "the name or text has", file: "the file name has", path: "the path has", content: "the text has" }
 const UNIT: Record<Unit, string> = { line: "a line", block: "a paragraph", section: "a section", task: "a task", "task-todo": "an unticked task", "task-done": "a ticked task" }
 
 /** The query in words ("Files where the name or text has "budget", and it's tagged #finance"): "Explain search term". */
 export function explain(n: Node): string {
-  // what a piece of text has (inside line:(), a property's value): just the terms
   const inner = (n: Node): string => {
     if (n.t === "term") return n.m.label
     if (n.t === "and") return n.kids.map(inner).join(" and ")
@@ -381,12 +359,8 @@ export function explain(n: Node): string {
   return n.t === "all" ? "Every file" : `Files where ${say(n)}`
 }
 
-// ---------- showing where it matched ----------
-
-/** Character indexes of ranges, for drawing marks (the app's <Marked>). */
 export const marksOf = (ranges: [number, number][]) => ranges.flatMap(([a, b]) => Array.from({ length: b - a }, (_, k) => a + k))
 
-/** Every place one of `words` is in `text`, without case, merged. */
 export function wordRanges(text: string, words: string[]): [number, number][] {
   const low = text.toLowerCase()
   const all: [number, number][] = []
@@ -401,7 +375,6 @@ export function wordRanges(text: string, words: string[]): [number, number][] {
  *  characters ("…" where something was left out), with the ranges moved to match. */
 export function excerpt(text: string, ranges: [number, number][], max = 160, before = 24): { text: string; ranges: [number, number][] } {
   const first = ranges[0]?.[0] ?? 0
-  // a little before the match (a row is cut at its end, so the match must come early), at a word's start
   let from = Math.max(0, first - before)
   if (from > 0) { const sp = text.indexOf(" ", from); if (sp >= 0 && sp < first) from = sp + 1 }
   const to = Math.min(text.length, from + max)
@@ -413,9 +386,6 @@ export function excerpt(text: string, ranges: [number, number][], max = 160, bef
   }
 }
 
-// ---------- suggesting while typing ----------
-
-/** What a query is completed with: the vault's tags, types and folders, each with how many files have it, most first. */
 export type QueryVocab = { tags: [string, number][]; types: [string, number][]; folders: [string, number][] }
 /** `text` goes in place of the word being typed; `more`: an operator, whose values come next (no space after it). */
 export type QuerySuggestion = { label: string; detail?: string; text: string; more?: boolean }
@@ -430,8 +400,6 @@ export const QUERY_OPTIONS: [string, string][] = [
 
 const quoteValue = (v: string) => (/[\s()"]/.test(v) ? `"${v.replace(/"/g, "")}"` : v)
 
-/** Values that have `typed` (without case), the ones starting with it (or a /part of them) first, then in the list's
- *  order (most used first, as the vocabularies come). */
 export function ranked(list: [string, number][], typed: string, max: number): [string, number][] {
   const t = typed.toLowerCase()
   const hits = list.filter(([v]) => v.toLowerCase().includes(t))
@@ -443,7 +411,6 @@ export function ranked(list: [string, number][], typed: string, max: number): [s
  *  box), then a tag:, type: or folder:'s values. Null when the caret is inside a word, or there's nothing to offer. */
 export function suggestQuery(q: string, caret: number, v: QueryVocab, max = 8): { from: number; to: number; items: QuerySuggestion[] } | null {
   if (caret < q.length && !/[\s)]/.test(q[caret])) return null
-  // (the word starts after the last space or "(" outside quotes: folder:"My notes is one word)
   let start = 0, quoted = false
   for (let i = 0; i < caret; i++) {
     if (q[i] === '"') quoted = !quoted
@@ -455,7 +422,6 @@ export function suggestQuery(q: string, caret: number, v: QueryVocab, max = 8): 
   if (!word) return q.trim() ? null : out(QUERY_OPTIONS.map(([op, detail]) => ({ label: `${op}:`, detail, text: `${op}:`, more: true })))
   const colon = word.indexOf(":")
   if (colon < 0) {
-    // #wo: a tag, as tag:#work
     if (word.startsWith("#")) return out(ranked(v.tags, word.slice(1), max).map(([t, n]) => ({ label: `#${t}`, detail: String(n), text: `tag:#${t}` })))
     if (!/^[a-z-]+$/i.test(word)) return null
     const low = word.toLowerCase()

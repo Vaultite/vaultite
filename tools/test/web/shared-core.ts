@@ -9,6 +9,8 @@ import { fm, type Props, ROOT, same } from "./lib.ts"
   check("csv: ; and tab separated files read as columns, a ; inside quotes stays", same(csv.parseCsv("a;b\n1;2\n"), [["a", "b"], ["1", "2"]])
     && same(csv.parseCsv("a\tb\n1\t2"), [["a", "b"], ["1", "2"]]) && same(csv.parseCsv('x,y\n"1;2",3\n'), [["x", "y"], ["1;2", "3"]]), csv.parseCsv("a;b\n1;2\n"))
   check("csv: records as parsed (a quoted line break, an empty row)", csv.csvRecords('n,note\r\n"Lee, Sam","a\r\nb"\r\n,,\r\n').length === 1)
+  const own = new Function(`return ${csv.parseCsv.toString()}`)()
+  check("csv: parseCsv runs from its source alone (artifacts ship parseCsv.toString())", same(own('a;"b\nc"\n1;2'), [["a", "b\nc"], ["1", "2"]]))
   check("csv: a repeated column name is numbered, both values kept", same(csv.csvRecords("n,Tags,Tags,Tags\nA,x,y,z\n"), [{ n: "A", Tags: "x", "Tags 2": "y", "Tags 3": "z" }]))
 }
 

@@ -1,5 +1,3 @@
-// The vault as files, for the file tree and the editor: /api/files, /api/file (+ move, copy, restore), /api/search,
-// /api/raw. Hidden files are out of reach unless shown, but the app's own settings open by exact path (SETTINGS).
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
@@ -26,14 +24,12 @@ const log = logger("files")
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
-const STAMP = / \d{4}-\d{2}-\d{2} \d{6}(?: \d+)?$/ // what trashing adds to a name (" 1" when two went at once)
+const STAMP = / \d{4}-\d{2}-\d{2} \d{6}(?: \d+)?$/
 
 function showHidden(vault: Vault | null) {
   return !!(vault && vault.config("files").showHidden)
 }
 
-/** Read-only: the trash and the app's generated copies. Not .vaultite/AGENTS.md: the user's own rules go in it, under
- *  Agent files. */
 function locked(rel: string) {
   return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")
 }
@@ -58,13 +54,11 @@ const SETTINGS = /^\.vaultite\/(?:(?:[^./][^/]*\/)*[^./][^/]*\.(?:json|md|vim|cs
 export function clean(p: unknown, mustExist = false, vault: Vault | null = null, explicit = false, trash = false) {
   const parts = String(p ?? "").replaceAll("\\", "/").trim().replace(/^\/+|\/+$/g, "").split("/").filter((x) => x !== "" && x !== ".")
   const hidden = showHidden(vault) || (explicit && SETTINGS.test(parts.join("/"))) ||
-    // Something in the trash, to restore it (Undo after a delete), even with hidden files off.
     (trash && parts.length > 1 && parts[0] === ".trash" && !parts.slice(1).some((x) => x.startsWith(".")))
   if (!parts.length || parts.some((x) => x === ".." || SKIP.has(x) || (x.startsWith(".") && x !== ARCHIVE_DIR && !hidden))) {
     throw new HTTPError(400, `not a path in the vault: '${p ?? "None"}'`)
   }
   if (parts.some((x) => /[*"\\<>:|?]/.test(x))) throw new HTTPError(400, 'names can\'t contain * " \\ < > : | ?')
-  // (a line break or other control character is never in a name: trimmed off the ends, but one inside is refused)
   if (parts.some((x) => /[\x00-\x1f\x7f]/.test(x))) throw new HTTPError(400, "names can't contain line breaks or other control characters")
   // (Windows drops a trailing dot or space, and its device names aren't files: written, they'd be another file or none)
   if (process.platform === "win32" && parts.some((x) => /[. ]$/.test(x) || DEVICE_NAME.test(x))) {
@@ -75,7 +69,6 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
   return rel
 }
 
-/** The first `n` characters, an ellipsis saying when there were more. */
 const chars = (s: string, n: number) => {
   if (s.length <= n) return s
   let at = 0
@@ -83,8 +76,6 @@ const chars = (s: string, n: number) => {
   return at < s.length ? `${s.slice(0, at)}…` : s
 }
 
-/** A line as search shows it: without its list mark, task box, quote or heading marks, up to 200 characters, from a
- *  little before the match (`at`, an index in the line) when that's further in, so it's in what's shown. */
 function context(line: string, at?: (s: string) => [number, number][]) {
   let s = line.replace(/^\s*(?:(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?|>\s*|#{1,6}\s+)/, "").trim()
   const first = at?.(s)[0]?.[0] ?? 0
@@ -92,8 +83,6 @@ function context(line: string, at?: (s: string) => [number, number][]) {
   return chars(s, 200)
 }
 
-/** [target, the line it's on] for every link in a file (core/links.ts' noteLinks, and its frontmatter values'
- *  wikilinks); the line as written (`context` makes it the one shown). */
 function linksOf(e: Entry) {
   const out: [string, string][] = []
   for (const l of noteLinks(e.body)) out.push([l.target, l.line])
@@ -106,11 +95,8 @@ function linksOf(e: Entry) {
 }
 
 
-/** A Markdown file's row in the tree. */
 function row(rel: string, e: Entry): Item {
   const aliases = e.fm.aliases
-  // How it shows in the tree, tabs and the sidebar (a dashboard's icon and colour, the plugin that brought it), and the
-  // container its web links open in, if the file says.
   const look: Item = {}
   for (const k of ["icon", "tint", "plugin", "container"]) if (typeof e.fm[k] === "string") look[k] = e.fm[k]
   const title = e.fm.title || e.fm.name || stemOf(rel)
@@ -121,23 +107,18 @@ function row(rel: string, e: Entry): Item {
     mtime: ms(e.stat.ns), ctime: e.stat.born, size: e.stat.size,
     problems: e.problems.length,
     ...(e.archived ? { archived: true } : {}),
-    // Frontmatter tags and inline #tags (the Tags panel, the tag sheet)
     ...(e.tags.length ? { tags: e.tags } : {}),
     blocks: blocksIn(e.body).map((b) => [b.name, b.text]),
   }
 }
 
-// Rows are worked out once per read of a file (an Entry is new each time its file is read). Frozen: serialized once.
-// Links aren't in them: at 24,000 notes they were half the tree, and the Links panel asks for one file's (file/linked).
+// Frozen: core/statepatch.ts serializes a frozen row once.
 const rows = new WeakMap<Entry, { row: Item; excluded?: Item }>()
-const otherRows = new WeakMap<object, Item>() // (by the file's stat: new each time it changed)
-// The tree as of a vault version (it bumps on any change: a file, another file, a folder) and the plugins drawing pages
-// (`looks:<ext>`), hidden files aside.
+const otherRows = new WeakMap<object, Item>()
 type Tree = { files: Item[]; others: Item[]; folders: string[] }
 const trees = new WeakMap<object, { version: number; settings: number; pages: Plugin[]; tree: Tree }>()
 type Looks = (vault: Vault, rel: string, mtime: number) => Item
 
-// The index's paths in order, sorted again only when they changed: an edit of a file sorts nothing.
 const sortedOf = new WeakMap<Vault, { entries?: string[]; others?: string[] }>()
 function sortedKeys(vault: Vault, slot: "entries" | "others"): string[] {
   const m = vault[slot] as Map<string, unknown>
@@ -148,7 +129,6 @@ function sortedKeys(vault: Vault, slot: "entries" | "others"): string[] {
   return all[slot] = [...m.keys()].sort(cmp)
 }
 
-/** The plugins that are on and make some files pages (the service `looks:<ext>`: HTML's .html, Tables' .csv). */
 function pagePlugins(vault: Vault) {
   const off = vault.switchedOff()
   return LOADED.filter((p) => !off.has(p.id) && Object.keys(p.services).some((k) => k.startsWith("looks:")))
@@ -167,8 +147,6 @@ export function tree(vault: Vault): Tree {
       if (!r) rows.set(e, r = { row: Object.freeze(row(rel, e)) })
       files.push(vault.excluded(rel) ? r.excluded ??= Object.freeze({ ...r.row, excluded: true }) : r.row)
     }
-    // Files a plugin makes pages (its `looks:<ext>`: an artifact, a table) are files you open, like notes, named by their
-    // title (else their name without the extension); the rest (images, PDFs, canvases) are only served.
     for (const r of sortedKeys(vault, "others")) {
       const st = vault.others.get(r)!, excluded = vault.excluded(r)
       let base = otherRows.get(st)
@@ -191,8 +169,6 @@ export function tree(vault: Vault): Tree {
   return { files: hit.tree.files, others: [...hit.tree.others, ...hf], folders: [...hit.tree.folders, ...hd].sort() }
 }
 
-/** Hidden files and folders (.vaultite, .trash, a dot file anywhere), for the tree when Settings shows them. They
- *  stay out of the index: a person file in .trash isn't a person. */
 function hiddenFiles(vault: Vault): [Item[], string[]] {
   const files: Item[] = [], folders: string[] = []
   const stack: [string, boolean][] = [["", false]]
@@ -207,7 +183,7 @@ function hiddenFiles(vault: Vault): [Item[], string[]] {
     for (const name of names) {
       if (SKIP.has(name) || name.endsWith(".icloud") || name.includes(".tmp-")) continue
       const rel = sub ? `${sub}/${name}` : name
-      const hid = inside || (name.startsWith(".") && name !== ARCHIVE_DIR) // (archive folders are indexed: in the tree already)
+      const hid = inside || (name.startsWith(".") && name !== ARCHIVE_DIR)
       let st: fs.BigIntStats
       try {
         st = fs.statSync(vault.abs(rel), { bigint: true })
@@ -265,7 +241,6 @@ async function downloaded(vault: Vault, rel: string, wait = 10_000) {
   if (await readSoon(vault.abs(rel), wait, { join: true }).catch(() => true) === null) throw new HTTPError(503, `iCloud is still downloading ${rel}; try again in a moment`)
 }
 
-/** Whether the editor may write this file as text: a kind that's text, or a file that reads as text now. */
 function writable(vault: Vault, rel: string) {
   if (isTextKind(kindOf(rel))) return true
   try {
@@ -312,8 +287,6 @@ async function info(vault: Vault, rel: string) {
   return out
 }
 
-/** The start of each note right in a folder ("" the top): its body without frontmatter or blocks, cut short (a folder
- *  page's cards). */
 function previews(vault: Vault, folder: string) {
   const out: Record<string, string> = {}
   for (const [rel, e] of vault.entries) {
@@ -339,14 +312,12 @@ function freeName(vault: Vault, rel: string) {
   return out
 }
 
-/** A new text file's text with what plugins add to a note (onCreate); another file's are told of it (onCreateFile). */
 function newText(vault: Vault, rel: string, text: string) {
   if (/\.md$/i.test(rel)) return vault.created(rel, text)
   vault.fileCreated(rel, newFile(Buffer.from(text, "utf8")))
   return text
 }
 
-/** A timeline entry sent to POST /api/timeline, checked. */
 function newEntry(b: Item): NewEntry {
   const kind = timelineKind(b.kind)
   if (!/^\d{4}-\d\d-\d\d$/.test(String(b.date ?? "")) || !kind) {
@@ -362,7 +333,6 @@ function newEntry(b: Item): NewEntry {
   return e
 }
 
-/** Put a trashed file or folder back where it came from, minus the time trashing added to its name. */
 function restore(vault: Vault, rel: string) {
   if (!rel.startsWith(".trash/")) throw new HTTPError(400, "only things in .trash can be restored")
   if (!fs.existsSync(vault.abs(rel))) throw new HTTPError(404, `${rel} isn't in the trash any more`)
@@ -375,7 +345,6 @@ function restore(vault: Vault, rel: string) {
   return dst
 }
 
-/** How long things stay in .trash, like Recently deleted. */
 const TRASH_DAYS = 30
 const TRASHED_AT = / (\d{4})-(\d{2})-(\d{2}) (\d{2})(\d{2})(\d{2})(?: \d+)?$/
 
@@ -397,7 +366,6 @@ export async function emptyTrash(vault: Vault, now = Date.now()) {
       const real = name.replace(/^\.(.+)\.icloud$/, "$1")
       const m = TRASHED_AT.exec(st.isDirectory() ? real : splitext(real)[0])
       if (!m && st.isDirectory()) {
-        // A folder the trash keeps a path in: what's in it, then itself once that's all gone.
         if (await sweep(rel) && !fs.readdirSync(abs).length) { try { fs.rmdirSync(abs); removed = true } catch { /* in use */ } }
         continue
       }
@@ -413,7 +381,6 @@ export async function emptyTrash(vault: Vault, now = Date.now()) {
 }
 
 
-/** Where a duplicate of a file goes: next to it, "Name 1", "Name 2"... (the number after an existing one's). */
 function copyName(vault: Vault, rel: string) {
   const [stem, ext] = splitext(rel)
   const m = / (\d+)$/.exec(stem)
@@ -434,7 +401,6 @@ type Index = { files: Map<string, Indexed>; kept: number; version: string; busy:
 const indexes = new WeakMap<Vault, Index>()
 const DISK = "disk"
 
-/** The plugins that are on and read some kind of file as text (`text:<ext>`). */
 function readerPlugins(vault: Vault) {
   const off = vault.switchedOff()
   return LOADED.filter((p) => !off.has(p.id) && Object.keys(p.services).some((k) => k.startsWith("text:")))
@@ -444,7 +410,6 @@ type Reader = (b: Buffer, rel: string) => string
 /** Data, not documents: an export of 25k records would make a first search read them all, and nobody looks for
  *  words in them (Obsidian doesn't either). Drawings and canvases (.excalidraw, .canvas) are searched. */
 const DATA = new Set(["json", "jsonl", "ndjson", "geojson", "map"])
-/** The files search reads besides the notes, each with the plugin reader that turns it into text, if any. */
 function searchFiles(vault: Vault) {
   const readers = readerPlugins(vault)
   const out = new Map<string, Reader | null>()
@@ -496,13 +461,11 @@ async function readIndexed(abs: string, rel: string, reader: Reader | null, room
   }
 }
 
-/** Bring the index up to date: files new or changed since are read (a few at a time), gone ones dropped. */
 function refresh(vault: Vault): Promise<void> {
   let ix = indexes.get(vault)
   if (!ix) indexes.set(vault, ix = { files: new Map(), kept: 0, version: "", busy: null })
   const idx = ix
   if (idx.busy) return idx.busy.then(() => refresh(vault))
-  // (plugins turned on or off read other files, or none)
   const version = `${vault.version}:${LOADED.length}:${[...vault.switchedOff()].join(",")}`
   if (idx.version === version) return Promise.resolve()
   const want = searchFiles(vault)
@@ -531,12 +494,10 @@ function refresh(vault: Vault): Promise<void> {
   return idx.busy
 }
 
-/** Read the index ahead (the file tree was asked for: a search may follow), off any request. */
 function warmSearch(vault: Vault) {
   refresh(vault).catch((e) => log.error(`reading the search index ahead failed: ${(e as Error).message}`))
 }
 
-/** A file the index didn't keep, a piece at a time (whole when it fits one), cut at line ends. */
 async function* pieces(abs: string): AsyncGenerator<string> {
   const dec = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
   const crlf = (s: string) => s.replace(/\r\n?/g, "\n")
@@ -554,7 +515,6 @@ async function* pieces(abs: string): AsyncGenerator<string> {
   if (carry) yield searchText(crlf(carry))
 }
 
-/** The texts to search a file in: the one kept, or read now (by its reader, or in pieces). */
 async function* textsOf(vault: Vault, rel: string, f: Indexed): AsyncGenerator<string> {
   if (f.text === null) return
   if (f.text !== DISK) { yield f.text; return }
@@ -568,7 +528,6 @@ async function* textsOf(vault: Vault, rel: string, f: Indexed): AsyncGenerator<s
   if (text) yield text
 }
 
-/** How results can be ordered: by how well they match (the default), name, or when they were changed or made. */
 const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
   relevance: [(r) => [-r.score, -r.mtime], false],
   name: [(r) => [String(r.title).toLowerCase(), r.path], false],
@@ -579,8 +538,6 @@ const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
   "created-old": [(r) => r.created, false],
 }
 
-// A note as search reads it, once per read of it (an Entry is new each time its file is read): a query of a big vault
-// doesn't work out every note's name and fields again. (Its type is asked each time: plugins' marks can change it.)
 const docs = new WeakMap<Entry, SearchDoc>()
 function docOf(rel: string, e: Entry): SearchDoc {
   let d = docs.get(e)
@@ -591,8 +548,6 @@ function docOf(rel: string, e: Entry): SearchDoc {
 /** `only`: the files it may look at, no other (a shared folder's guest's: plugins/core/share). */
 type SearchOpts = { lines?: number; folder?: string; path?: string; only?: Set<string>; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
-/** Files matching a query (core/searchquery.ts: words, "phrases", -not, OR, file:, path:, tag:, line:(), [property]...),
- *  from `offset`, with the first line that matched (`lines`: each, `context` around), and how many matched in all. */
 async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<{ results: Item[]; files: number; lines: number }> {
   if (!q.trim()) return { results: [], files: 0, lines: 0 }
   let node: Node
@@ -604,9 +559,7 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
   const marks = highlighter(node, "text"), names = highlighter(node, "name")
   const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
   const whole = q.trim().toLowerCase()
-  // (excluded files are left out, unless the search is in an excluded folder or file: asked for by name)
   const excluded = folder && vault.excluded(`${folder}/`) ? () => false : (rel: string) => vault.excluded(rel)
-  /** The file's item when `body` (its text, or the piece of it from line `from` on) matches. */
   const check = (d: SearchDoc, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
     if (!matches(node, d)) return null
     const { path: rel, name, text: body } = d
@@ -632,11 +585,10 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
       item.context = context(hits.length ? lines[hits[0]] : "", marks)
       item.matches = matched.sort((a, b) => a.line - b.line)
       item.count = hits.length
-    } else unshown.set(item, body) // (its line found once it's among the results shown)
+    } else unshown.set(item, body)
     return item
   }
   const unshown = new Map<Item, string>()
-  // (line by line, not split: a big file's first match is near its top more often than not)
   const firstLine = (body: string) => {
     for (let i = 0; i <= body.length;) {
       const j = body.indexOf("\n", i), end = j < 0 ? body.length : j, line = body.slice(i, end)
@@ -656,7 +608,6 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
   for (const [rel, f] of indexes.get(vault)!.files) {
     const st = vault.others.get(rel)
     if (!st || skip(rel)) continue
-    // A file read in pieces matches when one of them does; its lines are counted on from piece to piece.
     let item: Item | null = null, from = 0
     for await (const text of textsOf(vault, rel, f)) {
       const file = rel.slice(rel.lastIndexOf("/") + 1)
@@ -669,7 +620,6 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
     }
     if (item) out.push(item)
   }
-  // Archived files last (core/fileprops.ts), like the quick switcher.
   const [key, reverse] = SORTS[opts.sort ?? ""] ?? SORTS.relevance
   const sorted = sortBy(out, key, reverse)
   const from = opts.offset ?? 0
@@ -679,8 +629,6 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
 }
 
 let uploadN = 0
-/** POST /api/upload?path=: a new file of any size, streamed to a hidden file beside its place, then moved there
- *  holding the vault (never over a file): the vault is held only for the move, not while the bytes come. */
 export async function upload(vault: Vault, query: Record<string, string>, body: Item, http: IncomingMessage | undefined, hold: <T>(fn: () => Promise<T>) => Promise<T>) {
   const rel = clean(query.path ?? body.path, false, vault)
   if (locked(rel)) throw new HTTPError(403, `${rel} is read-only`)
@@ -696,7 +644,7 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
     if (bytes) fs.writeFileSync(tmp, bytes, { flag: "wx" })
     else await pipeline(src!, fs.createWriteStream(tmp, { flags: "wx" }))
     return await hold(async () => {
-      vault.fileCreated(rel, newFileAt(tmp)) // (plugins look at it: onCreateFile)
+      vault.fileCreated(rel, newFileAt(tmp))
       if (fs.existsSync(abs)) throw new HTTPError(409, `${rel} already exists`)
       renameFile(tmp, abs)
       await vault.sync()
@@ -707,8 +655,6 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
   }
 }
 
-// Who links to what (GET /api/file/linked, the Links panel), kept up by edits: an edit resolves its note's links again,
-// a file come, gone or renamed (or new aliases) those of the notes with a link of its name; never all of them again.
 type Linked = { version: number; resolve: (t: string, from?: string) => string | null
   /** each file's link names (its aliases, archived), by path; other files' "" */
   names: Map<string, string>
@@ -732,7 +678,6 @@ function linkIndex(vault: Vault): Linked {
     linkIndexes.set(vault, made)
     return made
   }
-  // What changed since: notes read again, and files whose names links find changed (come, gone, new aliases).
   const reread: string[] = [], named = new Set<string>(), nameOf = (rel: string, e?: Entry) => {
     const n = rel.slice(rel.lastIndexOf("/") + 1).toLowerCase(), dot = n.lastIndexOf(".")
     named.add(n)
@@ -778,8 +723,6 @@ function drop(ix: Linked, rel: string) {
   for (const n of had.named) takeOut(ix.byName, n, rel)
 }
 
-/** The files linking to `rel`, newest first, each with the line its first link there is on, and the targets of its own
- *  links as written (the app resolves them, with plugins' names). */
 function linkedTo(vault: Vault, rel: string): { path: string; linked: { path: string; line: string }[]; links: string[] } {
   const ix = linkIndex(vault), from = [...ix.into.get(rel) ?? []]
   const at = (p: string) => vault.entries.get(p)!.stat.ns
@@ -821,17 +764,15 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       }
       let trashed: string | undefined
       guard(vault.abs(rel))
-      if (rel === ".trash" || rel.startsWith(".trash/")) removeTree(vault.abs(rel)) // gone for good
+      if (rel === ".trash" || rel.startsWith(".trash/")) removeTree(vault.abs(rel))
       else {
         trashed = vault.toTrash(rel)
         forget(vault, rel)
-        vault.moved(rel, null, trashed) // what follows files (plugin.onMove: pinned pages) lets it go
+        vault.moved(rel, null, trashed)
       }
       await vault.reread([rel])
       return { ok: true, ...(trashed ? { trashed } : {}) }
     }
-    // Saving a settings file opened by its path (hidden files off): only one that's there; or making one at its exact
-    // path (POST without `unique`: Vim's init.vim).
     const rel = clean(body.path, false, vault, method === "PUT" || (method === "POST" && !body.unique))
     if (method === "PUT" && rel.startsWith(".") && !showHidden(vault) && !fs.existsSync(vault.abs(rel))) throw new HTTPError(404, `no file '${rel}'`)
     if (!writable(vault, rel)) throw new HTTPError(400, `${rel} isn't a text file, so it can't be written here`)
@@ -847,10 +788,10 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       }
       const why = byGuest() ? guestRefusal(vault, target, null, text) : ""
       if (why) throw new HTTPError(403, why)
-      text = newText(vault, target, text) // what plugins add to a new file (plugin.onCreate, onCreateFile)
+      text = newText(vault, target, text)
       writeAtomic(vault.abs(target), text)
       await vault.reread([target])
-      await vault.fillIn(target, null) // (a note's id and dates)
+      await vault.fillIn(target, null)
       return reply(201, read(vault, target))
     }
     if (method === "PUT") {
@@ -868,18 +809,15 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       if (plan.kind === "conflict") return reply(409, { error: "the file changed on disk in the same place", ...read(vault, rel) })
       const sent = plan.sent
       text = plan.text
-      // (a guest's write as it would land: merged, at its own name)
       const why = byGuest() && cur !== text ? guestRefusal(vault, rel, cur, text) : ""
       if (why) throw new HTTPError(403, why)
       if (cur === null) text = newText(vault, rel, text)
-      else text = vault.saving(rel, cur, text) // (what plugins set in the same write: plugin.onSave)
+      else text = vault.saving(rel, cur, text)
       const before = vault.entries.get(rel) ?? null
       if (cur !== text) writeText(vault.abs(rel), text)
       await vault.reread([rel])
-      // An edit in the app: plugins may fill things in (a note's id and dates), and the editor gets the result.
       if (cur !== text) await vault.fillIn(rel, before)
       const f = read(vault, rel)
-      // (an editor's save gets back only how the file differs from what it sent)
       if (said.body.lean) { const { text: _, ...rest } = f; return f.text === sent ? { ...rest, same: true } : { ...rest, edit: editOf(sent, f.text) } }
       return f
     }
@@ -907,14 +845,12 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (dst.startsWith(src + "/")) throw new HTTPError(400, "can't move a folder into itself")
     guard(vault.abs(src))
     guard(vault.abs(dst))
-    // (a file's move indexes only it while the watcher has told of everything else: a link to it may be new)
     const folder = fs.statSync(vault.abs(src)).isDirectory(), alone = !folder && await vault.caughtUp()
     fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
     renameFile(vault.abs(src), vault.abs(dst))
     forget(vault, src)
-    vault.moved(src, dst) // open apps follow it (core/live.ts), and so do plugins (plugin.onMove: an artifact's storage, pinned pages)
+    vault.moved(src, dst)
     await (alone ? vault.reread([src, dst]) : vault.sync())
-    // Links to what moved follow it: a folder's files each, by where they are now.
     const moves: [string, string][] = !folder ? [[src, dst]]
       : [...vault.entries.keys(), ...vault.others.keys()].filter((p) => p.startsWith(`${dst}/`)).map((p) => [src + p.slice(dst.length), p])
     const updated = vault.relink(moves)
@@ -933,11 +869,10 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     return reply(201, { path: dst })
   }
   if (route === "file/restore" && method === "POST") {
-    // Something in the trash, also with hidden files off: the app's Undo after a delete restores it by this path.
     const raw = String(body.path ?? "").replace(/^\/+/, "")
     const rel = raw.startsWith(".trash/") ? `.trash/${clean(raw.slice(".trash/".length), false, vault)}` : clean(raw, true, vault)
     const dst = restore(vault, rel)
-    vault.moved(rel, dst) // (back out of the trash: what followed it there follows it back)
+    vault.moved(rel, dst)
     await vault.sync()
     return { path: dst }
   }

@@ -1,5 +1,3 @@
-// Plugins' pages: turning a plugin on writes each of its pages (its pages/*.md) once into the user's pages folder, as
-// their own file, where none by that name is there. The plugin never touches it again (core/app.ts says when).
 import fs from "node:fs"
 import path from "node:path"
 import { enabled, type Plugin, service } from "./plugins.ts"
@@ -22,13 +20,12 @@ export function templates(plugins: Plugin[]): [string, string, string][] {
   return out
 }
 
-/** Where a page named `name` (Today.md) goes: the user's pages folder (Vault.pagesHome). */
 export function pageAt(vault: Vault, name: string) {
   const dir = vault.pagesHome()
   return dir ? `${dir}/${name}` : name
 }
 
-/** A new file at `rel` with `text`, in the index at once (pins and links find it); false when one is there. */
+/** false when a file is at `rel` already. */
 function add(vault: Vault, rel: string, text: string) {
   if (!writeNew(vault.abs(rel), text)) return false
   vault.read(rel, statFrom(fs.statSync(vault.abs(rel), { bigint: true })))
@@ -49,7 +46,6 @@ export function writePages(vault: Vault, plugins: Plugin[], ids: Iterable<string
   return made
 }
 
-/** What "pages:installed" (Pinned) is told: the pages just written. */
 type Installed = { made: string[] }
 
 function installed(vault: Vault, plugins: Plugin[], made: string[]) {
@@ -58,7 +54,6 @@ function installed(vault: Vault, plugins: Plugin[], made: string[]) {
   try { fn?.({ made } satisfies Installed) } catch (e) { log.error("a plugin's pages:installed service failed", e) }
 }
 
-/** Where the app kept read-only copies of the plugins' pages before they became the user's files. */
 const OLD = ".vaultite/pages"
 
 /** Write the missing pages of the plugins that are on (`only`: one), unpinned, and point pins, links and the new tab's
@@ -70,12 +65,10 @@ export function restorePages(vault: Vault, plugins: Plugin[], only?: string) {
   for (const rel of (fs.readdirSync(vault.abs(OLD), { recursive: true }) as string[]).map((f) => f.split(path.sep).join("/")).sort()) {
     if (!rel.endsWith(".md") || rel.split("/").some((s) => s.startsWith("."))) continue
     const from = `${OLD}/${rel}`, to = pageAt(vault, path.basename(rel))
-    // (a bundle's page: the only kind not written above)
     if (add(vault, to, readText(vault.abs(from)))) made.push(to)
     moved.push([from, to])
   }
   const found = moved.length
-  // (pins to a plugin's page that's off now find it when it's turned on)
   for (const [, name] of templates(plugins)) {
     const from = `${OLD}/Dashboards/${name}`
     if (!moved.some(([f]) => f === from)) moved.push([from, pageAt(vault, name)])

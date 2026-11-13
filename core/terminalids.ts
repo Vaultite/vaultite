@@ -1,5 +1,5 @@
-// A terminal's id says what it runs: "<agent>-<random>", "<agent>_<profile>-…" (account), "resume-<agent>[_<profile>]-<session>",
-// then "@<machine>" when elsewhere; else a plain shell. Read and made only here; Node-free: the web imports it.
+// A terminal's id: "<agent>-<random>", "<agent>_<profile>-…" (account), "resume-<agent>[_<profile>]-<session>", then
+// "@<machine>" when elsewhere; else a plain shell.
 
 /** An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal"). */
 export const TERMINAL_AGENT = /^[a-z][a-z0-9]*(?:_[a-z0-9]{1,32})?$/

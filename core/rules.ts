@@ -1,5 +1,3 @@
-// The rules every plugin follows (plugins/CLAUDE.md, "The rules"), as checks: `npm run check` runs them on the app's
-// plugins, and the server on vault plugins before loading one (an app plugin fails; a vault plugin loads with warnings).
 import fs from "node:fs"
 import { isBuiltin } from "node:module"
 import path from "node:path"
@@ -12,14 +10,10 @@ import { isObj as isMap } from "./values.ts"
 
 const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
 const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
-/** A file that runs in Node: a backend's, or a test (test.ts, *.test.ts: never bundled into the app). */
 export const nodeSide = (file: string) => BACKEND.has(path.basename(file)) || /(^|\.)test\.ts$/.test(path.basename(file))
-/** The core's modules a plugin's backend may import: the plugin API (built-in plugins by path, vault plugins as VAULT_CORE). */
 const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts", "layout.ts"])
-/** What a vault plugin's backend imports the core as: "@vaultite/core/plugins.ts" (".ts" optional). */
 export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline|agents|layout)(?:\.ts)?$/
 
-/** The file of module `name` a plugin's manifest `exports` (its folder's name.ts, .tsx or name/index), or null. */
 export function exportFile(dir: string, name: string, manifest?: Record<string, unknown>): string | null {
   let m = manifest
   if (!m) try { m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { return null }
@@ -34,20 +28,15 @@ export const SHARED = new Set(["@vaultite", "react", "react/jsx-runtime", "react
 export const SHARED_EDITOR = new Set(["@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/commands",
   "@codemirror/search", "@codemirror/autocomplete", "@lezer/common", "@lezer/highlight"])
 
-/** The npm packages the app promises vault plugins, any file in them too ("react-dom/client"), at the versions its
- *  `dependencies` ship (`vau docs plugin-api`). Another library a plugin copies into its folder. Taking one out breaks plugins. */
+/** Promised to vault plugins, at the versions `dependencies` ship: taking one out breaks plugins written against it. */
 export const PLUGIN_PACKAGES = ["react", "react-dom", "lucide-react", "@codemirror/state", "@codemirror/view", "@codemirror/language",
   "@codemirror/commands", "@codemirror/search", "@codemirror/autocomplete", "@codemirror/lint", "@codemirror/lang-markdown",
   "@lezer/common", "@lezer/highlight", "@lezer/lr", "@replit/codemirror-vim", "@excalidraw/excalidraw", "katex", "mermaid",
   "turndown", "yaml", "lz-string", "@novnc/novnc", "ws", "sax"]
-/** "yaml", "@codemirror/view", "lucide-react/icons" -> the package's name. */
 export const packageOf = (spec: string) => spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/")
-/** Whether a vault plugin may import npm specifier `spec`: one of PLUGIN_PACKAGES or a file in one. */
 export const listedPackage = (spec: string) => PLUGIN_PACKAGES.includes(packageOf(spec))
-/** Why it can't import another (the check, the bundler and plugin.ts's resolve hook say the same). */
 export const UNLISTED = `not one of the npm packages the app gives plugins (${PLUGIN_PACKAGES.join(", ")}): copy the library into the plugin's folder and import it by its path`
 
-/** Every file under a folder (hidden files and node_modules left out), absolute paths, sorted. */
 export function walk(d: string): string[] {
   let names: fs.Dirent[]
   try {
@@ -60,17 +49,11 @@ export function walk(d: string): string[] {
 }
 
 export const inside = (dir: string, p: string) => p === dir || p.startsWith(dir + path.sep)
-/** A file of a plugin's that's part of its version (walk's files: no hidden ones, no node_modules): all a vault plugin
- *  may import or run, so what this machine approved (core/trust.ts) is all that runs. */
 export const hashed = (dir: string, p: string) => inside(dir, p) && !path.relative(dir, p).split(path.sep).some((s) => s.startsWith(".") || s === "node_modules")
   && !settingsFile(path.relative(dir, p)) && !userFilesOf(dir).has(path.relative(dir, p).split(path.sep).join("/"))
-/** Its settings, written as the user's (data.json, and `<name>.json` of plugin.settings({}, name)): a `.json` at its
- *  folder's top but manifest.json. Not its version, never imported, kept by installs and updates. */
 export const settingsFile = (rel: string) => /^[\w-]+\.json$/.test(rel) && rel !== "manifest.json"
 
 const CODE = /\.(m?[jt]sx?|cjs|css|wasm|sh|py|rb|pl)$/i
-/** The files a plugin writes as the user's own (its manifest's `userFiles`: Vim's init.vim): not its version, kept by
- *  updates, never imported. Data and settings, never code. */
 export function userFilesOf(dir: string): Set<string> {
   let m: Record<string, unknown> = {}
   try { m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { /* none */ }
@@ -79,10 +62,8 @@ export function userFilesOf(dir: string): Set<string> {
 }
 const userFileOk = (f: string) => /^[\w.-]+(\/[\w.-]+)*$/.test(f) && !f.split("/").some((s) => /^\.+$/.test(s) || s.startsWith(".")) && !CODE.test(f) && f !== "manifest.json"
 
-/** How long a manifest's `forAgents` line may be: every agent session reads every one that's on. */
 const FOR_AGENTS_MAX = 240
 
-/** What's wrong with a manifest (`name`: its folder's name; `ids`: every plugin there is). */
 export function manifestProblems(m: Record<string, unknown>, name: string, ids: Set<string>, where = "manifest.json") {
   const out: string[] = []
   if (m.id !== name) out.push(`${where}: id must be '${name}' (its folder's name)`)
@@ -99,7 +80,6 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
   if (m.icon !== undefined && (typeof m.icon !== "string" || !(ICON_NAME.test(m.icon) || ICON_FILE.test(m.icon)))) {
     out.push(`${where}: icon is a name ("heart-pulse": Lucide's) or an SVG file in its folder ("icon.svg")`)
   }
-  // One short line every agent reads while the plugin is on (core/plugins.ts agentLines): what it's for goes in its docs.
   if (m.forAgents !== undefined) {
     const t = m.forAgents, keys = isMap(m.settings) ? Object.keys(m.settings) : []
     if (typeof t !== "string" || !t.trim() || t.includes("\n") || t.length > FOR_AGENTS_MAX) out.push(`${where}: forAgents must be one line of at most ${FOR_AGENTS_MAX} characters (the rest goes in its AGENTS.md)`)
@@ -108,7 +88,6 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
   for (const k of ["requires", "enhances"]) {
     const v = m[k] ?? []
     if (!Array.isArray(v)) out.push(`${where}: ${k} must be a list of plugin ids`)
-    // (it may use or need one that moved out of the app, installed from Vaultite's plugins)
     else for (const other of v) if (!ids.has(other) && !Object.hasOwn(MOVED, other)) out.push(`${where}: ${k} '${other}', which isn't a plugin${k === "requires" ? " here (install it first)" : ""}`)
   }
   if (m.draws !== undefined && (!Array.isArray(m.draws) || m.draws.some((b) => typeof b !== "string" || !/^[\w-]+$/.test(b)))) {
@@ -117,8 +96,6 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
   return [...out, ...metaProblems(m, where), ...compatProblems(m, where)]
 }
 
-/** Who made it, where it's from, what it does beyond the vault, the other apps' plugins it stands in for: `version`, `author`,
- *  `repo`, `fundingUrl`, `disclosures`, `replaces`. All optional here; one installed needs `version` and `repo` (installProblems). */
 export function metaProblems(m: Record<string, unknown>, where = "manifest.json") {
   const out: string[] = []
   if (m.version !== undefined && (typeof m.version !== "string" || !VERSION.test(m.version))) out.push(`${where}: version must be a version like "1.0.0"`)
@@ -155,7 +132,6 @@ export function metaProblems(m: Record<string, unknown>, where = "manifest.json"
   return out
 }
 
-/** What's wrong with a manifest's `writes`, or []. */
 export function writesProblems(m: Record<string, unknown>, where = "manifest.json"): string[] {
   if (m.writes === undefined) return []
   const ok = Array.isArray(m.writes) && m.writes.every((w) => isMap(w) && typeof w.why === "string" && w.why.trim() &&
@@ -166,7 +142,6 @@ export function writesProblems(m: Record<string, unknown>, where = "manifest.jso
 
 const tidy = (s: string) => s.trim().replace(/^\/+|\/+$/g, "")
 
-/** What a plugin installed from a repository also needs: its `version` and `repo`, and the version its tag says. */
 export function installProblems(m: Record<string, unknown>, tag: string | null, where = "manifest.json") {
   const out: string[] = []
   if (m.version === undefined) out.push(`${where}: an installable plugin says its version ("version": "1.0.0")`)
@@ -175,8 +150,6 @@ export function installProblems(m: Record<string, unknown>, tag: string | null, 
   return out
 }
 
-/** Whether this app can run a plugin (core/version.ts): its manifest's `minAppVersion` (a version, "0.2.0": the oldest
- *  app it works in) and `apiVersion` (a whole number: the plugin API it was written for). Both optional. */
 export function compatProblems(m: Record<string, unknown>, where = "manifest.json", app = APP_VERSION, api = API_VERSION, minApi = MIN_API_VERSION) {
   const out: string[] = []
   if (m.minAppVersion !== undefined) {
@@ -194,8 +167,8 @@ export function compatProblems(m: Record<string, unknown>, where = "manifest.jso
   return out
 }
 
-/** What the folder's `.vaultiteignore` leaves out of an install (its tests, QA, fixtures): a line per path, `*` any
- *  name, a last `/` a folder; one without a slash in it matches at any depth, like .gitignore. */
+/** `.vaultiteignore`: a line per path, `*` any name, a last `/` a folder; one without a slash matches at any depth,
+ *  like .gitignore. */
 export function ignoreOf(dir: string): (rel: string) => boolean {
   let lines: string[] = []
   try { lines = fs.readFileSync(path.join(dir, ".vaultiteignore"), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")) } catch { /* none */ }
@@ -209,21 +182,15 @@ export function ignoreOf(dir: string): (rel: string) => boolean {
 
 type ImportRules = {
   dir: string
-  /** The app's folder (for the core and node_modules). */
   root: string
-  /** A vault plugin (stricter: see the top of this file). */
   vault: boolean
-  /** The plugins it requires, by id: their folders (it may import the modules they export: @plugins/<id>/<module>). */
   requires: Map<string, string>
-  /** A vault plugin's files its index.tsx reaches (frontFiles): any other is its backend's, like plugin.ts. */
+  /** Any other file is its backend's. */
   front?: Set<string>
 }
 
-/** The files of a plugin's own that its index.tsx imports, directly or not: what runs in the browser. */
 const frontFiles = (dir: string) => reached(dir, path.join(dir, "index.tsx"))
 
-/** Whether module `file` of a plugin (one it exports) imports the core's backend or Node's modules, directly or not: a
- *  backend's module, never in the browser (Cursor's account, which Grok Bot's backend reads). */
 export function backendOnly(dir: string, file: string) {
   return [...reached(dir, file)].some((f) => [...fs.readFileSync(f, "utf8").matchAll(IMPORT)].some((hit) => {
     const spec = hit[1] ?? hit[2] ?? hit[3]
@@ -231,7 +198,6 @@ export function backendOnly(dir: string, file: string) {
   }))
 }
 
-/** The files of a plugin's own that `from` imports, directly or not, `from` too. */
 function reached(dir: string, from: string): Set<string> {
   const seen = new Set<string>(), todo = [from]
   for (let f = todo.pop(); f; f = todo.pop()) {
@@ -248,13 +214,11 @@ function reached(dir: string, from: string): Set<string> {
   return seen
 }
 
-/** A module an app plugin exports, for a frontend: the app's own bundle has it (a packaged app ships no .tsx). */
 function appExport(root: string, dir: string, name: string) {
   if (path.dirname(dir) !== path.join(root, "plugins", "core")) return false
   try { return exportsOf(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"))).includes(name) } catch { return false }
 }
 
-/** What's wrong with one file's imports. `where`: how to name the file in a message. */
 function importProblems(file: string, src: string, where: string, rules: ImportRules): string[] {
   const out: string[] = []
   const backend = nodeSide(file) || (!!rules.front && !rules.front.has(file))
@@ -263,10 +227,9 @@ function importProblems(file: string, src: string, where: string, rules: ImportR
     const spec = hit[1] ?? hit[2] ?? hit[3]
     if (spec.startsWith(".") || path.isAbsolute(spec) || spec.startsWith("file:")) {
       const target = spec.startsWith("file:") ? spec : path.resolve(path.dirname(file), spec)
-      if (inside(rules.dir, target)) continue // its own folder
+      if (inside(rules.dir, target)) continue
       if (rules.vault) { say(spec, "a vault plugin imports only from its own folder, \"@vaultite\" and packages"); continue }
-      if (!backend) continue // (the check before this one didn't look at these)
-      // (the desktop app's contracts, Node-free, are the app's own plugins' too: never the plugin API)
+      if (!backend) continue
       if (inside(path.join(rules.root, "core", "desktop"), target)) continue
       const inCore = path.dirname(target) === path.join(rules.root, "core")
       const core = path.basename(target)
@@ -297,15 +260,12 @@ function importProblems(file: string, src: string, where: string, rules: ImportR
   return out
 }
 
-// Reading a settings file from disk: its path as text (".vaultite/plugins/x/data.json") or in parts (path.join(...,
-// ".vaultite", "plugins", "x")), on a line that reads something (help texts and comments only name them).
 const READS = /readFileSync|readFile\(|readText|\.abs\(|path\.join|\.config\(|fetch\(/
 const SETTINGS = [
   /\.vaultite\/plugins\.json|["']\.vaultite["']\s*,\s*["']plugins\.json["']/,
   /\.vaultite\/plugins\/([\w-]+)\/|["']\.vaultite["']\s*,\s*["']plugins["']\s*,\s*["']([\w-]+)["']|\.config\(\s*[`"']plugins\/([\w-]+)\//,
 ]
 
-/** Where one file reads another plugin's settings, or plugins.json, from disk rather than through the API. */
 export function settingsProblems(src: string, where: string, id: string): string[] {
   const out: string[] = []
   src.split("\n").forEach((line, i) => {
@@ -319,8 +279,7 @@ export function settingsProblems(src: string, where: string, id: string): string
   return out
 }
 
-/** Every rule a plugin folder breaks: its manifest's and every file's imports. `ids`: every plugin there is, with their
- *  tier ("core", "vault"). `label`: how to name the folder in messages. `dirOf`: a vault plugin's folder (else beside it). */
+/** `ids`: every plugin there is, with its tier. `dirOf`: a vault plugin's folder (else beside it). */
 export function pluginProblems(dir: string, root: string, ids: Map<string, string>, vault: boolean, label: string, manifest?: Record<string, unknown>,
   dirOf?: (id: string) => string) {
   const name = path.basename(dir)
@@ -331,7 +290,6 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
     return [`${label}: no readable manifest.json (${(e as Error).message})`]
   }
   const out = manifestProblems(m, name, new Set(ids.keys()), `${label}/manifest.json`)
-  // The app's plugins each name a category (the Plugins page groups by it); a vault plugin's is optional (else Other).
   if (!vault && !CATEGORIES.some((c) => c.id === m.category)) {
     out.push(`${label}/manifest.json: category must be one of ${CATEGORIES.map((c) => c.id).join(", ")} (core/categories.ts)`)
   }
@@ -342,12 +300,10 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
     try { svg = fs.statSync(file).size <= ICON_MAX ? fs.readFileSync(file, "utf8") : null } catch { /* none */ }
     if (!inside(dir, file) || svg === null || !svgIcon(svg)) out.push(`${label}/manifest.json: icon ${m.icon} must be an SVG file in its folder, at most ${ICON_MAX / 1000} kB, without scripts`)
   }
-  // (a vault plugin is off until turned on anyway)
   if (m.offByDefault !== undefined && (vault || m.offByDefault !== true)) {
     out.push(`${label}/manifest.json: offByDefault is for the app's plugins, and only true`)
   }
   if (vault && m.alwaysOn !== undefined) out.push(`${label}/manifest.json: alwaysOn is for the app's plugins`)
-  // (both place a switch: an alwaysOn plugin has none)
   if (m.group !== undefined && (m.alwaysOn === true || !groupOf(m.group))) {
     out.push(`${label}/manifest.json: group is for plugins with a switch, one of ${GROUPS.map((g) => g.id).join(", ")} (core/categories.ts)`)
   }
@@ -355,11 +311,9 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   if (sw !== undefined && (vault || m.alwaysOn === true || m.group !== undefined || !SWITCH_SECTIONS.some((x) => x === sw?.section) || typeof sw?.label !== "string" || !sw.label)) {
     out.push(`${label}/manifest.json: switchIn is {"section": ${SWITCH_SECTIONS.map((x) => `"${x}"`).join(" or ")}, "label": "..."}, for the app's plugins with a switch and no group`)
   }
-  // It imports the modules the plugins it requires export (an app plugin requires only the app's).
   const requires = new Map((Array.isArray(m.requires) ? m.requires as string[] : []).filter((r) => ids.has(r) && (vault || ids.get(r) === "core"))
     .map((r): [string, string] => [r, ids.get(r) === "core" ? path.join(root, "plugins", "core", r) : dirOf?.(r) ?? path.join(path.dirname(dir), r)]))
   for (const x of exportsOf(m)) if (!exportFile(dir, x, m)) out.push(`${label}/manifest.json: exports '${x}', which isn't a module in its folder (${x}.ts, ${x}.tsx or ${x}/index.ts)`)
-  // (what its .vaultiteignore leaves out of an install, its tests and QA, never runs in the app)
   const ignored = ignoreOf(dir)
   const front = vault ? frontFiles(dir) : undefined
   for (const file of walk(dir)) {
@@ -371,13 +325,10 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   return out
 }
 
-/** The keys of `<key>: { ... }` in a plugin's definePlugin (index.tsx's source; depth 1 only, strings and comments
- *  skipped): "blocks", the blocks it draws in the app; "icons", the icons it adds by name; "sidebar", its panels. */
 function defKeys(src: string, key: "blocks" | "icons" | "sidebar"): string[] {
   return defEntries(src, key).map((e) => e.key)
 }
 
-/** defKeys with each key's value as source text. */
 function defEntries(src: string, key: "blocks" | "icons" | "sidebar"): { key: string; value: string }[] {
   const at = src.search(new RegExp(`\\b${key}:\\s*\\{`))
   if (at < 0) return []
@@ -403,24 +354,20 @@ function defEntries(src: string, key: "blocks" | "icons" | "sidebar"): { key: st
   return out.map(({ key, value }) => ({ key, value }))
 }
 
-/** Every icon a manifest can name (npm run check and a plugin's CI, where the app's source is): Lucide's (their own
- *  names, not old ones it keeps for imports) and those the app's plugins add (`icons` in their definition). */
+/** Lucide's own names, not the old ones it keeps for imports. */
 export function iconNames(root: string): Set<string> {
   let lucide = ""
   try { lucide = fs.readFileSync(path.join(root, "node_modules", "lucide-react", "dist", "esm", "icons", "index.mjs"), "utf8") } catch { /* none */ }
   const out = new Set([...lucide.matchAll(/from '\.\/([\w-]+)\.mjs'/g)].map((m) => m[1]))
   for (const d of walk(path.join(root, "plugins", "core")).filter((f) => path.basename(f) === "index.tsx")) for (const k of defKeys(fs.readFileSync(d, "utf8"), "icons")) out.add(k)
-  // (and the app's own names: web/src/core/pages.ts ICONS)
   let own = ""
   try { own = /export const ICONS[^=]*=\s*\{([^}]*)\}/.exec(fs.readFileSync(path.join(root, "web", "src", "core", "pages.ts"), "utf8"))?.[1] ?? "" } catch { /* none */ }
   for (const m of own.matchAll(/"?([\w-]+)"?:\s*\w+/g)) out.add(m[1])
   return out
 }
 
-/** The agent blocks `codingAgent(plugin, ...)` gives a coding agent plugin a text side for (core/agents.ts). */
 export const USAGE_BLOCKS = ["agent-sessions", "agent-usage", "agent-projects", "agent-models", "agent-project"]
 
-/** The blocks a plugin's backend gives a text side (`plugin.block("<name>", ...)` in its .ts files, or codingAgent). */
 function textBlockNames(dir: string): string[] {
   const out = new Set<string>()
   for (const f of walk(dir)) {
@@ -432,8 +379,6 @@ function textBlockNames(dir: string): string[] {
   return [...out]
 }
 
-/** What breaks a plugin's declarations: its blocks' and settings' own problems, a drawn block that isn't declared or
- *  has no text side, a declared block it doesn't draw, a sidebar panel with no tab to show it in. */
 export function blockProblems(dir: string, m: Record<string, unknown>, label: string): string[] {
   const where = `${label}/manifest.json`
   const out = [...declProblems(m.blocks, where), ...settingDeclProblems(m.settings, where)]

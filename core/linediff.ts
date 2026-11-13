@@ -1,19 +1,14 @@
-// Line diffs fast at any size: common ends trimmed, unique lines as anchors (patience), Myers' between. A stretch too
-// tangled to compare cheaply is told as replaced: never wrong, at worst longer. No Node: both sides use it.
 import type { Opcode } from "./textedit.ts"
 
-/** Past this many steps of Myers' diff in one stretch, it's told as replaced. */
 const BUDGET = 4_000_000
-/** Stretches this short (lines on both sides) are compared by Myers' alone. */
 const SHORT = 2000
 
 /** How to turn a into b, as textedit's opcodes (equal runs and changed runs), for any number of lines. */
 export function diffLines(a: string[], b: string[]): Opcode[] {
-  // Lines as numbers: compared by identity from here on.
   const ids = new Map<string, number>()
   const id = (s: string) => { let n = ids.get(s); if (n === undefined) ids.set(s, n = ids.size); return n }
   const A = Int32Array.from(a, id), B = Int32Array.from(b, id)
-  const blocks: [number, number, number][] = [] // [i, j, size]: A[i..i+size) equals B[j..j+size)
+  const blocks: [number, number, number][] = []
   const todo: [number, number, number, number][] = [[0, A.length, 0, B.length]]
   while (todo.length) {
     let [alo, ahi, blo, bhi] = todo.pop()!
@@ -24,7 +19,6 @@ export function diffLines(a: string[], b: string[]): Opcode[] {
     while (ahi - k > alo && bhi - k > blo && A[ahi - k - 1] === B[bhi - k - 1]) k++
     if (k) { blocks.push([ahi - k, bhi - k, k]); ahi -= k; bhi -= k }
     if (alo === ahi || blo === bhi) continue
-    // (a short stretch gets the shortest diff; anchors are for long ones)
     const anchors = ahi - alo + bhi - blo > SHORT ? unique(A, B, alo, ahi, blo, bhi) : []
     if (anchors.length) {
       let pi = alo, pj = blo
@@ -55,7 +49,6 @@ export function diffLines(a: string[], b: string[]): Opcode[] {
   return out
 }
 
-/** Lines found exactly once in each stretch, paired, the longest run of them in the same order on both sides. */
 function unique(A: Int32Array, B: Int32Array, alo: number, ahi: number, blo: number, bhi: number): [number, number][] {
   const inA = new Map<number, number>(), inB = new Map<number, number>()
   for (let i = alo; i < ahi; i++) inA.set(A[i], inA.has(A[i]) ? -1 : i)
@@ -105,7 +98,7 @@ function path(trace: Int32Array[], dEnd: number, n: number, m: number, alo: numb
     const k = x - y
     const pk = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1
     const px = at(pk), py = px - pk
-    const sx = pk === k + 1 ? px : px + 1 // where this step's snake starts
+    const sx = pk === k + 1 ? px : px + 1
     if (x > sx) out.push([alo + sx, blo + sx - k, x - sx])
     x = px; y = py
   }

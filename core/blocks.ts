@@ -1,5 +1,3 @@
-// The block contract: what a ```block-<name> fence may say, declared in each plugin's manifest (format:
-// core/docs/vault-plugins.md), read by server and app alike (no Node). Bad options still pass, with a note to fix them.
 import { blockName, blocksIn } from "./sections.ts"
 import { load } from "./yaml.ts"
 import { isObj as isMap, strings } from "./values.ts"
@@ -20,19 +18,17 @@ export type OptionDecl = {
 }
 export type BlockDecl = { description: string; options?: Record<string, OptionDecl>
   /** Where its live data comes from, in words ("GitHub's API"), when it shows what isn't in the vault: "Show source"
-   *  says it (core/sources.ts). */
+   *  says it. */
   live?: string
   /** Vault paths it reads that its text side can't show it reading (a block drawn only in the app). */
   reads?: string[]
   /** The option naming who draws it: a plugin whose manifest's `draws` lists it (`block-agent-usage` with `agent: codex`,
    *  Codex's). It takes the ids of those that are on; with that plugin off, the block is off. */
   by?: string }
-/** A manifest's `blocks`: name -> declaration. */
 export type BlockDecls = Record<string, BlockDecl>
 
 const TYPES: OptionType[] = ["string", "number", "boolean", "list", "map", "enum"]
 
-/** Options every block takes, read by the core rather than the block: the dashboard grid's layout and `file:`. */
 export const COMMON: Record<string, OptionDecl> = {
   wide: { type: "boolean", description: "on a dashboard, the block takes the whole row" },
   stack: { type: "boolean", description: "on a dashboard, the block goes under the one before it, in the same column" },
@@ -55,8 +51,6 @@ export function fenceLayout(info: string, body: string): Layout {
   return { wide: words.includes("wide"), stack: words.includes("stack") }
 }
 
-/** The info line of a fence that isn't a ```block-<name> with one layout word put in or taken out (`tasks` -> `tasks
- *  wide`): its language first, its other words kept, then the layout's in order. */
 export function infoWithLayout(info: string, key: LayoutKey, on: boolean): string {
   const [lang = "", ...rest] = info.trim().split(/\s+/)
   const set = new Set(rest.filter((w) => w !== key && (LAYOUT as string[]).includes(w)))
@@ -64,15 +58,13 @@ export function infoWithLayout(info: string, key: LayoutKey, on: boolean): strin
   return [lang, ...rest.filter((w) => !(LAYOUT as string[]).includes(w)), ...LAYOUT.filter((k) => set.has(k))].join(" ")
 }
 
-/** Which of a file's kind's blocks (`Kind.blocksFor`) its body has no fence of. One drawn for another file (`file:`)
- *  isn't its own. */
 export function unplaced(view: string[] | undefined, body: string): string[] {
   if (!view?.length) return []
   const placed = new Set(blocksIn(body).filter((b) => !/^\s*file\s*:/m.test(b.text)).map((b) => b.name))
   return view.filter((n) => !placed.has(n))
 }
 
-/** A body with the fences of its kind's blocks it has none of written on its top, or null when it has them all. */
+/** null when it has them all. */
 export function withKindBlocks(view: string[] | undefined, body: string): string | null {
   const missing = unplaced(view, body)
   if (!missing.length) return null
@@ -82,37 +74,29 @@ export function withKindBlocks(view: string[] | undefined, body: string): string
 
 const types = (d: OptionDecl) => (Array.isArray(d.type) ? d.type : [d.type])
 
-/** A manifest's `blocks` as declarations ({} when it has none, or they aren't an object). Entries that aren't objects
- *  are left out here; declProblems says what's wrong with them. */
 export function declsOf(manifest: unknown): BlockDecls {
   const b = isMap(manifest) ? manifest.blocks : null
   return isMap(b) ? Object.fromEntries(Object.entries(b).filter(([, d]) => isMap(d))) as BlockDecls : {}
 }
 
-/** A manifest's `draws`: blocks other plugins declare that it draws (their declaration's `by` names it). */
 export function drawsOf(manifest: unknown): string[] {
   const d = isMap(manifest) ? manifest.draws : null
   return strings(d)
 }
 
-/** A declaration with its `by` option taking only `ids`: the plugins that draw it and are on. */
 export function drawnBy(decl: BlockDecl, ids: string[]): BlockDecl {
   const o = decl.by ? decl.options?.[decl.by] : undefined
   return o ? { ...decl, options: { ...decl.options, [decl.by!]: { ...o, type: "enum", values: ids } } } : decl
 }
 
-/** Every option a block takes: its own, then the common ones. */
 export function allOptions(decl: BlockDecl | null | undefined): Record<string, OptionDecl> {
   return { ...(decl?.options ?? {}), ...COMMON }
 }
 
-/** A block's text read as options: {} when it's empty; `error` when it isn't YAML or isn't `key: value` lines (the
- *  block still gets {}). The way both the server and the app read them. */
 export function parseOptions(text: string): { options: Record<string, unknown>; error?: string } {
   let r = parsed.get(text)
   if (r) return r
   r = parseFresh(text)
-  // (a dashboard's render read each block's options four times, YAML each time: a third of a tab switch)
   if (parsed.size >= 500) parsed.delete(parsed.keys().next().value!)
   parsed.set(text, r)
   return r
@@ -131,8 +115,7 @@ function parseFresh(text: string): { options: Record<string, unknown>; error?: s
   return isMap(o) ? { options: o } : { options: {}, error: "its options should be `key: value` lines" }
 }
 
-/** The options as a block gets them: the declared defaults filled in where one is left out (or empty), and a number
- *  made text where only a text is declared (`title: 2026`: YAML reads a number). */
+/** A number is made text where only a text is declared: YAML reads `title: 2026` as a number. */
 export function resolveOptions(decl: BlockDecl | null | undefined, options: Record<string, unknown>): Record<string, unknown> {
   const out = { ...options }
   for (const [k, d] of Object.entries(decl?.options ?? {})) {
@@ -144,10 +127,8 @@ export function resolveOptions(decl: BlockDecl | null | undefined, options: Reco
 
 const say = (v: unknown) => (typeof v === "string" ? `"${v}"` : JSON.stringify(v))
 
-/** What an option takes, in words: "a number", "true or false", "one of table, list", "a text or a list". */
 export function typeText(d: OptionDecl): string {
   const ts = types(d)
-  // (true, false and an enum's values read as one choice: "true, false or only")
   const both = ts.includes("boolean") && ts.includes("enum")
   const words = ts.flatMap((t) => both && t === "boolean" ? [] : t === "enum"
     ? [both ? ["true", "false", ...(d.values ?? [])].join(", ").replace(/, ([^,]*)$/, " or $1") : d.values?.length ? `one of ${d.values.join(", ")}` : "one of none (no plugin that draws it is on)"]
@@ -155,7 +136,7 @@ export function typeText(d: OptionDecl): string {
   return words.join(" or ")
 }
 
-/** Whether a value fits an option's declaration ("" when it does, else what's wrong). Empty (null) always fits. */
+/** "" when it fits, else what's wrong. */
 export function valueProblem(d: OptionDecl, v: unknown): string {
   if (v === null || v === undefined) return ""
   const ts = types(d)
@@ -178,7 +159,6 @@ export function valueProblem(d: OptionDecl, v: unknown): string {
   return ""
 }
 
-/** The closest name to a mistyped one (an edit or two away, or one it starts), or null. */
 export function closest(name: string, names: string[]): string | null {
   const low = name.toLowerCase()
   let best: string | null = null, score = 3
@@ -189,7 +169,6 @@ export function closest(name: string, names: string[]): string | null {
   return best
 }
 
-/** Edit distance (Levenshtein) between two strings. */
 export function distance(a: string, b: string) {
   const row = Array.from({ length: b.length + 1 }, (_, j) => j)
   for (let i = 1; i <= a.length; i++) {
@@ -204,8 +183,6 @@ export function distance(a: string, b: string) {
   return row[b.length]
 }
 
-/** What's wrong with a block's options against its declaration, one lowercase fragment each ("unknown option `isues`
- *  (did you mean `issues`?)"). [] when nothing is or there's no declaration; `error` (parseOptions') comes first. */
 export function optionNotes(decl: BlockDecl | null | undefined, options: Record<string, unknown>, error?: string): string[] {
   const out = error ? [error] : []
   if (!decl) return out
@@ -226,20 +203,16 @@ export function optionNotes(decl: BlockDecl | null | undefined, options: Record<
   return out
 }
 
-/** The notes as one italic line for /api/render, under the block's text: "_(github block: unknown option `isues`)_". */
 export function notesText(name: string, notes: string[]) {
   return notes.length ? `_(${name} block: ${notes.join("; ")})_` : ""
 }
 
-/** What /api/render shows for a block drawn only in the app (its plugin has no text side): its declaration's
- *  description, so an AI knows what's there. */
 export function fallbackText(pluginName: string, decl: BlockDecl | null | undefined) {
   return decl?.description ? `_(${pluginName}: ${decl.description}; drawn in the app only)_` : `_(${pluginName} draws this block in the app only)_`
 }
 
 const ONE_LINE = (s: unknown) => typeof s === "string" && !!s.trim() && !s.includes("\n")
 
-/** What's wrong with a manifest's `blocks` (a plugin's own declarations), as messages naming `where`. */
 export function declProblems(blocks: unknown, where: string): string[] {
   if (blocks === undefined) return []
   if (!isMap(blocks)) return [`${where}: blocks must be an object, {"<name>": {"description": "...", "options": {...}}}`]
@@ -265,7 +238,6 @@ export function declProblems(blocks: unknown, where: string): string[] {
   return out
 }
 
-/** What's wrong with one option's declaration (a block's option or a setting), as messages starting with `ok`. */
 function optionProblems(o: unknown, ok: string): string[] {
   if (!isMap(o)) return [`${ok} must be an object with a type and a description`]
   const out: string[] = []
@@ -285,7 +257,6 @@ function optionProblems(o: unknown, ok: string): string[] {
   return out
 }
 
-/** One option for people and AIs: "`issues` (a number, default 0): how many open issues to list". */
 export function optionText(k: string, d: OptionDecl) {
   const bits = [typeText(d)]
   if (d.default !== undefined) bits.push(`default ${typeof d.default === "string" ? d.default : JSON.stringify(d.default)}`)
@@ -296,8 +267,6 @@ export function optionText(k: string, d: OptionDecl) {
   return `\`${k}\` (${bits.join(", ")}): ${d.description}`
 }
 
-/** A plugin's blocks as Markdown, for its docs (`vau docs <id>`, core/docs.ts; generated from the declarations, so it can't drift):
- *  one bullet per block, its options under it. "" when it has none. */
 export function blocksDoc(decls: BlockDecls): string {
   const names = Object.keys(decls)
   if (!names.length) return ""
@@ -309,8 +278,6 @@ export function blocksDoc(decls: BlockDecls): string {
   }
   return lines.join("\n")
 }
-
-// ---------- a plugin's settings
 
 /** A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip
  *  it). Choosing the `default` removes the key, so a vault only holds what the user chose. */
@@ -327,14 +294,11 @@ export type SettingDecl = OptionDecl & { label: string; labels?: Record<string, 
   choices?: string }
 export type SettingDecls = Record<string, SettingDecl>
 
-/** A manifest's `settings` as declarations ({} when it has none). */
 export function settingsOf(manifest: unknown): SettingDecls {
   const s = isMap(manifest) ? manifest.settings : null
   return isMap(s) ? Object.fromEntries(Object.entries(s).filter(([, d]) => isMap(d))) as SettingDecls : {}
 }
 
-/** What's wrong with a manifest's `settings`, as messages naming `where`: each like a block option (declProblems),
- *  plus its `label` and an enum's `labels`. */
 export function settingDeclProblems(settings: unknown, where: string): string[] {
   if (settings === undefined) return []
   if (!isMap(settings)) return [`${where}: settings must be an object, {"<key>": {"type": ..., "label": ..., "description": ...}}`]
@@ -361,8 +325,6 @@ export function settingDeclProblems(settings: unknown, where: string): string[] 
   return out
 }
 
-/** A plugin's settings as Markdown, for its docs (generated, like blocksDoc): where they're kept, then a
- *  bullet per key. "" when it declares none. */
 export function settingsDoc(id: string, decls: SettingDecls): string {
   const keys = Object.keys(decls)
   if (!keys.length) return ""

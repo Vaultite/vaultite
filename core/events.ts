@@ -1,5 +1,3 @@
-// Events: what happens in the vault as one typed stream for agents, scripts and plugins (types: core/docs/events.md).
-// Kept in memory only (the last KEEP), so a waiter passing its last cursor misses nothing; a restart starts from now.
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { defineOp, type Op } from "./ops.ts"
 import type { Vault } from "./vault.ts"
@@ -10,7 +8,6 @@ const log = logger("events")
 export type VaultEvent = { type: string; seq: number; t: number; cursor: string; [k: string]: unknown }
 export type EventFilter = { types?: string[]; path?: string }
 
-/** The event types the core emits, and what each carries (the docs and `vau events --help` list them). */
 export const EVENT_TYPES: Record<string, string> = {
   "file.changed": "files changed on disk, whoever changed them: {paths} (null: anything may have)",
   "file.moved": "a file or folder moved through the API, or restored from .trash: {from, to}",
@@ -21,7 +18,6 @@ export const EVENT_TYPES: Record<string, string> = {
 const KEEP = 500
 const ID = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/
 
-/** The paths an event is about: its `paths`, `path`, `from` and `to`. */
 function pathsOf(ev: Record<string, unknown>): string[] {
   const out: string[] = []
   if (Array.isArray(ev.paths)) for (const p of ev.paths) if (typeof p === "string") out.push(p)
@@ -29,24 +25,21 @@ function pathsOf(ev: Record<string, unknown>): string[] {
   return out
 }
 
-/** Does a type match one of the filter's (a type, or an area: "file", "file.*")? */
 export function typeMatches(type: string, wanted: string[] | undefined) {
   if (!wanted?.length) return true
   return wanted.some((w) => w === type || w === "*" || (w.endsWith(".*") ? type.startsWith(w.slice(0, -1)) : type.startsWith(`${w}.`)))
 }
 
-/** The event as this filter sees it (file.changed's paths narrowed to the prefix), or null when it doesn't match. */
 export function matching(ev: VaultEvent, f: EventFilter): VaultEvent | null {
   if (!typeMatches(ev.type, f.types)) return null
   const pre = f.path?.trim().replace(/^\/+/, "")
   if (!pre) return ev
-  if (ev.type === "file.changed" && ev.paths === null) return ev // anything may have changed: that path too
+  if (ev.type === "file.changed" && ev.paths === null) return ev
   const hit = pathsOf(ev).filter((p) => p.startsWith(pre))
   if (!hit.length) return null
   return Array.isArray(ev.paths) ? { ...ev, paths: (ev.paths as string[]).filter((p) => p.startsWith(pre)) } : ev
 }
 
-/** A filter from text (a query string, CLI flags): types as "a,b". */
 function filterOf(types: unknown, path: unknown): EventFilter {
   const t = Array.isArray(types) ? types.map(String) : typeof types === "string" ? types.split(",") : []
   return { types: t.map((x) => x.trim()).filter(Boolean), ...(typeof path === "string" && path.trim() ? { path: path.trim() } : {}) }
@@ -60,7 +53,6 @@ export class Events {
   private recent: VaultEvent[] = []
   private listeners = new Set<Listener>()
 
-  /** Tell everyone listening; the event as it went out. A listener that throws is logged, never stops the others. */
   emit(type: string, data: Record<string, unknown> = {}): VaultEvent {
     if (!ID.test(type)) throw new Error(`an event type is area.name, lowercase (file.changed), not '${type}'`)
     const seq = ++this.seq
@@ -75,20 +67,17 @@ export class Events {
     return ev
   }
 
-  /** fn for each event matching the filter, from now on; the function returned stops it. */
   on(filter: EventFilter, fn: (ev: VaultEvent) => void) {
     const l = { filter, fn }
     this.listeners.add(l)
     return () => { this.listeners.delete(l) }
   }
 
-  /** The cursor of the newest event (what `after` takes to mean "from now on"). */
   get cursor() {
     return `${this.boot}:${this.seq}`
   }
 
-  /** The kept events after a cursor (none given, or one from another boot: none) that match, oldest first, at most
-   *  `limit`. `missed`: events after the cursor were already let go of. */
+  /** A cursor from another boot gets none. `missed`: events after the cursor were already let go of. */
   since(after: string | null | undefined, filter: EventFilter, limit = 100): { events: VaultEvent[]; missed: boolean } {
     const [boot, n] = String(after ?? "").split(":")
     if (boot !== this.boot || !/^\d+$/.test(n ?? "")) return { events: [], missed: false }
@@ -98,13 +87,10 @@ export class Events {
     return { events, missed }
   }
 
-  /** The last `limit` kept events that match, oldest first. */
   last(filter: EventFilter, limit = 50): VaultEvent[] {
     return this.recent.flatMap((e) => matching(e, filter) ?? []).slice(-limit)
   }
 
-  /** The matching events after `after` (or from now, without one); when there are none yet, waits for the first one,
-   *  at most `ms` (then none). An `abort` signal ends the wait early (a client gone). */
   async wait(filter: EventFilter, after: string | null | undefined, ms: number, abort?: AbortSignal): Promise<{ events: VaultEvent[]; missed: boolean; cursor: string }> {
     const start = after && after.startsWith(`${this.boot}:`) ? after : this.cursor
     const now = this.since(start, filter)
@@ -123,15 +109,13 @@ export class Events {
 
 const buses = new WeakMap<Vault, Events>()
 
-/** The vault's event bus (made on first use). */
 export function eventsOf(vault: Vault): Events {
   let b = buses.get(vault)
   if (!b) buses.set(vault, b = new Events())
   return b
 }
 
-/** GET /api/events/stream: matching events as Server-Sent Events, a comment every 25 s so proxies keep it open.
- *  `?after=` (or Last-Event-ID on reconnect) first sends the kept events since then. */
+/** A comment every 25 s so proxies keep the stream open; Last-Event-ID is the browser's on a reconnect. */
 export function stream(bus: Events, req: IncomingMessage, res: ServerResponse, query: Record<string, string>) {
   const filter = filterOf(query.types ?? query.type, query.path)
   res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" })
@@ -146,7 +130,6 @@ export function stream(bus: Events, req: IncomingMessage, res: ServerResponse, q
   res.on("close", end)
 }
 
-/** A short summary of an op's parameters for op.done: long text cut, lists shortened, objects named by their keys. */
 export function summary(params: Record<string, unknown>): Record<string, unknown> {
   const short = (v: unknown, depth = 0): unknown => {
     if (typeof v === "string") return v.length > 120 ? `${v.slice(0, 117)}...` : v
@@ -159,8 +142,6 @@ export function summary(params: Record<string, unknown>): Record<string, unknown
 
 const MAX_WAIT = 300
 
-/** The events' own operations: waiting for the next ones (for an agent that can't hold a stream: MCP) and the recent
- *  ones. */
 export function eventOps(): Op[] {
   const filterParams = {
     types: { type: "array" as const, items: { type: "string" as const }, description: "event types or areas (file.changed, op.done, file); all when left out" },

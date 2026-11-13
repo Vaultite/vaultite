@@ -7,7 +7,7 @@ import { promisify } from "node:util"
 if (process.platform === "win32") {
   type Fn = (...a: unknown[]) => unknown
   const hidden = (o: unknown) => (o && typeof o === "object" && !Array.isArray(o) ? { windowsHide: true, ...o } : o)
-  /** `fn` with `windowsHide` added to its options (wherever they are: after the command, or after its args). */
+  /** Node's options come after the command or after its args. */
   const hide = (fn: Fn): Fn => function (this: unknown, ...a: unknown[]) {
     const at = a.findIndex((x, i) => i > 0 && (typeof x === "function" || (x !== null && typeof x === "object" && !Array.isArray(x))))
     if (at > 0 && typeof a[at] !== "function") a[at] = hidden(a[at])

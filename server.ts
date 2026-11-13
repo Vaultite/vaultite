@@ -1,5 +1,3 @@
-// Vaultite's server: the web app and a JSON API over the vault (core/app.ts). The desktop app runs one per vault as
-// its child (VAULTITE_DESKTOP=1, outside files over IPC: core/outside.ts); the web can switch vaults (core/vaults.ts).
 import "./core/winspawn.ts"
 import { errorContext, onServerError, startServerLog } from "./core/serverlog.ts"
 import { logger } from "./core/log.ts"
@@ -21,12 +19,11 @@ import type { FileAnswer as Answered } from "./core/plugins.ts"
 import type { Live as LiveType } from "./core/live.ts"
 import type { Vault } from "./core/vault.ts"
 
-// Node's compile cache halves a start (the desktop app starts a server per window); it must be on before the app's
-// modules load, so they're imported below rather than above.
+// Node's compile cache must be on before the app's modules load, so they're imported below rather than above.
 module.enableCompileCache?.()
 // Vault files are read on libuv's threads (core/vault.ts, readSoon): one iCloud holds keeps its thread, so have many.
 process.env.UV_THREADPOOL_SIZE ??= "128"
-startServerLog() // the log's lines dated, its errors heard (plugin.onServerError: the Errors plugin)
+startServerLog()
 const log = logger("vaultite")
 // A test's server (VAULTITE_PARENT_PID: tools/test/lib.ts testServer) ends with its test however that ended, from a thread
 // of its own: a main thread held (a read that never returns) can't keep it alive.
@@ -47,7 +44,7 @@ const { served: web } = await import("./core/webbuild.ts")
 const { flushKept } = await import("./core/kept.ts")
 const events = await import("./core/events.ts")
 Live.web = () => web.read().entry
-web.on(() => Live.newWeb()) // (a web-only update or a build by hand restarts nothing: open pages hear of it here)
+web.on(() => Live.newWeb())
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
@@ -66,14 +63,11 @@ const PORT = Number(process.env.PORT || 8793)
 process.env.PORT = String(PORT) // (what the plugins' names go by: Terminal's terminal server; unset, an app serves nothing)
 const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 
-// The server answers while it reads the vault, so the web app's files load meanwhile; what needs the vault waits for
-// `ready`. A vault that can't be opened still ends the server.
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
 const { TEST_HEADER, REFUSED_FILE, inTestRun, isOwnVault, keepRefusal, refuseOwnVault } = await import("./core/testrun.ts")
 const { runtimeDir } = await import("./core/runtime.ts")
 const ownVault = refuseOwnVault(VAULT_AT, "a test's server")
 if (ownVault) { log.error(ownVault); process.exit(1) }
-// (the user's own server: a test run's vau is refused, and kept for that run's end to fail it: tools/test/isolate.ts)
 let refusesTests = !inTestRun() && isOwnVault(VAULT_AT)
 await vaultThere(VAULT_AT)
 let servedBy = claim(VAULT_AT, PORT, DESKTOP)
@@ -88,19 +82,17 @@ const ready = open(VAULT_AT, { timing: starting, watch: (v) => { live = new Live
   vault = a.vault
   watch(live)
   a.scheduler.start()
-  keepDownloaded(VAULT_AT, path.join(LOCAL, "icloud.json")) // (a vault in iCloud Drive: so iCloud stops evicting its files)
+  keepDownloaded(VAULT_AT, path.join(LOCAL, "icloud.json"))
   for (const p of vault.problemList()) log.info(`${p.file}: ${p.problem}`)
   log.info(`vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
   starting.end()
-  module.flushCompileCache?.() // written now: a server usually ends by a signal, which doesn't write it
+  module.flushCompileCache?.() // Node writes the cache only on a normal exit, and a server ends by a signal
 }, (e) => {
   log.error("couldn't open the vault", e)
   process.exit(1)
 })
-onServerError((e) => app?.serverError(e)) // (one before the vault is read has nobody to hear it but the log)
+onServerError((e) => app?.serverError(e))
 
-/** A vault named that isn't there (a typo, a drive not connected) isn't made unasked: a terminal is asked; without one
- *  it's made only in a folder that's there. */
 async function vaultThere(p: string) {
   if (!process.env.VAULTITE_VAULT || fs.existsSync(p)) return
   if (process.stdin.isTTY) {
@@ -113,30 +105,27 @@ async function vaultThere(p: string) {
   process.exit(1)
 }
 
-/** Plugins that follow changes on disk (plugin.onChange) hear of each, after the vault read them. */
 function watch(l: LiveType) {
   l.listen((c) => app.changed(c.paths))
-  app.ui = l.drive // ops drive the user's window the way POST /api/ui does
+  app.ui = l.drive
   app.presence = { list: () => l.present(), tell: (device, msg) => l.tell(device, msg) }
   app.liveMark = () => l.mark()
   return l
 }
 
-/** Serve another vault (Manage vaults, on the web): read it, then every request and socket goes to it. Open apps are
- *  disconnected from the old one's events and reload everything when they reconnect. */
 async function switchTo(p: string) {
   const own = refuseOwnVault(p, "a test's server")
   if (own) throw new HTTPError(403, own)
   const other = claim(p, PORT, DESKTOP)
   if (other) throw new HTTPError(409, `${p} is served on this machine already (port ${other.port})`)
   await vault.lock(async () => {
-    await app.vaultPlugins.close() // the old vault's own plugins stop (their onUnload runs)
+    await app.vaultPlugins.close()
     app.scheduler.stop()
     let next
     try {
-      next = await open(p) // (plugins are the same modules: they now see the new vault)
+      next = await open(p)
     } catch (e) {
-      for (const plugin of app.app) plugin.vault = vault // still the old one
+      for (const plugin of app.app) plugin.vault = vault
       LOADED.splice(0, LOADED.length, ...app.app)
       await app.syncPlugins()
       app.scheduler.start()
@@ -156,16 +145,13 @@ async function switchTo(p: string) {
   log.info(`now serving ${p}`)
 }
 
-// The desktop app's main process: files from outside the vault its window may open.
 onHostMessage("allow", (m) => allow(m.paths))
-// (its app's next code root's web build, when only that changed: served from now on, the pages told; never an attached app's)
 const roots = (await import("./core/update/lease.ts")).rootsHeld(import.meta.filename, "server")
 void roots.take(web.dist)
 onHostMessage("adopt-web", (m) => {
   if (DESKTOP && typeof m.dist === "string" && path.isAbsolute(m.dist) && fs.existsSync(path.join(m.dist, "index.html"))) { web.adopt(m.dist); void roots.take(m.dist) }
 })
-// Going (the app gone, even if it crashed; a stop): the vault's own plugins stop first (onUnload), so what they run does.
-// (listening the whole time: signal-exit kills the process at once when it's the only listener left)
+// signal-exit kills the process at once when it's the only listener left: listen the whole time
 let going = false
 const bye = (code: number) => {
   if (going) process.exit(code)
@@ -173,8 +159,6 @@ const bye = (code: number) => {
   flushKept()
   void Promise.race([app?.vaultPlugins.close(), new Promise((r) => setTimeout(r, 1000))]).finally(() => process.exit(code))
 }
-// An app's server ends with its app, unless the app is relaunching (its update): then it waits a while for the new one
-// to take it over (electron/main.ts adopts it), and a socket the app attached by (not its fork) gets a moment to come back.
 const RELAUNCH_WAIT_MS = 30_000, SOCKET_WAIT_MS = 10_000
 let heir: { app: string; until: number } | null = null, lingering: ReturnType<typeof setTimeout> | null = null
 onHostMessage("desktop:relaunching", (m) => { if (DESKTOP && typeof m.app === "string") heir = { app: m.app, until: Date.now() + RELAUNCH_WAIT_MS } })
@@ -192,21 +176,16 @@ if (DESKTOP) onHost(() => {
 process.on("SIGTERM", () => bye(143))
 process.on("SIGINT", () => bye(130))
 
-/** Text worth compressing (images, fonts and media already are). */
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|manifest\+json|wasm)|image\/svg)/
 const brotli = (data: Buffer, quality: number) => zlib.brotliCompressSync(data, { params: {
   [zlib.constants.BROTLI_PARAM_QUALITY]: quality, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } })
 
-/** The encoding to compress an answer in for this client, or null: only over the network (overNetwork), for text of
- *  1 KB or more, when the client takes it. */
 function encodingFor(req: http.IncomingMessage | undefined, type: string, size: number) {
   if (!req || size < 1024 || !COMPRESSIBLE.test(type) || !overNetwork(req)) return null
   const accepts = String(req.headers["accept-encoding"] ?? "")
   return /\bbr\b/.test(accepts) ? "br" : /\bgzip\b/.test(accepts) ? "gzip" : null
 }
 
-/** An answer. Over the network (the phone) a 200 GET gets an ETag (a reload is a 304) and text is brotli'd; the app on
- *  this Mac gets answers as they are, since bytes cost nothing there. Resolves once it's sent. */
 async function send(res: http.ServerResponse, status: number, body: string | Buffer, type: string, headers: Record<string, string> = {}) {
   const req = res.req as http.IncomingMessage | undefined
   let data = typeof body === "string" ? Buffer.from(body) : body
@@ -221,7 +200,6 @@ async function send(res: http.ServerResponse, status: number, body: string | Buf
   }
   const enc = encodingFor(req, type, data.length)
   if (enc) {
-    // (an answer named by its content, kept for good: compressed well, once)
     const lasting = /\bimmutable\b/.test(out["Cache-Control"] ?? "")
     data = lasting ? await packLasting(data, enc) : data.length < BIG ? (enc === "br" ? brotli(data, 1) : zlib.gzipSync(data, { level: 1 })) : await packBig(data, enc, out.ETag)
     out["Content-Encoding"] = enc
@@ -231,8 +209,6 @@ async function send(res: http.ServerResponse, status: number, body: string | Buf
   res.end(data)
 }
 
-/** A big answer (the whole state, the ops catalog) is compressed off the event loop and better (a quarter smaller than
- *  quality 1 for the phone's first load), and kept by its ETag, so other windows and reloads asking for it reuse it. */
 const BIG = 64 << 10
 const bigPacked = new Map<string, Promise<Buffer>>()
 function packBig(data: Buffer, enc: "br" | "gzip", etag?: string) {
@@ -249,7 +225,6 @@ function packBig(data: Buffer, enc: "br" | "gzip", etag?: string) {
   return out
 }
 
-/** Answers that never change (a state chunk, named by its content), compressed once: by their hash, the last 2000. */
 const lastingPacked = new Map<string, Promise<Buffer>>()
 function packLasting(data: Buffer, enc: "br" | "gzip") {
   const key = `${crypto.hash("sha1", data, "base64url")}\0${enc}`, hit = lastingPacked.get(key)
@@ -259,7 +234,6 @@ function packLasting(data: Buffer, enc: "br" | "gzip") {
   lastingPacked.set(key, out)
   out.catch(() => lastingPacked.delete(key))
   if (lastingPacked.size > 2000) lastingPacked.delete(lastingPacked.keys().next().value!)
-  // (then the best, a tenth smaller, in the background, one at a time: a phone's next cold load gets it)
   if (enc === "br") { bettering.push([key, data]); void betterLasting() }
   return out
 }
@@ -280,12 +254,9 @@ async function betterLasting() {
 const json = (res: http.ServerResponse, obj: unknown, status = 200) =>
   send(res, status, JSON.stringify(obj ?? null), "application/json")
 
-/** Each API request's body once read (bodyOf), for plugins watching requests (plugin.onRequest). */
 const bodies = new WeakMap<http.IncomingMessage, unknown>()
-const failures = new WeakMap<http.IncomingMessage, string>() // what a failed request answered, for request watchers
+const failures = new WeakMap<http.IncomingMessage, string>()
 
-/** The request's body: JSON, {} when there's none, undefined when it isn't JSON. A file's bytes don't come as JSON:
- *  uploads stream (App.streams), so a body too big for one string is told where to send them. */
 async function bodyOf(req: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   for await (const c of req) chunks.push(c as Buffer)
@@ -304,7 +275,6 @@ async function bodyOf(req: http.IncomingMessage): Promise<unknown> {
   }
 }
 
-/** A request's start as plugins watching requests hear it (plugin.onRequest: core/plugins.ts). */
 function started(req: http.IncomingMessage, url: URL) {
   const h = (k: string) => { const v = req.headers[k]; return typeof v === "string" && v ? v.slice(0, 200) : null }
   const query: Record<string, string> = {}
@@ -323,7 +293,7 @@ async function downloaded(abs: string, wait = 30_000) {
       try { await fh.read(Buffer.alloc(1), 0, 1, 0) } finally { await fh.close() }
       return true
     } catch (e) {
-      if (Math.abs((e as NodeJS.ErrnoException).errno ?? 0) !== 11) return true // the stream below reports it
+      if (Math.abs((e as NodeJS.ErrnoException).errno ?? 0) !== 11) return true
       if (Date.now() - start > wait) return false
       fetchFromICloud(abs, e)
       await new Promise((r) => setTimeout(r, 300))
@@ -331,8 +301,6 @@ async function downloaded(abs: string, wait = 30_000) {
   }
 }
 
-/** A vault file's bytes (ranges so players can seek; `as=jpeg` for HEIC; `thumb=<px>` a thumbnail; `download=1`), or an
- *  allowed outside file. Documents are sandboxed so an SVG or HTML can't run script; PDFs can't be (the browser's viewer). */
 async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: Record<string, string>) {
   let rel: string, abs: string, st: fs.Stats
   try {
@@ -349,7 +317,7 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
   if (thumb) {
     const px = Number(query.thumb)
     if (!(px > 0)) return json(res, { error: "thumb is the longer side's most pixels" }, 400)
-    // (a placeholder isn't brought down for one: a folder of videos would be; `v`, the mtime, keeps the URL a version's)
+    // a thumbnail doesn't bring an iCloud placeholder down: a folder of videos would download
     const made = await thumbOf(abs, st, px)
     if (!made) return iCloud.on && iCloud.evicted(abs, st) ? json(res, { error: "this file isn't on this machine yet" }, 404) : json(res, { error: "no thumbnail for this file" }, 415)
     abs = made
@@ -366,19 +334,19 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
   sendFile(req, res, abs, st, type, { thumb, name: path.basename(rel), download: !!query.download, pdf: path.extname(rel).toLowerCase() === ".pdf" })
 }
 
-/** A file's bytes as the answer: its type, in the range asked (a video seeks), streamed. */
 function sendFile(req: http.IncomingMessage, res: http.ServerResponse, abs: string, st: fs.Stats, type: string, o: { thumb?: boolean; name: string; download?: boolean; pdf?: boolean }) {
   const headers: Record<string, string> = {
     "Content-Type": type, "Cache-Control": o.thumb ? "private, max-age=31536000, immutable" : "no-cache", "Accept-Ranges": "bytes",
     "X-Content-Type-Options": "nosniff", "Last-Modified": st.mtime.toUTCString(),
   }
+  // the browser's PDF viewer doesn't run in a sandboxed document
   if (!o.pdf) headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
   headers["Content-Disposition"] = `${o.download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(o.name)}`
   let start = 0, end = st.size - 1, status = 200
   const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ""))
   if (range && (range[1] || range[2])) {
     if (range[1]) { start = Number(range[1]); if (range[2]) end = Math.min(Number(range[2]), end) }
-    else start = Math.max(0, st.size - Number(range[2])) // the last n bytes
+    else start = Math.max(0, st.size - Number(range[2]))
     if (start > end || start >= st.size) {
       res.writeHead(416, { "Content-Range": `bytes */${st.size}` })
       return res.end()
@@ -391,7 +359,6 @@ function sendFile(req: http.IncomingMessage, res: http.ServerResponse, abs: stri
   if (req.method === "HEAD" || st.size === 0) return res.end()
   fs.createReadStream(abs, { start, end }).on("error", () => res.destroy()).pipe(res)
 }
-/** A route's FileAnswer sent, or a 404 when it's gone. */
 function sendAnswered(req: http.IncomingMessage, res: http.ServerResponse, f: Answered) {
   let st: fs.Stats
   try { st = fs.statSync(f.path) } catch { return json(res, { error: "not found" }, 404) }
@@ -399,11 +366,9 @@ function sendAnswered(req: http.IncomingMessage, res: http.ServerResponse, f: An
   sendFile(req, res, f.path, st, f.type, { name: path.basename(f.path) })
 }
 
-// Other names this server is reached by (a reverse proxy's own domain), besides its addresses, localhost and its own names.
 const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
 
-/** Why a request isn't from this app's pages, or "": another site's (Origin, Sec-Fetch-Site: unless `origin` is false),
- *  the internet (Funnel), or a page under another name (DNS rebinding): the Host is an address, localhost or this machine's. */
+/** Why a request isn't from this app's pages, or "". The Host check stops DNS rebinding. */
 async function foreign(req: http.IncomingMessage, origin = true) {
   const h = req.headers
   if ("tailscale-funnel-request" in h) return "this app doesn't answer the internet (Tailscale Funnel)"
@@ -422,8 +387,6 @@ async function foreign(req: http.IncomingMessage, origin = true) {
   return ""
 }
 
-/** POST /api/file/open {path, reveal}: open a file in this machine's default app, or show it in its folder (Finder,
- *  Explorer, Linux's file manager; Explorer from WSL). Only for the app running on this machine, never another device. */
 async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   if (!fromThisMachine(req)) return json(res, { error: "files only open in their app from this machine" }, 403)
   if (process.platform !== "darwin" && process.platform !== "linux" && process.platform !== "win32") return json(res, { error: "opening files in their app needs macOS, Windows or Linux" }, 501)
@@ -431,31 +394,25 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
     return json(res, { error: "this server has no desktop to open files on (no DISPLAY or WAYLAND_DISPLAY)" }, 501)
   const body = await bodyOf(req) as { path?: unknown; reveal?: unknown } | undefined
   let abs: string
-  // Settings' "Open themes folder" / "Open snippets folder": made if it isn't there yet.
   if (body?.path === ".vaultite/themes" || body?.path === ".vaultite/snippets") fs.mkdirSync(vault.abs(body.path), { recursive: true })
   try {
-    // (the settings files and appearance folders too: Settings opens them; a file from outside the vault the app opened)
-    // (and a folder a plugin that's on reads live data from: plugin.folders)
     abs = isOutside(body?.path) ? liveFolder(body!.path as string) ?? allowedPath(body!.path as string) : vault.abs(clean(body?.path, true, vault, true))
   } catch (e) {
     return json(res, { error: (e as Error).message }, e instanceof HTTPError ? e.status : 400)
   }
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
-  // (as the desktop app does: a script or an app, which opening would run, is shown in its folder instead)
   let reveal = !!body?.reveal
   reveal ||= runsCode(abs)
-  // reveal: show it in Finder (open -R).
   if (process.platform === "darwin") return void execFile("/usr/bin/open", reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
   if (process.platform === "win32") return void explorer(abs, reveal).then(() => done(null), done)
   if (inWsl()) return void execFile("wslpath", ["-w", abs], { timeout: 10000 }, (e, win) => (e ? done(e) : explorer(win.trim(), reveal).then(() => done(null), done)))
   openOnLinux(abs, reveal).then(() => done(null), done)
 }
 
-/** A Linux server in WSL, which runs Windows' programs (its interop on). */
 const inWsl = () => process.platform === "linux" && ["WSLInterop", "WSLInterop-late"].some((f) => fs.existsSync(`/proc/sys/fs/binfmt_misc/${f}`))
 
-/** Windows: the file in its default app, or selected in Explorer. On Windows its command line is written as Explorer
- *  reads it (a path can't hold "; from WSL, interop quotes it). Explorer answers 1 even when it worked: only not starting fails. */
+/** Explorer parses its own command line (a path can't hold "; from WSL, interop quotes it), and exits 1 even when it
+ *  worked: only not starting fails. */
 function explorer(win: string, reveal: boolean) {
   const q = process.platform === "win32" ? `"${win}"` : win
   return new Promise<void>((ok, fail) => {
@@ -470,8 +427,6 @@ function liveFolder(p: string) {
   return app.plugins.some((x) => on.has(x.id) && x.liveFolders().includes(p)) ? p : null
 }
 
-/** Linux: the file in its default app (gio, else xdg-open), or selected in the file manager (FileManager1 over D-Bus:
- *  Nautilus, Thunar, Dolphin, Nemo...), else its folder opened. */
 async function openOnLinux(abs: string, reveal: boolean) {
   const run = (cmd: string, args: string[]) => new Promise<void>((ok, fail) =>
     execFile(cmd, args, { timeout: 10000 }, (err) => (err ? fail(err) : ok())))
@@ -488,8 +443,6 @@ async function openOnLinux(abs: string, reveal: boolean) {
   child.unref()
 }
 
-/** GET /<prefix>/<rest>: an address a plugin serves (plugin.serve), or false. The web app's own files never wait for the
- *  vault; anything else waits until it's read, to know the plugins. */
 async function served(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   if (req.method !== "GET" && req.method !== "HEAD") return false
   const raw = url.pathname.slice(1)
@@ -513,16 +466,14 @@ async function served(req: http.IncomingMessage, res: http.ServerResponse, url: 
 async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   await ready
   const method = req.method ?? "GET"
-  const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode) // drop "api"
+  const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)
   const query = queryOf(url.searchParams)
-  // /api/raw/<file name>?path=...: the name only makes the address end like the file (a PDF viewer's title).
+  // /api/raw/<file name>?path=...: the name is there for the browser's PDF viewer, which titles a PDF by its URL
   if (parts[0] === "raw" && (method === "GET" || method === "HEAD")) return raw(req, res, query)
   if (parts.join("/") === "file/open" && method === "POST") return openHere(req, res)
-  // A route that reads its own body (an upload: plugin.route's `stream`) gets it unread.
   const body = app.streams(method, parts, String(req.headers["content-type"] ?? "")) ? {} : await bodyOf(req)
   if (body === undefined) return json(res, { error: "the body isn't JSON" }, 400)
-  if (parts.join("/") === "ui") { // core/live.ts
-    // (as ui.command and ui.open: a palette command or a terminal tab starts a shell in the owner's window)
+  if (parts.join("/") === "ui") {
     const b = (body ?? {}) as { action?: unknown; path?: unknown }
     const why = method === "POST" && (b.action === "command" || (b.action === "open" && String(b.path).startsWith("view:terminal/")))
       ? await app.ownerWhy(req, b.action === "command" ? "the app's commands" : "the terminal") : ""
@@ -530,9 +481,8 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const [out, status] = live.handle(method, body)
     return json(res, out, status)
   }
-  if (parts.join("/") === "events/stream" && method === "GET") return events.stream(events.eventsOf(vault), req, res, query) // core/events.ts
+  if (parts.join("/") === "events/stream" && method === "GET") return events.stream(events.eventsOf(vault), req, res, query)
   if (parts[0] === "vaults" && !DESKTOP) {
-    // (it browses and opens any folder of this machine, drives included: only its owner, like other apps' plugins)
     const why = await app.ownerWhy(req, "Managing vaults")
     if (why) return json(res, { error: why }, 403)
     try {
@@ -550,8 +500,6 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   return send(res, out.status, jsonOf(out.body), "application/json")
 }
 
-/** The web app's files compressed once per build: "<path>\0<encoding>" -> [mtime and size, bytes]. Emptied if many
- *  rebuilds under a running server made it big. */
 const packed = new Map<string, [string, Promise<Buffer>]>()
 let packedBytes = 0
 const compress = { br: promisify(zlib.brotliCompress), gzip: promisify(zlib.gzip) }
@@ -569,8 +517,6 @@ function pack(p: string, st: fs.Stats, enc: "br" | "gzip") {
   packed.set(key, [version, out])
   return out
 }
-/** The quick compression answers at once; the best one (a tenth smaller, seconds of CPU for the app's code) then
- *  replaces it, a file at a time in the background. */
 const better: [string, string, Buffer, "br" | "gzip"][] = []
 let improving = false
 async function improve() {
@@ -586,10 +532,7 @@ async function improve() {
   improving = false
 }
 
-/** The web app (web/dist). Its assets are named by content, so a browser keeps them for good; index.html is asked again
- *  each time (a 304 when unchanged), icons after an hour (each logo drawn asked again). Over the network they're compressed. */
 async function file(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
-  // (the built web app: a desktop app's next code root's, once it says so: adopt-web)
   const DIST = web.dist, ASSETS = path.join(DIST, "assets") // (Vite names every file in assets by its content's hash)
   let p = path.normalize(path.join(DIST, decode(url.pathname)))
   if (p !== DIST && !p.startsWith(DIST + path.sep)) return send(res, 403, "Forbidden", "text/plain")
@@ -598,7 +541,7 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     if (fs.statSync(p).isDirectory()) p = path.join(p, "index.html")
     st = fs.statSync(p)
   } catch {
-    process.stderr.write(`"${req.method} ${url.pathname} HTTP/${req.httpVersion}" 404 -\n`) // (an app from an older build asking for its files)
+    process.stderr.write(`"${req.method} ${url.pathname} HTTP/${req.httpVersion}" 404 -\n`)
     return send(res, 404, "File not found", "text/plain", { "Cache-Control": "no-cache" })
   }
   const type = contentType(p)
@@ -607,7 +550,6 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     ? { "Cache-Control": "public, max-age=31536000, immutable" }
     : { "Last-Modified": modified, "Cache-Control": type.startsWith("text/html") ? "no-cache" : "public, max-age=3600" }
   if (COMPRESSIBLE.test(type)) headers.Vary = "Accept-Encoding"
-  // (another site's page can't frame the app to steer clicks onto it: Allow, Turn on)
   if (type.startsWith("text/html")) Object.assign(headers, { "Content-Security-Policy": "frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN",
     "Document-Policy": "include-js-call-stacks-in-crash-reports" })
   const since = req.headers["if-modified-since"]
@@ -616,7 +558,6 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     return res.end()
   }
   const enc = encodingFor(req, type, st.size)
-  // (what index.html loads is compressed while it travels, not once each file is asked for)
   if (enc && p === path.join(DIST, "index.html")) { for (const f of web.read().eager) fs.stat(f, (e, s) => { if (!e) void pack(f, s, enc).catch(() => {}) }) }
   try {
     const data = enc ? await pack(p, st, enc) : fs.readFileSync(p)
@@ -640,14 +581,12 @@ const server = http.createServer(async (req, res) => {
         keepRefusal(path.join(runtimeDir(), REFUSED_FILE), { run: String(run).slice(0, 64), call: `${req.method} ${url.pathname}`.slice(0, 200) })
         return json(res, { error: "a test run's call to the user's own vault: tests use a throwaway one (vau sandbox)" }, 403)
       }
-      // What the window shows while the vault is read: whether it's read, and the files iCloud is still downloading.
       if (url.pathname === "/api/loading") {
         const root = path.join(vault?.path ?? VAULT_AT, "/")
         return json(res, { ready: !!vault, downloading: slowReads().filter((p) => p.startsWith(root)).map((p) => p.slice(root.length)) })
       }
-      await ready // Activity's hook is the app's: it's there once the vault is read
+      await ready
       const t = performance.now(), end = started(req, url), id = (++requests).toString(36)
-      // (the id ties this line to the errors the request logged: errorContext)
       try { await errorContext.run(`#${id} ${req.method} ${url.pathname}`, () => api(req, res, url)) } finally { end({ status: res.statusCode, ms: performance.now() - t, body: bodies.get(req), error: failures.get(req) }) }
       process.stderr.write(`#${id} "${req.method} ${req.url} HTTP/${req.httpVersion}" ${res.statusCode} ${Math.round(performance.now() - t)}ms\n`)
     } else if (!(await served(req, res, url))) await file(req, res, url)
@@ -659,11 +598,7 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-// Plugins' WebSockets (plugin.socket): /api/<pattern>, refused when nothing matches, the plugin is off, or its accept
-// throws. 32 MB a message: a terminal's pasted file comes in pieces of 1 MB (base64'd), so this is room to spare.
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 32 << 20 })
-// Over the network (a phone, another Mac), messages are deflated: a terminal's output and the live state are text that
-// shrinks several times; on this machine, as with HTTP, bytes cost nothing and the CPU is better spent.
 const deflating = new WebSocketServer({ noServer: true, maxPayload: 32 << 20,
   perMessageDeflate: { threshold: 256, zlibDeflateOptions: { level: 6 } } })
 const socketsFor = (req: http.IncomingMessage) => (overNetwork(req) ? deflating : sockets)
@@ -685,7 +620,6 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     if (why) return refuse(socket, 403, why)
     await ready
     if (url.pathname === "/api/desktop/host") {
-      // (this machine's desktop app, never a page: no Origin, and the key only this user can read, core/serving.ts)
       const key = Buffer.from(String(req.headers["x-vaultite-host-key"] ?? "")), mine = Buffer.from(servingKey())
       if (overNetwork(req) || req.headers.origin !== undefined || !mine.length || key.length !== mine.length || !crypto.timingSafeEqual(key, mine)) {
         return refuse(socket, 403, "only this machine's desktop app attaches")
@@ -700,8 +634,6 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     }
     const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)
     await app.syncPlugins()
-    // A socket is a request too: its accept and handler read the vault and settings as they are now (a terminal's
-    // allowUsers just written), sharing a sync with reads arriving together.
     await vault.synced()
     const hit = matchSocket(app.plugins, parts)
     if (!hit) return refuse(socket, 404, "not found")
@@ -714,7 +646,6 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
       // A bad frame (one over maxPayload) closes this socket, not the server: unheard, ws's error event throws.
       ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${(e as Error).message}\n`); ws.terminate() })
       process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
-      // (a handler that throws, or whose promise fails, ends its socket, not the server)
       errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { log.error(`WS ${url.pathname}`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
     })
   } catch (e) {
@@ -726,21 +657,15 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
 
 server.listen(PORT, HOST, () => {
   starting.mark("listen")
-  // (as it reads: the desktop app and tools/perf wait for "vaultite on http")
   console.log(`vaultite on http://${HOST}:${PORT}  vault=${VAULT_AT}`)
-  // (the app that forked it: its stdout is a file, so it's told so)
   if (DESKTOP && process.connected) process.send!({ type: "desktop:listening" })
 })
 
-// A service install following a branch updates itself: from its code store where bin/vaultite-server runs it (macOS,
-// Linux: core/update/servicestore.ts), else its checkout in place (core/selfupdate.ts); the service manager restarts it.
 if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
   const { startUpdater } = await import("./core/update/updater.ts")
   const follow = { branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
-    // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told. Soon, not now: vau update's answer
-    // goes out first)
+    // Windows' SIGTERM ends a process at once, its plugins never told; the delay lets vau update's answer go out
     restart: () => setTimeout(() => bye(143), 200),
-    // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
     busy: async () => {
       await ready
       const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null) as { busy?: boolean; why?: string } | null
@@ -748,7 +673,6 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
     } }
   const store = process.env.VAULTITE_CODE_STORE, checkout = process.env.VAULTITE_SERVICE_CHECKOUT
   if (store && checkout) {
-    // (once it's up: its root ran well, and a crash at start is counted afresh)
     void ready.then(async () => {
       fs.rmSync(path.join(store, "service-start.json"), { force: true })
       const [{ inStore }, { holdRoot }] = await Promise.all([import("./core/update/servicestore.ts"), import("./core/update/lease.ts")])

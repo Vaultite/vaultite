@@ -1,5 +1,3 @@
-// A new tab's page (`.vaultite/newtab.json`: `sections` top to bottom, `actions` the buttons, each a command id, `icons`
-// a button's icon other than its command's, `page` a file drawn instead, `opens` what ⌘T opens), one shape for app and vau; each key written on its own. Pure functions, no Node: both sides use them.
 import { defaultOrder, keyList, type SlotInfo } from "./slots.ts"
 import { isObj as isMap } from "./values.ts"
 
@@ -17,30 +15,23 @@ export type NewTabSetup = {
   opens: string | null
 }
 
-/** A section as the setup needs it: its key, title, default place and whether it's only on phones or computers. */
 export type SectionInfo = SlotInfo & { title: string; only?: "phone" | "desktop"
-  /** A sidebar panel offered as a section (`withPanels`). */
   panel?: boolean }
 
-/** The app's own sections (drawn by components/Tabs.tsx, NewTab). */
 export const CORE_SECTIONS: SectionInfo[] = [
   { key: "core:actions", title: "Buttons", sort: 10 },
   { key: "core:opened", title: "Recently opened here", sort: 20 },
   { key: "core:changed", title: "Recently changed", sort: 30 },
 ]
 
-/** The sections, then every sidebar panel (`<plugin id>:<name>`) that isn't one already, as a section out of the default
- *  page. */
 export function withPanels<S extends SectionInfo, P extends { key: string; title: string }>(sections: S[], panels: P[]): (S | (P & SectionInfo))[] {
   const have = new Set(sections.map((s) => s.key))
   return [...sections, ...panels.filter((p) => !have.has(p.key)).map((p) => ({ ...p, sort: 1000, hidden: true, panel: true }))]
 }
 
-/** The buttons while `actions` is unset. */
 export const DEFAULT_ACTIONS = ["file:new", "switcher:open", "palette:open"]
 
 
-/** newtab.json as it's saved, checked: a key that isn't a list (`icons`: an object) is unset. */
 export function readNewTab(raw: unknown): NewTabSetup {
   const o = isMap(raw) ? raw : {}
   const icons = isMap(o.icons) ? Object.fromEntries(Object.entries(o.icons).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k, v.trim()]] : []))) : null
@@ -49,10 +40,9 @@ export function readNewTab(raw: unknown): NewTabSetup {
     opens: typeof o.opens === "string" && isOpens(o.opens.trim()) ? o.opens.trim() : null }
 }
 
-/** Whether `opens` can be this: the switcher, or a view's tab (`view:<name>`, an arg after a slash). */
 export const isOpens = (v: string) => v === "switcher" || /^view:[\w-]+(\/.*)?$/.test(v)
 
-/** `icons` with a button's icon set (an empty name: back to its command's), null once none is left. */
+/** An empty name: back to its command's icon. null once none is left. */
 export function withIcon(icons: Record<string, string> | null, id: string, name: string) {
   const next = { ...icons }
   if (name.trim()) next[id] = name.trim()
@@ -60,8 +50,6 @@ export function withIcon(icons: Record<string, string> | null, id: string, name:
   return Object.keys(next).length ? next : null
 }
 
-/** The sections shown, top to bottom (`all`: every section there is, the app's and the plugins'). */
 export const shownSections = (s: NewTabSetup, all: SlotInfo[]) => s.sections ?? defaultOrder(all)
 
-/** The buttons' commands, top to bottom. */
 export const shownActions = (s: NewTabSetup) => s.actions ?? DEFAULT_ACTIONS

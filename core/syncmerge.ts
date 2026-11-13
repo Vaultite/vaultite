@@ -1,5 +1,3 @@
-// The merges sync makes on every device alike: by line for text, by key for JSON. Both sides' changes are kept once; where
-// both changed the same lines (or key), the later side's stays and the other is handed back as a clash. No Node here.
 import { opcodes } from "./textedit.ts"
 
 /** Where both sides changed the same lines: the file as merged with those lines as the base had them (`base`) and as the
@@ -11,7 +9,6 @@ type Hunk = { i1: number; i2: number; lines: string[] }
 const hunks = (base: string[], side: string[]): Hunk[] =>
   opcodes(base, side).filter((o) => o[0] !== "equal").map(([, i1, i2, j1, j2]) => ({ i1, i2, lines: side.slice(j1, j2) }))
 
-/** The side's text over base lines [lo, hi), its hunks there applied. */
 function over(base: string[], hs: Hunk[], lo: number, hi: number): string[] {
   const out: string[] = []
   let at = lo
@@ -31,7 +28,6 @@ export function mergeText(base: string, a: string, b: string, aWins: boolean, aF
   const B = base.split("\n"), A = a.split("\n"), C = b.split("\n")
   const all = [...hunks(B, A).map((h) => ({ ...h, side: 0 })), ...hunks(B, C).map((h) => ({ ...h, side: 1 }))]
     .sort((x, y) => x.i1 - y.i1 || x.i2 - y.i2 || x.side - y.side)
-  // Groups of hunks that touch the same base lines (or add at the same place): within one, the sides may disagree.
   type Group = { lo: number; hi: number; hs: typeof all }
   const groups: Group[] = []
   for (const h of all) {
@@ -51,7 +47,6 @@ export function mergeText(base: string, a: string, b: string, aWins: boolean, aF
     if (only) lines = g.hs[0].side === 0 ? ta : tb
     else if (sameLines(ta, tb)) lines = ta
     else if (g.lo === g.hi) {
-      // Both added lines at one place, changing none: both kept, the earlier first (one that extends the other: the longer).
       lines = startsWith(ta, tb) ? ta : startsWith(tb, ta) ? tb : aFirst ? [...ta, ...tb] : [...tb, ...ta]
     } else {
       lines = aWins ? ta : tb
@@ -68,8 +63,6 @@ export function mergeText(base: string, a: string, b: string, aWins: boolean, aF
   return { text: out.join("\n"), clash: clashed ? { base: asBase.join("\n"), other: asOther.join("\n"), lines: clashed } : null }
 }
 
-// ---------- JSON
-
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 const isObject = (v: unknown): v is Record<string, Json> => !!v && typeof v === "object" && !Array.isArray(v)
 const equal = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y)
@@ -82,14 +75,12 @@ function mergeValue(base: Slot, a: Slot, b: Slot, aWins: boolean, at: string, cl
   if (isObject(a) && isObject(b)) {
     const o = isObject(base) ? base : {}
     const out: Record<string, Json> = {}
-    // (a's keys in its order, then b's new ones: the file reads as a's did)
     for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])]) {
       const v = mergeValue(k in o ? o[k] : MISSING, k in a ? a[k] : MISSING, k in b ? b[k] : MISSING, aWins, at ? `${at}.${k}` : k, clashes)
       if (v !== MISSING) out[k] = v
     }
     return out
   }
-  // (a list of plain values, a plugin's `done` or `enabled`: merged item by item, as lines; any other, whole)
   const plain = (v: Slot) => Array.isArray(v) && v.every((x) => x === null || typeof x !== "object")
   if (plain(a) && plain(b) && (base === MISSING || plain(base))) {
     const lines = (v: Slot) => (v === MISSING ? [] : v as Json[]).map((x) => JSON.stringify(x)).join("\n")

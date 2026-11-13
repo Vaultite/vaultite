@@ -1,5 +1,3 @@
-// Where a block's data comes from, recorded (not declared, so it can't drift) while its text side runs inside `traced`.
-// Outside a trace every note is a no-op, so /api/render pays nothing.
 import { AsyncLocalStorage } from "node:async_hooks"
 
 export type Trace = {
@@ -9,19 +7,14 @@ export type Trace = {
   files: Set<string>
   /** Whether it read the file it's in (or the one its `file:` names): its path, frontmatter or body. */
   here: boolean
-  /** Kinds' collections whose items it read (vault.items). */
   kinds: Set<string>
-  /** Plugins whose settings it read (.vaultite/plugins/<id>/data.json). */
   settings: Set<string>
-  /** Plugins whose cache it read (plugin.readCache: kept by the server, core/kept.ts). */
   caches: Set<string>
-  /** Plugins whose live data it used (plugin.memo). */
   live: Set<string>
 }
 
 const store = new AsyncLocalStorage<Trace>()
 
-/** fn() run while recording what it reads; its result (or its error) and the trace. */
 export async function traced<T>(fn: () => T | Promise<T>): Promise<{ out: T | null; error: unknown; trace: Trace }> {
   const trace: Trace = { named: new Set(), files: new Set(), here: false, kinds: new Set(), settings: new Set(), caches: new Set(), live: new Set() }
   try {
@@ -31,20 +24,16 @@ export async function traced<T>(fn: () => T | Promise<T>): Promise<{ out: T | nu
   }
 }
 
-/** Note something read, when a block is being traced. */
 export function noteSource(what: "named" | "files" | "kinds" | "settings" | "caches" | "live", value: string) {
   const t = store.getStore()
   if (t && value) t[what].add(value)
 }
 
-/** A vault file read from disk (vault.abs), when a block is being traced: hidden ones are settings and caches, noted
- *  where they're read. */
 export function noteRead(rel: string) {
   const t = store.getStore()
   if (t && rel && !/(^|\/)\./.test(rel)) t.files.add(rel.replace(/^\/+/, ""))
 }
 
-/** The block read the file it's in. */
 export function noteHere() {
   const t = store.getStore()
   if (t) t.here = true

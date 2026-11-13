@@ -1,8 +1,5 @@
-// A `## Timeline` section, read leniently because people edit it by hand (any bullet or separator, "1h 30m", no kind).
-// One parser for the server and the editor, so they agree; no Node here.
 export type Entry = { date: string; kind: string; duration_min: number | null; subject: string; notes: string; url: string }
 
-/** The kinds the app knows (an icon each, aliases below); any other word or two is a kind too ("coffee", "game night"). */
 export const CONTACT_KINDS = ["call", "hang out", "meet", "study", "text", "message", "email"]
 export const KINDS = new Set([...CONTACT_KINDS, "note"])
 const ALIASES: Record<string, string> = {
@@ -24,7 +21,6 @@ export function minutes(part: string): number | null {
   return Math.round(Number(m[1] ?? 0) * 60 + Number(m[3] ?? 0))
 }
 export const kindOf = (part: string) => { const k = part.toLowerCase().split(/\s+/).join(" "); return KINDS.has(k) ? k : ALIASES[k] ?? null }
-/** What reads as a kind of its own at an entry's start: a word or two of letters. */
 const OWN_KIND = /^\p{L}[\p{L} ]{0,15}$/u
 const ownKind = (part: string) => OWN_KIND.test(part) && part.split(/\s+/).length <= 2
 
@@ -76,8 +72,6 @@ export function parseTimeline(text: string): Entry[] {
   return out
 }
 
-/** The lines of a timeline section that aren't entries (nor their continuation lines): text typed there that isn't
- *  one, which a drawn timeline shows as it is rather than hiding it. */
 export function strayLines(text: string): string[] {
   const out: string[] = []
   let last = false
@@ -100,7 +94,6 @@ export function timelineOf(body: string): Entry[] {
   return parseTimeline(lines.slice(at + 1, end < 0 ? undefined : end).join("\n"))
 }
 
-/** An entry to write: what's left out isn't written. */
 export type NewEntry = { date: string; kind: string; duration_min?: number | null; subject?: string; notes?: string; url?: string }
 
 /** Why an entry can't be written as it is, or null: a kind of the user's own alone would read back as a note. */
@@ -148,7 +141,6 @@ export function addEntry(text: string, e: NewEntry): string | null {
   }
   if (last >= 0) lines.splice(last + 1, 0, line)
   else {
-    // No entries yet: under the heading, a blank line on each side.
     let n = at + 1
     while (n < end && !lines[n].trim()) n++
     lines.splice(at + 1, n - at - 1, "", line, ...(n < lines.length || text.endsWith("\n") ? [""] : []))

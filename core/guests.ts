@@ -1,12 +1,9 @@
-// What a shared folder's guest (plugins/core/share) may write: a note's words, checked on the text as it lands (after a
-// merge, at its final name). Not its type or aliases, agents' instructions, or what the user's app would run or fetch.
 import { Lexer, type Token, type TokensList } from "marked"
 import { parseDocument, visit } from "yaml"
 import { effectiveType } from "./fileprops.ts"
 import { HEAD, parseText } from "./frontmatter.ts"
 import { type Item, requestWriter, type Vault } from "./vault.ts"
 
-/** The request writing is a guest's. */
 export const byGuest = () => requestWriter.getStore()?.client === "guest"
 
 /** What coding agents read as instructions where they work (Claude Code, Codex, Gemini, Amp, aider, Copilot...). */
@@ -27,14 +24,11 @@ const unescaped = (l: string) => l.replace(/\\/g, "").replace(ENTITY, (m, e: str
   const n = l2[1] === "x" ? parseInt(l2.slice(2), 16) : parseInt(l2.slice(1), 10)
   return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m
 })
-/** Every other app's address a link or definition gives in the note, read across lines. */
 const otherApps = (text: string) => [...unescaped(text).matchAll(new RegExp(OTHER_APP.source + "[^\\s)>]*", "gi"))].map((m) => m[0].replace(/^\](\s*\(|:)\s*(?:<\s*)?/, ""))
-/** An added line that draws live (LIVE), or links another app (OTHER_APP). */
 const liveLine = (l: string) => LIVE.test(l) || OTHER_APP.test(unescaped(l)) || LIVE.test(unescaped(l))
 
 const norm = (s: string) => s.replace(/^﻿/, "").replace(/\r\n?/g, "\n")
 
-/** A note's fenced code blocks of languages that aren't PLAIN, each as its language and lines (quote marks off). */
 function liveBlocks(text: string): string[] {
   const out: string[] = []
   let open: { mark: string; lang: string; lines: string[] } | null = null
@@ -67,7 +61,6 @@ const DEEP = /^(?:[ \t]*(?:>|[*+-][ \t]|\d{1,9}[.)][ \t])){20}|^[ \t]{160}/
  *  `*`, `_` or `[` that may open one, so a run full of them holds the server. A long note costs a tenth; this, 0.1 s. */
 const MAX_COST = 5e6
 const budget = () => ({ left: MAX_COST })
-/** The text's tokens as marked's lex makes them; null when they'd cost more than what's `left`. */
 function lexed(text: string, left: { left: number }): TokensList | null {
   if (text.split("\n").some((l) => DEEP.test(l))) return null
   const lexer = new Lexer({ gfm: true })
@@ -80,10 +73,7 @@ function lexed(text: string, left: { left: number }): TokensList | null {
   for (const q of lexer.inlineQueue) lexer.inlineTokens(q.src, q.tokens)
   return lexer.tokens
 }
-/** Links' and images' addresses a guest may add: the web's, mail, and the vault's own (no scheme). */
 const SAFE = /^(https?:|mailto:|[^:]*$)/i
-/** What the text draws live, as Markdown reads it (escapes undone, references resolved): images, raw HTML, links to
- *  other apps' addresses, code of another language. A key each, to tell what's new. */
 function liveTokens(text: string, left = budget()): string[] | null {
   const out: string[] = []
   let tokens: TokensList | null
@@ -107,15 +97,12 @@ export const liveIn = (text: string) => liveOn(text, budget())
 const liveOn = (text: string, left: { left: number }) => norm(text).split("\n").some(liveLine) || otherApps(norm(text)).length > 0 || liveBlocks(norm(text)).length > 0 || (liveTokens(norm(text), left) ?? [""]).length > 0
 
 const fmOf = (text: string): Item => { try { return parseText(text)[0] } catch { return {} } }
-/** A note's type as the vault reads it (its kind's, `type:`, a key that marks one), and its aliases. */
 function headOf(vault: Vault, rel: string, fm: Item) {
   return JSON.stringify([effectiveType(vault.kindFor(rel, fm)?.type ?? null, fm), fm.aliases ?? null, fm.alias ?? null])
 }
-/** Properties a plugin may draw as a picture (slides' `bg`, a banner...): from the vault only. */
 const MEDIA = /^(bg|background|banner|cover|image|images|thumbnail|poster|icon|avatar|photo|picture)$/i
 const MAX_VALUES = 5000
-/** A frontmatter's text values, nested ones too, as YAML reads them (escapes undone), each by its key; null past
- *  MAX_VALUES (each value seen once: what YAML reuses is one object). */
+/** What YAML reuses (an alias) is one object, seen once. */
 function valuesOf(v: unknown): [string, string][] | null {
   const out: [string, string][] = [], seen = new WeakSet<object>()
   let left = MAX_VALUES
@@ -130,14 +117,13 @@ function valuesOf(v: unknown): [string, string][] | null {
   }
   return go(v, "") ? out : null
 }
-/** Whether a header reuses a value (`*name`, `<<: *name`): a guest's never does, so none expands past what it says. */
+/** A YAML alias (`*name`, `<<: *name`) expands past what the text says: a guest's header never has one. */
 function reuses(head: string) {
   if (!head.includes("*")) return false
   let found = false
   visit(parseDocument(head, { version: "1.1" }), { Alias: () => { found = true; return visit.BREAK } })
   return found
 }
-/** A value a guest sets that would draw live (as Markdown, a style, a picture from elsewhere). */
 const liveValue = ([k, v]: [string, string], left: { left: number }) => liveOn(v, left) || /(url|image|image-set|cross-fade|element|src)\s*\(/i.test(v) || (MEDIA.test(k) && /[:()]|\/\//.test(v))
 
 /** Why a guest may not write `after` at `rel` (over `before`, null for a new note), or "". Read as the vault reads it. */
@@ -145,7 +131,6 @@ export function guestRefusal(vault: Vault, rel: string, before: string | null, a
   const was = norm(before ?? ""), now = norm(after)
   if (!/\.md$/i.test(rel)) return "only notes can be written here"
   if (FOR_AGENTS.test(rel.split("/").pop()!)) return `${rel.split("/").pop()} is for agents: it can't be written here`
-  // (what's new, its properties and its text, is read on one budget)
   const left = budget()
   const headWas = HEAD.exec(was)?.[1] ?? "", headNow = HEAD.exec(now)?.[1] ?? ""
   if (headNow !== headWas) {
@@ -157,8 +142,7 @@ export function guestRefusal(vault: Vault, rel: string, before: string | null, a
     const kept = new Set((valuesWas ?? []).map((x) => JSON.stringify(x)))
     if (valuesNow.some((x) => !kept.has(JSON.stringify(x)) && liveValue(x, left))) return "a property can't hold that here"
   }
-  // (added lines, whatever reads around them; and the whole note as Markdown reads it, so what a deletion or a changed
-  // reference makes live counts too)
+  // The whole note too: a deletion or a changed reference can make what was there live.
   const tokensNow = liveTokens(now, left)
   if (!tokensNow) return "a note this long or nested this deep can't be written here: split its longest paragraphs"
   const had = new Set(was.split("\n")), blocks = new Set(liveBlocks(was)), tokens = new Set(liveTokens(was)), apps = new Set(otherApps(was))

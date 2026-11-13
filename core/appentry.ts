@@ -1,5 +1,3 @@
-// Which file is the `vau` CLI's entry: what its shims, agents' MCP configs, plugin commands and terminals run. The desktop
-// app names its shell's (VAULTITE_VAU_ENTRY: electron/shell/vau.mjs, a path that stays put); else this code's bin/vau.
 import fs from "node:fs"
 import path from "node:path"
 import { vauShims } from "./vaushims.ts"

@@ -1,4 +1,3 @@
-// What an npm install leaves wrong, fixed after each (a service's checkout, a store's deps set).
 import fs from "node:fs"
 import path from "node:path"
 

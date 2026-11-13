@@ -1,5 +1,4 @@
-// What the app keeps that isn't the user's (what's open, caches): in memory, on this machine's disk a moment later
-// (<LOCAL>/kept/<vault key>/), never the vault. `shared` entries Machines passes between machines (machines/kept.ts).
+// On disk at <LOCAL>/kept/<vault key>/, never the vault.
 import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -16,23 +15,19 @@ type Entry = { text: string; at: number; shared: boolean; seq: number }
 /** An entry as it travels between machines. */
 export type Shared = { name: string; at: number; data: unknown }
 
-/** A namespace's file (<plugin id>.json): its entries by name, as flush writes them. */
 const Stored = z.record(z.string(), z.unknown())
 const StoredEntry = z.object({ at: z.number(), seq: z.number().catch(0), shared: z.boolean().catch(false), data: z.unknown() })
 const StoreFile = z.object({ id: z.string() })
 
 const SAVE_MS = 1000
 const TOMBSTONE_DAYS = 30
-/** Names are "<plugin id>/<name>", the name letters, digits and - _ . / (a plugin's file per namespace). */
 const NAME = /^[a-z0-9][a-z0-9-]*\/[\w.-]+(\/[\w.-]+)*$/
 const reading = new AsyncLocalStorage<Set<string>>()
 
 export class Kept {
   readonly dir: string
   private storeId = ""
-  /** Bumped on every change, here or merged from another machine. */
   seq = 0
-  /** Bumped when an entry the last /api/state read changed (App.state keys on it; the app reloads its state then). */
   stateVersion = 0
   private entries = new Map<string, Entry>()
   private loaded = false
@@ -89,14 +84,12 @@ export class Kept {
     return !e || e.text === "null" ? (fallback as T) : JSON.parse(e.text)
   }
 
-  /** The names under a prefix ("tabs/device-") that hold something. */
   names(prefix: string): string[] {
     this.load()
     reading.getStore()?.add(`${prefix}*`)
     return [...this.entries].filter(([n, e]) => n.startsWith(prefix) && e.text !== "null").map(([n]) => n).sort()
   }
 
-  /** Whether the other machines have an entry too. */
   isShared(name: string) {
     this.load()
     return !!this.entries.get(name)?.shared
@@ -127,7 +120,6 @@ export class Kept {
     return { seq: this.seq, entries }
   }
 
-  /** These entries, those of them that are shared, as they travel. */
   shared(names: string[]): Shared[] {
     this.load()
     return names.flatMap((name) => { const e = this.entries.get(name); return e?.shared ? [{ name, at: e.at, data: JSON.parse(e.text) }] : [] })
@@ -141,7 +133,7 @@ export class Kept {
     for (const s of list) {
       if (!s || typeof s.name !== "string" || !NAME.test(s.name) || typeof s.at !== "number" || !Number.isFinite(s.at)) continue
       const text = JSON.stringify(s.data ?? null), was = this.entries.get(s.name)
-      if (was && !was.shared && was.text !== "null") continue // (this machine's own: what it works out itself, not another's)
+      if (was && !was.shared && was.text !== "null") continue
       if (was && (was.at > s.at || (was.at === s.at && was.text >= text))) continue
       if (!was && text === "null") continue
       this.entries.set(s.name, { text, at: s.at, shared: true, seq: ++this.seq })
@@ -171,7 +163,6 @@ export class Kept {
     for (const fn of this.listeners) try { fn(names, merged) } catch (e) { console.error(e) }
   }
 
-  /** Write what changed to disk now. */
   flush() {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
@@ -180,7 +171,6 @@ export class Kept {
       const file = path.join(this.dir, `${ns}.json`)
       try {
         if (!mine.length) { fs.rmSync(file, { force: true }); continue }
-        // (each entry's JSON as kept, not parsed and made again: a plugin's cache can be megabytes)
         const body = mine.map(([n, e]) => `${JSON.stringify(n)}:{"at":${e.at},"seq":${e.seq}${e.shared ? `,"shared":true` : ""},"data":${e.text}}`)
         writeAtomic(file, `{${body.join(",\n")}}\n`, { mode: 0o600 })
       } catch (e) { console.error(`kept: couldn't write ${file}:`, e) }
@@ -198,7 +188,6 @@ export function keptOf(vaultPath: string): Kept {
   return k
 }
 
-/** Write every store's changes now (the server stopping). */
 export function flushKept() {
   for (const k of stores.values()) k.flush()
 }

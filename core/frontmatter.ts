@@ -1,4 +1,3 @@
-// A file's text and its frontmatter header: parsed, written and edited line by line, without touching the disk.
 import { patchFrontmatter, renameKey } from "./textedit.ts"
 import { dates, dump, load, YAMLError } from "./yaml.ts"
 import { fmTags, renameTagsIn, scan, tagName, viewsIn, withoutBlocks } from "./sections.ts"
@@ -43,7 +42,6 @@ export function renameProperty(text: string, from: string, to: string): string |
   const m = FM.exec(text)
   if (!m) return null
   const inner = renameKey(m[1] ?? "", from, to, loadFm)
-  // (what follows the closing --- stays as it was, its line break included)
   return inner === null ? null : `---\n${inner}\n---${text.slice(m[0].length - (m[0].endsWith("\n") ? 1 : 0))}`
 }
 

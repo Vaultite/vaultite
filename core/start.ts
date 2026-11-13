@@ -1,5 +1,3 @@
-// A new vault starts from Standard (bundles/standard), so there's no setup to pick first. Only .vaultite/ is written;
-// starter content (Start here; with AI, the agent's page and pointers for agents) only as the user chose (vault.starter).
 import fs from "node:fs"
 import * as B from "./bundles.ts"
 import { CODING_AGENTS } from "./coreops/ai.ts"
@@ -7,11 +5,9 @@ import { agentName, KNOWN_AGENTS } from "./terminalids.ts"
 
 const START_HERE = "Start here.md", HOW = "How this vault works.md"
 
-/** The coding agent the user said to use (the welcome card's Use it), as the notes name it: its name, its command, and
- *  what calls it in a note (@claude) when the companion runs it. */
+/** `handle`: what calls it in a note (@claude), null when the companion doesn't run it. */
 type Agent = { name: string; bin: string; handle: string | null }
 
-/** The note a new vault starts with: what to try first, and where the rest is. Without an agent, no word of AI. */
 const startHere = (a: Agent | null) => `This vault is a folder of Markdown files. Vaultite shows them${a ? `, any other editor opens them too, and ${a.name} can work on them` : ", and any other editor opens them too"}.
 ${a?.handle ? `
 ## Try this
@@ -34,7 +30,6 @@ ${a ? `- In a terminal (Open terminal, from ⌘P), \`${a.bin}\` runs ${a.name} i
 - Delete this note when you're done with it.
 `
 
-/** A tour of what a note can hold, each piece written as it's saved (as the playground's, for a vault with nothing yet). */
 const howItWorks = (a: Agent | null) => `A vault is a folder of plain Markdown files. There's no database: open any file in another editor and it reads fine. To see how each piece below is written, switch to editing (⌘E, or Ctrl+E) and put the cursor on it.
 
 ${a ? `## What a file is
@@ -93,16 +88,13 @@ A footnote goes after a word[^1]. ==Highlights==, ~~strikethrough~~ and \`%%comm
 [^1]: Footnotes are numbered and listed at the end.
 `
 
-/** Set up a vault opened for the first time: Standard's setup, all of it in .vaultite/ (no plugin page: they come with
- *  the starter content, or with a bundle turning their plugin on). */
 export async function setUpNew(host: B.Host) {
   // (a list of pins first: the pages of the plugins Standard turns on aren't all pinned, as a vault without one would be)
   await host.call("PATCH", "config/pages", { pinned: [] })
   await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false })
 }
 
-/** The starter content chosen in setup (AI not answered yet: no word of it); with `agent`, once the user said to use it,
- *  its page, Agent files' pointers and the two notes, still as written, saying what it can do (vault.starter). */
+/** With `agent`: its page, Agent files' pointers, and the two notes rewritten while they're still as written. */
 export async function starter(host: B.Host, { agent = null }: { agent?: string | null } = {}) {
   const wrote: string[] = []
   // (a note as written: its body, under the properties its save added)
@@ -128,7 +120,6 @@ export async function starter(host: B.Host, { agent = null }: { agent?: string |
   return wrote
 }
 
-/** A coding agent by its plugin's id, while AI and its plugin are on; @ calls it in a note when the companion runs it. */
 function agentOf(host: B.Host, id: string): Agent | null {
   const v = host.vault, off = v.switchedOff(), known = CODING_AGENTS.find((x) => x.id === id), name = agentName(id)
   if (!known || !name || v.config("plugins").ai === false || off.has(id) || !host.plugins().some((p) => p.id === id)) return null

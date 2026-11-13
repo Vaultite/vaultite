@@ -1,4 +1,3 @@
-// Where the server keeps sockets, run scripts and other short-lived files, and how it starts processes that must outlive it.
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -11,7 +10,6 @@ export function runtimeDir(): string {
   return (dir ??= runtimeDirFor(os.tmpdir()))
 }
 
-/** runtimeDir() were the temp folder `tmp` (a test run's end reads the user's server's, tools/test/isolate.ts). */
 export function runtimeDirFor(tmp: string): string {
   if (process.platform === "darwin" || typeof process.getuid !== "function") return tmp
   const uid = process.getuid()

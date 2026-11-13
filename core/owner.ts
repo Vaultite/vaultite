@@ -11,7 +11,6 @@ const PROXY_HEADERS = ["x-forwarded-for", "x-forwarded-host", "forwarded", "x-re
 const TAILSCALE = ["/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale", "/usr/bin/tailscale",
   "/Applications/Tailscale.app/Contents/MacOS/Tailscale"].find((p) => fs.existsSync(p)) ?? "tailscale"
 
-/** `tailscale status --json`, read once (again a minute after it didn't answer). */
 let status: Promise<{ Self?: { UserID?: unknown; DNSName?: unknown; CertDomains?: unknown[] }; User?: Record<string, { LoginName?: unknown }> } | null> | null = null
 function tailscale() {
   status ??= new Promise((resolve) => {
@@ -25,7 +24,6 @@ function tailscale() {
   return status
 }
 
-/** Tests: Tailscale's status as given (null: ask Tailscale again). */
 export function setTailscaleStatus(st: Awaited<NonNullable<typeof status>> | null) { status = st ? Promise.resolve(st) : null }
 
 /** An address on the tailnet (a .ts.net name, a 100.64/10 or fd7a:115c:a1e0:: address) or this machine's loopback: one a
@@ -38,7 +36,6 @@ export function onTailnet(url: string) {
   return h.endsWith(".ts.net") || h === "localhost" || h === "::1" || h.startsWith("fd7a:115c:a1e0:")
 }
 
-/** The tailnet login of this machine's owner ("" if Tailscale isn't there or doesn't say). */
 async function ownerLogin(): Promise<string> {
   const st = await tailscale()
   return String(st?.User?.[String(st.Self?.UserID)]?.LoginName ?? "").toLowerCase()
@@ -64,7 +61,6 @@ export function servedAt(port: number): Promise<string> {
   }))
 }
 
-/** A Host header's name, without its port or an IPv6 address's brackets. */
 export const hostName = (host: unknown) => String(host ?? "").toLowerCase().replace(/:\d+$/, "").replace(/^\[|\]$/g, "")
 
 /** The host of the request's Origin header: "" when it has none or it isn't a URL ("null": a sandboxed frame). */
@@ -78,10 +74,8 @@ export function overNetwork(req: IncomingMessage) {
   return !LOOPBACK.has(req.socket.remoteAddress ?? "") || PROXY_HEADERS.some((k) => k in h) || Object.keys(h).some((k) => k.startsWith("tailscale-"))
 }
 
-/** A local name for this machine: localhost, a loopback address or its own host name. */
 const localName = (name: string) => name === "localhost" || name.endsWith(".localhost") || LOOPBACK.has(name) || name === os.hostname().toLowerCase()
 
-/** Asked from this machine itself: loopback, no proxy, a local host name, from this app's own page. */
 export const fromThisMachine = (req: IncomingMessage) =>
   !overNetwork(req) && localName(hostName(req.headers.host)) && originHost(req) === String(req.headers.host ?? "").toLowerCase()
 
@@ -123,7 +117,6 @@ export function refusal(req: IncomingMessage, { allowRemote, allowUsers, owner, 
   return localName(name) ? "" : `${what} doesn't answer for ${name || "no host"}`
 }
 
-/** refusal() with the owner looked up (only when it matters: a tailnet login asking, `allowRemote` off). */
 export async function ownerRefusal(req: IncomingMessage, access: Omit<Access, "owner">, what = "this") {
   const needs = typeof req.headers["tailscale-user-login"] === "string" && !access.allowRemote
   return refusal(req, { ...access, owner: needs ? await ownerLogin() : "", tailnet: needs ? await tailnetNames() : [] }, what)

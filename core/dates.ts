@@ -1,6 +1,3 @@
-// Moment.js-style dates without moment, shared by the server and the web app (no Node): a formatter and its reader,
-// weeks numbered from a chosen first day (w, ww, gggg, e) beside ISO's (W, WW, GGGG, E).
-
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 const pad = (n: number, w = 2) => String(Math.abs(n)).padStart(w, "0")
@@ -18,9 +15,8 @@ const ISO: Weeks = { start: 1, jan: 4 }
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 864e5) // (local midnights; DST-safe)
 const weekOf = (d: Date, w: Weeks) => addDays(d, -((d.getDay() - w.start + 7) % 7))
-/** d's week and week-year: a week is its year's when it holds that year's January `jan`. */
 function week(d: Date, w: Weeks) {
-  const a = addDays(weekOf(d, w), 7 - w.jan) // (the day of the week that decides its year)
+  const a = addDays(weekOf(d, w), 7 - w.jan)
   return { n: Math.floor(daysBetween(new Date(a.getFullYear(), 0, 1), a) / 7) + 1, year: a.getFullYear() }
 }
 const weekStart = (y: number, n: number, w: Weeks) => addDays(weekOf(new Date(y, 0, w.jan), w), (n - 1) * 7)
@@ -71,7 +67,7 @@ export function parseDate(text: string, fmt: string, opts: DateOptions = {}): Da
   const re = local(fmt).replace(new RegExp(`${TOKENS.source}|[.*+?^\${}()|\\\\]`, "g"), (m, lit?: string) => {
     if (lit !== undefined) return lit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     const r = READ[m]
-    if (!r) return /^[.*+?^${}()|\\]$/.test(m) ? `\\${m}` : "[A-Za-z0-9]+?" // (a token it writes but needn't read: a weekday)
+    if (!r) return /^[.*+?^${}()|\\]$/.test(m) ? `\\${m}` : "[A-Za-z0-9]+?"
     sets.push(r[1])
     return `(${r[0]})`
   })

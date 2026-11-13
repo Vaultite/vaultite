@@ -1,5 +1,3 @@
-// What this server runs: the commit it started on, or the web build's when that changes nothing of the server's (a
-// web-only update), and whether a commit is in what each part runs. vau version, Machines and About read it.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -32,9 +30,7 @@ export type Running = {
  *  the commit's own change doesn't reach; `older`, code it does (`file`, the nearest); `unknown`, can't say (`why`). */
 export type PartRuns = { id: string; label: string; commit: string | null; runs: "it" | "untouched" | "older" | "unknown"; file?: string; why?: string }
 
-/** `root`'s: a checkout, or a packaged app's (its electron/build.json); `web`, the build it serves. */
 export function runningIn(root: string, web: () => WebBuild) {
-  /** git's output, or null when it failed (not a checkout, an unknown commit). */
   const git = (...args: string[]) => exec("git", ["-C", root, ...args], { timeout: 5000, env: gitEnv() }).then((r) => r.stdout.trim(), () => null)
   const label = (id: string) => ENTRIES.find((e) => e.id === id)?.label ?? id
   const start = (async () => {
@@ -47,9 +43,8 @@ export function runningIn(root: string, web: () => WebBuild) {
     catch { return { commit: null, branch: null } }
   })()
   let parses: ParseCache | undefined
-  /** The module graph of this checkout's files now, or why there's none. */
   const graphNow = async (): Promise<{ graph: Graph } | { why: string }> => {
-    const mod = graphModule() // (a parser: the host's, loaded only when asked)
+    const mod = graphModule()
     if (!mod) return { why: "this server has no module graph (its host gives none)" }
     try {
       const { diskTree, graphOf } = await mod
@@ -57,8 +52,6 @@ export function runningIn(root: string, web: () => WebBuild) {
     } catch (e) { return { why: `the module graph failed: ${(e as Error).message}` } }
   }
   const same = new Map<string, Promise<boolean>>()
-  /** Nothing the server runs differs between the two (the graph's answer, as the updates' plan; without one, the
-   *  folder rule's): false when git can't say. */
   const sameServer = (a: string, b: string) => {
     let p = same.get(`${a}..${b}`)
     if (!p) same.set(`${a}..${b}`, p = git("diff", "--name-only", "--no-renames", a, b).then(async (out) => {
@@ -77,30 +70,26 @@ export function runningIn(root: string, web: () => WebBuild) {
     return base
   }
 
-  /** A hash (full or short) in full, or null when this checkout doesn't have it (yet). Never a name: see isHash. */
   const resolve = async (given: string) => {
     if (!isHash(given)) return null
     const full = await git("rev-parse", "--verify", "--quiet", `${given.toLowerCase()}^{commit}`)
     return full?.startsWith(given.toLowerCase()) ? full : null // (a branch named like a hash is still a name)
   }
-  /** Whether a short hash names more than one commit here. */
   const ambiguous = async (given: string) => {
     if (!isHash(given) || given.length === 40) return false
     const all = (await git("rev-parse", `--disambiguate=${given.toLowerCase()}`) ?? "").split("\n").filter(Boolean)
     if (all.length < 2) return false
     return (await Promise.all(all.map((sha) => git("cat-file", "-t", sha)))).filter((t) => t === "commit").length > 1
   }
-  /** Whether `commit` is `of` or comes before it (null: git can't say: not a checkout). */
+  /** null: git can't say (not a checkout). */
   const contains = async (of: string, commit: string) => {
     if (/^[0-9a-f]{7,}$/.test(commit) && of.startsWith(commit)) return true
     if (!(await git("rev-parse", "--git-dir"))) return null
     return exec("git", ["-C", root, "merge-base", "--is-ancestor", commit, of], { timeout: 5000, env: gitEnv() }).then(() => true, () => false)
   }
-  /** Whether `commit` is on `ref` (origin/main): null when either isn't known here. */
+  /** null when either isn't known here. */
   const onRef = async (commit: string, ref: string) => (await git("rev-parse", "--verify", "--quiet", ref)) ? contains(ref, commit) : null
 
-  /** Each process against this checkout's files now (uncommitted changes too): what changed since its commit that it
-   *  reaches. The graph is the checkout's as it is now. */
   const processes = async (list: { id: string; commit: string | null }[]): Promise<Process[]> => {
     const none = (why: string) => list.map((p) => ({ ...p, label: label(p.id), stale: null, why }))
     if (!(await git("rev-parse", "--git-dir"))) return none("not a checkout: nothing to compare with")
@@ -119,8 +108,6 @@ export function runningIn(root: string, web: () => WebBuild) {
     }))
   }
 
-  /** Whether each part runs `commit` (in full) or code equal to it in what that part runs: the commit's own change (from
-   *  its first parent) reaching none of its files (closure.ts). A commit with nothing in a part needs nothing of it. */
   const runsOf = async (commit: string, list: { id: string; commit: string | null }[]): Promise<PartRuns[]> => {
     let own: Promise<string[] | null> | undefined, graph: Promise<{ graph: Graph } | { why: string }> | undefined
     return Promise.all(list.map(async (p): Promise<PartRuns> => {

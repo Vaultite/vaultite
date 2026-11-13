@@ -1,5 +1,3 @@
-// Windows' WSL, from the Windows side: its distros, and paths between the two (C:\x is /mnt/c/x there; a distro's own
-// files are \\wsl.localhost\<distro>\... here). Pure but for distros(), so both sides and the tests share it.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 

@@ -1,6 +1,3 @@
-// What the core reads from any file's frontmatter, alike on server and app (no Node): a file's type (its kind's, else
-// its `type` or a plugin's mark, never its folder's alone) and `archived: true` (core/docs/vault.md).
-
 export const ARCHIVED = "archived"
 /** The hidden folder archived files move into, inside their own folder (the Archive plugin). The vault indexes it like
  *  any folder, so links and history keep working, while tools that skip dot folders don't see it. */
@@ -51,7 +48,7 @@ export function effectiveType(kindType: string | null | undefined, fm: Record<st
 export function homeFolder(paths: Iterable<string>, name?: string | null, nested = false): string | null {
   const count = new Map<string, number>()
   for (const p of paths) {
-    if (inArchive(p)) continue // (new files never go into an archive)
+    if (inArchive(p)) continue
     const d = p.slice(0, Math.max(0, p.lastIndexOf("/")))
     count.set(d, (count.get(d) ?? 0) + 1)
   }
@@ -89,8 +86,7 @@ export function attachmentDir(spec: string, from: string): string {
   return p.replace(/^\/+|\/+$/g, "")
 }
 
-/** A folder new files go in, as settings show it (core/filing.ts): `set` when the vault's folders.json names it
- *  (else another app's setting or the guess). Keyed by a kind's collection, or `dashboards` (pages, the plugins' too). */
+/** `set`: the vault's folders.json names it (else another app's setting or the guess). */
 export type Home = { key: string; type: string; plugin: string; label: string; folder: string; set: boolean }
 
 /** An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x. */

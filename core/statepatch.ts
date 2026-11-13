@@ -1,5 +1,3 @@
-// /api/state as a patch of the state the app has: {set}, {keys, drop}, {items: runs of old items, new ones, patches of
-// old ones} or a long text's {edit}. What it leaves alone keeps its object, so nothing redraws.
 import { applyEdit, editOf } from "./texthash.ts"
 
 /** A value as pieces of JSON: whole (its JSON), an object's keys, or an array's items (each one's JSON). */
@@ -22,7 +20,6 @@ function json(x: unknown) {
   return j
 }
 
-/** Each item's first index in an array of pieces (built once per array, when a patch is made from it). */
 const indexes = new WeakMap<string[], Map<string, number>>()
 function indexOf(items: string[]) {
   let at = indexes.get(items)
@@ -37,15 +34,12 @@ function indexOf(items: string[]) {
 /** A value (JSON-safe: what the API answers) as pieces. With `prev`, the pieces of an earlier state, a piece that's
  *  the same is that one's string: kept once in memory, and compared at once. */
 export function snapshot(value: unknown, prev?: Piece): Piece {
-  // (a frozen value given again is the piece it was: a kind nothing changed in costs nothing)
   if (prev !== undefined && typeof prev !== "string" && prev.from === value && Object.isFrozen(value)) return prev
   if (Array.isArray(value)) {
     const old = prev !== undefined && typeof prev !== "string" && "items" in prev ? prev : null, was = old?.items ?? null
     let at: Map<string, number> | null = null
-    // (a frozen item where it was is that piece: nothing to look up)
     return { from: value, items: value.map((x, n) => {
       if (was && old!.from?.[n] === x && x !== null && typeof x === "object" && Object.isFrozen(x)) return was[n]
-      // (a frozen item's JSON is the one string it had before, wherever it moved: nothing to look up)
       const j = json(x)
       if (!was || was[n] === j || (x !== null && typeof x === "object" && Object.isFrozen(x))) return j
       const i = (at ??= indexOf(was)).get(j)
@@ -62,7 +56,6 @@ export function snapshot(value: unknown, prev?: Piece): Piece {
   return prev === j ? prev : j
 }
 
-/** The JSON of a value from its pieces. */
 export function jsonOf(p: Piece): string {
   if (typeof p === "string") return p
   if ("items" in p) return `[${p.items.join(",")}]`
@@ -76,7 +69,6 @@ export function patchOf(old: Piece, now: Piece): string | null {
   if (old === now) return null
   const set = () => `{"set":${jsonOf(now)}}`
   if (typeof now === "string") {
-    // (a long text changed, a note's body as it's typed: only the edit)
     if (typeof old !== "string" || now.length < LONG || now[0] !== '"' || old[0] !== '"') return set()
     const e = editOf(JSON.parse(old), JSON.parse(now)), p = `{"edit":[${e.at},${e.cut},${JSON.stringify(e.add)}]}`
     return p.length < now.length ? p : set()
@@ -85,8 +77,6 @@ export function patchOf(old: Piece, now: Piece): string | null {
     if (typeof old === "string" || !("items" in old)) return set()
     const was = old.items
     if (now.items.length === was.length && now.items.every((j, i) => j === was[i])) return null
-    // Old items are looked for a little ahead of where the last run ended, then (in a list that isn't long) anywhere:
-    // a long one sends an item moved far as new rather than index it all.
     let at: Map<string, number> | null = null
     const out: string[] = []
     let start = -1, n = 0, reused = 0, pos = 0
@@ -106,7 +96,6 @@ export function patchOf(old: Piece, now: Piece): string | null {
     return reused ? `{"items":[${out.join(",")}]}` : set()
   }
   if (typeof old === "string" || !("keys" in old)) return set()
-  // The keys come out in the same order: the old ones still there as they were, then the new ones.
   const kept = [...old.keys.keys()].filter((k) => now.keys.has(k)), order = [...now.keys.keys()]
   if (kept.some((k, i) => order[i] !== k)) return set()
   const parts: string[] = [], drop = [...old.keys.keys()].filter((k) => !now.keys.has(k))

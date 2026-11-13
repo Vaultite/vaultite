@@ -1,5 +1,5 @@
-// [[Links]] resolved as Obsidian does, on server and app (web/src/core/links.ts): a path, a file name, then aliases
-// and plugins' names; of several, the closest to the linking file wins, an archived one last. No Node.
+// [[Links]] resolved as Obsidian does: a path, a file name, then aliases and plugins' names; of several, the closest to
+// the linking file wins, an archived one last.
 import { archiveTwin } from "./fileprops.ts"
 
 /** A file as links see it. `names` are what plugins add (a person's name); `archived`: it loses ties. */
@@ -43,8 +43,6 @@ export function* noteLinks(text: string): Generator<NoteLink> {
 /** The targets of every link in a note's Markdown (noteLinks). */
 export const linkTargets = (text: string): string[] => Array.from(noteLinks(text), (l) => l.target)
 
-/** A Markdown link's address, when it's a file in the vault (no scheme, not just #heading): as written (`raw`, without
- *  <angle brackets>), its path decoded (`path`) and its #anchor. */
 function localHref(href: string): { angle: boolean; raw: string; path: string; anchor: string } | null {
   const angle = href.startsWith("<"), raw = angle ? href.slice(1, -1) : href
   if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return null
@@ -62,7 +60,6 @@ export function mdLinkTarget(href: string): string | null {
   return p.includes("/") && !/^(\.\.?\/|\/)/.test(p) ? `./${p}` : p
 }
 
-/** Each line of Markdown, and whether it's code: a fence's own line or one inside it. */
 export function* fenced(text: string): Generator<[string, boolean]> {
   let fence: string | null = null
   for (const line of text.split("\n")) {
@@ -96,7 +93,6 @@ const baseOf = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 const noExt = (p: string) => p.replace(/\.[^./]+$/, "")
 const segs = (dir: string) => (dir ? dir.split("/") : [])
 
-/** How far file `p` is from folder `dir`: folders up, then down (0 in the same folder). */
 function distance(dir: string, p: string) {
   const a = segs(dir.toLowerCase()), b = segs(dirOf(p).toLowerCase())
   let i = 0
@@ -121,7 +117,6 @@ export function linkIndex<T>(entries: LinkEntry<T>[], { twins = true } = {}): { 
     put(paths, p, e); put(names, baseOf(p), e)
     if (bare) { put(paths, noExt(p), e); put(names, noExt(baseOf(p)), e) }
   }
-  // Closest first: not archived, then (from a file) its own folder and the fewest folders away, then the shortest path.
   const rank = (l: LinkEntry<T>[], from?: string) => {
     if (l.length < 2) return l
     const dir = from === undefined ? null : dirOf(from)
@@ -137,19 +132,14 @@ export function linkIndex<T>(entries: LinkEntry<T>[], { twins = true } = {}): { 
   const resolve: Resolve<T> = (target, from) => {
     const t = clean(target)
     if (!t) return null
-    // A relative path (`../Idea`) from the linking file's folder first; else from the vault's top.
     if (from !== undefined && /^\.\.?\//.test(t)) {
       const p = resolvePath(dirOf(from), t)
       const hit = p ? paths.get(p.toLowerCase()) : undefined
       if (hit) return rank(hit, from)[0].value
     }
-    // A path from the vault's top: a bare name is a name, so the closest file of that name wins over one at the top.
-    // (a relative one that isn't there is taken as written from the top: `../Media/a.png` as Media/a.png)
     const k = t.replace(/^(\.\.?\/)+/, "").replace(/^\/+/, "").toLowerCase()
-    // (a path to a file since archived, or unarchived, finds it in its twin: Inbox/X is Inbox/.archive/X now)
     const exact = k.includes("/") || t.startsWith("/") ? paths.get(k) ?? (twins ? paths.get(archiveTwin(k)) : undefined) : undefined
     if (exact) return rank(exact, from)[0].value
-    // A file name; a folder in front of it must be the end of the file's path (`[[Work/Idea]]`: any …/Work/Idea.md).
     const base = baseOf(k)
     let hits = names.get(base)
     if (hits && k !== base) hits = hits.filter((e) => { const p = e.path!.toLowerCase(); return p.endsWith(`/${k}`) || ((e.bare ?? /\.md$/.test(p)) && noExt(p).endsWith(`/${k}`)) })
@@ -162,7 +152,6 @@ export function linkIndex<T>(entries: LinkEntry<T>[], { twins = true } = {}): { 
     if (!k) return []
     const out: LinkEntry<T>[] = []
     const add = (l?: LinkEntry<T>[]) => { for (const e of rank(l ?? [], from)) if (!out.includes(e)) out.push(e) }
-    // The file of that name elsewhere (a path that isn't there as written), then names that start with it.
     if (k.includes("/")) add(names.get(baseOf(k)))
     for (const m of [names, labels]) {
       const starts: LinkEntry<T>[] = []
@@ -204,7 +193,6 @@ export function linksIn(text: string, offset = 0): LinkSpan[] {
 export function mapLinks(text: string, to: (target: string, md: boolean) => string | null): string {
   return Array.from(fenced(text), ([line, code]) => {
     if (code || !(line.includes("[[") || line.includes("]("))) return line
-    // Inline code stays as it is: only the text between code spans is rewritten.
     let out = "", at = 0
     for (const m of line.matchAll(CODE)) { out += relinkSpan(line.slice(at, m.index), to) + m[0]; at = m.index + m[0].length }
     return out + relinkSpan(line.slice(at), to)
@@ -214,7 +202,7 @@ export function mapLinks(text: string, to: (target: string, md: boolean) => stri
 function relinkSpan(s: string, to: (target: string, md: boolean) => string | null) {
   return s.replace(LINK(), (all, open?: string, target?: string, head?: string, alias?: string, mdOpen?: string, href?: string, close?: string) => {
     if (open !== undefined && target !== undefined) {
-      const esc = target.endsWith("\\") ? "\\" : "" // [[x\|alias]] in a table
+      const esc = target.endsWith("\\") ? "\\" : ""
       const t = to(target.slice(0, target.length - esc.length).trim(), false)
       return t === null ? all : `${open}${t}${head ?? ""}${esc}${alias ?? ""}]]`
     }
@@ -239,7 +227,6 @@ export function resolvePath(dir: string, rel: string): string | null {
   return parts.join("/")
 }
 
-/** The relative path from folder `dir` to vault path `to`. */
 export function relativePath(dir: string, to: string): string {
   const a = dir ? dir.split("/") : [], b = to.split("/")
   let i = 0

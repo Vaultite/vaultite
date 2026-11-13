@@ -1,5 +1,3 @@
-// The colours a user names things by (a browser container, a tab group): one palette, each a theme token (index.css),
-// so a scheme recolours them all. Shared by the server and the app.
 export const COLORS = ["blue", "orange", "green", "red", "purple", "pink", "yellow", "teal", "indigo", "gray"] as const
 export type Color = (typeof COLORS)[number]
 export const COLOR_NAMES: Record<Color, string> = { blue: "Blue", orange: "Orange", green: "Green", red: "Red", purple: "Purple",

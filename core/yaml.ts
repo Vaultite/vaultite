@@ -2,8 +2,6 @@
 // (one key per line, small lists inline, quotes only when needed) so files look the same whoever wrote them.
 import { parse as parseYaml, type ScalarTag } from "yaml"
 
-// ---------- reading ----------
-
 const TIMESTAMP = /^(\d{4})-(\d\d?)-(\d\d?)(?:(?:[Tt]|[ \t]+)(\d\d?):(\d\d):(\d\d)(?:\.\d*)?(?:[ \t]*(?:Z|[-+]\d\d?(?::\d\d)?))?)?$/
 
 /** Timestamps read as text: a date "YYYY-MM-DD", a time "YYYY-MM-DD HH:MM:SS" (the time as written, zone dropped). */
@@ -19,7 +17,6 @@ const timestamp: ScalarTag = {
   },
 }
 
-/** A plain scalar's sign and digits: "-1_000" -> [-1, "1000"]. */
 function signed(s: string, lower = false): [number, string] {
   let v = s.replaceAll("_", "")
   if (lower) v = v.toLowerCase()
@@ -67,8 +64,7 @@ const REPLACED = new Set(SCALARS.map((t) => t.tag))
 
 export class YAMLError extends Error {}
 
-/** A YAML document -> plain values (null for an empty one). Throws YAMLError when it doesn't parse. The usual
- *  frontmatter (loadPlain) is read without the YAML library, which would take most of the time a vault takes to open. */
+/** A YAML document -> plain values (null for an empty one). Throws YAMLError when it doesn't parse. */
 export function load(text: string): unknown {
   return loadPlain(text) ?? loadKept(text)
 }
@@ -89,7 +85,6 @@ function loadKept(text: string): unknown {
   return value
 }
 
-/** load() with the YAML library, whatever the document. */
 export function loadYaml(text: string): unknown {
   try {
     return parseYaml(text, {
@@ -103,7 +98,6 @@ export function loadYaml(text: string): unknown {
   }
 }
 
-/** A plain scalar's value, as the YAML library resolves it (SCALARS, else text). */
 function plain(s: string): unknown {
   for (const t of SCALARS) if ((t.test as RegExp).test(s)) return t.resolve(s, () => {}, {})
   return s
@@ -115,7 +109,6 @@ const KEY = /^([A-Za-z_][\w-]*):(?: +(.*))?$/
 
 const NO = Symbol("not plain")
 
-/** A value written plain, quoted or (but in a list) as a flow list of plain ones; NO for anything else. */
 function readScalar(v: string, inList: boolean): unknown {
   if (v[0] === "'") {
     const inner = v.slice(1, -1)
@@ -166,9 +159,6 @@ export function loadPlain(text: string): Record<string, unknown> | undefined {
   return keys ? out : undefined
 }
 
-// ---------- writing ----------
-
-/** A date written plain (`date: 2026-09-29`), not quoted like a string that looks like one. */
 class YDate {
   value: string
   constructor(value: string) { this.value = value }
@@ -344,7 +334,6 @@ function flow(v: unknown, indent: number): string {
 
 const inline = (v: unknown) => !(Array.isArray(v) || isMap(v)) || leafy(Array.isArray(v) ? v : Object.values(v))
 
-/** A mapping in block style at `indent` (the top level of a frontmatter, or a record with lists in it). */
 function blockMap(m: Record<string, unknown>, indent: number, first = ""): string[] {
   const pad = " ".repeat(indent)
   const out: string[] = []

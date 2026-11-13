@@ -1,5 +1,3 @@
-// The web app's build server.ts serves (web/dist): its entry script (named by content), the files it starts with and
-// the commit it's from (core/buildstamp.ts). Watched while anyone listens, so open pages hear of a new one at once.
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -15,8 +13,7 @@ const ENTRY = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/
 const IMPORT_MAP = /<script type="importmap"[^>]*>([\s\S]*?)<\/script>/
 const EAGER = /<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g
 
-/** A build folder's: `read` its index.html (again once changed), `on` hears a new entry once it held still (polled: a
- *  watch can lose a rewrite). `adopt`: another folder's from now on (a code root's, plan.ts' adopt-web), told as new. */
+/** Polled: fs.watch can lose a rewrite. `adopt` tells the other folder's build as new. */
 export function webBuilds(first: string, ms = 1000) {
   let dist = first, index = path.join(dist, "index.html")
   let seen = "", built = NONE
@@ -64,5 +61,4 @@ export function webBuilds(first: string, ms = 1000) {
 }
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-/** This server's: web/dist (VAULTITE_WEB_DIST: a test's copy of it, which the test builds anew). */
 export const served = webBuilds(process.env.VAULTITE_WEB_DIST || path.join(ROOT, "web", "dist"))

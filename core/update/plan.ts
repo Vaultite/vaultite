@@ -1,5 +1,3 @@
-// What a new code root asks of each running process (the desktop host acts on it): from the commit each started on, the
-// files changed since, the module graph (closure.ts) and the shell's fingerprints. Whatever can't be known costs more.
 import type { Hit } from "./closure.ts"
 
 /** The processes running, each by the commit it started on (null or absent: not running). */
@@ -8,7 +6,6 @@ export type Running = {
   ui?: string | null
   /** The server's code, and the web build it serves (a web-only update moves only that). */
   server?: { code: string; web: string } | null
-  /** The desktop app's main process. */
   main?: string | null
   /** Its menu-bar helper, reloaded apart from it (absent: the main process's commit; null: none runs). */
   helper?: string | null
@@ -16,7 +13,6 @@ export type Running = {
   keepers?: { termd?: string | null; chatd?: string | null }
 }
 export type PlanInput = {
-  /** The commit the new root is. */
   to: string
   running: Running
   /** The files changed from a commit to `to`; a commit missing (or null) isn't known. */
@@ -40,10 +36,9 @@ export type Plan = {
   why: Partial<Record<"ui" | "server" | "main" | "helper" | "shell" | "termd" | "chatd", string>>
 }
 
-/** What a plan does to each process, from the lightest to the heaviest. */
 export function planUpdate(p: PlanInput): Plan {
   const why: Plan["why"] = {}
-  /** Whether what started on `from` runs code `to` changed (its entries in the graph): why, or null. */
+  /** Why what started on `from` runs code `to` changed, or null. */
   const reaches = (from: string, entries: string[]): string | null => {
     if (from === p.to) return null
     const files = p.changed[from]

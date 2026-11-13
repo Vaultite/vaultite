@@ -1,5 +1,3 @@
-// Live updates: the vault is watched and every change, whoever made it, is synced and told to each open app over one
-// WebSocket (/api/events: hello, change, moved, kept, web, ping, ui). Bursts coalesce; `ui` goes to the last focused.
 import { eventsOf } from "./events.ts"
 import { OpError } from "./ops.ts"
 import crypto from "node:crypto"
@@ -14,20 +12,18 @@ import { logger } from "./log.ts"
 const log = logger("live")
 
 const QUIET = 20, GAP = 100, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
-/** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask, plugins' "<id>:<name>"),
- *  only through ops, never POST /api/ui: the dev ones are the owner's. Seconds an ask may wait (a person's are longer). */
+/** Seconds each ask may wait for its window's answer. */
 const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
 const isAsk = (action: string) => ASKS.has(action) || /^[a-z0-9-]+:[a-z0-9-]+$/.test(action)
 type Answer = { ran?: boolean; result?: unknown; error?: unknown; notices?: unknown[] }
 
-/** Changes nobody needs to hear about. */
 export function ignored(rel: string) {
   const parts = rel.split("/"), name = parts[parts.length - 1]
   return parts.includes(".git") || name === ".DS_Store" || name.endsWith(".icloud") || name.includes(".tmp-") ||
     rel === ".vaultite/artifacts" || rel.startsWith(".vaultite/artifacts/")
 }
 
-/** Folders Linux's watcher leaves out (each folder is an inotify watch there): changes in them are ignored anyway. */
+/** Linux leaves these unwatched: each folder is an inotify watch there. */
 const isFolder = (abs: string) => { try { return fs.statSync(abs).isDirectory() } catch { return false } }
 const unwatched = (rel: string) => ignored(rel) || rel.split("/").includes("node_modules")
 
@@ -36,10 +32,9 @@ export type Change = { paths: string[] | null; v: string }
 export type Present = { id: string; windows: number; at: number }
 
 export class Live {
-  /** The web app's build being served (server.ts sets it; null in development). */
+  /** null in development. */
   static web: () => string | null = () => null
   private static open = new Set<Live>()
-  /** The build being served changed (server.ts hears it): every open window is told, as a hello tells it. */
   static newWeb() {
     const web = Live.web()
     if (web) for (const l of Live.open) l.send({ type: "web", web })
@@ -48,29 +43,29 @@ export class Live {
   boot = Date.now().toString(36)
   private listeners = new Set<(c: Change) => void>()
   private clients = new Set<WebSocket>()
-  private active = new Map<WebSocket, number>() // when each window last said it had the focus (this server's clock)
-  private workspaces = new Map<WebSocket, number>() // the workspace each window said it's on
-  private devices = new Map<WebSocket, { id: string; since: number }>() // the device each window is (its app's id) and since when
-  private answers = new Map<string, (a: Answer) => void>() // windows answering what they were sent (a command ran, an ask's result)
+  private active = new Map<WebSocket, number>()
+  private workspaces = new Map<WebSocket, number>()
+  private devices = new Map<WebSocket, { id: string; since: number }>()
+  private answers = new Map<string, (a: Answer) => void>()
   private answering = new WeakSet<WebSocket>() // windows that answer (an older app doesn't)
-  private asked = new Map<string, WebSocket>() // an ask's window, so its closing ends the wait
-  private keyed = new Map<string, () => void>() // asks given a key, which "ask-cancel" ends (answered on another machine)
+  private asked = new Map<string, WebSocket>()
+  private keyed = new Map<string, () => void>()
   private pending = new Set<string>()
   private all = false
   private timer: ReturnType<typeof setTimeout> | null = null
   private watcher: fs.FSWatcher | TreeWatcher | null = null
   private pinger: ReturnType<typeof setInterval> | null = null
   private closed = false
-  private sent = "" // the v of the last event
-  private told: Set<string> | null = new Set() // the paths told at that v (null: all of them)
-  private recent: (string[] | null)[] = [] // the last changes told, for windows coming back (since)
-  private dropped = 0 // how many were told before them
+  private sent = ""
+  private told: Set<string> | null = new Set() // null: all of them
+  private recent: (string[] | null)[] = []
+  private dropped = 0
 
   private unmove: () => void
   private unarrive: () => void
   private unwrote: () => void
   private unkept: () => void
-  private keptNames = new Set<string>() // kept entries changed, told together a moment later
+  private keptNames = new Set<string>()
   private keptTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(vault: Vault) {
@@ -89,8 +84,7 @@ export class Live {
     return `${this.boot}:${this.vault.version}`
   }
 
-  /** Watch the vault (its real folder: the vault path may be a symlink). If the watch fails (the folder went away for
-   *  a moment), it's tried again; meanwhile requests still sync as before, so nothing is lost but the push. */
+  /** Watches the real folder: the vault path may be a symlink. */
   start() {
     if (this.closed) return this
     try {
@@ -105,7 +99,6 @@ export class Live {
         })
       this.watcher.on("error", (e) => this.restart(e))
       // (inotify, folder by folder, hears each change as it's made; FSEvents tells of them a while later)
-      // (what it heard of the server's own writes, indexed as written, isn't news)
       this.vault.watching(true, process.platform === "linux" ? () => this.flushing || (this.timer !== null && (this.all || !this.vault.told(this.pending))) : undefined)
     } catch (e) {
       this.restart(e)
@@ -127,7 +120,7 @@ export class Live {
   private full = false
   private rootName = "" // the vault's real folder's name, as FSEvents names the folder itself
 
-  /** A changed path (vault-relative), or null when the watcher couldn't say which. */
+  /** null when the watcher couldn't say which. */
   add(rel: string | null) {
     if (rel === null) this.all = true
     else if (!ignored(rel)) this.pending.add(rel)
@@ -135,13 +128,11 @@ export class Live {
     this.soon()
   }
 
-  /** Changes go out QUIET ms after the first (one write's events together), else GAP ms after the last went: under a
-   *  stream of writes each waits at most that long, never for the stream to pause. */
   private soon() {
     if (this.timer || this.flushing || this.closed) return
     this.timer = setTimeout(() => this.flush(), Math.max(QUIET, this.went + GAP - Date.now()))
   }
-  private went = 0 // when the last flush started
+  private went = 0
 
   private again: ReturnType<typeof setTimeout> | null = null
 
@@ -164,17 +155,15 @@ export class Live {
     const paths = this.all ? null : this.narrow([...this.pending]).sort()
     this.pending.clear()
     this.all = false
-    // (the folders iCloud touched beside a write left out here too, or each of the server's own saves walks the vault)
     this.flushing = true
     try {
-      await this.vault.hear(paths) // (notes edited on disk read again on their own, else a walk)
+      await this.vault.hear(paths)
     } catch (e) {
       log.error("hearing the vault's changes failed", e)
     } finally {
       this.flushing = false
     }
-    if (this.pending.size || this.all) this.soon() // (heard meanwhile)
-    // A folder gone from disk is only let go of a few seconds later (Vault.sync): look again then.
+    if (this.pending.size || this.all) this.soon()
     if (this.vault.waiting()) this.recheck()
     // FSEvents can report one write twice: Markdown files already indexed and told of, with the index unchanged since,
     // are nothing new. (Anything else can't be told apart this way, so it goes out.)
@@ -182,8 +171,6 @@ export class Live {
     this.emit(paths)
   }
 
-  /** While the vault's folder is missing, sync again less and less often, and tell the apps only when the index changed
-   *  (telling them every second made every open app reload everything). */
   private recheck(delay = 1000) {
     if (this.again || this.closed) return
     this.again = setTimeout(async () => {
@@ -207,14 +194,11 @@ export class Live {
     eventsOf(this.vault).emit("file.changed", { paths })
   }
 
-  /** Hear about changes (the tests do; the web app listens through a socket). */
   listen(fn: (c: Change) => void) {
     this.listeners.add(fn)
     return () => { this.listeners.delete(fn) }
   }
 
-  /** A web app connected to /api/events; `at`, where its changes ended when it was here before; `device`, the id its
-   *  app keeps for the device it's on (web/src/core/device.ts). */
   client(ws: WebSocket, at?: string, device?: string) {
     this.clients.add(ws)
     if (device && /^[a-z0-9]{8,32}$/.test(device)) this.devices.set(ws, { id: device, since: Date.now() })
@@ -239,20 +223,15 @@ export class Live {
     ws.send(JSON.stringify({ type: "hello", v: this.v, web: Live.web() ?? undefined, ...this.mark(), ...(missed !== undefined ? { paths: missed } : {}) }))
   }
 
-  /** Where what windows are told stands now: the changes (`at`) and the kept entries. /api/state says it too, so a
-   *  window that read the state before its socket connected hears what changed in between (its hello's `paths`). */
   mark() {
     return { at: this.at, ...this.keptMark() }
   }
 
-  /** Where the kept entries are (core/kept.ts): `kept`, the store and its last change, which a window back after a
-   *  while compares; `state`, what of them /api/state shows. */
   private keptMark() {
     const k = keptOf(this.vault.path)
     return { kept: `${k.id}:${k.seq}`, state: k.stateVersion }
   }
 
-  /** Kept entries changed (another device's tabs, a workspace's layout): windows read what shows them again. */
   private tellKept() {
     this.keptTimer = null
     const names = [...this.keptNames].sort()
@@ -260,13 +239,11 @@ export class Live {
     if (names.length) this.send({ type: "kept", names, ...this.keptMark() })
   }
 
-  /** Where the changes told so far end ("<boot>:<n>"): a window back after a while says it, and hears only what changed
-   *  since instead of reading everything again. */
   get at() {
     return `${this.boot}:${this.dropped + this.recent.length}`
   }
 
-  /** The paths changed since `at` (null: anything may have, as when it's from before this server or too long ago). */
+  /** null: anything may have, as when `at` is from before this server or too long ago. */
   private since(at: string): string[] | null {
     const [boot, n] = at.split(":"), from = Number(n) - this.dropped
     if (boot !== this.boot || !Number.isInteger(from) || from < 0 || from > this.recent.length) return null
@@ -283,12 +260,10 @@ export class Live {
     for (const ws of this.clients) if (ws.readyState === ws.OPEN) ws.send(text)
   }
 
-  /** How many app windows are connected. */
   get windows() {
     return [...this.clients].filter((ws) => ws.readyState === ws.OPEN).length
   }
 
-  /** The devices with a window open here: how many, and when one was last used (connected, or focused since). */
   present(): Present[] {
     const out = new Map<string, Present>()
     for (const [ws, d] of this.devices) {
@@ -299,14 +274,12 @@ export class Live {
     return [...out.values()]
   }
 
-  /** Something for every window of one device (close its tabs): how many windows it went to. */
   tell(device: string, msg: object) {
     let n = 0
     for (const [ws, d] of this.devices) if (d.id === device && ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ ...msg, type: "ui" })); n++ }
     return n
   }
 
-  /** The window focused last (else the one that connected last), or null when no app is open. */
   private last() {
     const open = [...this.clients].filter((ws) => ws.readyState === ws.OPEN)
     if (!open.length) return null
@@ -314,14 +287,12 @@ export class Live {
     return open.reduce((best, ws) => (at(ws) >= at(best) ? ws : best))
   }
 
-  /** The workspace the window focused last is on (null: no window, or it has no workspaces). */
+  /** null: no window, or it has no workspaces. */
   get workspace() {
     const ws = this.last()
     return (ws && this.workspaces.get(ws)) ?? null
   }
 
-  /** Something for the user's screen (open a file, run a command): sent to one window, the one focused last (else the
-   *  one that connected last). False when no app is open. */
   ui(msg: object) {
     const to = this.last()
     if (!to) return false
@@ -329,16 +300,13 @@ export class Live {
     return true
   }
 
-  /** What operations drive the window with (App.ui, core/ops.ts): POST's answer for a message (null: GET, the windows
-   *  open), or an OpError with its status. */
+  /** A null message is a GET: the windows open. */
   drive = async (message: Record<string, unknown> | null): Promise<unknown> => {
     if (message && isAsk(String(message.action))) return this.ask(message)
     if (message?.action === "ask-cancel") { this.keyed.get(String(message.key))?.(); return { ok: true } }
-    // A command says whether the window could run it (one that needs an open note may not); an older app never says.
+    // An older app never says whether it could run a command.
     const to = this.last()
-    // (an open says what it couldn't do too: no pane or container by that name)
     const rid = (message?.action === "command" || message?.action === "open") && to && this.answering.has(to) ? crypto.randomUUID() : null
-    // (its answer: whether it ran, once it settled, and the toasts it showed meanwhile: "isn't running" means it didn't)
     const ran = rid ? new Promise<Answer | null>((done) => { this.answers.set(rid, (a) => done(a)); setTimeout(() => done(null), UI_ANSWER_MS) }) : null
     try {
       const [out, status] = this.handle(message ? "POST" : "GET", rid ? { ...message, rid } : message)
@@ -354,8 +322,7 @@ export class Live {
     }
   }
 
-  /** Ask the window focused last for something and wait for its answer (`timeout`: seconds): the result, or an OpError
-   *  (409: no window that answers, 504: none came, 422: the window's error). */
+  /** `timeout` in seconds. OpError 409: no window that answers, 504: none came, 422: the window's error. */
   private async ask(message: Record<string, unknown>): Promise<unknown> {
     const to = this.last()
     if (!to) throw new OpError("no app window is open on this server", 409)
@@ -381,13 +348,10 @@ export class Live {
       this.answers.delete(rid)
       this.asked.delete(rid)
       if (key) this.keyed.delete(key)
-      // Not answered (its time is up, or answered elsewhere): the window closes what it shows.
       if (!got && to.readyState === to.OPEN) to.send(JSON.stringify({ type: "ui", action: "ask-end", rid }))
     }
   }
 
-  /** /api/ui: GET the open windows and the focused one's workspace; POST {action: open | command | notify}. Only the
-   *  window focused last acts. An open with `background` adds a tab behind the user's, as a browser's ⌘-click does. */
   handle(method: string, body: unknown): [unknown, number] {
     if (method === "GET") return [{ windows: this.windows, workspace: this.workspace }, 200]
     if (method !== "POST") return [{ error: "not found" }, 404]

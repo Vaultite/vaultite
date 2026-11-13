@@ -1,5 +1,3 @@
-// What a coding agent's session and a Vaultite terminal leave in the environment of what they start: the terminal's
-// shells never inherit it from the server, nor the desktop app from whoever opened it (electron/dockenv.ts).
 import path from "node:path"
 
 /** A coding agent's own session: a Claude Code that inherits CLAUDECODE and CLAUDE_CODE_CHILD_SESSION takes itself for
@@ -17,16 +15,12 @@ export const agentSession = (k: string, v?: string) => AGENT_SESSION.includes(k)
 export const serversOwn = (k: string) => k.startsWith("npm_") || (k.startsWith("VAULTITE_") && !/^VAULTITE_TEST(_RUN|_HOME)?$/.test(k))
   || ["PORT", "HOST", "INIT_CWD", "TMUX", "TMUX_PANE", "ELECTRON_RUN_AS_NODE", "NODE_COMPILE_CACHE"].includes(k)
 
-/** Which account the session's agent runs in: set per account by whoever started it (its launcher, an alias). */
 const ACCOUNT = ["CLAUDE_CONFIG_DIR", "CODEX_HOME"]
 
-/** What a Vaultite terminal tells its shell (plugins/core/terminal: context, backend's startup script) and a plugin's
- *  command (core/hooks.ts), all of them: a test run drops them. */
 const TERMINAL = ["VAULTITE", ...`URL VAULT CLIENT TERMINAL BIN AGENT_BIN ZDOTDIR USER_ZDOTDIR REMOTE RUN HOME HOME_AS PLUGIN_ID PLUGIN_DIR
   PLUGIN_STATE PLUGIN_EVENT ACTOR OP PARAMS_JSON SCHEDULE EVENT_JSON`.split(/\s+/).map((k) => `VAULTITE_${k}`)]
 
-/** `env`, in place, as if opened from the Dock when an agent's session or a Vaultite terminal started it: their variables,
- *  vau's folders on PATH and the session's account (`keepAccount`: set on purpose) dropped. The names it dropped. */
+/** Changes `env` in place; `keepAccount`: the account was set on purpose. The names it dropped. */
 export function asFromDock(env: Record<string, string | undefined>, keepAccount = false): string[] {
   const session = Object.keys(env).some((k) => agentSession(k)), terminal = env.VAULTITE === "1"
   if (!session && !terminal) return []

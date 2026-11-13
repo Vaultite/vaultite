@@ -1,5 +1,3 @@
-// One device's side of sync (plugins/core/sync): every file's versions, each device's log, the merges every device works
-// out alike. No Node here: the phone runs it in its page. The folder is the truth; this remembers how it got there.
 import { sha256 } from "@noble/hashes/sha2.js"
 import { mergeJson, mergeText } from "./syncmerge.ts"
 
@@ -63,7 +61,6 @@ const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"
 export const sha = (b: Uint8Array | string) => { let s = ""; for (const x of sha256(typeof b === "string" ? new TextEncoder().encode(b) : b)) s += HEX[x]; return s }
 const enc = new TextEncoder(), dec = new TextDecoder("utf-8", { fatal: true })
 export const PROTOCOL = 1
-/** Checks the folder's bookkeeping after each step (tests: SYNC_DEBUG). */
 const DEBUG = typeof process !== "undefined" && !!process.env?.SYNC_DEBUG
 /** Text bigger than this merges as binary: the later wins, the other kept beside it. */
 const TEXT_MAX = 8 << 20
@@ -123,7 +120,6 @@ export class Replica {
   kids = new Map<string, Set<string>>()
   byFile = new Map<string, Set<string>>()
   logs = new Map<string, Entry[]>()
-  /** Each file's heads (the versions nothing came after), and the live files by name (case aside). */
   private headCache = new Map<string, Node[]>()
   private named = new Map<string, Set<string>>()
   /** Entries that came before the ones before them (a gap in a device's log): applied once it's filled. */
@@ -137,7 +133,6 @@ export class Replica {
   /** Deletes held for the user's yes: too many at once (an unmounted folder looks like that). */
   held: { deletes: string[]; since: number } | null = null
   release = false
-  /** Deletes the last look found, not recorded yet (scan), and whether they're waiting for the next one. */
   private going = new Set<string>()
   deleting = 0
   /** What the device keeps with the replica's state (the mailbox's place, the copy's files). */
@@ -166,9 +161,6 @@ export class Replica {
     this.store.saveState({ clock: this.clock, seen: [...this.seen], ...(this.shadow ? { wrote: [...this.wrote] } : {}), held: this.held, extra: this.extra })
   }
 
-  // ---------- the history
-
-  /** Add an entry to its device's log (in order; one ahead of a gap waits). Whether it was new. */
   private take(e: Entry): boolean {
     const log = this.logs.get(e.device) ?? []
     if (e.seq <= log.length) return false
@@ -184,7 +176,6 @@ export class Replica {
     return true
   }
 
-  /** A clash's texts (its base and the other side), made by whichever device merged: fetched like versions are. */
   private clashBlobs = new Set<string>()
 
   private addNode(n: Node) {
@@ -239,7 +230,6 @@ export class Replica {
     return out
   }
 
-  /** Append a version this device made (or a merge it worked out) to its own log. */
   private record(n: Node): Node {
     if (this.nodes.has(n.id)) return this.nodes.get(n.id)!
     const e: Entry = { device: this.device, seq: ++this.seq, node: n }
@@ -251,7 +241,6 @@ export class Replica {
 
   heads(file: string): Node[] { return this.headCache.get(file) ?? [] }
 
-  /** Whether every version this file's heads came from is here (else a merge waits: its base could be wrong). */
   private whole(file: string) {
     for (const h of this.heads(file)) for (const id of this.ancestors(h.id)) if (!this.nodes.has(id)) return false
     return true
@@ -282,7 +271,6 @@ export class Replica {
     return out
   }
 
-  /** The versions both sides came from, newest only (none: two files that began apart). */
   private bases(xs: string[], ys: string[]): Node[] {
     const ax = new Set<string>(), ay = new Set<string>()
     for (const x of xs) for (const a of this.ancestors(x)) ax.add(a)
@@ -310,8 +298,6 @@ export class Replica {
 
   blobText(h: string | null): string | null { return h === null ? "" : textOf(this.store.blob(h)) }
 
-  // ---------- merging
-
   /** Blobs the versions need that aren't here (to fetch from a peer). */
   missingBlobs(): string[] {
     const out = new Set<string>()
@@ -330,9 +316,7 @@ export class Replica {
     return { blob, size: bytes.length }
   }
 
-  /** Merge two heads into one version, the same on every device: null when a blob it needs isn't here yet. */
   private merge2(x: Node, y: Node): Node | null {
-    // x is the earlier (order), y the later: y wins a clash.
     const bs = this.bases([x.id], [y.id]), base = bs[bs.length - 1] ?? null
     const parents = [x.id, y.id], clock = Math.max(x.clock, y.clock), at = Math.max(x.at, y.at)
     const path = mergedPath(base?.path ?? null, x.path, y.path)
@@ -346,7 +330,6 @@ export class Replica {
     if (x.blob === y.blob) return node(x.blob, x.size)
     const baseBlob = bs.length === 1 ? base!.blob : null
     if (x.blob === null || y.blob === null) {
-      // A delete against an edit: the edit wins (the file comes back), unless the other side never changed it.
       const kept = x.blob === null ? y : x
       if (bs.length && bs.every((b) => b.blob === kept.blob)) return node(null, 0)
       const del = this.author(x.blob === null ? x : y)
@@ -357,7 +340,6 @@ export class Replica {
     const kind = Math.max(x.size, y.size) > TEXT_MAX ? "binary" : kindOf(path, y.size < 1 << 20 ? this.store.blob(y.blob) : null)
     if (kind !== "binary") {
       if (!this.store.hasBlob(x.blob) || !this.store.hasBlob(y.blob) || bs.some((b) => b.blob && !this.store.hasBlob(b.blob))) return null
-      // (a blob that's gone when read waits to be fetched again: never merged as binary for it)
       if (!this.store.blob(x.blob) || !this.store.blob(y.blob) || bs.some((b) => b.blob && !this.store.blob(b.blob))) return null
       const bt = this.textOfSet(bs), xt = this.blobText(x.blob), yt = this.blobText(y.blob)
       if (bt !== null && xt !== null && yt !== null) {
@@ -369,11 +351,9 @@ export class Replica {
           { base: this.putText(m.clash.base).blob, other: this.putText(m.clash.other).blob, lines: m.clash.lines, ...keys }))
       }
     }
-    // Binary (or text that isn't UTF-8): the later stays, the other is kept beside it as a file of its own.
     return node(y.blob, y.size, loser("binary", { other: x.blob, copy: this.freeName(besideName(path, ax.device, ax.at), x.file) }))
   }
 
-  /** A name no other live file has (case aside), from `want`. */
   private freeName(want: string, self: string): string {
     const taken = (p: string) => [...this.named.get(keyOf(p)) ?? []].some((f) => f !== self && this.heads(f).some((h) => h.blob !== null && keyOf(h.path) === keyOf(p)))
     let name = want
@@ -393,14 +373,12 @@ export class Replica {
         this.record(m)
         made_++
         if (m.conflict?.kind === "binary" && m.conflict.copy && m.conflict.other) {
-          // (the copy's file id comes from the merge, so every device makes the same one)
           const loser = this.nodes.get(m.parents.find((p) => this.nodes.get(p)!.blob === m.conflict!.other)!)!
           this.record(made({ file: sha(`copy:${m.id}`), path: m.conflict.copy, blob: m.conflict.other, size: loser.size, parents: [], clock: m.clock, device: "", at: m.at }))
         }
         hs = this.heads(file)
       }
     }
-    // Two live files at one name (case aside): the one whose version is later moves aside.
     const byName = new Map<string, Node[]>()
     for (const [file] of this.byFile) { const h = this.head(file); if (h && h.blob !== null) { const k = keyOf(h.path); byName.set(k, [...(byName.get(k) ?? []), h]) } }
     for (const hs of byName.values()) {
@@ -416,16 +394,12 @@ export class Replica {
     return made_
   }
 
-  // ---------- this device's own changes
-
-  /** The live file whose version now is at `path` (case aside), or a deleted one last there. */
   private fileAt(path: string): { file: string; head: Node } | null {
     let gone: { file: string; head: Node } | null = null
     for (const file of this.named.get(keyOf(path)) ?? []) {
       const hs = this.heads(file).filter((h) => keyOf(h.path) === keyOf(path))
       const live = hs.filter((h) => h.blob !== null).pop()
       if (live) return { file, head: live }
-      // (deleted only when every head is: one live head means the file is there)
       if (this.heads(file).some((h) => h.blob !== null)) continue
       const h = hs.pop()
       if (h && (!gone || order(gone.head, h) < 0)) gone = { file, head: h }
@@ -438,7 +412,6 @@ export class Replica {
     return made({ ...rest, clock: ++this.clock, device: this.device, at: this.now(), ...(from ? { from } : {}), ...(settles ? { settles } : {}), ...(confirmed ? { confirmed: true as const } : {}) })
   }
 
-  /** Keep a file's bytes as a blob (text read, big binaries cloned when the store can). */
   private keep(folder: Folder, path: string, hash: string): boolean {
     if (this.store.hasBlob(hash)) return true
     if (this.store.keepFile?.(hash, folder, path)) return true
@@ -457,13 +430,11 @@ export class Replica {
     for (const p of list) now.set(p, this.input.stat(p))
     if (all) for (const p of this.seen.keys()) if (!now.has(p)) now.set(p, null)
     const seed = this.seen.size === 0 && all && this.nodes.size === 0
-    // (a device's first look after it took the others' history: a file unlike every version known is a change on the
-    // latest, not a file begun apart, which would clash with versions it merely hadn't seen)
     const joining = this.seen.size === 0 && all && this.nodes.size > 0
     const gone: string[] = [], added: { path: string; st: FileStat; hash: string }[] = []
     let changed = 0
     for (const [p, st] of now) {
-      if (unsynced(p)) continue // (a name the engine itself uses for a moment, mid-swap: never a delete nor a file)
+      if (unsynced(p)) continue
       const was = this.seen.get(p)
       if (!st) { if (was) gone.push(p); continue }
       if (was && was.size === st.size && was.mtime === st.mtime) continue
@@ -477,31 +448,24 @@ export class Replica {
       this.seen.set(p, { hash, node: this.adopt(prev, hash, p, st.size, from).id, size: st.size, mtime: st.mtime })
       changed++
     }
-    // A file gone from one name and there under another, the same bytes: moved.
     for (const a of added) {
       const at = gone.findIndex((g) => this.seen.get(g)!.hash === a.hash)
       let node: Node
       if (at >= 0) {
         const g = gone.splice(at, 1)[0], was = this.seen.get(g)!, prev = this.nodes.get(was.node)!
         this.seen.delete(g)
-        // (on the version that was there: one that came since and isn't written yet is merged with it, not undone)
         node = this.record(this.fresh({ file: prev.file, path: a.path, blob: a.hash, size: a.st.size, parents: [prev.id], from }))
       } else {
         const there = this.fileAt(a.path)
         const known = there && [...this.byFile.get(there.file)!].map((id) => this.nodes.get(id)!).filter((n) => n.blob === a.hash && keyOf(n.path) === keyOf(a.path)).sort(order).pop()
         if (there && there.head.blob === a.hash) node = there.head
-        // (a version it had before: what came after stays, and is written here; but a file it deleted, put back, is back)
         else if (known && (joining || there.head.blob !== null)) node = known
-        // (a file made here at a name another device's file has, unseen here: begun apart, so both are kept when merged)
         else if (there && joining && this.likest(there.file, a.hash)) node = this.record(this.fresh({ file: there.file, path: a.path, blob: a.hash, size: a.st.size, parents: [this.likest(there.file, a.hash)!.id], from }))
         else if (there && !this.tracks(there.file)) node = this.record(this.fresh({ file: there.file, path: a.path, blob: a.hash, size: a.st.size, parents: there.head.blob === null ? this.heads(there.file).map((h) => h.id) : [], from }))
         else {
-          // (a new file; at a name another's file just moved to but that file is still here under its old name: a file
-          // of its own, the two then part by name)
           const id = sha(`file:${keyOf(a.path)}`)
           const taken = this.byFile.has(id)
           const file = taken ? sha(`file:${keyOf(a.path)}:${this.device}:${this.clock + 1}`) : id
-          // (a file found at the first look is one every device has the same version of: device "" and clock 0)
           node = this.record(seed && !taken ? made({ file, path: a.path, blob: a.hash, size: a.st.size, parents: [], clock: 0, device: "", at: 0 })
             : this.fresh({ file, path: a.path, blob: a.hash, size: a.st.size, parents: [], from }))
         }
@@ -509,8 +473,6 @@ export class Replica {
       this.seen.set(a.path, { hash: a.hash, node: node.id, size: a.st.size, mtime: a.st.mtime })
       changed++
     }
-    // Deletes: many at once wait for the user (a folder that went missing looks like everything deleted). They wait a
-    // look first, till one finds no more: a burst seen mid-way is judged whole, never let through in parts under the guard.
     let heldN = 0, waitingN = 0
     const more = gone.some((g) => !this.going.has(g))
     this.going = new Set(gone)
@@ -520,7 +482,7 @@ export class Replica {
       const total = Math.max(this.seen.size, 1)
       if (!this.release && gone.length > this.guard.files && gone.length / total > this.guard.max) {
         this.held = { deletes: gone, since: this.now() }
-        this.going = new Set(gone) // (still there to see: held again, not waited for again)
+        this.going = new Set(gone)
         heldN = gone.length
         this.onLog(`held ${gone.length} deletes for your yes (sync.release)`)
       } else {
@@ -529,8 +491,7 @@ export class Replica {
           this.seen.delete(g)
           if (!prev) continue
           const cur = this.current(prev)
-          if (cur.blob === null) continue // (already gone)
-          // (on the version that was there: an edit since, from elsewhere, brings the file back)
+          if (cur.blob === null) continue
           this.record(this.fresh({ file: prev.file, path: prev.path, blob: null, size: 0, parents: [prev.id], from, confirmed: this.release }))
           changed++
         }
@@ -542,12 +503,9 @@ export class Replica {
     return { changed, held: heldN, waiting: waitingN }
   }
 
-  /** The known version of a file most like these bytes (at least half their lines alike), for a file whose own history
-   *  this device doesn't know: an older copy or one edited since. Null: not like any (it began apart). */
   private likest(file: string, blob: string): Node | null {
     const mine = this.blobText(blob)
     if (mine === null) return null
-    // (lines with something in them: braces and blank lines would make any two JSON files look alike)
     const lines = (t: string) => t.split("\n").filter((l) => l.trim().length > 2)
     const count = (t: string) => { const m = new Map<string, number>(); for (const l of lines(t)) m.set(l, (m.get(l) ?? 0) + 1); return m }
     const have = count(mine), n = lines(mine).length
@@ -564,17 +522,13 @@ export class Replica {
     return best
   }
 
-  /** Whether the input has this file under some name. */
   private tracks(file: string) {
     for (const t of this.seen.values()) if (this.nodes.get(t.node)?.file === file) return true
     return false
   }
 
-  /** The version a file is at now, from one it was at (its single head, else that one). */
   private current(n: Node): Node { return this.head(n.file) ?? n }
 
-  /** The input's file went from version `prev` to bytes `hash`: a version another device already made of it (it came
-   *  here by another route, iCloud say), else a new one. */
   private adopt(prev: Node, hash: string, path: string, size: number, from?: string): Node {
     const h = this.head(prev.file)
     if (h && h.blob === hash && keyOf(h.path) === keyOf(path)) return h
@@ -629,14 +583,13 @@ export class Replica {
       const h = this.head(file)
       if (!h) continue
       const settled = new Set<string>(), seenOther = new Set<string>()
-      // (a parent not fetched yet is in its ancestors, with no version to read)
       const anc = [...this.ancestors(h.id)].flatMap((id) => this.nodes.get(id) ?? []).sort((a, b) => order(b, a))
       for (const n of anc) for (const s of n.settles ?? []) settled.add(s)
       for (const n of anc) {
         const c = n.conflict
         if (!c || settled.has(c.id)) continue
         const key = `${c.kind}:${c.other ?? c.copy ?? c.id}`
-        if (seenOther.has(key)) continue // (two merges of the same clash, made on two devices)
+        if (seenOther.has(key)) continue
         seenOther.add(key)
         out.push({ file, path: h.path, node: n.id, conflict: c })
       }
@@ -644,14 +597,12 @@ export class Replica {
     return out
   }
 
-  // ---------- writing versions into the folder
-
   /** Write each file's version into the folder where it isn't yet. A file changed there since it was last seen is
    *  looked at first (a new version, merged), never written over. */
   materialize(): { wrote: number; held: number } {
     const target = new Map<string, Node>()
     for (const [file] of this.byFile) { const h = this.head(file); if (h) target.set(file, h) }
-    const at = new Map<string, Tracked & { path: string }>() // file -> where it's written now
+    const at = new Map<string, Tracked & { path: string }>()
     for (const [p, t] of this.wrote) { const n = this.nodes.get(t.node); if (n) at.set(n.file, { ...t, path: p }) }
     const deletes = [...target.values()].filter((h) => h.blob === null && at.has(h.file) && !h.confirmed)
     const total = Math.max(this.wrote.size, 1)
@@ -665,17 +616,15 @@ export class Replica {
       const st = this.folder.stat(t.path)
       return !!st && (st.size !== t.size || st.mtime !== t.mtime) && this.folder.hash(t.path) !== t.hash
     }
-    // Deletes first, so the names they leave are free.
     let pending: Node[] = []
     for (const h of target.values()) {
       const now = at.get(h.file)
       if (now && now.node === h.id) continue
       if (now && now.hash === h.blob && now.path === h.path) { this.wrote.set(h.path, { ...now, node: h.id }); continue }
-      if (now && changedHere(now)) continue // (changed here: looked at first, then merged)
+      if (now && changedHere(now)) continue
       if (h.blob === null) { if (now) { this.folder.remove(now.path); this.wrote.delete(now.path); at.delete(h.file); wrote++ } continue }
       pending.push(h)
     }
-    // Then moves and writes, each once its name is free; files trading names go through a temporary one.
     const moving = () => new Set(pending.map((h) => h.file))
     for (let round = 0; pending.length && round < pending.length * 3 + 3; round++) {
       const left: Node[] = [], away = moving()
@@ -683,11 +632,11 @@ export class Replica {
       for (const h of pending) {
         const now = at.get(h.file), there = this.wrote.get(h.path), thereFile = there && this.nodes.get(there.node)?.file
         if (there && thereFile !== h.file) {
-          if (thereFile && away.has(thereFile)) { left.push(h); continue } // (it's leaving: next round)
-          continue // (another live file has the name: the name clash is merged first)
+          if (thereFile && away.has(thereFile)) { left.push(h); continue }
+          continue
         }
-        if (!there && !now && this.folder.stat(h.path) && !this.shadow) continue // (a file here not looked at yet)
-        if (!this.store.hasBlob(h.blob!) && !(now && now.hash === h.blob)) continue // (its bytes aren't here yet)
+        if (!there && !now && this.folder.stat(h.path) && !this.shadow) continue
+        if (!this.store.hasBlob(h.blob!) && !(now && now.hash === h.blob)) continue
         let st: FileStat | null
         if (now && now.path !== h.path && now.hash === h.blob) st = this.folder.move(now.path, h.path)
         else {
@@ -706,7 +655,6 @@ export class Replica {
       }
       pending = left
       if (!progress && pending.length) {
-        // (a cycle: one steps aside to a name sync never syncs, and goes to its own next round)
         const h = pending[0], now = at.get(h.file)!
         const there = this.wrote.get(h.path)!, f = this.nodes.get(there.node)!.file, occupant = at.get(f)!
         const tmp = `${occupant.path}.${there.node.slice(0, 8)}.sync-part`
@@ -728,7 +676,6 @@ export class Replica {
     const m = this.mergeAll()
     const w = this.materialize()
     if (DEBUG) this.audit("materialize")
-    // (writing may have shown a file changed here meanwhile: looked at again next step)
     return { changed: s.changed, merged: m, wrote: w.wrote, held: s.held + w.held, waiting: s.waiting }
   }
 
@@ -738,7 +685,6 @@ export class Replica {
     const n = this.held.deletes.length
     if (yes) this.release = true
     else {
-      // (no: what looked deleted is written back from its versions)
       for (const p of this.held.deletes) { const t = this.seen.get(p); if (t && this.input === this.folder) this.wrote.delete(p) }
       this.held = null
     }
@@ -773,7 +719,6 @@ export function order(a: Node, b: Node) {
   return a.clock - b.clock || (a.device < b.device ? -1 : a.device > b.device ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 }
 
-/** A merge's path: the side that moved it (both: the later one, y). */
 function mergedPath(base: string | null, x: string, y: string) {
   if (x === y) return x
   if (base !== null && x === base) return y

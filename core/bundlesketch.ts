@@ -1,11 +1,8 @@
-// What a bundle's picture is drawn from (components/LayoutDrawings.tsx), for the server's bundles and the directory's.
-// No Node, no packages: the directory's index is built from a checkout of core/ and tools/ alone.
 import { blockName, scan } from "./sections.ts"
 import { readSidebars } from "./sidebars.ts"
 
 export type HomeBlock = { block: string; view: string | null }
 export type Sketch = {
-  /** The look it sets (appearance.json's). */
   theme: string | null; scheme: string | null
   /** Its sidebars' panels (null: it leaves them as they are, or the default). */
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
@@ -32,7 +29,6 @@ export function homeBlocks(text: string): HomeBlock[] {
   return out
 }
 
-/** A bundle's sketch from its appearance.json and sidebars.json (as read), and its home's blocks. */
 export function sketchOf(look: Obj | null, sidebars: unknown, home: HomeBlock[] | null): Sketch {
   const l = look ?? {}
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)

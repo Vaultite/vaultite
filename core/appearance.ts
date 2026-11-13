@@ -1,5 +1,4 @@
-// Obsidian themes and CSS snippets from .vaultite/, then .obsidian/ (never written), which are on: appearance.json. A
-// theme converts to a colour scheme: only its colours carry over, its variables resolved and mapped to the app's tokens.
+// .obsidian/ is Obsidian's: read, never written.
 import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, Text } from "./plugins.ts"
@@ -13,7 +12,7 @@ type Vars = Record<string, string>
 const THEMES = ".vaultite/themes"
 const SNIPPETS = ".vaultite/snippets"
 const THEME_DIRS = [THEMES, ".obsidian/themes"], SNIPPET_DIRS = [SNIPPETS, ".obsidian/snippets"]
-const NAME = /^[^/\\.][^/\\]*$/ // a plain file or folder name
+const NAME = /^[^/\\.][^/\\]*$/
 const FONTS: Record<string, string> = { ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".otf": "font/otf" }
 
 const mtime = (p: string) => { try { return Math.round(fs.statSync(p).mtimeMs) } catch { return 0 } }
@@ -24,7 +23,7 @@ function dirs(p: string) {
   try { return fs.readdirSync(p, { withFileTypes: true }) } catch { return [] }
 }
 
-/** A theme's CSS file: <Name>/theme.css (as downloaded), or the only .css in its folder. */
+/** <Name>/theme.css, as Obsidian downloads a theme, or the only .css in its folder. */
 function themeCSS(dir: string) {
   const main = path.join(dir, "theme.css")
   if (fs.existsSync(main)) return main
@@ -32,7 +31,6 @@ function themeCSS(dir: string) {
   return css.length === 1 ? path.join(dir, css[0].name) : null
 }
 
-// Converted themes, by file and time (a big theme takes a moment to parse).
 const cache = new Map<string, { mtime: number; theme: Converted }>()
 function convertedOf(file: string): Converted {
   const t = mtime(file)
@@ -43,14 +41,12 @@ function convertedOf(file: string): Converted {
   return theme
 }
 
-/** A theme's folder, the first of THEME_DIRS that has it, or null. */
 function themeDir(vault: Vault, name: string) {
   if (!NAME.test(name)) return null
   for (const d of THEME_DIRS) { const dir = vault.abs(`${d}/${name}`); if (fs.existsSync(dir)) return dir }
   return null
 }
 
-/** A file beside the snippets (a snippet, a font), the first of SNIPPET_DIRS that has it, or null. */
 function snippetFile(vault: Vault, file: string) {
   if (!NAME.test(file)) return null
   for (const d of SNIPPET_DIRS) { const f = vault.abs(`${d}/${file}`); if (fs.existsSync(f)) return f }
@@ -87,7 +83,6 @@ export function listSnippets(vault: Vault): SnippetInfo[] {
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** The appearance routes, or undefined if the request isn't one of them. */
 export function handle(vault: Vault, method: string, parts: string[], body: Record<string, unknown>): unknown {
   const [head, file] = parts
   if (head === "themes" && method === "GET") {
@@ -109,7 +104,6 @@ export function handle(vault: Vault, method: string, parts: string[], body: Reco
         throw new HTTPError(404, `no snippet '${file}' in ${SNIPPETS}`)
       }
     }
-    // A font beside the snippets, so one's @font-face can name it by file: url("Instrument Serif.woff2").
     const font = FONTS[path.extname(file ?? "").toLowerCase()]
     if (method === "GET" && parts.length === 2 && font && NAME.test(file)) {
       try {
@@ -138,9 +132,6 @@ const SNIPPET = `/* A CSS snippet: turn it on in Settings > Appearance > CSS sni
    .vau-editor .cm-editor { letter-spacing: 0.01em; }
 */
 `
-
-// ---------------------------------------------------------------------------------------------------------------
-// Theme conversion
 
 type Converted = { modes: Mode[]; light: Vars; dark: Vars }
 
@@ -181,7 +172,6 @@ const DEFAULTS: Record<Mode, Vars> = {
   },
 }
 
-/** Comments out, strings kept. */
 function stripComments(css: string) {
   let out = "", i = 0
   while (i < css.length) {
@@ -202,7 +192,6 @@ function stripComments(css: string) {
   return out
 }
 
-/** Where the text from `i` reaches `stop` (one of its characters) at the top level: outside strings, () and {}. */
 function scan(s: string, i: number, stop: string) {
   let depth = 0
   for (; i < s.length; i++) {
@@ -220,8 +209,6 @@ function scan(s: string, i: number, stop: string) {
 
 type Rule = { selector: string; decls: [string, string][] }
 
-/** Every style rule, with its own custom properties; at-rules other than @layer and @supports are skipped (a
- *  @media block is for some window size, not the theme's colours). */
 function rules(css: string, out: Rule[] = []): Rule[] {
   let i = 0
   while (i < css.length) {
@@ -229,7 +216,6 @@ function rules(css: string, out: Rule[] = []): Rule[] {
     const prelude = css.slice(i, at).trim()
     if (at >= css.length) break
     if (css[at] !== "{") { i = at + 1; continue }
-    // the block's end: matching brace
     let depth = 1, j = at + 1
     for (; j < css.length && depth; j++) {
       const c = css[j]
@@ -248,7 +234,7 @@ function rules(css: string, out: Rule[] = []): Rule[] {
       let k = 0
       while (k < body.length) {
         const end = scan(body, k, ";{")
-        if (body[end] === "{") { // a nested rule: skip it
+        if (body[end] === "{") {
           let d = 1, m = end + 1
           for (; m < body.length && d; m++) d += body[m] === "{" ? 1 : body[m] === "}" ? -1 : 0
           k = m
@@ -290,8 +276,6 @@ function styleSettings(css: string) {
   return { classes, vars }
 }
 
-/** Which modes a selector (one compound, no combinators) applies to, and its specificity; null if it's not one of
- *  the page-wide ones (body, :root, html, .theme-light, .theme-dark, plus classes on by default). */
 function target(sel: string, on: Set<string>): { modes: Mode[]; spec: number } | null {
   const s = sel.trim()
   if (!s || /[\s>+~[*]/.test(s)) return null
@@ -308,7 +292,6 @@ function target(sel: string, on: Set<string>): { modes: Mode[]; spec: number } |
   return { modes, spec }
 }
 
-/** var() references replaced by their values (fallbacks when missing); null if one can't be. */
 function resolve(value: string, vars: Vars, seen: Set<string> = new Set()): string | null {
   let out = "", i = 0
   while (i < value.length) {
@@ -357,7 +340,6 @@ function convert(text: string): Converted {
   return { modes, light: tokens(varsOf("light"), "light"), dark: tokens(varsOf("dark"), "dark") }
 }
 
-/** Obsidian's variables -> the app's tokens (index.css). */
 function tokens(v: Vars, mode: Mode): Vars {
   const ok = (r: string | null): r is string => !!r && COLOR.test(r) && !NOT_COLOR.test(r) && !r.includes("var(")
   const get = (...names: string[]) => {
@@ -365,7 +347,7 @@ function tokens(v: Vars, mode: Mode): Vars {
       const r = n in v ? resolve(v[n], v) : null
       if (ok(r)) return r
     }
-    for (const n of names) { // the theme's value didn't resolve: Obsidian's default for it
+    for (const n of names) {
       const r = n in DEFAULTS[mode] ? resolve(DEFAULTS[mode][n], { ...v, ...DEFAULTS[mode] }) : null
       if (ok(r)) return r
     }
@@ -401,12 +383,10 @@ function tokens(v: Vars, mode: Mode): Vars {
   return out
 }
 
-/** The tokens as a scheme stylesheet, like web/src/themes/*.css (a Settings tile shows it too: .scheme-preview). */
 function schemeCSS(id: string, t: Converted) {
   const sel = `:is(:root, .scheme-preview)[data-scheme="${id.replace(/["\\]/g, "\\$&")}"]`
   const block = (s: string, vars: Vars, dark: boolean) =>
     `${s} {\n  color-scheme: ${dark ? "dark" : "light"};\n${Object.entries(vars).map(([k, v]) => `  --${k}: ${v};`).join("\n")}\n}\n`
-  // A theme with one mode draws it in both (prefs.ts also keeps the app in that mode).
   const light = t.modes.includes("light") ? t.light : t.dark
   const dark = t.modes.includes("dark") ? t.dark : t.light
   return `/* Converted from a theme: colours only. */\n${block(sel, light, !t.modes.includes("light"))}${block(`${sel}.dark`, dark, !!t.modes.includes("dark"))}`

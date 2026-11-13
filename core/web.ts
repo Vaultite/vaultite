@@ -1,5 +1,4 @@
-// The web from the server: fetching public pages only (link previews, the clipper). Local and tailnet hosts are refused
-// by name and again on what DNS answers at connect, so a route that fetches what it's asked can't look into the network.
+// Local and tailnet hosts are refused by name and again on what DNS answers at connect: a name may resolve anywhere.
 import dns from "node:dns"
 import fs from "node:fs"
 import http from "node:http"
@@ -8,7 +7,6 @@ import type { LookupFunction } from "node:net"
 import os from "node:os"
 import zlib from "node:zlib"
 
-/** A dotted IPv4 address as its four numbers, or null. */
 function ipv4(s: string): number[] | null {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s)
   if (!m) return null
@@ -67,7 +65,7 @@ function blockedV6(g: number[]) {
     || (g[0] === 0x0100 && g.slice(1, 4).every((x) => x === 0)) // discard
 }
 
-/** Is this IP address (as DNS answers it) one the server must not fetch from? Anything it can't read is refused. */
+/** Anything it can't read is refused. */
 export function blockedAddress(ip: string): boolean {
   const v4 = ipv4(ip)
   if (v4) return blockedV4(v4)
@@ -88,8 +86,7 @@ export function blockedHost(hostname: string): boolean {
   return LOCAL_NAMES.some((s) => h === s || h.endsWith(`.${s}`))
 }
 
-/** Whether an address is on this machine or its network: a local host (blockedHost) or this machine's own name; what
- *  isn't a web address counts as one. The desktop app's browser opens none for agents from outside this machine. */
+/** What isn't a web address counts as local. */
 export function localUrl(raw: string): boolean {
   let h: string
   try { h = new URL(raw).hostname } catch { return true }
@@ -142,7 +139,6 @@ export type Fetched = { url: string; status: number; type: string; body: Buffer;
 type Once = { status: number; location?: string; type: string; body: Buffer; cut: boolean; size: number }
 type OnceOptions = Required<Omit<FetchOptions, "timeout" | "redirects" | "to">> & { to?: string; heard: () => void }
 
-/** GET one address (redirects not followed). */
 function getOnce(u: URL, o: OnceOptions, signal: AbortSignal): Promise<Once> {
   return new Promise((resolve, reject) => {
     const req = (u.protocol === "https:" ? https : http).get(u, {
@@ -190,7 +186,6 @@ function getOnce(u: URL, o: OnceOptions, signal: AbortSignal): Promise<Once> {
 export async function fetchPublic(raw: string | URL, options: FetchOptions = {}): Promise<Fetched> {
   const wait = options.timeout ?? 5000, stop = new AbortController()
   let timer = setTimeout(() => stop.abort(new Error("timed out")), wait)
-  // (a download to a file goes on while its bytes keep coming)
   const heard = () => { if (options.to) { clearTimeout(timer); timer = setTimeout(() => stop.abort(new Error("timed out")), wait) } }
   const o: OnceOptions = { max: options.max ?? (options.to ? Infinity : 1024 * 1024), types: options.types ?? /html|xml/, headers: options.headers ?? {}, to: options.to, heard }
   try { return await follow(raw, o, stop.signal, options.redirects ?? 5) } finally { clearTimeout(timer) }

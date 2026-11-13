@@ -1,5 +1,3 @@
-// A zip held in memory, entries inflated on demand: Office files and EPUBs are zips of XML (plugin API `unzip`). Big
-// archives on disk: core/zipfile.ts.
 import zlib from "node:zlib"
 
 const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50

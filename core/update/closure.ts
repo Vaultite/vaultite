@@ -1,12 +1,10 @@
-// Which running process a changed file reaches: each entry's import graph, parsed (rolldown's oxc) and resolved as Node and
-// vite do, plus core/update/sites.ts' declared sites. A loose end not declared makes the answer unknown, counted as changed.
 import fs from "node:fs"
 import { builtinModules } from "node:module"
 import path from "node:path"
 import { parseSync } from "rolldown/utils"
 import { ENTRIES, type Entry, GENERATED, PLUGIN_READS, ROOT_EXPORTS, SITES, type Site } from "./sites.ts"
 
-/** The app's files: a checkout's working tree or a commit's. Paths are the repo's, with "/". */
+/** Paths are the repo's, with "/". */
 export type Tree = { files: string[]; read: (file: string) => string | null }
 
 /** What the graph can't follow in a file: a computed import (`import`), a path made from the code's own place
@@ -22,7 +20,6 @@ export type Reach = { files: Map<string, string | null>; unknown: Loose[] }
  *  imports from the entry), or unknown (counted as reached). */
 export type Hit = { file: string; chain: string[]; unknown?: Loose }
 
-/** Code a process runs: a module (not a declaration file), or a script in bin/ (vau). */
 const isCode = (f: string) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f) && !/\.d\.[mc]?ts$/.test(f) || /^bin\/[^./]+$/.test(f)
 const DEPS = ["package.json", "package-lock.json"]
 const VITE_EXT = [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]
@@ -47,14 +44,12 @@ export function globRe(glob: string) {
   return new RegExp(`^${re}$`)
 }
 
-/** Line numbers by offset, for one text. */
 function lines(text: string) {
   const starts = [0]
   for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1)
   return (at: number) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= at) lo = mid; else hi = mid - 1 } return lo + 1 }
 }
 const unparen = (n: any): any => (n?.type === "ParenthesizedExpression" ? unparen(n.expression) : n)
-/** A string the source spells out: a literal, or a template without `${}`. */
 const literal = (n: any): string | null => {
   n = unparen(n)
   if (n?.type === "Literal" && typeof n.value === "string") return n.value
@@ -72,7 +67,6 @@ const besideUrl = (n: any) => {
 }
 const isRequire = (callee: any) => { callee = unparen(callee); return callee?.type === "Identifier" && callee.name === "require" || callee?.type === "CallExpression" && unparen(callee.callee)?.name === "createRequire" }
 
-/** A file's imports, globs and loose ends. */
 export function parse(file: string, text: string): Parsed {
   const out: Parsed = { refs: [], globs: [], loose: [], plugin: false }, lineAt = lines(text)
   if (file.endsWith(".html")) {
@@ -166,7 +160,6 @@ export function diskTree(root: string): Tree {
   return { files: files.sort(), read: (f) => { try { return fs.readFileSync(path.join(root, f), "utf8") } catch { return null } } }
 }
 
-/** A tree's graph: each entry's reach, and what a set of changed files reaches. */
 export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; sites?: Site[] } = {}) {
   const entries = o.entries ?? ENTRIES, sites = o.sites ?? SITES, cache = o.cache ?? new Map()
   const all = new Set(tree.files)
@@ -189,7 +182,6 @@ export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; 
     }
     return out
   }
-  /** The files in folder `dir`, at any depth. */
   const filesUnder = (dir: string) => {
     let out = under.get(dir)
     if (!out) under.set(dir, out = tree.files.filter((f) => f.startsWith(`${dir}/`)))
@@ -198,7 +190,6 @@ export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; 
   const generated = GENERATED.map(globRe)
   const sitesOf = new Map<string, Site[]>()
   for (const s of sites) sitesOf.set(s.file, [...(sitesOf.get(s.file) ?? []), s])
-  /** Whether a site declares this loose end. */
   const declared = (l: Loose) => (sitesOf.get(l.file) ?? []).some((s) =>
     l.kind === "import" ? !!s.at?.some((a) => l.text.includes(a)) : l.kind === "spawn" ? !!s.spawns : !!s.anchors)
 
@@ -245,7 +236,6 @@ export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; 
   })]
 
   const reaches = new Map<string, Reach>()
-  /** Everything `from` reaches, stopping at `cut`. */
   const walk = (from: string[], mode: Entry["mode"], cut: Set<string>): Reach => {
     const files = new Map<string, string | null>(), unknown: Loose[] = [], todo: [string, Entry["mode"]][] = []
     /** Sites whose code runs only beside their caller, until the entry reaches it too. */
@@ -312,7 +302,7 @@ export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; 
     for (let by = r.files.get(file); by; by = r.files.get(by)) chain.unshift(by)
     return chain
   }
-  /** What `changed` reaches in entry `id`: the changed file nearest it (a chain of imports from the entry), or null. */
+  /** The changed file nearest the entry, or null. */
   const hit = (id: string, changed: string[]): Hit | null => {
     const r = reach(id)
     let best: Hit | null = null
@@ -320,7 +310,6 @@ export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; 
     if (!best && r.unknown.length && changed.length) return { file: changed[0], chain: [], unknown: r.unknown[0] }
     return best
   }
-  /** Every loose end in the tree's code, and whether a site declares it (tools/test_closure.ts wants all declared). */
   const looseEnds = (globs: string[]) => matching(globs).filter(isCode)
     .flatMap((f) => looseOf(f, parsed(f), "node").map((l) => ({ ...l, declared: declared(l) })))
   return { entries, reach, hit, chainOf, looseEnds, affects: (changed: string[]) => entries.map((e) => ({ entry: e.id, hit: hit(e.id, changed) })) }

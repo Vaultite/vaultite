@@ -1,5 +1,3 @@
-// Claude Code's own config file (an account's .claude.json): a project's settings changed while Claude Code may be
-// rewriting it, under the lock it takes on it.
 import fs from "node:fs"
 import path from "node:path"
 

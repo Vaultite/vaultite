@@ -1,5 +1,3 @@
-// Manage vaults on the web (the desktop app has a server per vault, so 404 there). The list is this machine's; any
-// folder can be one (external drives too) but hidden and system ones, so a page on the tailnet can't serve ~/.ssh or /etc.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -27,7 +25,6 @@ function save(s: Saved) {
 
 const nameOf = (p: string) => path.basename(p) || p
 
-/** The vault to serve on start: the last one switched to, if it's still there. */
 export function current(fallback: string) {
   const c = load().current
   return c && isDir(c) ? c : fallback
@@ -52,7 +49,6 @@ const OPEN_IN_SYSTEM = ["/run/media", path.join(HOME, "Library", "Mobile Documen
 
 const inside = (p: string, dir: string) => { const rel = path.relative(dir, p); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)) }
 
-/** Why a folder can't be browsed (or, with `vault`, served), or null. */
 export function refused(p: string, { vault = false } = {}): string | null {
   if (p.split(path.sep).some((x) => x.startsWith("."))) return "not inside a hidden folder"
   if (SYSTEM.some((d) => inside(p, d)) && !OPEN_IN_SYSTEM.some((d) => inside(p, d))) return "not a system folder"
@@ -61,7 +57,6 @@ export function refused(p: string, { vault = false } = {}): string | null {
   return null
 }
 
-/** A folder that may be browsed or served: absolute, not hidden or the system's, there. */
 function safe(p: unknown, { vault = false } = {}) {
   if (typeof p !== "string" || !path.isAbsolute(p)) throw new HTTPError(400, "a full path, please")
   const abs = path.resolve(p)
@@ -71,7 +66,6 @@ function safe(p: unknown, { vault = false } = {}) {
   } catch {
     throw new HTTPError(404, `no folder '${abs}'`)
   }
-  // Both the path and where it points (a symlink to iCloud Drive) are checked.
   for (const where of [abs, real]) {
     const why = refused(where, { vault })
     if (why) throw new HTTPError(403, why)
@@ -86,7 +80,6 @@ function remember(list: Known[], p: string) {
 
 export type Switch = (p: string) => Promise<void>
 
-/** The /api/vaults routes, or undefined when it isn't one. `serving` is the vault being served; `open` switches. */
 export async function handle(method: string, parts: string[], query: Record<string, string>, body: Record<string, unknown>,
   serving: string, open: Switch): Promise<unknown> {
   if (parts[0] !== "vaults") return undefined
@@ -102,7 +95,6 @@ export async function handle(method: string, parts: string[], query: Record<stri
     return load()
   }
   if (route === "open" && method === "POST") {
-    // One already in the list (or served from the start, maybe through a symlink in a hidden folder) is fine as it is.
     const p = typeof body.path === "string" && (body.path === serving || list.some((v) => v.path === body.path)) && isDir(body.path)
       ? body.path : safe(body.path, { vault: true })
     await open(p)

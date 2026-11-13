@@ -1,5 +1,3 @@
-// `vau service`: keep this checkout's server running on this machine, started at login (a launchd agent on macOS, a
-// Task Scheduler task on Windows) or boot (a systemd user unit on Linux, with linger so it runs logged out, as on a VPS).
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -7,8 +5,7 @@ import path from "node:path"
 import { servingOf } from "./serving.ts"
 
 const LABEL = "app.vaultite.server"
-/** `updates`: a branch it follows on its own, this machine's choice: from a code store of its own on macOS and Linux
- *  (bin/vaultite-server, core/update/servicestore.ts), the checkout in place on Windows (core/selfupdate.ts). */
+/** `updates`: a branch it follows on its own, this machine's choice rather than the vault's. */
 export type ServiceOptions = { root: string; node: string; vault: string; port?: number; host?: string; home?: string; updates?: string }
 export type ServicePlan = { platform: "darwin" | "linux" | "win32"; file: string; text: string; log: string; start: string[][]; stop: string[][]
   /** More files it writes (Windows: the task's definition, UTF-16 as schtasks reads it). */
@@ -81,7 +78,6 @@ for (;;) {
     stop: [["schtasks", "/End", "/TN", TASK], ["schtasks", "/Delete", "/TN", TASK, "/F"]] }
 }
 
-/** What it writes and runs, without doing it: the job's file and the commands that start or stop it. */
 export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   const home = o.home ?? os.homedir()
   const p = platform === "win32" ? path.win32 : path.posix
@@ -155,7 +151,7 @@ WantedBy=default.target
     stop: [["systemctl", "--user", "disable", "--now", "vaultite"]] }
 }
 
-/** Runs each command, carrying on past one that fails (a job that wasn't loaded yet): what failed, as lines. */
+/** Carries on past one that fails (a job that wasn't loaded yet). */
 function run(cmds: string[][]) {
   const failed: string[] = []
   for (const [cmd, ...args] of cmds) {
@@ -213,7 +209,6 @@ export function serviceStatus(platform = process.platform, home = os.homedir()):
   return { installed, file: plan.file, vault: env.VAULTITE_VAULT ?? "", url: `http://${env.HOST ?? "127.0.0.1"}:${env.PORT ?? 8793}`, running, log: plan.log }
 }
 
-/** The variables this machine's service runs with, read from its job file (none when it isn't installed). */
 export function serviceEnv(platform = process.platform, home = os.homedir()): Record<string, string> {
   let text = ""
   try { text = fs.readFileSync(servicePlan(platform, { root: "", node: "", vault: "", home }).file, "utf8") } catch { return {} }
@@ -224,5 +219,4 @@ export function serviceEnv(platform = process.platform, home = os.homedir()): Re
   return out
 }
 
-/** The vault this machine's service serves, if one is installed, else "". */
 export const serviceVault = (platform = process.platform, home = os.homedir()) => serviceEnv(platform, home).VAULTITE_VAULT ?? ""

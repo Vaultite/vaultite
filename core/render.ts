@@ -1,5 +1,3 @@
-// A file as an AI sees it (GET /api/render): its Markdown with each block replaced by its plugin's text, filled in on
-// request and never saved, so files never hold a copy that goes stale. `machine:` blocks are asked of that machine.
 import fs from "node:fs"
 import os from "node:os"
 import { drawnBy, drawsOf, fallbackText, notesText, optionNotes, parseOptions, resolveOptions } from "./blocks.ts"
@@ -11,8 +9,6 @@ import { formatInput, type Item, readText, sortBy, stemOf, type Vault } from "./
 import { FM, prose } from "./frontmatter.ts"
 import { notHereYet } from "./writegate.ts"
 
-/** Who draws block `name`: the plugin that's on and declares it or has its text (plugin.block), else one that's off; one
- *  declared with `by`, the plugin its option names (core/blocks.ts), or `unnamed` says it names none. */
 function ownerOf(plugins: Plugin[], on: Set<string>, name: string, options: Item = {}) {
   const has = (x: Plugin) => x.textBlocks.has(name) || Object.hasOwn(x.blocks, name)
   const declarer = plugins.find((x) => on.has(x.id) && Object.hasOwn(x.blocks, name)) ?? plugins.find((x) => Object.hasOwn(x.blocks, name))
@@ -29,8 +25,7 @@ function ownerOf(plugins: Plugin[], on: Set<string>, name: string, options: Item
   return { live: p && on.has(p.id) ? p : null, off: p && !on.has(p.id) ? p : null, decl, unnamed }
 }
 
-/** One block as Markdown: its plugin's text view (or its declaration's description when it has none), then what's
- *  wrong with its options; a note when its plugin is off or no plugin draws it. `host`: the note embedding `rel`. */
+/** `host`: the note embedding `rel`. */
 export async function blockText(vault: Vault, plugins: Plugin[], rel: string, fm: Item, body: string, name: string,
   text: string, on?: Set<string>, host?: string): Promise<string> {
   on = on ?? enabled(vault, plugins)
@@ -39,19 +34,17 @@ export async function blockText(vault: Vault, plugins: Plugin[], rel: string, fm
   if (!p) return off ? `_(${off.manifest.name ?? off.id} is off)_` : unnamed || `_(no plugin draws block-${name})_`
   const notes = notesText(name, optionNotes(decl, parsed.options, parsed.error))
   const o = resolveOptions(decl, parsed.options)
-  let remote = false // (another machine's answer has its own notes)
+  let remote = false
   const out = await drawn()
   return out && notes && !remote ? `${out}\n\n${notes}` : out || notes
 
   async function drawn() {
-    // `file:` draws it for another file (the app's fileFor in components/Blocks.tsx).
     if (typeof o.file === "string" && o.file.trim()) {
       const other = otherFile(vault, o.file, rel)
       const e = other && vault.entries.get(other)
       if (!e) return `_(no file ${o.file} to draw this ${name} block for)_`
       ;[rel, fm, body, host] = [other!, e.fm, e.body, undefined]
     }
-    // (only a block that takes `machine:`, or one with no declaration: another's would draw it here in the app)
     if (typeof o.machine === "string" && o.machine && (!decl || Object.hasOwn(decl.options ?? {}, "machine"))) {
       const there = await onMachine(plugins.filter((x) => on!.has(x.id)), o.machine, name, rel, parsed.options)
       if (there !== null) { remote = true; return there }
@@ -61,14 +54,13 @@ export async function blockText(vault: Vault, plugins: Plugin[], rel: string, fm
     const ctx = blockCtx(vault, rel, fm, prose(body), o, host)
     try {
       return ((await fn(ctx)) || "").trim()
-    } catch (e) { // a block that can't be drawn mustn't break the rest of the file
+    } catch (e) {
       return `_(${name} couldn't be shown: ${(e as Error).message})_`
     }
   }
 }
 
-/** What a block's text gets (core/plugins.ts BlockCtx). Reading the file it's in (its path, frontmatter or body) is
- *  noted when its sources are being traced (core/sources.ts): the block reads that file. */
+/** Reading its path, fm or body records that the block read its file. */
 function blockCtx(vault: Vault, rel: string, fm: Item, body: string, options: Item, host?: string): BlockCtx {
   const read = () => { if (rel) noteHere() }
   return {
@@ -79,14 +71,11 @@ function blockCtx(vault: Vault, rel: string, fm: Item, body: string, options: It
   }
 }
 
-/** A block drawn by another machine (its `machine:`), or null when it's this one, an agent machine or there's no Machines
- *  plugin. */
 async function onMachine(plugins: Plugin[], id: string, name: string, rel: string, o: Item): Promise<string | null> {
   const find = service(plugins, "machines:machine")
   if (typeof find !== "function") return null
   const m = await find(id) as { label: string; url: string; online: boolean; self: boolean; dial?: boolean } | null
   if (!m) return `_(no machine ${id})_`
-  // (an agent machine runs no Vaultite: its files are read from here, through its relay)
   if (m.self || m.dial) return null
   if (!m.online) return `_(${m.label} isn't answering)_`
   const { machine: _, ...rest } = o
@@ -99,8 +88,6 @@ async function onMachine(plugins: Plugin[], id: string, name: string, rel: strin
   }
 }
 
-/** GET /api/render/block: one block drawn here, for another machine (its `machine:`, above). The file is this vault's
- *  when it has it (the same vault, usually), else none. */
 export async function blockOn(vault: Vault, plugins: Plugin[], query: Record<string, string>) {
   const name = String(query.name ?? "")
   if (!/^[\w-]{1,64}$/.test(name)) throw new HTTPError(400, "name: a block's name")
@@ -112,10 +99,6 @@ export async function blockOn(vault: Vault, plugins: Plugin[], query: Record<str
   return await blockText(vault, plugins, e ? rel : "", e?.fm ?? {}, e?.body ?? "", name, JSON.stringify(o))
 }
 
-// ---------- where a block's data comes from (GET /api/blocks/sources) ----------
-
-/** One place a block's data comes from: a file (it shows it, or read it), every file of a kind (`files`: the paths),
- *  a plugin's settings (a hidden file to open), or live data and caches (in words: nothing in the vault). */
 type BlockSource =
   | { kind: "file"; path: string }
   | { kind: "files"; collection: string; type: string; paths: string[] }
@@ -123,25 +106,22 @@ type BlockSource =
   | { kind: "live"; plugin: string; label: string; folders: { path: string; label: string }[] }
 export type BlockSources = {
   name: string; plugin: string | null; pluginName: string | null; on: boolean; description: string
-  /** Its declared options (core/blocks.ts), for its docs. */
   options: Item
-  /** The file it's in, and the line its fence opens on (0-based, frontmatter counted), when found there. */
+  /** `line`: where its fence opens, 0-based, frontmatter counted. */
   path: string; line: number | null
-  /** The file it's drawn for (its `file:`), when not the one it's in. */
+  /** Its `file:`, when not the one it's in. */
   file: string | null
   sources: BlockSource[]
 }
 
-/** Where a block's data comes from: its text side run while recording what it reads (core/sources.ts), plus its
- *  declared `reads` and `live`. `name` with `nth` or `text` picks one block; else every block in the file. */
+/** `name` with `nth` or `text` picks one block; else every block in the file. */
 export async function blockSources(vault: Vault, plugins: Plugin[], query: Record<string, string>): Promise<BlockSources | { path: string; blocks: BlockSources[] }> {
   const rel = String(query.path ?? "").replace(/^\/+|\/+$/g, "")
   const e = rel ? vault.entries.get(rel) : undefined
   if (rel && !e) throw new HTTPError(404, `no file '${rel}'`)
   let raw = ""
-  try { raw = e ? readText(vault.abs(rel)) : "" } catch (ex) { if (notHereYet(ex)) throw ex /* else gone meanwhile: no lines */ }
+  try { raw = e ? readText(vault.abs(rel)) : "" } catch (ex) { if (notHereYet(ex)) throw ex }
   const on = enabled(vault, plugins)
-  // Its blocks as they are in the file (```block-<name> fences, and ```<lang> ones a plugin reads): name, text, line.
   const reader = (name: string) => name.startsWith("```") ? plugins.find((x) => on.has(x.id) && Object.hasOwn(x.services, `fence:${name.slice(3)}`)) ?? null : null
   const s = scan(raw)
   const inFile = s.fences.flatMap((f) => {
@@ -153,7 +133,6 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
   const name = String(query.name)
   if (!/^(```)?[\w-]{1,64}$/.test(name)) throw new HTTPError(400, "name: a block's name")
   const same = (a: string, b: string) => a.replace(/\s+$/gm, "").trim() === b.replace(/\s+$/gm, "").trim()
-  // (`nth`: which of the file's blocks of that name; else the first with that text)
   const nth = query.nth === undefined ? NaN : Number(query.nth)
   const hit = Number.isInteger(nth) ? inFile.filter((b) => b.name === name)[nth]
     : inFile.find((b) => b.name === name && (query.text === undefined || same(b.text, query.text)))
@@ -168,7 +147,6 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
     const out: BlockSources = { name, plugin: owner?.id ?? null, pluginName: owner ? owner.manifest.name ?? owner.id : null, on: !!p,
       description: decl?.description ?? "", options: decl?.options ?? {}, path: rel, line, file: other !== rel ? other : null, sources: [] }
     if (!owner) return out
-    // (drawn only to see what it reads: a slow one, live data on its way, is left at what it read by then)
     let timer: ReturnType<typeof setTimeout> | undefined
     const { trace } = await traced(() => fence ? (fence.services[`fence:${name.slice(3)}`] as (c: { path: string; text: string }) => unknown)({ path: rel, text })
       : p && p.textBlocks.has(name)
@@ -178,8 +156,6 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
     const exists = (x: string) => vault.entries.has(x) || vault.others.has(x)
     const pathOf = (x: string) => exists(x) ? x : exists(`${x}.md`) ? `${x}.md` : null
     const here = other ?? rel
-    // What it names (the people it lists) and its declared `reads`; the file it's in and what it read from disk only
-    // when it names nothing (a query reads the file it's in, and a graph every file, to show a few).
     const files: string[] = []
     const read = trace.named.size ? [] : [...(trace.here ? [here] : []), ...trace.files]
     for (const x of [...trace.named, ...(Array.isArray(decl?.reads) ? decl.reads.map(String) : []), ...read]) {
@@ -187,8 +163,6 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
       if (f && !files.includes(f)) files.push(f)
     }
     for (const f of files) out.sources.push({ kind: "file", path: f })
-    // Every file of a kind it read, unless all it showed of that kind is the file it's in (a person's profile), or it
-    // showed them all already.
     for (const c of trace.kinds) {
       const k = vault.kinds.find((x) => x.collection === c)
       if (!k) continue
@@ -207,14 +181,11 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
       const folders = (p?.liveFolders() ?? []).map((d) => ({ path: d, label: d.startsWith(os.homedir() + "/") ? `~${d.slice(os.homedir().length)}` : d }))
       out.sources.push({ kind: "live", plugin: owner.id, label: live ?? named(owner.id), folders })
     }
-    // (another plugin's cache: kept by the server, in no file either, core/kept.ts)
     for (const id of trace.caches) if (id !== owner.id) out.sources.push({ kind: "live", plugin: id, label: named(id), folders: [] })
     return out
   }
 }
 
-/** A block's `file:`: a link to a note (written in `from`, so the closest of its name), or a folder ending in / for its
- *  newest file. */
 function otherFile(vault: Vault, target: string, from?: string): string | null {
   const t = target.trim().replace(/^\[\[|\]\]$/g, "").split("|")[0].trim()
   if (t.endsWith("/")) {
@@ -225,17 +196,13 @@ function otherFile(vault: Vault, target: string, from?: string): string | null {
   return hit && vault.entries.has(hit) ? hit : null
 }
 
-/** Where a file read as text is embedded: the file it's in (`host`) and the part after the name (`sub`: a base's
- *  view, `![[Books.base#Reading]]`). */
+/** `sub`: the part after the name, a base's view in `![[Books.base#Reading]]`. */
 type At = { sub?: string; host?: string }
-/** The text view (service `text:<ext>`) a plugin that's on gives files like this one, or null. Files that aren't text
- *  (a workbook) get their bytes as a Buffer. */
+/** The service `text:<ext>`; files that aren't text (a workbook) get their bytes as a Buffer. */
 function formatReader(plugins: Plugin[], on: Set<string>, rel: string): ((text: string | Buffer, rel: string, at?: At) => string) | null {
   return serviceFor(plugins.filter((x) => on.has(x.id)), "text", rel)
 }
 
-/** A file a plugin reads as text embedded on a line of its own (`![[Finance/Spending.html]]`), found as any
- *  embed is: by path or file name, with an optional part after it (`![[Books.base#Reading]]`). */
 function embedded(vault: Vault, plugins: Plugin[], on: Set<string>, target: string, from: string): string | null {
   const hash = target.indexOf("#")
   if (hash > 0) {
@@ -246,7 +213,6 @@ function embedded(vault: Vault, plugins: Plugin[], on: Set<string>, target: stri
   return hit && vault.others.has(hit) && formatReader(plugins, on, hit) ? hit : null
 }
 
-/** A file's text as the plugin that reads it gives it, or null if none does. `at`: where it's embedded. */
 function otherText(vault: Vault, rel: string, plugins: Plugin[], on: Set<string>, at: At = {}) {
   const read = formatReader(plugins, on, rel)
   if (read) {
@@ -255,8 +221,7 @@ function otherText(vault: Vault, rel: string, plugins: Plugin[], on: Set<string>
   return null
 }
 
-/** Code fences a plugin reads as text, by their language (the service `fence:<lang>`, ({path, text, host}) -> Markdown:
- *  a ```base fence is a base, `this` the note embedding it or else its own), replaced by that text; others stay. */
+/** The service `fence:<lang>`: ({path, text, host}) -> Markdown, `host` the note embedding it. */
 async function fenced(plugins: Plugin[], on: Set<string>, rel: string, body: string, host?: string): Promise<string> {
   const { lines, fences } = scan(body)
   const readers = fences.map((f) => {
@@ -280,8 +245,7 @@ async function fenced(plugins: Plugin[], on: Set<string>, rel: string, body: str
   return out.join("\n")
 }
 
-/** Inline code a plugin reads as text (the service `inline-code`, ({path, code, host}) -> Markdown, or null to leave it:
- *  Dataview's `= this.file.name`), replaced by that text in prose lines; code fences stay as they are. */
+/** The service `inline-code`: ({path, code, host}) -> Markdown, or null to leave it (Dataview's `= this.file.name`). */
 async function inlineCode(plugins: Plugin[], on: Set<string>, rel: string, body: string, host?: string): Promise<string> {
   const readers = plugins.filter((x) => on.has(x.id) && Object.hasOwn(x.services, "inline-code"))
     .map((x) => x.services["inline-code"] as (ctx: { path: string; code: string; host?: string }) => string | null | Promise<string | null>)
@@ -305,16 +269,13 @@ async function inlineCode(plugins: Plugin[], on: Set<string>, rel: string, body:
   return lines.join("\n")
 }
 
-/** How deep embedded notes go (a note embedding a note embedding...): only a guard, loops are caught by `seen`. */
 const DEPTH = 20
 const EMBED = /^!\[\[([^\]|\n]+?)(?:\|[^\]\n]*)?\]\][ \t]*$/gm
 
-/** A body as the user reads it: blocks as text, %%comments%% and ^ids out, embeds on their own line inlined (a note or
- *  its section as a quote under its link). `seen`: the notes embedding this one, against cycles; `host`: the nearest. */
+/** Obsidian's %%comments%% and ^ids out. `seen`: the notes embedding this one, against cycles; `host`: the nearest. */
 async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: string, fm: Item, body: string, seen: string[], host?: string): Promise<string> {
   body = await inlineCode(plugins, on, rel, body, host)
   let text = ""
-  // Each block placed in it, with the blank lines after it, as its text.
   const { lines } = scan(body)
   let from = 0
   for (const b of blocksIn(body)) {
@@ -327,7 +288,6 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
   const parts: string[] = []
   let at = 0
   const lineAt = (s: string) => { let from = 0, n = 0; return (i: number) => { for (; from < i; from++) if (s.charCodeAt(from) === 10) n++; return n } }
-  // (not in code: a fence showing `![[Note]]` shows it as it is)
   const { code } = scan(text)
   const textLine = lineAt(text)
   for (const m of text.matchAll(EMBED)) {
@@ -346,7 +306,6 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
     if (!note) { parts.push(m[0]); continue }
     const link = `[[${name ? stemOf(note) : ""}${anchor ? `#${anchor}` : ""}]]`
     const key = anchor ? `${note}#${anchor}` : note
-    // (a section of a note it's in is fine; the note itself, or the same section again, would never end)
     if (seen.includes(key) || (!anchor && seen.some((k) => k === note || k.startsWith(`${note}#`)))) { parts.push(`_(${link} embeds itself: left out)_`); continue }
     if (seen.length > DEPTH) { parts.push(`_(${link} is embedded too deep: left out)_`); continue }
     const other = vault.entries.get(note)!
@@ -362,14 +321,12 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
   return parts.join("")
 }
 
-/** A note an embed in `from` names (`![[Alice Park]]`, a path, an alias), or null. Images and other files aren't notes. */
 function noteFile(vault: Vault, name: string, from: string) {
   if (/\.(?!md$)[A-Za-z][A-Za-z0-9]{0,9}$/i.test(name)) return null
   return otherFile(vault, name, from)
 }
 
 export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) {
-  // (a path from before the user moved its folder still reads the file: Vault.relocated)
   const rel = vault.relocated(String(relPath ?? "").replace(/^\/+|\/+$/g, ""))
   if (vault.others.has(rel)) {
     const on = enabled(vault, plugins)
@@ -390,12 +347,10 @@ export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) 
   const on = enabled(vault, plugins)
   const text = await expand(vault, plugins, on, rel, e.fm, body, [rel])
   let title = `# ${stemOf(rel)}\n\n`
-  // What the plugins that are on draw under the title (Page tabs: which tab this is), as Markdown.
   for (const p of plugins) {
     const under = on.has(p.id) && Object.hasOwn(p.services, "page-head") ? (p.services["page-head"] as (x: unknown) => unknown)({ path: rel, type: e.type, fm: e.fm }) : null
     if (typeof under === "string" && under) title += under + "\n\n"
   }
-  // Values that aren't of their property's type (the vault's types: core/proptypes.ts), as the editor notes them.
   const notes = typeNotes(propertyTypes(vault, plugins), e.fm)
   if (notes.length) title += `_(properties: ${notes.join("; ")})_\n\n`
   return head + (head ? "\n" : "") + title + text + "\n"

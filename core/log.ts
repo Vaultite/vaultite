@@ -1,5 +1,3 @@
-// Lines go through console: the server log dates them and `vau errors` hears every error (core/serverlog.ts).
-
 type Value = string | number | boolean | null | undefined
 export type Fields = Record<string, Value>
 

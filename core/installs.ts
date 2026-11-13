@@ -1,5 +1,3 @@
-// Vault plugins installed from a git repository (owner/name, a URL or a local folder; git argv, no shell) at a tag, or
-// a zip pinned by hash (`…/x.zip#sha256=<hex>`): checked, copied into .vaultite/plugins/<id>/ off, and locked.
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -18,8 +16,7 @@ import { unzip } from "./unzip.ts"
 import { removeTree, type Item, type Vault } from "./vault.ts"
 import { gitEnv } from "./gitenv.ts"
 
-/** Where a plugin came from, as .vaultite/plugins-lock.json keeps it (so another machine knows): `source` as asked,
- *  `repo` on GitHub, the tag and commit fetched (null from a plain folder), its content hash and version then. */
+/** Kept so another machine knows. `tag` and `commit` are null from a plain folder. */
 export type Locked = { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; hash: string; installed: string
   /** Its updates, oldest first (at most HISTORY_MAX). */
   history?: Update[]
@@ -27,7 +24,7 @@ export type Locked = { source: string; repo: string | null; tag: string | null; 
   skip?: string
   /** It was one of the app's own plugins, installed by the app when it moved here (core/migrations.ts MOVED). */
   moved?: true }
-const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
+const LOCK = "plugins-lock"
 const HISTORY_MAX = 30
 
 /** What a source names: a git address or folder, its GitHub repo, `dir` the plugin's folder in a repo of several (tags
@@ -37,10 +34,8 @@ export type Source = { given: string; url: string | null; folder: string | null;
   /** A commit to fetch (its full sha) instead of what the tag names now: tags move, a commit doesn't. */
   commit?: string | null }
 
-/** A commit as pinned: git's full sha. */
 export const COMMIT = /^[0-9a-f]{40}$/
 
-/** A zip's address: https (http only to this machine), its path ending in .zip, `#sha256=<64 hex>` after it. */
 const ARCHIVE = /^(https?):\/\/([^/?#]+)(\/[^?#]*\.zip)(\?[^#]*)?(?:#sha256=([0-9a-fA-F]{64}))?$/i
 const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i
 const ZIP_MAX = 64 << 20, UNZIPPED_MAX = 256 << 20, ENTRIES_MAX = 5000
@@ -116,8 +111,7 @@ export async function checkout(url: string, ref: string | null, dir: string, sub
   return (await git(["rev-parse", "HEAD"], dir)).trim()
 }
 
-/** A repository's version tags (v1.2.0 and 1.2.0; pre-releases only when asked by name), newest first; with `dir`, its
- *  plugin's in that folder (hevy/v1.2.0). */
+/** Newest first; pre-releases only when asked by name. */
 export async function tagsOf(url: string, dir: string | null = null): Promise<string[]> {
   const out = await git(["ls-remote", "--tags", "--refs", url])
   return out.split("\n").map((l) => l.split("\trefs/tags/")[1]?.trim())
@@ -125,15 +119,13 @@ export async function tagsOf(url: string, dir: string | null = null): Promise<st
     .sort((a, b) => compareVersions(tagVersion(b), tagVersion(a))!)
 }
 
-/** Its default branch's commit (an install without tags is followed by commit). */
 async function headOf(url: string) {
   return (await git(["ls-remote", url, "HEAD"])).split("\t")[0].trim() || null
 }
 
 export type Fetched = { dir: string; id: string; manifest: Manifest; tag: string | null; commit: string | null; untagged: boolean; done: () => void }
 
-/** Clone (or copy) a source at its commit, else its tag (else its newest version tag, else the default branch: `untagged`), copy what
- *  the app reads to <tmp>/<id>/ and check it as installed beside `vault`'s plugins (id -> folder): 422 with its problems. */
+/** Without a commit or tag: the newest version tag, else the default branch (`untagged`). 422 with the check's problems. */
 export async function fetchSource(src: Source, tiers: Map<string, string>, vault: Map<string, string>): Promise<Fetched> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-install-"))
   const done = () => removeTree(tmp)
@@ -182,8 +174,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
   }
 }
 
-/** Copy a plugin's files as installing does (not its ignored ones, nor links), from a checkout to `dir`: what its
- *  hash (digestOf) is of. */
+/** What digestOf hashes: not ignored files, nor links. */
 export function stage(from: string, dir: string) {
   const ignored = ignoreOf(from)
   for (const f of walk(from)) {
@@ -260,8 +251,7 @@ function writeLock(vault: Vault, id: string, entry: Locked | null) {
 }
 
 
-/** Put a fetched plugin in `.vaultite/plugins/<id>/`, swapping the whole folder at once and keeping its settings; locks
- *  it, with `change` in its history (an update: how, its notes, a version to skip from now on), `moved` from the app. */
+/** Swaps the whole folder at once, keeping its settings and the files it keeps as the user's. */
 export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Update["how"]; notes: string[]; skip?: string }, moved?: boolean): Locked {
   const was = readLock(vault)[f.id]
   const root = vault.abs(DIR), target = path.join(root, f.id)
@@ -270,7 +260,6 @@ export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Upd
   fs.rmSync(old, { recursive: true, force: true })
   fs.mkdirSync(root, { recursive: true })
   fs.cpSync(f.dir, fresh, { recursive: true })
-  // (its settings, those it doesn't ship, and the files it keeps as the user's stay as they are here)
   const settings = fs.existsSync(target) ? fs.readdirSync(target).filter((f) => settingsFile(f) && !fs.existsSync(path.join(fresh, f))) : []
   for (const f of [...settings, ...userFilesOf(fresh)]) {
     if (!fs.existsSync(path.join(target, f))) continue
@@ -293,7 +282,6 @@ export function unlock(vault: Vault, id: string) {
   if (readLock(vault)[id]) writeLock(vault, id, null)
 }
 
-/** What a newer version would change: its files (added, removed, edited) and what it says it does beyond the vault. */
 export function diff(installed: string, next: string, was: Item, now: Item) {
   const a = digestOf(installed).files, b = digestOf(next).files
   const files = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => a[f] !== b[f]).sort()
@@ -308,8 +296,6 @@ export function diff(installed: string, next: string, was: Item, now: Item) {
   return { files, disclosures }
 }
 
-/** What's new between two commits of a source (its folder's, for a repository of several): its commits' subjects as
- *  release notes (core/updates.ts). A treeless clone, so only commits and folders are fetched; [] when it can't tell. */
 export async function releaseNotes(src: Source, from: string | null, to: string | null): Promise<string[]> {
   if (!src.url || !from || !to || from === to) return []
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-notes-"))
@@ -324,13 +310,11 @@ export async function releaseNotes(src: Source, from: string | null, to: string 
   }
 }
 
-/** The tag of one of a source's versions (to go back to it), or null. */
 export async function tagOf(src: Source, version: string) {
   return src.url ? (await tagsOf(src.url, src.dir)).find((t) => tagVersion(t) === version) ?? null : null
 }
 
-/** An installed plugin's newer version, if there may be one: by tag (a newer version tag), by commit for one installed
- *  without tags, or a folder's files as they are now. Null when it's up to date. */
+/** Null when it's up to date. */
 export async function newer(l: Locked): Promise<{ tag: string | null; commit: string | null } | null> {
   const src = parseSource(l.source)
   if (src.folder) return { tag: null, commit: null } // (a folder on this machine: what's there now is looked at)

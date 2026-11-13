@@ -1,5 +1,3 @@
-// The plugin directory: one index.json of plugins and bundles (tools/plugin-index.ts), read from plugins.json's `index`
-// (else DEFAULT_INDEX), kept by the server (core/kept.ts, shared with the other machines), and its blocklist.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -25,7 +23,6 @@ export type Entry = {
   topics: string[]; disclosures: Disclosures; readme: string; score: number; fundingUrl?: string; replaces?: Record<string, string[]>
   /** Its manifest's icon (a name, or its SVG as a data address: core/pluginmeta.ts iconOf) and colour. */
   icon?: string; tint?: string
-  /** It works only in the desktop app (its manifest's `desktopApp`). */
   desktopApp?: boolean
   /** Its manifest's category (core/categories.ts; one unknown here lists as Other). */
   category?: string
@@ -53,7 +50,6 @@ const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0)
 const date = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null)
 
-/** A listed bundle's sketch as it reads: each part checked, one that isn't left unsaid. */
 function readSketch(o: Record<string, unknown>): Sketch {
   const s = isObj(o.shape) ? o.shape : {}, p = isObj(o.panels) ? o.panels : null
   const bool = (v: unknown) => (typeof v === "boolean" ? v : null), name = (v: unknown) => (/^[\w-]{1,60}$/.test(str(v)) ? str(v) : null)
@@ -147,7 +143,6 @@ export function blockedBy(index: Index, id: string, version: string | null, repo
   return null
 }
 
-/** A file of a GitHub repository at its default branch (owner/name/path), by a clone of only that commit's tree. */
 async function fromRepo(spec: string) {
   const [owner, name, ...rest] = spec.split("/")
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-index-"))
@@ -161,12 +156,11 @@ async function fromRepo(spec: string) {
 
 export class PluginIndex {
   vault: Vault
-  /** Bumped when what's known changes (/api/state follows it: a blocked plugin). */
   version = 0
   private got: Got | null = null
   private at = 0
   private pending: Promise<Got> | null = null
-  private tried = "" // the address whose cache was looked for
+  private tried = ""
 
   constructor(vault: Vault) {
     this.vault = vault
@@ -194,7 +188,6 @@ export class PluginIndex {
     return JSON.parse(r.body.toString("utf8"))
   }
 
-  /** What's known without asking: in memory, else the vault's cache (of the same address). */
   known(): Got | null {
     if (this.got || this.tried === this.url()) return this.got
     this.tried = this.url()

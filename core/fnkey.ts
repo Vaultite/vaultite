@@ -1,6 +1,3 @@
-// The fn key as ⌘J in the window: a tap starts and the next stops; held, it listens until it's let go. A key pressed with
-// fn (fn+arrow, fn+F1) wasn't for dictation: what its press started is cancelled. The page's and the helper's (no Node).
-
 export const HOLD_MS = 450, DOUBLE_MS = 350
 /** free: a double tap, hands-free: the session goes on till the next press. */
 export type FnAction = "start" | "stop" | "cancel" | "free" | null
@@ -13,7 +10,6 @@ export function fnKey(hold = HOLD_MS, gap = DOUBLE_MS) {
     down(now: number, listening: boolean, held = false): FnAction {
       if (held && listening) { started = false; return null }
       if (!held && listening && now - tapped <= gap) { tapped = -Infinity; started = false; return "free" }
-      // (the second tap of a double tap that stopped it: not a new session)
       if (!held && !listening && now - stopped <= gap) { stopped = -Infinity; started = false; return null }
       at = held ? now - hold : now
       started = !listening
@@ -21,7 +17,6 @@ export function fnKey(hold = HOLD_MS, gap = DOUBLE_MS) {
       if (listening) stopped = now
       return listening ? "stop" : "start"
     },
-    /** fn came up: a hold ends its session, a tap leaves it listening. */
     up(now: number): FnAction {
       if (!started) return null
       started = false
@@ -71,7 +66,6 @@ export const CONTROL_DOUBLE_MS = 500, CONTROL_HOLD_MS = 500
 export function modKeys(keys: readonly string[]) {
   const codes = new Set(keyCodes(keys.filter((k) => k !== "fn")))
   let solo: { code: number; state: "waiting" | "down" | "dropped"; at: number } | null = null
-  /** When Control's last clean tap was pressed: the next one, soon, makes a double tap. */
   let tapped = -Infinity
   const dropSolo = (): FnEvent[] => {
     tapped = -Infinity
@@ -110,8 +104,7 @@ export function modKeys(keys: readonly string[]) {
   }
 }
 
-// The Talk keys' gesture (HeyClicky's): held, it listens and sends when let go; a tap opens a box to type in; a double
-// tap listens hands-free till a hold or double tap sends. A key pressed with it (a shortcut) cancels what it started.
+// The Talk keys' gesture is HeyClicky's.
 export const TAP_MS = 250
 /** listen: its cursor at the pointer, hearing; send: what was said (and drawn) goes; type: a box to type in, nothing
  *  heard; free: hands-free, into that box; cancel: nothing goes. */
@@ -129,7 +122,6 @@ export function talkGesture(tap = TAP_MS, gap = DOUBLE_MS) {
       if (s === "free") { s = "freeDown"; at = now; quick = now - lastTap <= gap; return null }
       if (s !== "idle" && s !== "typed") return null
       at = now
-      // (let go and pressed again at once (a 50 ms tap and another): its cursor and box wait till it's held)
       if (now - sent <= gap) { s = "bounce"; return null }
       s = "held"
       return "listen"
@@ -151,14 +143,12 @@ export function talkGesture(tap = TAP_MS, gap = DOUBLE_MS) {
       if (s === "freeing") { s = "free"; lastTap = -Infinity; return null }
       if (s === "freeDown") {
         const short = now - at < tap
-        // (a double tap, or held: what it heard goes, as a hold's would)
         if (!short || quick) return send(now)
         s = "free"
         lastTap = now
       }
       return null
     },
-    /** Another key with it: a shortcut, not for the companion. */
     other(): TalkAction {
       if (s === "bounce") { s = "idle"; return null }
       if (s !== "held") return null

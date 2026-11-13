@@ -12,7 +12,6 @@ export function watchTree(root: string, skip: (rel: string) => boolean, changed:
   let error: Error | null = null
   const fail = (e: Error) => { if (error) return; error = e; failed?.(e) }
 
-  /** Watch a folder and those in it; `fresh`: it just appeared, so what's in it already (made with it) is told too. */
   function add(rel: string, fresh = false) {
     if (watches.has(rel) || error) return
     const abs = rel ? path.join(root, rel) : root
@@ -43,7 +42,6 @@ export function watchTree(root: string, skip: (rel: string) => boolean, changed:
     }
   }
 
-  /** A folder gone (or moved away): its watches and its subfolders'. */
   function drop(rel: string) {
     for (const [r, w] of watches) if (r === rel || r.startsWith(rel + "/")) { w.close(); watches.delete(r) }
   }

@@ -1,5 +1,3 @@
-// Files from outside the vault, opened in the desktop app: tabs like any file but not indexed. Only paths the desktop
-// app allowed over IPC (never a URL) can be read or written, so the web version answers 404 for every absolute path.
 import fs from "node:fs"
 import path from "node:path"
 import { kindOf, tooBig } from "./filetypes.ts"
@@ -17,7 +15,6 @@ const real = (p: string) => {
   }
 }
 
-/** Let the app open these files (from the desktop app's main process only). */
 export function allow(paths: unknown) {
   if (!Array.isArray(paths)) return
   for (const p of paths) if (typeof p === "string" && path.isAbsolute(p)) allowed.add(real(p))
@@ -33,7 +30,6 @@ function check(p: string) {
 /** An outside path the app may read (its bytes, its info), or a 404. */
 export const allowedPath = (p: string) => check(p)
 
-/** GET /api/file/info for an allowed outside path: its size and dates, like a vault file's (core/files.ts). */
 export function info(p: string) {
   check(p)
   let st: fs.Stats
@@ -61,7 +57,6 @@ function read(p: string) {
   return { path: p, text, mtime: Math.floor(st.mtimeMs), kind: null, problems: [], outside: true }
 }
 
-/** GET and PUT /api/file for an allowed outside path. */
 export function handle(method: string, p: string, said: ReturnType<typeof saveBody>) {
   check(p)
   if (method === "GET") return read(p)

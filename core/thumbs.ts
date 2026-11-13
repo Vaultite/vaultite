@@ -1,5 +1,3 @@
-// Files' thumbnails for the folder views, as Finder draws them: QuickLook on macOS, else what's on PATH (ImageMagick or
-// libvips for images, pdftoppm for PDFs, ffmpeg for videos). Made once per version and size into VAULTITE_LOCAL/cache/thumbs/.
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -15,7 +13,6 @@ export const SIZES = [256, 512, 1024]
 const MAX_JOBS = 2, TIMEOUT_MS = 20_000
 const QUICKLOOK = "/usr/bin/qlmanage"
 
-/** The size made for a request of `px`: the smallest bucket at least that big, the largest at most. */
 export const bucket = (px: number) => SIZES.find((s) => s >= px) ?? SIZES[SIZES.length - 1]
 
 // QuickLook never exits on a file it has no thumbnail for (an archive, a program): only kinds Finder draws a picture of.
@@ -26,7 +23,6 @@ const quicklooks = (abs: string) => {
   return kind === "image" || kind === "pdf" || kind === "video" || kind === "audio" || QUICKLOOK_EXTS.has(path.extname(abs).slice(1).toLowerCase())
 }
 
-/** The commands to try, in turn, for a thumbnail of `abs` in the empty folder `tmp`, each with the file it writes. */
 function commands(abs: string, tmp: string, px: number, quicklook: boolean): [string, string[], string][] {
   if (quicklook) return quicklooks(abs) ? [[QUICKLOOK, ["-t", "-s", String(px), "-o", tmp, abs], path.join(tmp, `${path.basename(abs)}.png`)]] : []
   const out = path.join(tmp, "thumb.png"), kind = kindOf(abs), box = `${px}x${px}>`
@@ -57,11 +53,9 @@ const free = () => { const next = waiting.shift(); if (next) next(); else active
 const run = (cmd: string, args: string[]) => new Promise<void>((done) => execFile(cmd, args, { timeout: TIMEOUT_MS }, () => done()))
 
 const running = new Map<string, Promise<string | null>>()
-/** Files no thumbnail could be made of, by version: not tried again till the server restarts. */
 const failed = new Set<string>()
 
-/** A thumbnail (PNG) of the file at `abs` (its stat says which version) whose longer side is at most `px` (to its
- *  bucket), made if it isn't there yet; null when it can't be. An iCloud placeholder isn't brought down for it. */
+/** A PNG whose longer side is at most `px`'s bucket, or null. An iCloud placeholder isn't brought down for it. */
 export function thumbOf(abs: string, st: fs.Stats, px: number, quicklook = process.platform === "darwin" && fs.existsSync(QUICKLOOK)): Promise<string | null> {
   const size = bucket(px)
   const key = crypto.createHash("sha1").update(`${abs}\0${st.size}\0${st.mtimeMs}`).digest("hex")
@@ -97,12 +91,11 @@ export function thumbOf(abs: string, st: fs.Stats, px: number, quicklook = proce
       running.delete(out)
       tidy()
     }
-  })().catch(() => null) // (the disk full: no thumbnail, tried again next time)
+  })().catch(() => null)
   running.set(out, job)
   return job
 }
 
-/** Thumbnails not made or used for a while go (files' old versions, files deleted), at most once an hour. */
 let tidied = 0
 function tidy() {
   const now = Date.now()

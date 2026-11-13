@@ -1,12 +1,9 @@
-// How long what the user waits for took (the app starting, a terminal opening, an agent getting ready), part by part:
-// `vau perf` shows them. In memory, the last few of each.
 export type Span = { name: string; t: number; ms: number; parts: Record<string, number>; tags?: Record<string, string> }
 
 const KEEP = 50
-// When the user asked for this server: the desktop app's launch, or its window opening when the app was already up.
 const launched = Number(process.env.VAULTITE_LAUNCHED_AT) || 0, forked = Number(process.env.VAULTITE_FORKED_AT) || 0
 export const askedAt = forked && forked - launched < 30_000 ? launched : forked || performance.timeOrigin
-delete process.env.VAULTITE_LAUNCHED_AT; delete process.env.VAULTITE_FORKED_AT // (not for the shells it starts)
+delete process.env.VAULTITE_LAUNCHED_AT; delete process.env.VAULTITE_FORKED_AT
 let opened = false
 const kept = new Map<string, Span[]>()
 const r1 = (n: number) => Math.round(n * 10) / 10

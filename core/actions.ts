@@ -1,23 +1,16 @@
-// An object's actions: the ops that act on a kind of file (a person's timeline, a book's progress), the file filling one
-// of their params. One list for the app's menus, the palette, `vau actions` and MCP. Pure, no Node: both sides use it.
 import type { OpAction } from "./contracts/ops.ts"
 
-/** The file an action is asked about. */
 export type ActionFile = { path: string; type: string | null; archived?: boolean }
 
-/** What an op with `action` needs to say about it (an OpEntry is one). */
 type Acting = { id: string; kind: string; action: OpAction | null; params: { properties?: Record<string, unknown>; required?: readonly string[] } }
 
 const actsOn = (a: OpAction, f: ActionFile) =>
   (a.on.includes("*") || (!!f.type && a.on.includes(f.type))) && !!a.archived === !!f.archived
 
-/** The value the file gives the action's param. */
 const actionValue = (a: OpAction, path: string) =>
   a.from === "name" ? (path.split("/").pop() ?? path).replace(/\.[^.]+$/, "") : path
 
-/** A file's actions: each op's id, label, the params the file fills and the ones still to give. */
 export function actionsFor<E extends Acting>(entries: E[], f: ActionFile) {
-  // (its kind's own first, then those for any file)
   const own = (e: E) => (e.action?.on.includes("*") ? 1 : 0)
   return [...entries].sort((a, b) => own(a) - own(b)).flatMap((e) => {
     if (!e.action || !actsOn(e.action, f)) return []
@@ -27,7 +20,6 @@ export function actionsFor<E extends Acting>(entries: E[], f: ActionFile) {
   })
 }
 
-/** What's wrong with an op's `action`, given its params' names. */
 export function actionProblems(id: string, a: OpAction, params: string[]): string[] {
   const out: string[] = []
   if (!Array.isArray(a.on) || !a.on.length || !a.on.every((t) => typeof t === "string" && t)) out.push(`${id}: action.on should list types ("person"), or "*"`)

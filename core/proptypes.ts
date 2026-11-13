@@ -1,5 +1,4 @@
-// Property types: a frontmatter key's type across the whole vault (`.vaultite/types.json`, Obsidian's types.json the same
-// shape), alike on server and app (no Node). They pick the Properties editor's input, add quiet notes and sort queries.
+// `.vaultite/types.json` has the shape of Obsidian's types.json.
 
 export const PROP_TYPES = ["text", "list", "number", "checkbox", "date", "datetime", "tags", "aliases", "link"] as const
 export type PropType = (typeof PROP_TYPES)[number]
@@ -10,7 +9,6 @@ const IMPLIED: PropTypes = { tags: "tags", aliases: "aliases" }
 // (Obsidian's names for ours)
 const ALIASES: Record<string, PropType> = { multitext: "list" }
 
-/** A type's name as written ("Date", Obsidian's "multitext"), or null when it isn't one. */
 export function typeName(v: unknown): PropType | null {
   const t = typeof v === "string" ? v.trim().toLowerCase() : ""
   return (PROP_TYPES as readonly string[]).includes(t) ? t as PropType : ALIASES[t] ?? null
@@ -72,7 +70,6 @@ export function typeNotes(types: PropTypes | null | undefined, fm: Record<string
   return out
 }
 
-/** A date or a date and time as ms (this machine's time; ISO, `YYYY/MM/DD`, or what Date reads), or null. */
 function timeOf(v: unknown): number | null {
   if (typeof v !== "string" || !v.trim()) return null
   const s = v.trim()

@@ -1,11 +1,7 @@
-// Where things go, one answer for the app, the API and the settings: the attachment folder, the excluded files, samples and
-// each kind's folder, from the vault's settings (another app's under them: Vault.configWithDefaults).
 import type { Home } from "./fileprops.ts"
 import type { Vault } from "./vault.ts"
 import { strings } from "./values.ts"
 
-/** Where things go, as the settings show and the app follows them: the attachment folder (Obsidian's way of writing
- *  it), the excluded files (both files.json's, else another app's) and each kind's folder (Vault.home). */
 export function filing(vault: Vault): { attachments: string; excluded: string[]; samples: string[]; homes: Home[] } {
   const files = vault.configWithDefaults("files"), own = vault.config("folders")
   const at = typeof files.attachmentFolder === "string" ? files.attachmentFolder.trim() : ""

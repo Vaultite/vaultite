@@ -1,5 +1,3 @@
-// One server per vault on a machine: the one serving it says so in a file only this user can read (runtimeDir), which
-// a second refuses to start on, and where the desktop app finds it to attach its browser (electron/host.ts).
 import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
@@ -7,7 +5,7 @@ import path from "node:path"
 import { runtimeDir } from "./runtime.ts"
 import { atExit } from "./exit.ts"
 
-/** Who serves a vault here: `key` is what an attaching desktop app shows it may (core/desktopapp.ts). */
+/** `key`: what an attaching desktop app shows it may. */
 export type Serving = { pid: number; port: number; key: string; vault: string; app: boolean
   /** An app's server left running through that app's relaunch: the app's data folder (its next launch takes it over),
    *  and the code root it runs. */
@@ -17,7 +15,6 @@ const real = (p: string) => { try { return fs.realpathSync(p) } catch { return p
 const fileFor = (vault: string) => path.join(runtimeDir(), `vaultite-serves-${crypto.createHash("sha1").update(real(vault)).digest("hex").slice(0, 12)}.json`)
 const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM" } }
 
-/** The live server serving `vault` on this machine, if one is. */
 export function servingOf(vault: string): Serving | null {
   try {
     const s = JSON.parse(fs.readFileSync(fileFor(vault), "utf8")) as Serving
@@ -27,7 +24,7 @@ export function servingOf(vault: string): Serving | null {
 
 let mine: { file: string; key: string } | null = null
 
-/** Claim `vault` for this process on `port`; the live server already serving it when another is (nothing claimed). */
+/** The live server already serving it when another is (nothing claimed), else null. */
 export function claim(vault: string, port: number, app: boolean): Serving | null {
   const file = fileFor(vault)
   for (let tries = 0; tries < 2; tries++) {
@@ -41,7 +38,7 @@ export function claim(vault: string, port: number, app: boolean): Serving | null
       mine = { file, key: s.key }
       return null
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e // (another started at the same moment: read it again)
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e
     }
   }
   return servingOf(vault)
@@ -55,13 +52,11 @@ export const answers = (port: number) => new Promise<boolean>((done) => {
   s.once("error", () => done(false))
 })
 
-/** Take `vault`'s claim from one that doesn't answer (`answers`), then claim it. */
 export function reclaim(vault: string, port: number, app: boolean) {
   try { fs.unlinkSync(fileFor(vault)) } catch { /* gone */ }
   return claim(vault, port, app)
 }
 
-/** Mark this process's claim as waiting for `heir` (its app relaunching), or not (null). */
 export function bequeath(heir: Serving["heir"] | null) {
   if (!mine) return
   try {
@@ -73,10 +68,8 @@ export function bequeath(heir: Serving["heir"] | null) {
   } catch { /* gone */ }
 }
 
-/** The key an attaching desktop app must show (this server's claim's), or "" when it has none. */
 export const servingKey = () => mine?.key ?? ""
 
-/** Let the vault go (exit, a switch to another): only this process's own claim. */
 function release() {
   if (!mine) return
   try { if ((JSON.parse(fs.readFileSync(mine.file, "utf8")) as Serving).pid === process.pid) fs.unlinkSync(mine.file) } catch { /* gone */ }

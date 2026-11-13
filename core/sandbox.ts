@@ -1,23 +1,17 @@
-// The sandbox: examples/vault dated to today, plus daily logs and its plugins' pages, deterministic per date. Making it
-// again replaces only a folder that is a sandbox (or empty), so a wrong path never wipes anything. No app modules.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-/** The day examples/vault is written as of: its "today". */
+/** The day examples/vault is written as of. */
 export const ANCHOR = "2026-10-02"
-/** The app's source, and the sample vault in it. */
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 export const SAMPLE = path.join(ROOT, "examples", "vault")
-/** The marker in a sandbox's settings. */
 export const MARKER = path.join(".vaultite", "sandbox.json")
 
-/** Files whose text is read for dates to move (others are copied as they are). */
 const TEXT = /\.(md|canvas|excalidraw|csv|json|html|base|txt)$/i
 const DATE = /\b(\d{4})-(\d{2})-(\d{2})\b/g
 
-/** Today on this machine, YYYY-MM-DD. */
 export function localToday(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
@@ -25,11 +19,9 @@ const utc = (s: string) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 export const addDays = (s: string, n: number) => iso(utc(s) + n * 86400000)
 export const daysFrom = (a: string, b: string) => Math.round((utc(b) - utc(a)) / 86400000)
-/** 0 Sunday ... 6 Saturday. */
 const weekday = (s: string) => new Date(utc(s)).getUTCDay()
 
-/** Every valid date in `text` moved by `days`; a database view's `month: YYYY-MM` too, as its middle day moves (so a
- *  calendar shows last month until this one is half full). */
+/** A view's `month: YYYY-MM` moves as its middle day does. */
 export function shiftDates(text: string, days: number) {
   if (!days) return text
   return text.replace(DATE, (m, y, mo, d) => {
@@ -38,22 +30,16 @@ export function shiftDates(text: string, days: number) {
   }).replace(/^(\s*month:\s*)(\d{4}-\d\d)\s*$/gm, (_m, k, ym) => k + addDays(`${ym}-15`, days).slice(0, 7))
 }
 
-/** Is `dir` safe to (re)make: missing, empty, or a sandbox made before. */
 export function isSandbox(dir: string) {
   if (!fs.existsSync(dir)) return true
   if (!fs.statSync(dir).isDirectory()) return false
   return fs.readdirSync(dir).length === 0 || fs.existsSync(path.join(dir, MARKER))
 }
 
-/** A sandbox no server opened yet: the sample is as the app's defaults are now, so the server marks its migrations done
- *  rather than run them (one turned Workspaces on). The desktop app makes it without the migrations' code. */
 export const newSandbox = (dir: string) => fs.existsSync(path.join(dir, MARKER)) && !fs.existsSync(path.join(dir, ".vaultite", "migrations.json"))
 
-/** How the sandbox is made from the sample: raise it when makeSandbox makes different files (or times) from the same
- *  sample, so sandboxes made before are made again. */
 const MAKE = 4
 
-/** A stamp of the sample's files (names and contents), its pages and MAKE: an app update that changes any changes it. */
 export function sampleStamp(source = SAMPLE) {
   const h = crypto.createHash("sha1").update(`make ${MAKE}\0`)
   for (const rel of (fs.readdirSync(source, { recursive: true }) as string[]).sort()) {
@@ -65,15 +51,12 @@ export function sampleStamp(source = SAMPLE) {
   return h.digest("hex").slice(0, 12)
 }
 
-/** Is the sandbox in `dir` from another day or another sample (so it should be made again)? False for a folder that
- *  isn't a sandbox. */
 export function isStale(dir: string, today = localToday(), source = SAMPLE) {
   let m: { made?: string; sample?: string }
   try { m = JSON.parse(fs.readFileSync(path.join(dir, MARKER), "utf8")) } catch { return false }
   return m.made !== today || m.sample !== sampleStamp(source)
 }
 
-/** Make a fresh sandbox in `dir` as of `today`. Returns how many files it wrote. */
 export function makeSandbox(dir: string, today = localToday(), source = SAMPLE): { files: number; today: string } {
   if (!/^\d{4}-\d\d-\d\d$/.test(today)) throw new Error(`today should be YYYY-MM-DD, not ${today}`)
   const root = path.resolve(dir)
@@ -102,8 +85,6 @@ export function makeSandbox(dir: string, today = localToday(), source = SAMPLE):
   return { files, today }
 }
 
-/** The pages its plugins wrote when they were turned on (core/pages.ts: the built-in ones that are on in its
- *  plugins.json), and the design system's page (every block, drawn). */
 function pages(source: string): [string, string][] {
   let conf: { disabled?: string[]; enabled?: string[] } = {}
   try { conf = JSON.parse(fs.readFileSync(path.join(source, ".vaultite", "plugins.json"), "utf8")) } catch { /* the defaults */ }
@@ -127,9 +108,6 @@ function pages(source: string): [string, string][] {
   return out
 }
 
-// ---------- what happens every day ----------
-
-/** A random number generator seeded by text: the same text, the same numbers. */
 function rng(seed: string) {
   let h = 2166136261
   for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619)
@@ -149,8 +127,6 @@ function rng(seed: string) {
   }
 }
 
-/** When a sample file was last edited, made up so they spread out (a calendar or "Recently edited" by `updated`): the
- *  day in its name (a daily note, a log), else one of the four weeks before today; never later than now. */
 function editedAt(rel: string, today: string): Date {
   const r = rng(rel), named = rel.match(/\d{4}-\d\d-\d\d/)?.[0]
   const day = named && named <= today ? named : localToday(new Date(new Date(`${today}T12:00`).getTime() - r.int(0, 27) * 86400000))
@@ -160,7 +136,6 @@ function editedAt(rel: string, today: string): Date {
 const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`
 const q = (s: string) => (/^[\w .,()-]+$/.test(s) && !/^[\d.-]|: |^(true|false|null|yes|no)$/i.test(s) ? s : `'${s.replace(/'/g, "''")}'`)
 
-/** A log file: its frontmatter, its kind's fences (a workout's sets too) and a line of notes. */
 function log(area: string, date: string, title: string, data: Record<string, string | number | undefined>,
   opts: { duration?: number; body?: string; yaml?: string } = {}) {
   const fm = [
@@ -237,27 +212,22 @@ const DAY_NOTES = [
   "Fixed the flaky test that blocked the release.",
 ]
 
-/** [vault path, text] for every generated file, as of `today`. */
 function daily(today: string): [string, string][] {
   const out: [string, string][] = []
   for (let ago = 56; ago >= 0; ago--) {
     const date = addDays(today, -ago)
     const wd = weekday(date)
     const r = rng(`day ${date}`)
-    // Sleep: the night before each day (named by the day you woke up).
     const bed = r.int(22 * 60 + 30, 23 * 60 + 50), wake = r.int(7 * 60, 8 * 60)
     const inBed = 24 * 60 - bed + wake
     out.push([`Logs/Sleep/${date} Sleep.md`, log("sleep", date, "Sleep", { bed: hm(bed), wake: hm(wake), in_bed_min: inBed }, { duration: inBed - r.int(10, 40) })])
     if (ago === 0) {
-      // Today so far: breakfast, and the daily note with a plan.
       const [t, kcal, protein, carbs, fat] = r.pick(MEALS.Breakfast)
       out.push([`Logs/Nutrition/${date} ${t}.md`, log("nutrition", date, t, { meal: "Breakfast", kcal, protein, carbs, fat }, { body: "Estimated from a photo." })])
       out.push([`Daily/${date}.md`, "---\ntype: day\ndone: []\n---\n\nPlan: finish the launch thread draft, call [[Alice Martin]], piano after dinner.\n"])
       continue
     }
-    // Workouts: lifting on Monday, Wednesday and Friday (most weeks).
     if (DAYS[wd] && !(ago > 7 && r.chance(0.12))) out.push([`Logs/Workouts/${date} ${DAYS[wd].title}.md`, gym(date, Math.floor(ago / 7))])
-    // Meals: the last week.
     if (ago <= 7) {
       for (const meal of ["Breakfast", "Lunch", "Dinner", "Snack"] as const) {
         if (meal === "Snack" && r.chance(0.5)) continue
@@ -265,14 +235,12 @@ function daily(today: string): [string, string][] {
         out.push([`Logs/Nutrition/${date} ${t}.md`, log("nutrition", date, t, { meal, kcal, protein, carbs, fat }, { body: r.chance(0.5) ? "Estimated from a photo." : "" })])
       }
     }
-    // Learning: reading most days, piano on Tuesday, Thursday and Saturday.
     if (ago <= 28 && r.chance(0.7)) {
       out.push([`Logs/Reading/${date} Project Hail Mary.md`, log("reading", date, "Project Hail Mary", { book_id: "Project Hail Mary", pages: r.int(12, 38) }, { duration: r.int(20, 50) })])
     }
     if ([2, 4, 6].includes(wd) && ago <= 42 && !r.chance(0.2)) {
       out.push([`Logs/Study/${date} Piano practice.md`, log("study", date, "Piano practice", { subject: "Piano", focus: r.pick(PIANO) }, { duration: r.int(25, 45) })])
     }
-    // Daily notes: most days of the last three weeks, with the routines ticked by hand.
     if (ago <= 21 && !r.chance(0.2)) {
       const done = ["Stretch"].filter(() => r.chance(0.7))
       out.push([`Daily/${date}.md`, `---\ntype: day\ndone: [${done.join(", ")}]\n---\n\n${r.pick(DAY_NOTES)}\n`])

@@ -18,7 +18,6 @@ export function keptShell(cmd: string, args: string[], o: { echo: (marker: strin
   let asked = 0
   const ups = new WeakMap<ChildProcessWithoutNullStreams, Promise<boolean>>()
   const end = () => { const c = child; child = null; if (c && c.exitCode === null) { c.stdin.end(); c.kill() } }
-  /** Whether shell `c` came up (its first line run), within `start` ms; one that didn't is ended. */
   const up = (c: ChildProcessWithoutNullStreams) => ups.get(c) ?? Promise.resolve(false)
   function start() {
     const c = spawn(cmd, args, { windowsHide: true })
@@ -26,7 +25,6 @@ export function keptShell(cmd: string, args: string[], o: { echo: (marker: strin
     c.on("error", () => {})
     c.stdin.on("error", () => {})
     c.on("exit", () => { if (child === c) child = null })
-    // (an idle shell doesn't keep this process alive; an answer awaited does, by its timeout)
     c.unref()
     for (const s of [c.stdin, c.stdout, c.stderr]) (s as unknown as Socket).unref?.()
     c.stderr.resume()

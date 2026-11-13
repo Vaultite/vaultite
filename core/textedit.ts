@@ -1,11 +1,7 @@
-// Small edits to files people also write by hand, shared by the server (Vault.save) and the editor (no Node here).
-// Each returns null when it can't edit safely; the caller then writes the whole thing.
-
-// ---------- line diffs (Python's difflib.SequenceMatcher, its autojunk for lines only) ----------
+// Line diffs as Python's difflib.SequenceMatcher makes them, its autojunk for lines only.
 
 export type Opcode = ["equal" | "replace" | "delete" | "insert", number, number, number, number]
 
-/** Matching blocks of a and b, [i, j, size], ending with [a.length, b.length, 0]. */
 function matchingBlocks<T>(a: T[], b: T[], autojunk = true): [number, number, number][] {
   const b2j = new Map<T, number[]>()
   b.forEach((x, j) => { const l = b2j.get(x); if (l) l.push(j); else b2j.set(x, [j]) })
@@ -78,8 +74,6 @@ function similar(x: string, y: string) {
   return (2 * m) / (a.length + b.length)
 }
 
-// ---------- body ----------
-
 type Span = [number, number] | null
 
 /** For each base line, the span of `actual` lines it became, or null. In a changed stretch each actual line goes to the
@@ -90,14 +84,14 @@ function align(base: string[], actual: string[], fuzzy: boolean): Span[] {
     if (tag === "equal") {
       for (let k = 0; k < i2 - i1; k++) span[i1 + k] = [j1 + k, j1 + k + 1]
     } else if (tag === "replace" && fuzzy) {
-      let cur: number | null = null // the base line the previous actual line went to
+      let cur: number | null = null
       for (let j = j1; j < j2; j++) {
         let best: number | null = null, score = 0.5
         for (let i: number = cur ?? i1; i < i2; i++) {
           const s = similar(base[i], actual[j])
           if (s > score) { best = i; score = s }
         }
-        if (best === null && cur !== null && /^[ \t]/.test(actual[j])) best = cur // an indented continuation
+        if (best === null && cur !== null && /^[ \t]/.test(actual[j])) best = cur
         if (best === null) continue
         const was = span[best]
         span[best] = was ? [was[0], j + 1] : [j, j + 1]
@@ -123,11 +117,11 @@ export function merge3(base: string, mine: string, actual: string, fuzzy = false
       const spans = span.slice(i1, i2)
       if (spans.some((s) => s === null)) return null
       start = Math.min(...spans.map((s) => s![0])); end = Math.max(...spans.map((s) => s![1]))
-      if (!fuzzy && end - start !== i2 - i1) return null // the other side added lines inside the stretch we changed
+      if (!fuzzy && end - start !== i2 - i1) return null
     } else if (!fuzzy) {
       const before = i1 > 0 ? (span[i1 - 1] ? span[i1 - 1]![1] : null) : 0
       const after = i1 < b.length ? (span[i1] ? span[i1]![0] : null) : a.length
-      if (before === null || after === null || before !== after) return null // they changed the lines right there
+      if (before === null || after === null || before !== after) return null
       start = end = after
     } else if (i1 < b.length && span[i1]) start = end = span[i1]![0]
     else if (i1 > 0 && span[i1 - 1]) start = end = span[i1 - 1]![1]
@@ -137,20 +131,17 @@ export function merge3(base: string, mine: string, actual: string, fuzzy = false
     edits.push([start, end, n.slice(j1, j2)])
   }
   edits.sort((x, y) => x[0] - y[0] || x[1] - y[1])
-  for (let k = 1; k < edits.length; k++) if (edits[k][0] < edits[k - 1][1]) return null // two changes on the same lines
+  for (let k = 1; k < edits.length; k++) if (edits[k][0] < edits[k - 1][1]) return null
   const out = [...a]
   for (const [s, e, lines] of edits.reverse()) out.splice(s, e - s, ...lines)
   return out.join("\n")
 }
 
-/** Whether `actual` has the edits that made `mine` from `base`, with others around them (a field the server filled in). */
 export function hasEdits(base: string, mine: string, actual: string) {
   if (actual === mine) return true
   const without = merge3(mine, base, actual)
   return without !== null && merge3(base, mine, without) === actual
 }
-
-// ---------- frontmatter ----------
 
 const TOP_KEY = /^(?:'([^']*)'|"([^"]*)"|([^\s#'"-][^:]*?|-[^\s][^:]*?))\s*:(?:\s|$)/
 
@@ -169,7 +160,6 @@ export function blocks(raw: string): Block[] {
   return out
 }
 
-/** Deep equality of plain values (what YAML reads). */
 export function same(x: unknown, y: unknown): boolean {
   if (x === y) return true
   if (typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false
@@ -186,13 +176,12 @@ export function patchFrontmatter(raw: string, old: Record<string, unknown>, chan
   load: (text: string) => Record<string, unknown>): string | null {
   let bs = blocks(raw)
   const keys = bs.map((b) => b.key).filter((k) => k !== null)
-  if (new Set(keys).size !== keys.length) return null // duplicate keys: let YAML decide what they mean, don't guess
+  if (new Set(keys).size !== keys.length) return null
   bs = bs.filter((b) => b.key === null || !removals.includes(b.key))
   for (const [key, value] of Object.entries(changes)) {
     const lines = dump(key, value).split("\n")
     const at = bs.findIndex((b) => b.key === key)
     if (at >= 0) {
-      // Keep blank lines that followed the old value.
       const tail: string[] = []
       for (const line of bs[at].lines.slice(1).reverse()) { if (line.trim()) break; tail.unshift(line) }
       bs[at] = { key, lines: [...lines, ...tail] }
@@ -203,7 +192,6 @@ export function patchFrontmatter(raw: string, old: Record<string, unknown>, chan
     const before = bs.map((b, i) => [b, i] as const).filter(([b]) => idx(b) >= 0 && idx(b) < rank).map(([, i]) => i)
     const after = bs.map((b, i) => [b, i] as const).filter(([b]) => idx(b) > rank).map(([, i]) => i)
     const pos = before.length ? before[before.length - 1] + 1 : after.length ? after[0] : bs.length
-    // (after the last key's value, not after the blank lines that close it)
     const prev = bs[pos - 1], blank: string[] = []
     while (prev && prev.lines.length > 1 && !prev.lines[prev.lines.length - 1].trim()) blank.unshift(prev.lines.pop()!)
     bs.splice(pos, 0, { key, lines: [...lines, ...blank] })
@@ -221,7 +209,6 @@ export function patchFrontmatter(raw: string, old: Record<string, unknown>, chan
   return same(got, want) ? out : null
 }
 
-/** A key as YAML writes it: plain when it can be, else 'single quoted'. */
 const keyText = (k: string) => (/^[A-Za-z_][\w-]*(?: [\w-]+)*$/.test(k) ? k : `'${k.replace(/'/g, "''")}'`)
 
 /** The header `raw` with key `from` renamed `to`, its value's lines, comments and place untouched. null when that isn't

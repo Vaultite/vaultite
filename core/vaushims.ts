@@ -1,6 +1,3 @@
-// The small files that run vau (bin/vau) with a given program as Node (the desktop app's executable, which has no
-// `node`): a shell script, and on Windows vau.cmd too (cmd and PowerShell run it; Git Bash and WSL run the script).
-
 /** What runs vau: `exe` as Node (ELECTRON_RUN_AS_NODE, which plain Node ignores) on `script`, with `env` set. `mark`:
  *  a first comment saying whose file it is. `vars`: Windows' variables vau.cmd may spell paths with (this process'). */
 export type Shim = { exe: string; script: string; env?: Record<string, string>; mark: string; vars?: Record<string, string | undefined> }

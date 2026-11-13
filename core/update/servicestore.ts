@@ -1,5 +1,3 @@
-// A service following a branch from its code store (macOS, Linux: bin/vaultite-server runs its current root): each commit
-// made once into a read-only root, then only what it changed acts (plan.ts): its web build taken, or a restart onto it.
 import { execFile } from "node:child_process"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -15,20 +13,18 @@ const exec = promisify(execFile)
 export type StoreServiceOptions = Omit<UpdaterOptions, "apply" | "root" | "bare" | "running"> & {
   /** The checkout the service was installed from: its origin, and its objects for the store's first clone. */
   checkout: string
-  /** The store's folder (VAULTITE_CODE_STORE). */
   store: string
   /** The root this server runs (its ROOT): the commit it runs, and the web build it serves till it takes another. */
   root: string
   /** Serve another root's web build from now on (server.ts' web.adopt). */
   adoptWeb: (dist: string) => void
-  /** Install a deps set and make a root (tests stand in for npm and the build); default npm and serverRecipe. */
+  /** Default npm and serverRecipe. */
   install?: (dir: string, o: { fresh: boolean }) => Promise<void>
   recipe?: Recipe
 }
 
 const git = (cwd: string, ...args: string[]) => exec("git", ["-C", cwd, ...args], { env: gitEnv(), maxBuffer: 16 << 20 }).then((r) => r.stdout.trim())
 
-/** The updater for a service on its code store: the store's clone followed, a commit prepared, current, and acted on. */
 export async function inStore({ checkout, store: dir, root, adoptWeb, install, recipe, ...o }: StoreServiceOptions): Promise<UpdaterOptions> {
   const log = o.log ?? toLog
   const url = await git(checkout, "remote", "get-url", "origin")

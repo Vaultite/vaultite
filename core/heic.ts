@@ -6,9 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { LOCAL } from "./plugins.ts"
 
-/** (read when used: core/plugins.ts, where LOCAL is, hands readableImage on to plugins, so loads this first) */
 const cacheDir = () => path.join(LOCAL, "cache", "heic")
-/** Copies older than this are cleared on the next conversion. */
 const KEEP_MS = 30 * 86400_000
 
 export const isHeic = (p: string) => /\.(heic|heif)$/i.test(p)
@@ -19,7 +17,6 @@ export const onPath = (name: string) =>
 /** ImageMagick: `magick` (7), or `convert` (Ubuntu's 6) off Windows, whose convert.exe converts disks. */
 export const imageMagick = () => onPath("magick") ?? (process.platform !== "win32" ? onPath("convert") : null)
 
-/** The command that writes `out` (a JPEG) from `src`, or null when this machine has none. */
 function converter(src: string, out: string): [string, string[]] | null {
   if (process.platform === "darwin" && fs.existsSync("/usr/bin/sips")) return ["/usr/bin/sips", ["-s", "format", "jpeg", "-s", "formatOptions", "85", src, "--out", out]]
   const heif = onPath("heif-convert")
@@ -34,8 +31,6 @@ function converter(src: string, out: string): [string, string[]] | null {
 
 const running = new Map<string, Promise<string | null>>()
 
-/** The JPEG copy of the photo at `abs` (its stat says which version), made if it isn't there yet; null when it can't be
- *  made. Two requests for the same photo share one conversion. */
 export function jpegOf(abs: string, st: fs.Stats): Promise<string | null> {
   const key = crypto.createHash("sha1").update(`${abs}\0${st.size}\0${st.mtimeMs}`).digest("hex")
   const out = path.join(cacheDir(), `${key}.jpg`)
@@ -84,7 +79,6 @@ export function readableImage(file: string): Promise<string> {
   }))
 }
 
-/** Copies not made or used for a while go (a photo's old versions, photos deleted). */
 function tidy() {
   try {
     const now = Date.now()

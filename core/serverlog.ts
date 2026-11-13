@@ -1,5 +1,4 @@
-// The server's log, each line dated so it matches what someone saw, and its errors for plugin.onServerError. Listeners
-// run synchronously (a fatal one must be written before exit) and never re-entered.
+// Listeners run synchronously: a fatal error's must be written before the process exits.
 import { AsyncLocalStorage } from "node:async_hooks"
 import util from "node:util"
 
@@ -25,7 +24,6 @@ function emit(e: ServerError) {
   try { for (const f of subs) try { f(e) } catch { /* a listener's problem, never the caller's */ } } finally { inside = false }
 }
 
-/** Hear the server's errors; returns how to stop. */
 export function onServerError(fn: (e: ServerError) => void) {
   subs.add(fn)
   return () => { subs.delete(fn) }
@@ -33,7 +31,6 @@ export function onServerError(fn: (e: ServerError) => void) {
 
 const firstLine = (s: string) => s.split("\n").find((l) => l.trim())?.trim().slice(0, 500) ?? ""
 
-/** console.error's arguments as an error: the text before the first Error and that Error's message, its stack. */
 export function errorOf(args: unknown[], fatal = false): ServerError {
   const err = args.find((a): a is Error => a instanceof Error)
   const before = err ? args.slice(0, args.indexOf(err)) : args
@@ -50,7 +47,6 @@ const stampNow = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} `
 }
 
-/** Each new line written to `stream` starts with the date and time. */
 function stamp(stream: NodeJS.WriteStream) {
   const write = stream.write.bind(stream) as (chunk: string, cb?: (e?: Error | null) => void) => boolean
   let atStart = true
@@ -68,7 +64,6 @@ function stamp(stream: NodeJS.WriteStream) {
 }
 
 let started = false
-/** Once, as the server starts (server.ts): timestamps on the log's lines, and its errors heard. */
 export function startServerLog() {
   if (started) return
   started = true
@@ -79,8 +74,7 @@ export function startServerLog() {
     error(...args)
     try { emit(errorOf(args)) } catch { /* never into the caller */ }
   }
-  // A promise nothing waited on that failed (a plugin's fire-and-forget save): logged and heard, not the whole server
-  // ended with every client's sockets, shells' links and asks.
+  // Node ends the process on an unhandled rejection: one plugin's fire-and-forget save would end every client's sockets.
   process.on("unhandledRejection", (e) => { console.error("Unhandled rejection:", e instanceof Error ? e : new Error(String(e))) })
   // Doesn't change what Node does for an exception (it still ends the process), so a crash is recorded and launchd still
   // restarts it.

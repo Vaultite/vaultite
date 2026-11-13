@@ -1,5 +1,3 @@
-// The one gate every vault write passes (core/vault.ts, core/files.ts). The user's own actions always pass; a plugin
-// acting on its own (`onItsOwn`: jobs, timers, hooks) writes outside .vaultite/ only where granted (core/grants.ts).
 import { AsyncLocalStorage } from "node:async_hooks"
 import path from "node:path"
 import { type Logger, logger } from "./log.ts"
@@ -11,7 +9,6 @@ const acting = new AsyncLocalStorage<string | null>()
 export const onItsOwn = <T>(id: string, fn: () => T): T => acting.run(id, fn)
 /** fn as the user's own action (a request): never gated. */
 export const byUser = <T>(fn: () => T): T => acting.run(null, fn)
-/** The plugin acting on its own now, or null. */
 const actor = () => acting.getStore() ?? null
 
 /** Set while answering Vaultite Connect with owner tools off (plugins/core/mcp/connect.ts). */
@@ -36,8 +33,6 @@ export class WriteRefused extends Error {
 export const notHereYet = (e: unknown): boolean =>
   !!e && (Math.abs((e as NodeJS.ErrnoException).errno ?? 0) === 11 || notHereYet((e as Error).cause))
 
-/** Log a failure: a refused write is a warning (the app asks the user; it isn't the server's error), and so is a file
- *  iCloud hasn't brought down yet (the job runs again), else an error. */
 export function logFailure(log: Logger, what: string, e: unknown) {
   if (e instanceof WriteRefused || notHereYet(e)) log.warn(`${what}: ${(e as Error).message}`)
   else log.error(what, e)
@@ -57,18 +52,15 @@ export type Gate = { may: (plugin: string, rel: string) => boolean; refused: (pl
   watch?: (rel: string) => ((before: string | null, after: string) => void) | null; wrote?: (rel: string) => void }
 const gates = new Map<string, Gate>()
 
-/** The gate for the vault at `root` (the last one set for a folder wins). */
 export function setGate(root: string, gate: Gate) {
   gates.set(path.resolve(root), gate)
 }
 
-/** A path relative to the root it's in, or null. */
 function inside(root: string, abs: string) {
   const rel = path.relative(root, abs)
   return !rel || rel.startsWith("..") || path.isAbsolute(rel) ? null : rel.split(path.sep).join("/")
 }
 
-/** The vault path `abs` is in .vaultite/ (the app's own), or outside every vault: never gated. */
 const ungated = (rel: string) => rel === ".vaultite" || rel.startsWith(".vaultite/")
 
 /** Throws WriteRefused when the plugin acting now may not write `abs` (a file or folder about to be written, moved or
@@ -90,7 +82,6 @@ export function guard(abs: string) {
   }
 }
 
-/** `abs` was written: the vault it's in is told (Vault.onWrote). */
 export function written(abs: string) {
   const full = path.resolve(abs)
   for (const [root, gate] of gates) {
@@ -99,7 +90,6 @@ export function written(abs: string) {
   }
 }
 
-/** What to tell once `abs` is written, from the vault it's in (Vault.onWrite), or null. */
 export function watching(abs: string) {
   const full = path.resolve(abs)
   for (const [root, gate] of gates) {
