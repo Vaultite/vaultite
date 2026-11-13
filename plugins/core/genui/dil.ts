@@ -1,5 +1,3 @@
-// ChatGPT's Intelligent UI markup (DIL): Markdown with JSX-like tags, {expr}, {@body js}, {#each}/{#if} blocks and
-// <AppBlock> apps, read into a tree. No Node and no eval here: the server, the app and the sandbox all read it.
 
 export type Part = string | { e: string } | { el: Node }
 export type Prop = { name: string; str?: string; e?: string } | { spread: string }
@@ -11,15 +9,11 @@ export type Node =
   | { t: "each"; list: string; as: string; index?: string; key?: string; kids: Node[] }
   | { t: "if"; branches: { test: string | null; kids: Node[] }[] }
 
-/** The line a fence keeps its live values on (`{@state {"selected":"G"}}`), the app's, never the model's. */
 const STATE = /^[ \t]*\{@state[ \t]+(\{.*\})\}[ \t]*$/m
-/** What ChatGPT filled in on its side (tool results by name, citations, found images), kept on a `{@data …}` line. */
 const DATA = /^[ \t]*\{@data[ \t]+(\{.*\})\}[ \t]*$/m
 export type Data = { bindings?: Record<string, unknown>; refs?: Record<string, { url: string; title?: string; source?: string }>; images?: { url: string; alt?: string }[][]
   maps?: { name: string; lat: number; lon: number; address?: string; category?: string }[][] }
 
-/** Where the JS starting at `i` ends: the index of the `close` that ends it at depth 0, skipping strings, templates,
- *  comments and regexes; -1 when it never does. */
 export function jsEnd(src: string, i: number, close = "}"): number {
   const stack: string[] = []
   let prev = "(" // the last significant character: whether a / starts a regex
@@ -59,13 +53,11 @@ export function jsEnd(src: string, i: number, close = "}"): number {
 }
 
 const NAME = /^[A-Za-z][\w.-]*/
-/** Tags that sit inside a line of text (`The <Entity value="X"/> is…`): drawn in its paragraph, not as a block. */
 const INLINE = new Set(["Entity", "Cite", "Link", "link", "a", "bold", "strong", "b", "i", "em", "italic", "code", "kbd", "span", "badge", "icon", "mark", "sup", "sub", "br"])
 const ATTR = /^[A-Za-z_:@$][\w:.@$-]*/
 
 type Tag = { name: string; props: Prop[]; self: boolean; end: number }
 
-/** The opening tag at `i` (`<box gap={3}>`, `<icon name="copy"/>`), or null when it isn't one. */
 function openTag(src: string, i: number): Tag | null {
   const m = NAME.exec(src.slice(i + 1, i + 80))
   if (!m) return null
@@ -115,7 +107,7 @@ function openTag(src: string, i: number): Tag | null {
 
 const unescapeAttr = (s: string) => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
 
-/** Lines' shared indentation taken off (text inside tags is indented with them, which Markdown would read as code). */
+// Markdown reads indented text as code: what's inside tags loses its shared indentation.
 function dedent(s: string): string {
   const lines = s.split("\n")
   const ind = lines.filter((l) => l.trim()).map((l) => /^[ \t]*/.exec(l)![0].length)
@@ -125,8 +117,6 @@ function dedent(s: string): string {
 
 type Frame = { name: string; kids: Node[]; node: Node | null; branch?: { test: string | null; kids: Node[] }[] }
 
-/** DIL source read into its tree. It never throws: what doesn't parse is text. `span` gets where its DIL starts and
- *  ends (offsets), [-1, -1] for none. */
 export function parse(src: string, span?: [number, number]): Node[] {
   const mark = (a: number, b: number) => { if (span) { if (span[0] < 0 || a < span[0]) span[0] = a; if (b > span[1]) span[1] = b } }
   if (span) { span[0] = -1; span[1] = -1 }
@@ -139,7 +129,6 @@ export function parse(src: string, span?: [number, number]): Node[] {
   const flush = () => {
     flushBuf()
     if (!text.some((p) => typeof p !== "string" || p.trim())) { text = []; return }
-    // Indentation from the tags around it, taken off the text's literal pieces together.
     const joined = text.map((p) => (typeof p === "string" ? p : "\u0000")).join("")
     const ded = dedent(joined).replace(/^\s*\n|\n\s*$/g, "")
     const pieces = ded.split("\u0000")
@@ -157,7 +146,6 @@ export function parse(src: string, span?: [number, number]): Node[] {
   let lineStart = true
   while (i < src.length) {
     const c = src[i]
-    // A Markdown code fence: as it is, to its end.
     if (lineStart) {
       const f = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*/.exec(src.slice(i, i + 200))
       if (f) {
@@ -178,7 +166,6 @@ export function parse(src: string, span?: [number, number]): Node[] {
     }
     lineStart = c === "\n"
     if (c === "\\" && (src[i + 1] === "{" || src[i + 1] === "<")) { buf += src.slice(i, i + 2); i += 2; continue }
-    // Inline code and math stay text: a `{` or `<` in them is the writer's.
     if (c === "`") {
       const run = /^`+/.exec(src.slice(i))![0]
       const e = src.indexOf(run, i + run.length)
@@ -238,7 +225,6 @@ export function parse(src: string, span?: [number, number]): Node[] {
           if (close(head.startsWith("/each") ? "#each" : "#if")) { done(); continue }
         }
         if (head.startsWith("#") || head.startsWith("/") || head.startsWith(":")) {
-          // A block DIL has that this doesn't know ({#key}, {#await}): its insides drawn as they are.
           flush()
           if (head.startsWith("#")) stack.push({ name: `#${/^#(\w+)/.exec(head)?.[1] ?? ""}`, kids: top().kids, node: null })
           else if (head.startsWith("/")) close(`#${/^\/(\w+)/.exec(head)?.[1] ?? ""}`)
@@ -259,12 +245,10 @@ export function parse(src: string, span?: [number, number]): Node[] {
       } else {
         const tag = openTag(src, i)
         const lineAt = Math.max(src.lastIndexOf("\n", i - 1), -1)
-        // (what follows it on its line: after its closing tag, for one with insides)
         const close = !tag || tag.self ? -1 : src.indexOf(`</${tag.name}>`, tag.end)
         const from = close < 0 ? tag?.end ?? i : close + (tag?.name.length ?? 0) + 3, lineEnd = src.indexOf("\n", from)
         const before = src.slice(lineAt + 1, i).trim(), after = tag ? src.slice(from, lineEnd < 0 ? src.length : lineEnd).trim() : ""
         if (tag && INLINE.has(tag.name) && (before || (after && !after.startsWith("<")))) {
-          // In its line: a part of the text around it, its insides read on their own.
           const kids = tag.self || close < 0 ? [] : parse(src.slice(tag.end, close))
           flushBuf()
           text.push({ el: { t: "el", name: tag.name, props: tag.props, kids } })
@@ -301,7 +285,6 @@ export function parse(src: string, span?: [number, number]): Node[] {
   return root.kids
 }
 
-/** `item, i` or `{a, b}, i`: the pattern and the index's name. */
 function splitPattern(s: string): [string, string | undefined] {
   const t = s.trim()
   const e = /^[[{]/.test(t) ? jsEnd(t, 1, t[0] === "[" ? "]" : "}") : -1
@@ -309,8 +292,6 @@ function splitPattern(s: string): [string, string | undefined] {
   return at < 0 ? [t, undefined] : [t.slice(0, at).trim(), t.slice(at + 1).trim() || undefined]
 }
 
-/** The names of a program's useState values, in the order it asks for them (`const [key, setKey] = DIL.useState(...)`):
- *  what its saved values are keyed by. A value without a name is its index. */
 export function stateNames(nodes: Node[]): string[] {
   const out: string[] = []
   const walk = (ns: Node[]) => {
@@ -329,21 +310,16 @@ export function stateNames(nodes: Node[]): string[] {
   return out
 }
 
-/** The JSON object a fence's line `line` matches holds, {} when none or unreadable. */
 function savedObject(line: RegExp, src: string) {
   const m = line.exec(src)
   if (!m) return {}
   try { const v = JSON.parse(m[1]); return v && typeof v === "object" && !Array.isArray(v) ? v : {} } catch { return {} }
 }
 
-/** The live values a fence keeps (`{@state …}`), {} when none or unreadable. */
 export const savedState = (src: string): Record<string, unknown> => savedObject(STATE, src)
 
-/** What ChatGPT resolved for a program (its `{@data}` line), {} when none. */
 export const savedData = (src: string): Data => savedObject(DATA, src)
 
-/** ChatGPT's resolved data for an answer (from its message's metadata: model_dil_v2, a map's points in
- *  content_references), as a `{@data}` line; "" when none. */
 export function dataLine(meta: unknown): string {
   const m = (meta ?? {}) as { model_dil_v2?: { appData?: { opGenui?: { modelDataBindings?: unknown; componentResults?: Record<string, unknown> } } }; content_references?: unknown[] }
   const app = m.model_dil_v2?.appData?.opGenui
@@ -368,19 +344,15 @@ export function dataLine(meta: unknown): string {
   return Object.keys(data).length ? `{@data ${JSON.stringify(data)}}` : ""
 }
 
-/** The source with its live values set (its `{@state}` line replaced, or added at its end; none when empty). */
 export function withState(src: string, state: Record<string, unknown>): string {
   const line = Object.keys(state).length ? `{@state ${JSON.stringify(state)}}` : ""
   if (STATE.test(src)) return src.replace(STATE, line).replace(/\n{3,}$/, "\n").replace(/\n+$/, line ? "" : "")
   return line ? `${src.replace(/\n+$/, "")}\n\n${line}` : src
 }
 
-/** What a program says as plain Markdown, for search, agents and a fence's text: its prose and labels, without what
- *  only running it shows (values, loops), like ChatGPT's own fallback. */
 export function dilText(src: string): string {
   const out: string[] = []
   const str = (p: Prop[], name: string) => (p.find((x) => "name" in x && x.name === name) as { str?: string } | undefined)?.str
-  // (a line that was mostly values, "→ → →", says nothing without them)
   const lit = (parts: Part[]) => {
     const s = parts.map((p) => (typeof p === "string" ? p : "el" in p ? str(p.el.t === "el" ? p.el.props : [], "value") ?? inline(p.el.t === "el" ? p.el.kids : []) : "")).join("").replace(/[ \t]+$/gm, "")
     return parts.some((p) => typeof p !== "string" && !("el" in p)) && (s.match(/\p{L}/gu) ?? []).length < 3 ? "" : s.replace(/[\s·:,–-]+$/u, "")
@@ -402,12 +374,8 @@ export function dilText(src: string): string {
   return out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
-/** Whether a text has DIL in it, not just HTML in Markdown: a {@body} or block, a component (capitalised: <Entity/>),
- *  or a tag only DIL has (<box>, <row>, <title>...). */
 export const hasDil = (s: string) => /\{[@#](body|each|if|const)\b|<[A-Z][A-Za-z]+[\s/>]|<(box|row|col|grid|grid-item|title|text|caption|label|select|slider|button|checkbox|segmented-control|card|divider|badge|icon|pressable|carousel|flow|radio-group|list-item|spacer|chart)[\s/>]/.test(s)
 
-/** A ChatGPT answer with its Intelligent UI as a ```genui fence (the lines from its first piece of DIL to its last),
- *  the prose around it left as Markdown; the text as it is when it has none. `data`: its {@data} line. */
 export function fenceDil(s: string, data = ""): string {
   if (!hasDil(s)) return s
   const span: [number, number] = [-1, -1]

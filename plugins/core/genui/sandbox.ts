@@ -1,8 +1,6 @@
-// Where a DIL program runs: a hidden iframe with no origin or network, running it in a worker it stops if it hangs. The
-// app gets back a tree of known components, never markup. Both functions go as source: nothing outside is in scope.
+// Both functions go as source (Function.toString): nothing outside them is in scope.
 
 export type Tree = { t: "md"; s: string; slots?: Tree[] } | { t: "el"; n: string; p: Record<string, unknown>; k: Tree[] } | { t: "app"; p: Record<string, unknown>; html: string }
-/** What the sandbox sends the app. */
 export type FromSandbox =
   | { g: 1; type: "tree"; tree: Tree[]; errors: string[] }
   | { g: 1; type: "state"; state: Record<string, unknown> }
@@ -10,12 +8,10 @@ export type FromSandbox =
   | { g: 1; type: "error"; message: string }
   | { g: 1; type: "ready" }
 
-/** The program's side (in the worker): compile the tree to JS once, render it with hooks, send what it drew. */
 export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Record<string, unknown>) => void) => void }) {
   type N = Record<string, unknown> & { t: string }
-  // No reaching out: the CSP already blocks the network, and these go too.
   for (const k of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "importScripts", "indexedDB", "caches", "Worker", "SharedWorker", "BroadcastChannel"]) {
-    try { Object.defineProperty(globalThis, k, { value: undefined, configurable: false, writable: false }) } catch { /* not there */ }
+    try { Object.defineProperty(globalThis, k, { value: undefined, configurable: false, writable: false }) } catch {}
   }
   const post = (m: Record<string, unknown>) => io.post({ g: 1, ...m })
   let render: (() => unknown[]) | null = null
@@ -24,7 +20,6 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   let slots: { v?: unknown; deps?: unknown[]; cleanup?: unknown; name?: string }[] = []
   let effects: (() => void)[] = []
   let at = 0
-  // (useState calls by themselves, which saved values are named by: other hooks don't shift them)
   let stateAt = 0
   let fns: ((...a: unknown[]) => unknown)[] = []
   let errors: string[] = []
@@ -39,7 +34,6 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   const DIL = {
     useState(init: unknown, own: unknown = true) {
       const k = at++
-      // (a name of its own, `DIL.useState(0, {key: "n"})` as ChatGPT's compiler writes it, else the one the source gives it)
       const named = own && typeof own === "object" && typeof (own as { key?: unknown }).key === "string" ? (own as { key: string }).key : undefined
       const name = own ? (named !== undefined ? (stateAt++, named) : names[stateAt++]) : undefined
       if (!slots[k]) {
@@ -68,7 +62,6 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     },
     useCallback(fn: unknown, deps?: unknown[]) { return DIL.useMemo(() => fn, deps) },
     useRef(init: unknown) { const k = at++; if (!slots[k]) slots[k] = { v: { current: init } }; return slots[k].v },
-    // The time now, again every `ms` while `on` (a countdown's clock).
     useNow(on = true, ms = 1000) {
       const [now, setNow] = DIL.useState(Date.now(), false) as [number, (v: number) => void]
       DIL.useEffect(() => {
@@ -82,7 +75,6 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     useIsMobile() { return env.mobile },
     useBreakpoint(bp: string) { return env.width >= (({ xs: 0, sm: 640, md: 768, lg: 1024, xl: 1280, "2xl": 1536 } as Record<string, number>)[bp] ?? 0) },
     useId() { const k = at++; if (!slots[k]) slots[k] = { v: `dil-${ids++}` }; return slots[k].v },
-    // (no microphone or voice here: what they return says so)
     useDictation() { return { supported: false, listening: false, transcript: "", start() {}, stop() {} } },
     useSpeechSynthesizer() { return { supported: false, speaking: false, speak() {}, cancel() {}, stop() {} } },
     useDILMessenger() { return { send() {}, lastMessage: null } },
@@ -94,12 +86,11 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       const prev = s?.cleanup
       slots[k] = { deps }
       effects.push(() => {
-        if (typeof prev === "function") try { prev() } catch { /* its own */ }
+        if (typeof prev === "function") try { prev() } catch {}
         try { slots[k].cleanup = fn() } catch (e) { errors.push(String(e)) }
       })
     },
   }
-  // What it asks of the app, sent there. A connected app's tool (runPluginTool) isn't here: it answers so, as ChatGPT's does on a failure.
   const GenUI = new Proxy({}, { get: (_, name) => (...args: unknown[]) => {
     if (name === "runPluginTool" || name === "callTool") return Promise.resolve({ status: "error", message: "Connected apps aren't available in a note" })
     post({ type: "action", name: String(name), args: clone(args) })
@@ -116,15 +107,12 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     if (typeof v === "object") { try { return JSON.stringify(v) } catch { return "" } }
     return String(v)
   }
-  // A value in Markdown is text: its marks don't format.
   const escape = (s: string) => s.replace(/([\\`*_{}[\]<>()#+!|~$])/g, "\\$1").replace(/^(\s*)(\d+)\./gm, "$1$2\\.").replace(/^(\s*)-/gm, "$1\\-")
-  // An element inside the text is a slot (its token in the text), drawn in its place by the app.
   const md = (parts: unknown[]) => {
     const slots: unknown[] = []
     const s = parts.map((p) => (typeof p === "string" ? p : (p as { el?: unknown }).el ? `\u2063${slots.push((p as { el: unknown }).el) - 1}\u2063` : escape(text((p as { v: unknown }).v)))).join("")
     return slots.length ? { t: "md", s, slots } : { t: "md", s }
   }
-  // (images ChatGPT found are by the order they're drawn: each AsyncImage gets its number)
   let images = 0
   let maps = 0
   const h = (n: string, p: Record<string, unknown>, k: unknown[]) => ({ t: "el", n, p: n === "AsyncImage" ? { ...p, $n: images++ } : /^Map/.test(n) ? { ...p, $n: maps++ } : p, k })
@@ -152,14 +140,12 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     return ""
   }
 
-  // A statement's value that throws is undefined, as ChatGPT's are (`const s = stages[step]` past the end doesn't stop the
-  // answer): `const x = expr` with one name and one value; anything else as it's written.
+  // ChatGPT's DIL: a statement whose value throws is undefined (`const s = stages[step]` past the end).
   const safeBody = (js: string) => {
     const m = /^\s*(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=(?!=)([\s\S]+)$/.exec(js)
     if (!m || /\b(?:DIL|React)\.use[A-Z]\w*\s*\(/.test(m[3]) || !single(m[3])) return js
     return `${m[1]} ${m[2]} = ${expr(m[3].trim().replace(/;\s*$/, ""))}`
   }
-  // Whether JS is one expression: no `,` or `;` outside brackets, strings and templates (then wrapping it keeps its meaning).
   const single = (src: string) => {
     let depth = 0
     const body = src.trim().replace(/;\s*$/, "")
@@ -174,7 +160,6 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     return depth === 0
   }
 
-  // Functions out of what it drew, into ids the app calls back with.
   const out = (v: unknown, depth = 0): unknown => {
     if (typeof v === "function") { fns.push(v as never); return { $fn: fns.length - 1 } }
     if (depth > 40 || v === null || typeof v !== "object") return typeof v === "number" && !Number.isFinite(v) ? null : v
@@ -196,7 +181,6 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       const ran = effects
       effects = []
       ran.forEach((f) => f())
-      // An effect that set state draws again before anything shows, as React would.
       if (queued) { queued = false; continue }
       post({ type: "tree", tree: out(tree), errors: errors.slice(0, 20) })
       if (stateDirty) {
@@ -215,9 +199,8 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       names = (m.names as string[]) ?? []
       if (m.env && typeof m.env === "object") env = { ...env, ...(m.env as typeof env) }
       saved = (m.state as Record<string, unknown>) ?? {}
-      for (const sl of slots) if (typeof sl?.cleanup === "function") try { (sl.cleanup as () => void)() } catch { /* its own */ }
+      for (const sl of slots) if (typeof sl?.cleanup === "function") try { (sl.cleanup as () => void)() } catch {}
       slots = []
-      // What ChatGPT filled in by name (turn0product2), in scope as it was there.
       const bound = Object.entries((m.bindings as Record<string, unknown>) ?? {}).filter(([k]) => /^[A-Za-z_$][\w$]*$/.test(k))
       try {
         // eslint-disable-next-line no-new-func
@@ -238,8 +221,7 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   })
 }
 
-/** The iframe's side: starts the worker (or, where a page without an origin can't, runs the program itself), passes
- *  messages both ways, and stops a program that doesn't answer within a few seconds. */
+// A page without an origin may be unable to start a worker: then it runs the program itself.
 export function relayMain(code: string) {
   const parentPost = (m: unknown) => parent.postMessage(m, "*")
   let toWorker: (m: unknown) => void
@@ -270,5 +252,4 @@ export function relayMain(code: string) {
 
 const CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:"
 let doc = ""
-/** The sandbox iframe's page. */
 export const sandboxDoc = () => (doc ||= `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><script>(${relayMain.toString()})(${JSON.stringify(workerMain.toString())})</script>`)

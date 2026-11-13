@@ -1,4 +1,3 @@
-// A ```chart fence: its spec (JSON or YAML: type, data, x, y, title) drawn as a chart.
 import { useMemo } from "react"
 import type { BlockCtx } from "@vaultite"
 import { Chart } from "./Chart"

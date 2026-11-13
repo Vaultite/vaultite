@@ -1,5 +1,3 @@
-// DIL's components drawn as the app's own: its colours, type and controls, so an answer reads like the note around
-// it. Unknown ones draw their insides. Props follow ChatGPT's (sizes, colours, spacing units of 4px).
 import { createContext, Fragment, Suspense, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { cn, haptic, Markdown, namedIcon, PinMap, Switch } from "@vaultite"
@@ -11,12 +9,9 @@ import { fromChatGpt } from "./chartdata"
 import { Quiz } from "./Quiz"
 
 type P = Record<string, unknown>
-/** How a drawn piece reaches back: call a handler by its id, and the file it's in. */
 export type Host = { call: (fn: number, args: unknown[]) => void; from: string; action: (name: string, args: unknown[]) => void; data?: Data }
 const HostCtx = createContext<Host>({ call: () => {}, from: "", action: () => {} })
-// Text inside a line (a title, a button): Markdown drawn inline.
 const InlineCtx = createContext(false)
-// Inside an <svg>: its children are SVG's own elements.
 const SvgCtx = createContext(false)
 
 const fnOf = (host: Host, v: unknown) =>
@@ -24,9 +19,7 @@ const fnOf = (host: Host, v: unknown) =>
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : undefined)
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() && !isNaN(+v) ? +v : undefined)
 
-/** A spacing value: units of 4px, or CSS as written ("12px", "1rem"). */
 const space = (v: unknown) => { const n = num(v); return n !== undefined ? `${n * 4}px` : str(v) }
-/** `padding={3}`, `padding={[2, 4]}` or `{x: 4, y: 2}`. */
 function pad(v: unknown): string | undefined {
   if (Array.isArray(v)) return v.map((x) => space(x) ?? "0").join(" ")
   if (v && typeof v === "object") { const o = v as P; return `${space(o.top ?? o.y) ?? 0} ${space(o.right ?? o.x) ?? 0} ${space(o.bottom ?? o.y) ?? 0} ${space(o.left ?? o.x) ?? 0}` }
@@ -36,7 +29,6 @@ function pad(v: unknown): string | undefined {
 const RADIUS: Record<string, string> = { none: "0", "2xs": "2px", xs: "2px", sm: "4px", md: "6px", lg: "8px", xl: "12px", "2xl": "16px", "3xl": "24px", "4xl": "32px", full: "9999px" }
 const radius = (v: unknown) => (typeof v === "string" ? RADIUS[v] ?? v : typeof v === "number" ? `${v}px` : v === true ? RADIUS.md : undefined)
 
-/** ChatGPT's surfaces and colours as the scheme's. */
 const SURFACE: Record<string, string> = {
   surface: "var(--card)", "surface-primary": "var(--card)", "surface-secondary": "color-mix(in oklab, var(--foreground) 3%, var(--background))",
   "surface-tertiary": "color-mix(in oklab, var(--foreground) 6%, var(--background))", "surface-elevated": "var(--card)",
@@ -57,9 +49,7 @@ TONE.prose = TONE.emphasis = "var(--foreground)"
 TONE.subtle = TONE.faint = TONE.tertiary
 TONE.inverse = "var(--background)"
 const CSS_COLOR = /^(#|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\(|var\(|currentColor$|transparent$|white$|black$)/
-/** A `{light, dark}` pair: the one for the look now (a change of look draws it again). */
 const themed = (v: unknown): unknown => (v && typeof v === "object" && !Array.isArray(v) && ("light" in v || "dark" in v) ? (document.documentElement.classList.contains("dark") ? (v as P).dark ?? (v as P).light : (v as P).light ?? (v as P).dark) : v)
-/** A hue with a shade (`blue-500`, `gray-75`): the scheme's hue, lighter or darker. */
 const shade = (v: string) => {
   const m = /^(\w+)-(\d{2,3})$/.exec(v)
   if (!m || !TONE[m[1]]) return undefined
@@ -88,7 +78,6 @@ const WEIGHT: Record<string, number> = { light: 300, normal: 400, regular: 400, 
 const JUSTIFY: Record<string, string> = { start: "flex-start", end: "flex-end", center: "center", between: "space-between", around: "space-around", evenly: "space-evenly", stretch: "stretch" }
 const ALIGN: Record<string, string> = { start: "flex-start", end: "flex-end", center: "center", baseline: "baseline", stretch: "stretch" }
 
-/** `border`: true (the app's hairline), a width, CSS (`"2px dashed red"`), a colour token, or `{size, color, style}`. */
 function border(v: unknown, color: unknown, key: string): CSSProperties {
   const c = (x: unknown) => tone(x) ?? (x === "subtle" ? "color-mix(in oklab, var(--border) 50%, transparent)" : x === "strong" ? "color-mix(in oklab, var(--foreground) 25%, transparent)" : "var(--border)")
   if (v === true || v === "true") return { [key]: `1px solid ${c(color)}` }
@@ -98,7 +87,6 @@ function border(v: unknown, color: unknown, key: string): CSSProperties {
   return {}
 }
 
-/** What every element may say about its own box. */
 function boxStyle(p: P): CSSProperties {
   const s: CSSProperties = {}
   if (p.gap !== undefined) s.gap = space(p.gap)
@@ -134,7 +122,6 @@ function boxStyle(p: P): CSSProperties {
 }
 
 function flexStyle(p: P, dir: "row" | "column"): CSSProperties {
-  // (a box's `size` is its width and height: an icon's tile)
   const size = typeof p.size === "number" ? `${p.size}px` : typeof p.size === "string" && /^\d/.test(p.size) ? p.size : undefined
   return {
     ...(size ? { width: size, height: size, flexShrink: 0 } : {}),
@@ -167,7 +154,6 @@ function textStyle(p: P, base: string, weight = 400, scale = TEXT): CSSPropertie
 
 const label = (k: Tree[]): string => k.map((x) => (x.t === "md" ? x.s : x.t === "el" ? label(x.k) : "")).join(" ").replace(/\\(.)/g, "$1").replace(/[*_`]/g, "").trim()
 
-/** Kids inline (a title's text, a button's label). */
 function Inline({ k }: { k: Tree[] }) {
   return <InlineCtx.Provider value={true}><Kids k={k} /></InlineCtx.Provider>
 }
@@ -179,7 +165,6 @@ export function Kids({ k }: { k: Tree[] }) {
 }
 const keyOf = (x: Tree, i: number) => (x.t === "el" && (typeof x.p.key === "string" || typeof x.p.key === "number") ? `k${x.p.key}` : i)
 
-/** One piece of what the program drew. */
 export function Piece({ t }: { t: Tree }) {
   const inline = useContext(InlineCtx)
   const host = useContext(HostCtx)
@@ -190,7 +175,6 @@ export function Piece({ t }: { t: Tree }) {
   const p = t.p
   const C = PARTS[t.n] ?? PARTS[t.n.toLowerCase()] ?? PARTS[t.n.replace(/-([a-z])/g, (_, c) => c.toUpperCase())]
   if (C) return <C p={p} k={t.k} />
-  // Something it has that this doesn't draw: its insides, laid out like a box.
   return inline ? <Inline k={t.k} /> : <div style={flexStyle(p, "column")}><Kids k={t.k} /></div>
 }
 
@@ -200,7 +184,6 @@ function Md({ s, inline, from }: { s: string; inline: boolean; from: string }) {
 }
 
 const SLOT = /\u2063(\d+)\u2063/
-/** Text with elements in its lines (`The <Entity/> is…`): the Markdown drawn, each element put where its token is. */
 function Slotted({ s, slots, inline, from }: { s: string; slots: Tree[]; inline: boolean; from: string }) {
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<HTMLElement[]>([])
@@ -232,7 +215,6 @@ function Slotted({ s, slots, inline, from }: { s: string; slots: Tree[]; inline:
 
 type Part = (x: { p: P; k: Tree[] }) => ReactNode
 
-/** What a piece is, for the space ChatGPT puts around it in a column. */
 function kindOf(t: Tree): string {
   if (t.t === "md") return /^\s*#{1,6}\s/.test(t.s) ? "title" : "text"
   if (t.t === "app") return "block"
@@ -245,7 +227,6 @@ function kindOf(t: Tree): string {
   if (/^(input|textfield|text-input|number-input|textarea|select|dropdown|slider|range|date-picker|checkbox|switch|toggle|segmented|segmented-control|segmentedcontrol|radio-group|radiogroup)$/.test(n)) return "control"
   return "block"
 }
-/** The space between two pieces in a column with no `gap` of its own (ChatGPT's auto-spacing), or at the top level. */
 function autoGap(a: string, b: string, top: boolean): number {
   if (top) return b === "title" && a !== "title" ? 24 : a === "title" && (b === "text" || b === "caption") ? 8 : 16
   if (a === "label" && (b === "control" || b === "button")) return 2
@@ -255,7 +236,6 @@ function autoGap(a: string, b: string, top: boolean): number {
   if (a === "text" && b === "text") return 12
   return 8
 }
-/** Kids spaced as ChatGPT spaces them when the box doesn't say. */
 export function Spaced({ k, top = false }: { k: Tree[]; top?: boolean }) {
   const shown = k.filter((x) => !(x.t === "md" && !x.s.trim()))
   return <>{shown.map((x, i) => (
@@ -276,11 +256,9 @@ function Row({ p, k }: { p: P; k: Tree[] }) { return <div style={flexStyle(p, "r
 function Grid({ p, k }: { p: P; k: Tree[] }) {
   const c = p.columns ?? p.cols
   const cols = num(c) ?? 2
-  // (`columns="sm"`: as many as fit at that width; a list: each one's width, numbers as fractions)
   const fit = { xs: "120px", sm: "160px", md: "220px", lg: "300px" }[str(c) ?? ""]
   const min = str(p.minColumnWidth ?? p.minChildWidth) ?? fit
   const template = Array.isArray(c) ? c.map((x) => (typeof x === "number" ? `minmax(0, ${x}fr)` : String(x))).join(" ") : min ? `repeat(auto-fill, minmax(min(100%, ${min}), 1fr))` : `repeat(${cols}, minmax(0, 1fr))`
-  // Narrow (a phone): more than two columns fold to two, as ChatGPT's do.
   return (
     <div className="genui-grid" data-cols={!Array.isArray(c) && !min && cols > 2 ? "many" : undefined}
       style={{ display: "grid", gridTemplateColumns: template, gridTemplateRows: typeof p.rows === "number" ? `repeat(${p.rows}, auto)` : undefined, alignItems: ALIGN[str(p.align) ?? ""], gap: p.gap !== undefined ? space(p.gap) : "16px 12px", ...boxStyle({ ...p, gap: undefined }) }}>
@@ -308,7 +286,6 @@ function Icon({ p }: { p: P; k: Tree[] }) {
   const size = { xs: 12, sm: 14, md: 16, lg: 18, xl: 20, "2xl": 24, "3xl": 32 }[str(p.size) ?? "md"] ?? (num(p.size) ?? 16)
   return I ? <I style={{ width: size, height: size, color: tone(p.color), flexShrink: 0, display: "inline-block", verticalAlign: "-0.15em" }} strokeWidth={2} aria-hidden /> : null
 }
-/** ChatGPT's icon names Lucide calls otherwise. */
 const ICON_NAMES: Record<string, string> = {
   "check-circle": "circle-check", "x-circle": "circle-x", "alert-circle": "circle-alert", "alert-triangle": "triangle-alert",
   "info-circle": "info", "help-circle": "circle-help", "plus-circle": "circle-plus", "minus-circle": "circle-minus",
@@ -344,7 +321,6 @@ function Button({ p, k }: { p: P; k: Tree[] }) {
     <button type={submit ? "submit" : "button"} disabled={!!p.disabled || busy} aria-pressed={p.pressed === undefined ? undefined : !!p.pressed}
       aria-label={str(p.ariaLabel) ?? (p.uniform ? str(p.label) ?? str(p.iconStart ?? p.icon) : undefined)} data-tip={str(p.tooltip)}
       onClick={(e) => { e.stopPropagation(); haptic(); if (on) { if (submit) e.preventDefault(); on() } else if (href) host.action("openUrl", [href]) }}
-      // (block: as wide as it can be, sharing a row with others like it rather than pushing them out)
       className={cn("inline-flex min-w-0 cursor-pointer items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-50", block ? "w-full shrink" : "shrink-0", look, !on && !href && !submit && "cursor-default")}
       style={{ ...control(p.size, "lg", p.pill, p.uniform), ...(variant === "link" ? { height: "auto", minHeight: 0, padding: 0 } : {}),
         ...(variant === "solid" && ink ? { background: ink } : variant === "soft" && ink ? { background: `color-mix(in oklab, ${ink} 14%, transparent)`, color: ink } : ink ? { color: ink } : {}),
@@ -410,7 +386,6 @@ function Slider({ p }: { p: P; k: Tree[] }) {
   )
 }
 
-/** A text field: what's typed shows at once, and goes to the program as it's typed. */
 function Field({ p, area }: { p: P; area?: boolean }) {
   const host = useContext(HostCtx)
   const on = fnOf(host, p.onChange ?? p.onValueChange ?? p.onInput)
@@ -452,7 +427,6 @@ function Segmented({ p }: { p: P; k: Tree[] }) {
   )
 }
 
-/** Tabs: `<tabs value onChange>` with `<tab value label>` children, or `options`. Without a handler it keeps its own. */
 function Tabs({ p, k }: { p: P; k: Tree[] }) {
   const host = useContext(HostCtx)
   const on = fnOf(host, p.onChange ?? p.onValueChange)
@@ -519,7 +493,6 @@ function Link({ p, k }: { p: P; k: Tree[] }) {
   return <a href={href && /^https?:/i.test(href) ? href : undefined} onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (href) host.action("openUrl", [href]) }} className="cursor-pointer text-primary underline-offset-2 hover:underline"><Inline k={k} /></a>
 }
 
-/** `<table columns={[...]} rows={[...]}>` (or `data`), or rows written as children. */
 function Table({ p, k }: { p: P; k: Tree[] }) {
   const rows = (Array.isArray(p.rows) ? p.rows : Array.isArray(p.data) ? p.data : null) as unknown[] | null
   const sections = k.some((x) => x.t === "el" && x.n === "table-section")
@@ -544,7 +517,6 @@ function ChartPart({ p }: { p: P; k: Tree[] }) {
   return <Chart spec={p.content && typeof p.content === "object" ? fromChatGpt(p.content as P) : p as ChartSpec} />
 }
 
-/** A card: a bordered box, ChatGPT's surface. */
 const Card: Part = ({ p, k }) => {
   const soft = str(p.variant) === "soft"
   const width = { sm: 360, md: 440, lg: 560 }[str(p.size) ?? ""]
@@ -552,8 +524,6 @@ const Card: Part = ({ p, k }) => {
   return autoSpaced(p) ? <div style={{ ...flexStyle(q, "column"), gap: 0 }}><Spaced k={k} /></div> : <div style={flexStyle(q, "column")}><Kids k={k} /></div>
 }
 
-/** A list: `<list>` of `<list-item label description>`s or `items`; `marker` bullet, number, check, none or an icon's
- *  name; `connector="line"` joins the markers (a timeline). */
 const ListCtx = createContext<{ marker: string; line: boolean; start: number }>({ marker: "bullet", line: false, start: 1 })
 const List: Part = ({ p, k }) => {
   const marker = str(p.marker) ?? (p.ordered ? "number" : "bullet")
@@ -609,14 +579,12 @@ const Code: Part = ({ p, k }) => p.block === false || p.inline
   ? <code className="rounded-[4px] bg-foreground/[0.06] px-1 font-mono text-[0.9em]">{label(k) || str(p.code)}</code>
   : <Md s={"```" + (str(p.language ?? p.lang) ?? "") + "\n" + (str(p.code) ?? label(k)) + "\n```"} inline={false} from="" />
 
-/** A form: its children, and Enter or its submit button calling onSubmit. */
 const Form: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
   const on = fnOf(host, p.onSubmit)
   return <form onSubmit={(e) => { e.preventDefault(); on?.() }} style={flexStyle(p, "column")}><Kids k={k} /></form>
 }
 
-/** Details that open: `<collapsible title>` / `<accordion>`. */
 const Collapsible: Part = ({ p, k }) => (
   <details className="genui-details rounded-[10px] border-[0.5px] border-border" open={!!(p.open ?? p.defaultOpen)}>
     <summary className="cursor-pointer px-3 py-2 text-[15px] font-medium">{str(p.title ?? p.label ?? p.summary) ?? "More"}</summary>
@@ -624,7 +592,6 @@ const Collapsible: Part = ({ p, k }) => (
   </details>
 )
 
-/** A server-found image (AsyncImage): it comes with a query, not an address, so it's a search for it. */
 const AsyncImage: Part = ({ p }) => {
   const host = useContext(HostCtx)
   const found = typeof p.$n === "number" ? host.data?.images?.[p.$n]?.[0] : undefined
@@ -645,7 +612,6 @@ const AsyncImageGroup: Part = ({ p }) => {
   const qs = (Array.isArray(p.queries) ? p.queries : Array.isArray(p.images) ? p.images : []) as unknown[]
   return <div className="grid grid-cols-2 gap-2 @md:grid-cols-3">{qs.map((q, i) => <AsyncImage key={i} p={typeof q === "string" ? { query: q } : (q as P)} k={[]} />)}</div>
 }
-/** Something ChatGPT knows (a place, a product): its name, and a search for it. */
 const Entity: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
   const name = str(p.value ?? p.name ?? p.title ?? p.query) ?? label(k)
@@ -653,7 +619,6 @@ const Entity: Part = ({ p, k }) => {
 }
 const Cite: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
-  // Its sources by ChatGPT's refs (turn0search3), when they came with it.
   const refs = (Array.isArray(p.refs) ? p.refs : typeof p.ref === "string" ? [p.ref] : []).map((r) => host.data?.refs?.[String(r)]).filter((r) => !!r)
   if (refs.length && !str(p.url ?? p.href)) return <>{refs.slice(0, 3).map((r) => <Cite key={r.url} p={{ url: r.url, title: r.source ?? r.title }} k={[]} />)}</>
   const href = str(p.url ?? p.href)
@@ -661,12 +626,10 @@ const Cite: Part = ({ p, k }) => {
   return <button type="button" onClick={() => host.action("openUrl", [href])} className="ml-0.5 inline-flex cursor-pointer items-center rounded-full bg-foreground/[0.06] px-1.5 align-[1px] text-[11px] text-muted-foreground hover:bg-foreground/[0.1]">{str(p.title ?? p.label) ?? new URL(href).hostname.replace(/^www\./, "")}</button>
 }
 
-/** A box that's a button (`<pressable onClick>`). */
 const Pressable: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
   const on = fnOf(host, p.onClick ?? p.onPress)
   const off = !!p.disabled || !on
-  // (its hover is its own colour when it gives one, none when it says false)
   const hover = p.hoverBackground === false || p.hoverBackground === "none" ? undefined : surface(p.hoverBackground)
   const [over, setOver] = useState(false)
   const style = flexStyle({ gap: 0, ...p }, "column")
@@ -682,7 +645,6 @@ const Pressable: Part = ({ p, k }) => {
   )
 }
 
-/** SVG's own elements, as written (attributes camel-cased, handlers called back). */
 const SVG_TAGS = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "text", "tspan", "textPath", "defs", "symbol", "linearGradient", "radialGradient", "stop", "clipPath", "mask", "pattern", "use", "title", "desc", "marker", "image",
   "animate", "animateTransform", "animateMotion", "set", "mpath", "filter", "feGaussianBlur", "feOffset", "feBlend", "feColorMatrix", "feComposite", "feFlood", "feMerge", "feMergeNode", "feDropShadow", "feMorphology", "feTurbulence", "feDisplacementMap"])
 // (lowercase as a model may write them: SVG's own names are camel-cased)
@@ -727,7 +689,6 @@ const Svg: Part = ({ p, k }) => {
   )
 }
 
-/** Things in a row that scroll sideways, `visibleItems` at a time. */
 const Carousel: Part = ({ p, k }) => {
   const shown = num(p.visibleItems)
   return (
@@ -748,7 +709,6 @@ const CarouselItem: Part = ({ p, k }) => {
   )
 }
 
-/** A packed grid of tiles (flow): `columns`, items spanning `span` and `rowSpan`. */
 const Flow: Part = ({ p, k }) => (
   <div className="grid grid-flow-dense" style={{ gridTemplateColumns: `repeat(${num(p.columns) ?? 3}, minmax(0, 1fr))`, gap: space(p.gap ?? 4) }}><Kids k={k} /></div>
 )
@@ -756,7 +716,6 @@ const FlowItem: Part = ({ p, k }) => (
   <div style={{ gridColumn: num(p.span) ? `span ${num(p.span)}` : undefined, gridRow: num(p.rowSpan) ? `span ${num(p.rowSpan)}` : undefined, aspectRatio: str(p.aspectRatio)?.replace(":", "/"), minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}><Kids k={k} /></div>
 )
 
-/** Choices as radio buttons: `<radio-group value onChange>` with `<radio value>Label</radio>`s, or `options`. */
 const RadioGroupCtx = createContext<{ value: unknown; set: ((v: unknown) => void) | null; name: string }>({ value: undefined, set: null, name: "" })
 const RadioGroup: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
@@ -785,7 +744,6 @@ const Radio: Part = ({ p, k }) => {
   )
 }
 
-/** A popover: its trigger toggles its content under it. */
 const PopCtx = createContext<{ open: boolean; toggle: () => void }>({ open: false, toggle: () => {} })
 const Popover: Part = ({ p, k }) => {
   const [open, setOpen] = useState(!!p.open)
@@ -802,7 +760,6 @@ const PopoverContent: Part = ({ p, k }) => {
   return <div className="absolute top-full left-0 z-20 mt-1.5 rounded-[12px] border-[0.5px] border-border bg-card p-3 shadow-lg" style={{ width: space(p.width) ?? 260 }}><div style={flexStyle({ gap: 2 }, "column")}><Kids k={k} /></div></div>
 }
 
-/** A card that turns over when clicked: its first child the front, the second the back. */
 const Flashcard: Part = ({ k }) => {
   const [back, setBack] = useState(false)
   const faces = k.filter((x) => !(x.t === "md" && !x.s.trim()))
@@ -837,7 +794,7 @@ const Youtube: Part = ({ p }) => {
 const Favicon: Part = ({ p }) => {
   const u = str(p.url)
   let host = ""
-  try { host = u ? new URL(u).hostname : "" } catch { /* not an address */ }
+  try { host = u ? new URL(u).hostname : "" } catch {}
   if (!host) return null
   const size = num(p.size) ?? 16
   return <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`} alt={str(p.alt) ?? ""} width={size} height={size} referrerPolicy="no-referrer" className={cn("inline-block shrink-0 rounded-[4px] align-[-2px]", !!p.frame && "border-[0.5px] border-border p-0.5")} />
@@ -865,7 +822,6 @@ const MarkdownPart: Part = ({ k }) => {
   const host = useContext(HostCtx)
   return <Md s={k.map((x) => (x.t === "md" ? x.s : "")).join("\n\n")} inline={false} from={host.from} />
 }
-/** Table rows written as children: a section (thead or tbody) and its rows. */
 const TableSection: Part = ({ p, k }) => (p.header ? <thead><Kids k={k} /></thead> : <tbody><Kids k={k} /></tbody>)
 const TableRow: Part = ({ p, k }) => <tr data-header={p.header ? "" : undefined}>{str(p.label) && <th>{str(p.label)}</th>}<Kids k={k} /></tr>
 const TableCell: Part = ({ p, k }) => {
@@ -873,15 +829,12 @@ const TableCell: Part = ({ p, k }) => {
   return <Tag colSpan={num(p.colSpan)} rowSpan={num(p.rowSpan)} style={{ textAlign: (str(p.align) as CSSProperties["textAlign"]) ?? "left", verticalAlign: str(p.vAlign) === "center" ? "middle" : str(p.vAlign) === "end" ? "bottom" : "top", width: str(p.width) }}><Inline k={k} /></Tag>
 }
 
-/** ChatGPT's map (MapWidgetV2): its places on the app's map when their coordinates came with it, and each day's
- *  stops in order, each a link to a map search. */
 const MapWidget: Part = ({ p }) => {
   const host = useContext(HostCtx)
   const [failed, setFailed] = useState(false)
   const points = (Array.isArray(p.points) ? p.points : []) as P[]
   const found = typeof p.$n === "number" ? host.data?.maps?.[p.$n] ?? [] : []
   const groups = (Array.isArray(p.groups) && p.groups.length ? p.groups : [{ locations: points.map((x, i) => ({ point_id: str(x.id ?? x.ref) ?? String(i) })) }]) as P[]
-  // A point by its id (`ref` for one ChatGPT found, matched to the found ones in order), with its name.
   const at = (id: string) => {
     const i = points.findIndex((x) => str(x.id ?? x.ref) === id)
     const pt = points[i] ?? {}
@@ -939,7 +892,6 @@ const PARTS: Record<string, Part> = {
   card: Card, list: List, ul: List, "list-item": ListItem, li: ListItem, spacer: Spacer, stat: Stat, metric: Stat,
   quote: Quote, blockquote: Quote, code: Code, form: Form, collapsible: Collapsible, accordion: Collapsible, details: Collapsible,
   pressable: Pressable, clickable: Pressable, LearningQuiz: ({ p }) => <Quiz p={p} />, quiz: ({ p }) => <Quiz p={p} />,
-  // (ChatGPT's reaction to the user's message: nothing in a note)
   MessageReaction: () => null,
   AsyncImage, AsyncImageGroup, Entity, Cite, "search-image": AsyncImage, MapWidgetV2: MapWidget, MapWidget, map: MapWidget,
   svg: Svg, carousel: Carousel, "carousel-item": CarouselItem, "carousel-media-item": CarouselItem, flow: Flow, "flow-item": FlowItem,
@@ -952,7 +904,6 @@ const PARTS: Record<string, Part> = {
   "table-section": TableSection, "table-row": TableRow, "table-cell": TableCell, "date-picker": ({ p }) => <Field p={{ inputType: "date", ...p }} />, asyncImage: AsyncImage, entity: Entity, cite: Cite,
 }
 
-/** What a program drew, with the way back to it. */
 export function Drawn({ tree, host }: { tree: Tree[]; host: Host }) {
   return (
     <HostCtx.Provider value={host}>

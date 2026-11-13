@@ -1,5 +1,3 @@
-// A chart's data read the same on both sides: a spec (JSON or YAML) into categories and series, and its text as a
-// Markdown table. Data is rows ({month: "Jan", sales: 3}) or Chart.js' labels and datasets.
 import { parse as parseYaml } from "yaml"
 
 export type ChartSpec = {
@@ -9,7 +7,6 @@ export type ChartSpec = {
   min?: number; max?: number
 }
 
-/** ChatGPT's own chart (`<Chart content={{chartType, xKey, series: [{dataKey, valueSuffix}], layout}}>`) as a spec. */
 export function fromChatGpt(c: Record<string, unknown>): ChartSpec {
   const series = Array.isArray(c.series) ? (c.series as Record<string, unknown>[]) : undefined
   const first = series?.find((x) => x && typeof x === "object")
@@ -28,11 +25,9 @@ export const isNum = (v: unknown): v is number => typeof v === "number" && Numbe
 const toNum = (v: unknown) => (isNum(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(+v.replace(/[,_]/g, "")) ? +v.replace(/[,_]/g, "") : null)
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
-/** A spec's categories and series, whichever way it's written. */
 export function chartData(spec: ChartSpec): { cats: string[]; series: Series[] } {
   const palette = Array.isArray(spec.colors) && spec.colors.length ? spec.colors.map(String) : COLORS
   const color = (i: number, c?: unknown) => (typeof c === "string" && c ? (/^[a-z-]+$/.test(c) && !/^(red|blue|green|black|white)$/.test(c) ? `var(--${c})` : c) : palette[i % palette.length])
-  // Chart.js: {labels, datasets: [{label, data}]}
   if (Array.isArray(spec.datasets)) {
     const cats = (Array.isArray(spec.labels) ? spec.labels : []).map(String)
     const series = spec.datasets.filter(obj).map((d, i) => ({ key: String(d.label ?? i), label: String(d.label ?? `Series ${i + 1}`), color: color(i, d.color ?? d.borderColor), values: (Array.isArray(d.data) ? d.data : []).map(toNum) }))
@@ -56,8 +51,6 @@ export function chartData(spec: ChartSpec): { cats: string[]; series: Series[] }
   }
 }
 
-
-/** A ```chart fence's spec, or why it isn't one. */
 export function chartSpec(text: string): { spec: ChartSpec } | { error: string } {
   let v: unknown
   try { v = text.trim().startsWith("{") ? JSON.parse(text) : parseYaml(text) } catch (e) { return { error: (e as Error).message.split("\n")[0] } }
@@ -66,7 +59,6 @@ export function chartSpec(text: string): { spec: ChartSpec } | { error: string }
   return { spec: v as ChartSpec }
 }
 
-/** What a chart says as text: its title and its data as a table. */
 export function chartText(text: string): string {
   const r = chartSpec(text)
   if ("error" in r) return `_(a chart that couldn't be read: ${r.error})_`

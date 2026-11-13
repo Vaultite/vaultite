@@ -1,5 +1,3 @@
-// An <AppBlock>: the model's HTML and script in an iframe of its own (no origin, no network), as tall as it draws, its
-// classes compiled by Tailwind; `__bindings` and `__effect` tie it to the program's state, as in ChatGPT.
 import { useEffect, useMemo, useRef, useState } from "react"
 import { onLook } from "@vaultite"
 import type { Host } from "./parts"
@@ -8,7 +6,6 @@ type P = Record<string, unknown>
 const isDark = () => document.documentElement.classList.contains("dark")
 
 let tw: Promise<(classes: string[]) => string> | null = null
-/** Tailwind's compiler, loaded the first time an app needs it. */
 function tailwind() {
   return (tw ??= (async () => {
     const [{ compile }, theme, preflight, utilities] = await Promise.all([
@@ -23,14 +20,11 @@ function tailwind() {
   })())
 }
 
-/** Every word that could be a class, in its HTML and its script (which may set them). */
 const candidates = (html: string) => [...new Set(html.match(/[^\s"'`<>=;{}()]+/g) ?? [])].filter((w) => w.length < 80 && /^[!@\w-]/.test(w))
 
 const CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https:; font-src data:; media-src data: blob: https:"
 const TOKENS = ["background", "foreground", "card", "muted", "muted-foreground", "border", "primary", "primary-foreground", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "font-sans", "font-mono"]
 
-/** The scheme's colours as `--vau-*`, and under the names ChatGPT's apps are written for (its host's: `--text-primary`,
- *  `--main-surface-*`, shadcn's `--background`..., the kit's `--viz-*`), so an app made there takes this look. */
 const vars = () => {
   const css = getComputedStyle(document.documentElement)
   const own = Object.fromEntries(TOKENS.map((t) => [t, css.getPropertyValue(`--${t}`).trim()]))
@@ -53,8 +47,6 @@ const vars = () => {
   return TOKENS.map((t) => `--vau-${t}:${own[t]};`).join("") + Object.entries(as).map(([k, x]) => `--${k}:${x};`).join("")
 }
 
-/** ChatGPT's app kit, as its apps expect it: fields, sliders, cards and badges styled; in the dark, Tailwind's light
- *  greys turned to the scheme's surfaces (an app written light still reads). */
 const KIT = `
 input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{border:1px solid var(--border-medium);border-radius:12px;background:var(--vau-card);color:inherit;padding:6px 12px;font:inherit;font-size:14px}
 input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in oklab,var(--vau-primary) 45%,transparent);outline-offset:0}
@@ -78,7 +70,6 @@ const DARK = `
 .dark .border-gray-200,.dark .border-gray-100,.dark .border-slate-200,.dark .border-gray-300,.dark .border-neutral-200,.dark .border-zinc-200{border-color:var(--border-light)}
 `
 
-// The app's side of the bridge, in the frame: the bindings (setters call back), effects, its height, links.
 function bridge() {
   const post = (m: Record<string, unknown>) => parent.postMessage({ ga: 1, ...m }, "*")
   const effects: (() => void)[] = []
@@ -130,7 +121,6 @@ export function AppFrame({ p, html, host }: { p: P; html: string; host: Host }) 
   const doc = useMemo(() => css === null ? "" : `<!doctype html><html data-theme="${isDark() ? "dark" : "light"}" class="${isDark() ? "dark" : ""}" data-app-block-surface="inline" style="${vars().replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width">` +
     `<style>${css}\n@layer base{${KIT}}\n${DARK}\nhtml,body{background:transparent;margin:0;color:var(--vau-foreground);font-family:var(--vau-font-sans),system-ui,sans-serif;font-size:15px;color-scheme:${isDark() ? "dark" : "light"}}body{overflow:hidden}</style>` +
     `<script>(${bridge.toString()})()</script></head><body>${html}</body></html>`, [css, html])
-  // Its bindings: sent once it's up and whenever they change.
   const send = () => frame.current?.contentWindow?.postMessage({ ga: 1, type: "bind", bind: JSON.parse(bindKey) }, "*")
   useEffect(send, [bindKey])
   useEffect(() => onLook(() => frame.current?.contentWindow?.postMessage({ ga: 1, type: "theme", dark: isDark(), vars: vars() }, "*")), [])

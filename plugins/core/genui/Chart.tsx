@@ -1,9 +1,7 @@
-// Charts drawn in SVG in the scheme's chart colours: bar, line, area, pie and donut, scatter (DIL's <chart>, ```chart).
 import { useLayoutEffect, useRef, useState } from "react"
 import { cn } from "@vaultite"
 import { chartData, COLORS, isNum, type ChartSpec, type Series } from "./chartdata"
 
-/** Round steps for an axis from lo to hi. */
 function ticks(lo: number, hi: number, n = 4) {
   if (lo === hi) { hi = lo + 1; lo -= 1 }
   const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw
@@ -63,7 +61,6 @@ function XY({ type, cats, series, w, h, stacked, f, range, hover, setHover }: { 
   const bar = !/line|area|scatter/.test(type)
   const sums = cats.map((_, i) => series.reduce((a, s) => a + Math.max(0, s.values[i] ?? 0), 0))
   const all = stacked ? sums : series.flatMap((s) => s.values.filter(isNum))
-  // Bars start at zero; a line shows its own range (a weight between 79 and 81).
   const min = Math.min(...all), max = Math.max(...all)
   const lo = bar || min <= 0 ? Math.min(0, min) : min - (max - min) * 0.1, hi = bar || max >= 0 ? Math.max(0, max) : max + (max - min) * 0.1
   const ts = ticks(range.min ?? lo, range.max ?? hi)
@@ -146,7 +143,6 @@ function Pie({ cats, s, w, h, hole, f, hover, setHover }: { cats: string[]; s: S
   )
 }
 
-/** Bars across (ChatGPT's vertical layout): a row per category, its label, its bar and its value. */
 function HBars({ cats, series, f }: { cats: string[]; series: Series[]; f: (v: number) => string }) {
   const max = Math.max(...series.flatMap((s) => s.values.filter(isNum)), 0) || 1
   return (

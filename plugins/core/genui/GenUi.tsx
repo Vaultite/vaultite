@@ -1,12 +1,9 @@
-// A ```genui fence: its program run in the sandbox, what it draws shown with the app's components, and its values
-// (the key picked, a box ticked) kept in the fence's {@state} line, so the note opens as it was left, on any device.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { askAbout, copyText, Loading, Markdown, notify, onLook, openWebLink, type BlockCtx, errorText } from "@vaultite"
 import { dilText, parse, savedData, savedState, stateNames, withState } from "./dil"
 import { sandboxDoc, type FromSandbox, type Tree } from "./sandbox"
 import type { Host } from "./parts"
 
-// The components it draws with load with the first fence, while its sandbox starts (the tree comes after that anyway).
 let parts: Promise<typeof import("./parts")> | null = null
 const loadParts = () => (parts ??= import("./parts"))
 const Drawn = lazy(() => loadParts().then((m) => ({ default: m.Drawn })))
@@ -24,7 +21,6 @@ export function GenUiFence(ctx: BlockCtx) {
   const [error, setError] = useState<string | null>(null)
   const frame = useRef<HTMLIFrameElement>(null)
   const ready = useRef(false)
-  // The program's values as it last said them, and as last written into the fence.
   const current = useRef<Record<string, unknown>>(JSON.parse(savedKey))
   const written = useRef(savedKey)
   const text = useRef(ctx.text)
@@ -41,17 +37,14 @@ export function GenUiFence(ctx: BlockCtx) {
     const key = JSON.stringify(current.current)
     if (key === written.current || !setText.current) return
     written.current = key
-    try { setText.current(withState(text.current, current.current)) } catch { /* gone meanwhile */ }
+    try { setText.current(withState(text.current, current.current)) } catch {}
   }
   useEffect(() => () => { if (timer.current) save() }, [])
 
   const box = useRef<HTMLDivElement>(null)
   const env = () => ({ dark: document.documentElement.classList.contains("dark"), mobile: matchMedia("(pointer: coarse)").matches && innerWidth < 768, width: box.current?.clientWidth ?? innerWidth })
-  // Light or dark changed: drawn again for it (DIL.useTheme), keeping its values.
   useEffect(() => onLook(() => { if (ready.current) run.current() }), [])
-  // A new program (the source changed): run it, keeping the values it had.
   useEffect(() => { if (ready.current) run.current() }, [nodes])
-  // Values changed from elsewhere (another device, an agent): run with those.
   useEffect(() => {
     if (savedKey === written.current || savedKey === JSON.stringify(current.current)) return
     current.current = JSON.parse(savedKey)
@@ -63,7 +56,6 @@ export function GenUiFence(ctx: BlockCtx) {
     from: ctx.path, data,
     call: (fn, args) => frame.current?.contentWindow?.postMessage({ g: 1, type: "call", fn, args }, "*"),
     action: (name, args) => {
-      // (a string, or ChatGPT's object form: {value, location} for an entity, {url}, {prompt})
       const o = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : null
       const pick = (...ks: string[]) => ks.map((k) => o?.[k]).find((v): v is string => typeof v === "string" && !!v.trim())
       const a = typeof args[0] === "string" ? args[0] : name === "openEntityDetail" ? [pick("value", "name", "query"), pick("location", "address")].filter(Boolean).join(", ") : pick("url", "href", "prompt", "query", "text", "value") ?? ""
@@ -101,7 +93,6 @@ export function GenUiFence(ctx: BlockCtx) {
   )
 }
 
-/** What it says without running: its prose and labels. */
 function Fallback({ source, from }: { source: string; from: string }) {
   const md = useMemo(() => dilText(source), [source])
   return md ? <Markdown text={md} full from={from} /> : null

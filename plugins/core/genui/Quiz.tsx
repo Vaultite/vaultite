@@ -1,5 +1,3 @@
-// ChatGPT's <LearningQuiz>: a question at a time, each answer's feedback, a hint, the score at the end, and a new quiz
-// asked of the AI chat.
 import { useContext, useState } from "react"
 import { cn, haptic, namedIcon } from "@vaultite"
 import { HostCtx } from "./parts"
