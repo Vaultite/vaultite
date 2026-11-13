@@ -6,14 +6,17 @@
 //   node web/qa/tabgroupmotion.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { qa, until, wait } from "./lib/qa.mjs"
-const { args: [B0, VAULT, OUT = "/tmp/tabgroupmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
+const { args: [B0, VAULT, OUT = "/tmp/tabgroupmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 mkdirSync(OUT, { recursive: true })
 const keep = (f) => { const p = path.join(VAULT, ".vaultite", f); return { p, was: existsSync(p) ? readFileSync(p, "utf8") : null } }
 const sidebars = keep("sidebars.json"), look = keep("appearance.json")
 const lookNow = () => JSON.parse(existsSync(look.p) ? readFileSync(look.p, "utf8") : "{}")
-const appearance = (v) => writeFileSync(look.p, JSON.stringify({ ...lookNow(), ...v }) + "\n")
+const serverHas = (name, v) => until(async () => { const got = await fetch(`${B}api/config/${name}`).then((r) => r.json()); return Object.entries(v).every(([k, x]) => JSON.stringify(got[k]) === JSON.stringify(x)) }, 10_000)
+const appearance = async (v) => { writeFileSync(look.p, JSON.stringify({ ...lookNow(), ...v }) + "\n"); await serverHas("appearance", v) }
+const lay = async (v) => { writeFileSync(sidebars.p, JSON.stringify(v) + "\n"); await serverHas("sidebars", v) }
 
 // [Start here] (A "Lighthouse": two tabs) (B, no name, folded: two) (C, no name: two) [blank]
 const f = (p) => `file:${p}`
@@ -25,30 +28,36 @@ const seed = {
     t("b1", f("ME.md"), "sB"), t("b2", f("Notes/Lisbon trip.md"), "sB"), t("c1", "view:search", "sC"), t("c2", "view:graph", "sC"), t("x", "new")],
   active: "a2",
 }
+const uis = new WeakMap()
 async function open(dpr = 2, start = seed) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 600 }, deviceScaleFactor: dpr })
   await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(start))
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
+  uis.set(page, ui)
   await page.goto(`${B}#file/${encodeURIComponent("Projects/Garden planner.md")}`)
   await page.waitForSelector("[data-group-chip], [data-group-row]")
-  await wait(1000)
+  await ui.idle()
   await page.mouse.move(640, 500)
-  return { ctx, page }
+  return { ctx, page, ui }
 }
-/** Each frame drawn while `act` runs and `ms` after: what `probe` (a function's source, given the group's id) sees. */
-async function frames(page, probe, id, act, ms = 700) {
-  await page.evaluate(([src, id, ms]) => {
-    const fn = new Function("id", `return (${src})(id)`), out = window.__frames = [], end = performance.now() + ms
+/** Each frame drawn while `act` runs and till the app is idle: what `probe` (a function's source, given `id`) sees. */
+async function frames(page, probe, id, act) {
+  await page.evaluate(([src, id]) => {
+    const fn = new Function("id", `return (${src})(id)`), run = window.__frames = { out: [], on: true }
     // (read once the frame's callbacks have all run, as it's painted: the group lines are drawn in one, core/tabline.ts)
-    const tick = () => setTimeout(() => { out.push(fn(id)); if (performance.now() < end) requestAnimationFrame(tick) })
+    const tick = () => setTimeout(() => { run.out.push(fn(id)); if (run.on) requestAnimationFrame(tick) })
     requestAnimationFrame(tick)
-  }, [probe.toString(), id, ms])
+  }, [probe.toString(), id])
   await act()
-  await wait(ms + 50)
-  return page.evaluate(() => window.__frames)
+  await uis.get(page).idle()
+  return page.evaluate(() => { window.__frames.on = false; return window.__frames.out })
 }
-/** A click on the group's chip or row from inside the page after `ms` (Playwright's own waits for it to stop moving). */
-const clickIn = (page, sel, ms = 0) => page.evaluate(([sel, ms]) => new Promise((r) => setTimeout(() => { document.querySelector(sel).click(); r() }, ms)), [sel, ms])
+/** A click on the group's chip or row from inside the page (Playwright's own waits for it to stop moving). */
+const clickIn = (page, sel, { midway = false } = {}) => page.evaluate(([sel, midway]) => new Promise((r) => {
+  const movedATenth = () => document.getAnimations().some((a) => a.playState === "running" && (a.effect?.getComputedTiming().progress ?? 0) > 0.1)
+  const tick = (left) => { if (midway && left && !movedATenth()) requestAnimationFrame(() => tick(left - 1)); else { document.querySelector(sel).click(); r() } }
+  tick(120)
+}), [sel, midway])
 const barProbe = (id) => {
   const chip = document.querySelector(`[data-group-chip="${id}"]`), count = chip?.querySelector("[data-group-count]"), line = document.querySelector(`[data-tab-row] [data-group-line="${id}"]`)
   return { chip: chip ? chip.getBoundingClientRect().width : 0, count: count ? +getComputedStyle(count).opacity : 0, line: line ? +getComputedStyle(line).opacity : 0,
@@ -76,14 +85,14 @@ const lineProbe = (id) => {
 const besideAll = (axis) => (x) => !!x.line && x.tabs.every(([a, b]) => a >= x.line[0] - 1 && b <= x.line[1] + (axis === "y" ? 12 : 2))
 
 try {
-  appearance({ tabBar: true, theme: "light", density: "compact" })
-  writeFileSync(sidebars.p, JSON.stringify({ left: ["files:files"], right: [], collapsed: [] }) + "\n")
+  await appearance({ tabBar: true, theme: "light", density: "compact" })
+  await lay({ left: ["files:files"], right: [], collapsed: [] })
 
   // ---------- the line: on whole pixels, from the chip's left to the last tab's right, no seams ----------
   for (const dpr of [1, 2]) {
-    const { ctx, page } = await open(dpr)
+    const { ctx, page, ui } = await open(dpr)
     for (const density of ["compact", "comfortable"]) {
-      await page.evaluate((d) => { document.documentElement.dataset.density = d }, density); await wait(300)
+      await page.evaluate((d) => { document.documentElement.dataset.density = d }, density); await ui.idle()
       const g = await page.evaluate(() => {
         const r = (e) => e.getBoundingClientRect()
         return [...document.querySelectorAll("[data-group-chip][aria-expanded=true]")].map((chip) => {
@@ -105,7 +114,7 @@ try {
 
   // ---------- folding and opening in the bar ----------
   {
-    const { ctx, page } = await open()
+    const { ctx, page, ui } = await open()
     const full = (await page.evaluate(barProbe, "sC")).tabs
     const fold = await frames(page, barProbe, "sC", () => clickIn(page, "[data-group-chip='sC']"))
     const moving = fold.filter((x) => x.tabs.length && x.tabs.some((w) => w > 1 && w < full[0] - 1))
@@ -122,18 +131,18 @@ try {
     check("  each tab ends where it's laid out, with no jump at the end", end.length === full.length && end.every((w, i) => Math.abs(w - full[i]) < 1)
       && opening.filter((x) => x.tabs.length === full.length).every((x) => x.tabs.every((w, i) => w <= full[i] + 1.5)), opening.map((x) => x.tabs.map(Math.round)))
     // Turned round mid-way, either way: from where it had got to, back.
-    const back = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-group-chip='sC']"); await clickIn(page, "[data-group-chip='sC']", 90) })
+    const back = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-group-chip='sC']"); await clickIn(page, "[data-group-chip='sC']", { midway: true }) })
     const low = Math.min(...back.filter((x) => x.tabs.length).map((x) => Math.max(...x.tabs)))
     check("a click mid-fold turns it round from where it was: the tabs never vanish, and end as they were", low > 1 && low < full[0] - 4 && back.every((x) => x.tabs.length === full.length)
       && back.at(-1).tabs.every((w, i) => Math.abs(w - full[i]) < 1) && back.at(-1).count === 0 && back.at(-1).line === 1, back.map((x) => x.tabs.map(Math.round)))
-    await clickIn(page, "[data-group-chip='sC']"); await wait(500)
-    const again = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-group-chip='sC']"); await clickIn(page, "[data-group-chip='sC']", 90) })
+    await clickIn(page, "[data-group-chip='sC']"); await ui.idle()
+    const again = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-group-chip='sC']"); await clickIn(page, "[data-group-chip='sC']", { midway: true }) })
     check("a click mid-opening folds it from where it was", again.some((x) => x.tabs.length && x.tabs.every((w) => w > 4)) && goneForGood(again) && again.at(-1).count === 1, again.map((x) => x.tabs.map(Math.round)))
-    await clickIn(page, "[data-group-chip='sC']"); await wait(500)
+    await clickIn(page, "[data-group-chip='sC']"); await ui.idle()
     // The group on screen turned round mid-fold: its tab shows again.
-    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-group-chip='sA']"); await clickIn(page, "[data-group-chip='sA']", 90) })
+    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-group-chip='sA']"); await clickIn(page, "[data-group-chip='sA']", { midway: true }) })
     check("a click mid-fold of the group on screen turns it round to its own tab again", sway.some((x) => x.shown === "c1") && sway.at(-1).shown === "a2", sway.map((x) => x.shown))
-    await wait(300)
+    await ui.idle()
     // Folding the group on screen: the page changes at the click, to the nearest tab not folded away (past folded B).
     const handing = await frames(page, barProbe, "sA", () => clickIn(page, "[data-group-chip='sA']"))
     const first = handing.findIndex((x) => x.shown !== "a2")
@@ -147,7 +156,7 @@ try {
   {
     const alone = { groups: [{ id: "sA", name: "Lighthouse", color: "blue" }], tabs: seed.tabs.filter((t) => t.group === "sA"), active: "a2" }
     const { ctx, page } = await open(2, alone)
-    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-group-chip='sA']"); await clickIn(page, "[data-group-chip='sA']", 90) })
+    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-group-chip='sA']"); await clickIn(page, "[data-group-chip='sA']", { midway: true }) })
     const ids = await page.evaluate(() => [...document.querySelectorAll("[data-tab-bar] [data-tab-id]")].map((e) => e.dataset.tabId))
     check("the only group turned round mid-fold: a blank tab meanwhile, then its own tab again and no blank tab left", sway.some((x) => x.shown && !x.shown.startsWith("a"))
       && sway.at(-1).shown === "a2" && ids.join() === "a1,a2", { shown: sway.map((x) => x.shown), ids })
@@ -156,10 +165,10 @@ try {
 
   // ---------- the chip by pointer and keyboard; tabs sliding as they're regrouped; ungrouping fading ----------
   {
-    const { ctx, page } = await open()
+    const { ctx, page, ui } = await open()
     const halo = () => page.$eval("[data-group-chip='sA'] > [data-group-name]", (e) => getComputedStyle(e).boxShadow)
     const off = await halo()
-    await page.hover("[data-group-chip='sA']"); await wait(350)
+    await page.hover("[data-group-chip='sA']"); await ui.idle()
     check("a chip under the pointer shows a halo of its colour", off === "none" && (await halo()) !== "none", [off, await halo()])
     await page.mouse.move(640, 500)
     await page.locator("[data-tab-id='a2'] [role=tab]").focus()
@@ -167,49 +176,46 @@ try {
     const on = await page.evaluate(() => { const a = document.activeElement, l = a?.querySelector("[data-group-name]"); return { chip: a?.dataset.groupChip, ring: l && getComputedStyle(l).outlineStyle } })
     check("the arrows reach a chip as they do the tabs, its ring showing", on.chip === "sC" && on.ring === "solid", on)
     const expanded = () => page.$eval("[data-group-chip='sC']", (e) => e.getAttribute("aria-expanded"))
-    await page.keyboard.press("Enter"); await wait(500)
+    await page.keyboard.press("Enter"); await ui.idle()
     const folded = await expanded()
-    await page.keyboard.press(" "); await wait(500)
+    await page.keyboard.press(" "); await ui.idle()
     check("Enter folds it, Space opens it, the keyboard staying on it", folded === "false" && (await expanded()) === "true" && await page.evaluate(() => document.activeElement?.dataset.groupChip === "sC"), [folded, await expanded()])
-    await page.keyboard.press("Shift+F10"); await wait(300)
+    await page.keyboard.press("Shift+F10"); await ui.idle()
     check("⇧F10 opens its editor", (await page.locator("[role=menu] [data-menu-field] input").count()) === 1)
-    await page.keyboard.press("Escape"); await wait(200)
+    await ui.menu.close()
     // Regrouped (the blank tab added to Lighthouse by its menu): what's between slides over rather than jumping.
-    const xs = (id) => page.evaluate((id) => { const out = window.__xs = [], end = performance.now() + 600, e = () => document.querySelector(`[data-tab-id="${id}"]`)
-      const tick = () => { out.push(e()?.getBoundingClientRect().left ?? null); if (performance.now() < end) requestAnimationFrame(tick) }; requestAnimationFrame(tick) }, id)
+    const xProbe = (id) => document.querySelector(`[data-tab-id="${id}"]`)?.getBoundingClientRect().left ?? null
     const left = () => page.$eval("[data-tab-id='c1']", (e) => e.getBoundingClientRect().left)
     const x0 = await left()
-    await page.click("[data-tab-id='x']", { button: "right" }); await wait(200)
-    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Add tab to group", exact: true }).hover(); await wait(200)
-    await xs("c1")
-    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Lighthouse", exact: true }).click(); await wait(700)
-    const path1 = (await page.evaluate(() => window.__xs)).filter((x) => x !== null), x1 = await left()
+    await ui.menu.context(page.locator("[data-tab-id='x']"))
+    const menus = await page.locator("[role=menu]").count()
+    await ui.menu.top().getByRole("menuitem", { name: "Add tab to group", exact: true }).hover(); await page.locator("[role=menu]").nth(menus).waitFor(); await ui.idle()
+    const path1 = (await frames(page, xProbe, "c1", () => ui.menu.top().getByRole("menuitem", { name: "Lighthouse", exact: true }).click())).filter((x) => x !== null)
+    const x1 = await left()
     check("a tab added to a group: the tabs it passes slide over to make room, no jump", x1 > x0 + 20 && path1.some((x) => x > x0 + 2 && x < x1 - 2), [x0, x1, path1.map(Math.round)])
     // Ungrouped: its chip shrinks away and its line fades, not cut at once.
-    await xs("c1")
-    await page.evaluate(() => { const out = window.__ug = [], end = performance.now() + 1000
-      const tick = () => { const ps = [...document.querySelectorAll("[data-tab-row] [data-group-line='sC']")], chip = [...document.querySelectorAll("[data-tab-bar] [data-group-name]")].find((l) => l.style.background.includes("purple"))
-        out.push({ line: ps.length ? Math.max(...ps.map((p) => +getComputedStyle(p).opacity)) : 0, chip: chip ? chip.parentElement.getBoundingClientRect().width : 0 })
-        if (performance.now() < end) requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
-    await page.click("[data-group-chip='sC']", { button: "right" }); await wait(200)
-    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Ungroup", exact: true }).click(); await wait(900)
-    const ug = await page.evaluate(() => window.__ug)
+    await ui.menu.context(page.locator("[data-group-chip='sC']"))
+    const ungroupProbe = (id) => {
+      const ps = [...document.querySelectorAll(`[data-tab-row] [data-group-line='${id}']`)], chip = [...document.querySelectorAll("[data-tab-bar] [data-group-name]")].find((l) => l.style.background.includes("purple"))
+      return { line: ps.length ? Math.max(...ps.map((p) => +getComputedStyle(p).opacity)) : 0, chip: chip ? chip.parentElement.getBoundingClientRect().width : 0 }
+    }
+    const ug = await frames(page, ungroupProbe, "sC", () => ui.menu.top().getByRole("menuitem", { name: "Ungroup", exact: true }).click())
     check("ungrouped: its chip shrinks away and its line fades out", ug.some((x) => x.line > 0.1 && x.line < 0.9) && ug.some((x) => x.chip > 1 && x.chip < 13) && ug.at(-1).line === 0 && ug.at(-1).chip === 0, ug.map((x) => [x.line.toFixed(2), Math.round(x.chip)]))
     await ctx.close()
   }
 
   // ---------- the line in the bar while tabs move: dragged within the group, a view's tab closed ----------
   {
-    const { ctx, page } = await open()
+    const { ctx, page, ui } = await open()
     const a = await page.locator("[data-tab-id='a1']").boundingBox(), b = await page.locator("[data-tab-id='a2']").boundingBox()
     await page.mouse.move(a.x + 20, a.y + a.height / 2); await page.mouse.down()
-    const fs = await frames(page, lineProbe, "sA", async () => { await page.mouse.move(a.x + 28, a.y + a.height / 2, { steps: 3 }); await page.mouse.move(b.x + b.width * 0.6, b.y + b.height / 2, { steps: 12 }) }, 600)
-    await page.mouse.up(); await wait(500)
+    const fs = await frames(page, lineProbe, "sA", async () => { await page.mouse.move(a.x + 28, a.y + a.height / 2, { steps: 3 }); await page.mouse.move(b.x + b.width * 0.6, b.y + b.height / 2, { steps: 12 }) })
+    await page.mouse.up(); await ui.idle()
     const moved = fs.some((x) => x.tabs.length === 2 && Math.abs(x.tabs[0][0] - fs[0].tabs[0][0]) > 2)
     check("the bar: dragged within its group, the line runs under each of its tabs in every frame as they slide", moved && fs.every(besideAll("x")), fs.filter((x) => !besideAll("x")(x)).slice(0, 4))
     const c1 = page.locator("[data-tab-id='c1']")
-    await c1.hover(); await wait(200)
-    const closing = await frames(page, lineProbe, "sC", () => c1.locator("[data-tab-close]").click(), 700)
+    await c1.hover(); await ui.idle()
+    const closing = await frames(page, lineProbe, "sC", () => c1.locator("[data-tab-close]").click())
     const xs = closing.map((x) => x.next)
     check("the bar: a view's tab closed shrinks away once, the tab after it moving over and never jumping back, the line under them", xs[0] - xs.at(-1) > 20 && falling(xs, 0.5)
       && closing.every((x) => !x.tabs.length || besideAll("x")(x)), xs.map(Math.round))
@@ -218,10 +224,10 @@ try {
 
   // ---------- which tab shows after a close (Chrome's) ----------
   {
-    const { ctx, page } = await open()
+    const { ctx, page, ui } = await open()
     const shown = () => page.$eval("[data-tab-bar] [role=tab][aria-selected=true]", (e) => e.closest("[data-tab-id]").dataset.tabId)
     const folded = () => page.$$eval("[data-group-chip]", (els) => els.filter((e) => e.getAttribute("aria-expanded") === "false").map((e) => e.dataset.groupChip).join())
-    const close = async (id) => { const t = page.locator(`[data-tab-id="${id}"]`); await t.hover(); await t.locator("[data-tab-close]").click(); await wait(400); await page.mouse.move(640, 500); await wait(300) }
+    const close = async (id) => { const t = page.locator(`[data-tab-id="${id}"]`); await t.hover(); await t.locator("[data-tab-close]").click(); await ui.idle(); await page.mouse.move(640, 500); await ui.idle() }
     await close("a2")
     check("closing a group's tab shows another of the group (before it, as none is after)", (await shown()) === "a1" && (await folded()) === "sB", [await shown(), await folded()])
     await close("a1")
@@ -230,11 +236,10 @@ try {
   }
 
   // ---------- the Tabs panel ----------
-  appearance({ tabBar: false, theme: "light" })
-  writeFileSync(sidebars.p, JSON.stringify({ left: ["tabs:tabs", "files:files"], right: [], collapsed: [] }) + "\n")
-  await wait(800)
+  await appearance({ tabBar: false, theme: "light" })
+  await lay({ left: ["tabs:tabs", "files:files"], right: [], collapsed: [] })
   {
-    const { ctx, page } = await open()
+    const { ctx, page, ui } = await open()
     const geo = await page.evaluate(() => [...document.querySelectorAll("[data-group-row]")].map((row) => {
       const r = (e) => e.getBoundingClientRect(), label = r(row.querySelector("[data-group-name]")), box = r(row), line = row.closest("[data-open-tabs]").querySelector(`:scope > [data-group-line="${row.dataset.groupRow}"]`)
       return { id: row.dataset.groupRow, open: row.getAttribute("aria-expanded") === "true", mid: [label.top + label.height / 2, box.top + box.height / 2], rail: line && [r(line).left, r(line).top], label: [label.left, label.right, label.top, label.bottom] }
@@ -245,8 +250,8 @@ try {
     {
       const a = await page.locator("[data-open-tabs] [data-slide='a1']").boundingBox(), b = await page.locator("[data-open-tabs] [data-slide='a2']").boundingBox()
       await page.mouse.move(a.x + 60, a.y + a.height / 2); await page.mouse.down()
-      const fs = await frames(page, lineProbe, "sA", async () => { await page.mouse.move(a.x + 60, a.y + a.height / 2 + 8, { steps: 3 }); await page.mouse.move(a.x + 60, b.y + b.height * 0.7, { steps: 10 }) }, 600)
-      await page.mouse.up(); await wait(500)
+      const fs = await frames(page, lineProbe, "sA", async () => { await page.mouse.move(a.x + 60, a.y + a.height / 2 + 8, { steps: 3 }); await page.mouse.move(a.x + 60, b.y + b.height * 0.7, { steps: 10 }) })
+      await page.mouse.up(); await ui.idle()
       const moved = fs.some((x) => x.tabs.length === 2 && Math.abs(x.tabs[0][0] - fs[0].tabs[0][0]) > 2)
       check("the panel: dragged within its group, the line runs by each of its tabs in every frame as they slide", moved && fs.every(besideAll("y")), fs.filter((x) => !besideAll("y")(x)).slice(0, 4))
     }
@@ -264,21 +269,20 @@ try {
     // A view's tab closed (it asks its view first, a moment even when it says yes): it shrinks away once, the line's
     // end rising with it, never back for a frame.
     {
-      await page.hover("[data-open-tabs] [data-slide='c1']"); await wait(200)
-      const fs = await frames(page, lineProbe, "sC", () => page.locator("[data-open-tabs] [data-slide='c1'] button[aria-label^='Close']").click(), 700)
+      await page.hover("[data-open-tabs] [data-slide='c1']"); await ui.idle()
+      const fs = await frames(page, lineProbe, "sC", () => page.locator("[data-open-tabs] [data-slide='c1'] button[aria-label^='Close']").click())
       const ys = fs.map((x) => x.next)
       check("the panel: a view's tab closed shrinks away once, the tab under it rising and never jumping back", ys[0] - ys.at(-1) > 20 && falling(ys, 0.5) && fs.every((x) => !x.tabs.length || besideAll("y")(x)), ys.map(Math.round))
     }
     await page.screenshot({ path: `${OUT}panel-light.png`, clip: { x: 0, y: 0, width: 300, height: 380 } })
-    appearance({ theme: "dark" }); await until(() => page.evaluate(() => document.documentElement.classList.contains("dark")), 5000); await wait(400)
+    await appearance({ theme: "dark" }); await until(() => page.evaluate(() => document.documentElement.classList.contains("dark")), 5000); await ui.idle()
     await page.screenshot({ path: `${OUT}panel-dark.png`, clip: { x: 0, y: 0, width: 300, height: 380 } })
     await ctx.close()
   }
   // A big group opened and folded in the Tabs panel over others: the panels under it hold still while the Tabs panel is
   // full (it used to snap to its rows mid-way, a row up or down each frame), and otherwise move one way only, ending where
   // they started (folding, it used to drop to its end at once and jump back).
-  writeFileSync(sidebars.p, JSON.stringify({ left: ["tabs:tabs", "inbox:inbox", "files:files"], right: [], collapsed: [] }) + "\n")
-  await wait(800)
+  await lay({ left: ["tabs:tabs", "inbox:inbox", "files:files"], right: [], collapsed: [] })
   {
     const notes = readdirSync(VAULT, { recursive: true }).filter((f) => f.endsWith(".md") && !f.startsWith(".")).slice(0, 10)
     const big = { groups: [{ id: "sP", name: "Big", color: "yellow", collapsed: true }, { id: "sO", name: "Other", color: "orange" }],
@@ -287,8 +291,9 @@ try {
     for (const height of [600, 900]) {
       const ctx = await browser.newContext({ viewport: { width: 1280, height }, deviceScaleFactor: 2 })
       await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(big))
-      const page = watch(await ctx.newPage())
-      await page.goto(B); await page.waitForSelector("[data-group-row='sP']"); await wait(1200); await page.mouse.move(900, 400)
+      const page = watch(await ctx.newPage()), ui = app(page)
+      uis.set(page, ui)
+      await page.goto(B); await page.waitForSelector("[data-group-row='sP']"); await ui.idle(); await page.mouse.move(900, 400)
       const opening = await frames(page, below, "sP", () => clickIn(page, "[data-group-row='sP']"))
       const fold = await frames(page, below, "sP", () => clickIn(page, "[data-group-row='sP']"))
       const ys = [...opening, ...fold], at = ys[0]
@@ -303,11 +308,12 @@ try {
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
     await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(seed))
-    const page = watch(await ctx.newPage())
-    await page.goto(B); await page.waitForSelector("[data-phone-bar]"); await wait(1200)
-    await page.click("[aria-label='Open sidebar']"); await page.waitForSelector("[data-phone-drawer] [data-group-row='sB']"); await wait(800)
+    const page = watch(await ctx.newPage()), ui = app(page)
+    uis.set(page, ui)
+    await page.goto(B); await page.waitForSelector("[data-phone-bar]"); await ui.idle()
+    await page.click("[aria-label='Open sidebar']"); await page.waitForSelector("[data-phone-drawer] [data-group-row='sB']"); await ui.idle()
     const probe = (id) => [...document.querySelectorAll(`[data-phone-drawer] [data-in-group="${id}"]`)].map((e) => e.getBoundingClientRect().height)
-    const fs = await frames(page, probe, "sB", () => clickIn(page, "[data-phone-drawer] [data-group-row='sB']"), 600)
+    const fs = await frames(page, probe, "sB", () => clickIn(page, "[data-phone-drawer] [data-group-row='sB']"))
     const end = fs.at(-1), hs = fs.filter((x) => x.length === 2).map((x) => x[0])
     check("a phone's drawer: a group opened, its tabs grow straight to their size, never past it", end.length === 2 && end[0] > 30 && hs.length > 3 && rising(hs, 0.3) && hs.every((h) => h <= end[0] + 0.5), hs.map(Math.round))
     await ctx.close()

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { Check, Info } from "lucide-react"
 import { haptic } from "@/core/haptics"
 import { cell } from "@/core/signal"
+import { trackSoon } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
 
 /** One state of a setting and its picture (drawn in a `Frame`, to fill its box). */
@@ -28,6 +29,10 @@ const DELAY = 350, WARM = 500, LINGER = 120
 type Open = { id: string; option: string | null; cold: boolean; up: boolean; glide?: boolean }
 const open = cell<Open | null>(null)
 let warmUntil = 0, opening = 0, closing = 0
+const due = new Set<number>()
+const after = (ms: number, run: () => void) => { const t = window.setTimeout(() => { due.delete(t); run() }, ms); due.add(t); return t }
+const cancel = (t: number) => { clearTimeout(t); due.delete(t) }
+trackSoon("setting preview", () => due.size > 0 || Date.now() < warmUntil)
 let pending: Omit<Open, "cold"> | null = null
 let shushed = false
 let pressed = 0, lastY = 0
@@ -55,27 +60,27 @@ function headingToCard(p: [number, number]) {
 
 function want(id: string, option: string | null, up: boolean, byPointer = true, at?: [number, number]) {
   if ((byPointer && shushed) || !matchMedia("(any-hover: hover)").matches) return
-  clearTimeout(aiming)
+  cancel(aiming)
   const cur = open.get()
   if (cur && cur.id !== id && at && headingToCard(at)) {
-    clearTimeout(closing)
-    aiming = window.setTimeout(() => { leftAt = null; if (over === id) want(id, option, up, byPointer); else hide() }, 120)
+    cancel(closing)
+    aiming = after(120, () => { leftAt = null; if (over === id) want(id, option, up, byPointer); else hide() })
     return
   }
-  clearTimeout(closing); clearTimeout(opening)
+  cancel(closing); cancel(opening)
   if (cur?.id === id) return cur.option !== option && open.set({ ...cur, option })
   if (cur || Date.now() < warmUntil) return open.set({ id, option, up, cold: false, glide: !!cur })
   pending = { id, option, up }
-  opening = window.setTimeout(() => { if (pending) open.set({ ...pending, cold: true }); pending = null }, DELAY)
+  opening = after(DELAY, () => { if (pending) open.set({ ...pending, cold: true }); pending = null })
 }
 function hide() {
-  clearTimeout(closing); clearTimeout(opening); pending = null
+  cancel(closing); cancel(opening); pending = null
   if (open.get()) warmUntil = Date.now() + WARM
   open.set(null)
 }
 
-const later = () => { clearTimeout(closing); closing = window.setTimeout(hide, LINGER) }
-const keep = () => { clearTimeout(closing); clearTimeout(aiming); leftAt = null }
+const later = () => { cancel(closing); closing = after(LINGER, hide) }
+const keep = () => { cancel(closing); cancel(aiming); leftAt = null }
 const optionAt = (t: EventTarget | null) => (t instanceof Element && t.closest("[data-option]")?.getAttribute("data-option")) || null
 
 export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElement | null>, { said }: { said?: boolean } = {}) {
@@ -101,7 +106,7 @@ export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElem
       onPointerLeave: (e: ReactPointerEvent) => {
         if (e.pointerType !== "mouse") return
         if (over === id) over = null
-        if (pending?.id === id) { clearTimeout(opening); pending = null }
+        if (pending?.id === id) { cancel(opening); pending = null }
         if (shown) leftAt = { x: e.clientX, y: e.clientY, t: Date.now() }
         else if (leftAt && headingToCard([e.clientX, e.clientY])) return
         later()
@@ -165,12 +170,10 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
     const scroll = (e: Event) => { if (e.target instanceof Node && e.target.contains(row.current)) hide() }
     const down = (e: PointerEvent) => { const t = e.target as Node; if (!row.current?.contains(t) && !el.current?.contains(t)) hide() }
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); shushed = true; hide() } }
-    addEventListener("scroll", scroll, true); addEventListener("pointerdown", down, true); addEventListener("keydown", key, true)
-    addEventListener("blur", hide); addEventListener("resize", hide)
-    return () => {
-      removeEventListener("scroll", scroll, true); removeEventListener("pointerdown", down, true); removeEventListener("keydown", key, true)
-      removeEventListener("blur", hide); removeEventListener("resize", hide)
-    }
+    const off = new AbortController(), { signal } = off
+    addEventListener("scroll", scroll, { capture: true, signal }); addEventListener("pointerdown", down, { capture: true, signal }); addEventListener("keydown", key, { capture: true, signal })
+    addEventListener("blur", hide, { signal }); addEventListener("resize", hide, { signal })
+    return () => off.abort()
   }, [row])
   const current = shownOptions.findIndex((o) => o.value === preview.value)
   const pad = { right: "pl-1.5", below: "pt-1.5", above: "pb-1.5" }[at?.side ?? "below"]
