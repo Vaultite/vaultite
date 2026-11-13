@@ -1,10 +1,7 @@
-// Advanced Slides' layouts (slides.ts reads them): splits, grids and blocks as boxes, the Markdown in each drawn as the
-// rest of the slide is; what a box gives its items (a split's columns) goes onto them once they're drawn.
 import { useCallback } from "react"
 import { cn, NoteBody, type Store } from "@vaultite"
 import type { Box } from "./slides"
 
-/** Light or dark, for a background colour; null when it isn't one (or is see-through). */
 const tones = new Map<string, "light" | "dark" | null>()
 export function toneOf(color: string) {
   if (tones.has(color)) return tones.get(color)!
@@ -20,7 +17,6 @@ export function toneOf(color: string) {
   tones.set(color, tone)
   return tone
 }
-/** The classes that give what's on `bg` the app's colours for its tone. */
 export const toneClass = (bg: string) => { const t = toneOf(bg); return t ? `text-foreground ${t === "dark" ? "dark" : "scheme-preview"}` : "" }
 
 const ANIMATIONS: Record<string, string> = {
@@ -28,7 +24,6 @@ const ANIMATIONS: Record<string, string> = {
   slideDownIn: "translate3d(0, -150px, 0)", scaleUp: "scale(.78)", scaleDown: "scale(1.23)", fadeOut: "", slideRightOut: "translate3d(200px, 0, 0)",
   slideLeftOut: "translate3d(-200px, 0, 0)", slideUpOut: "translate3d(0, -150px, 0)", slideDownOut: "translate3d(0, 150px, 0)", scaleUpOut: "scale(1.23)", scaleDownOut: "scale(.78)",
 }
-/** A box's Markdown is its items (the wrappers drawn through), as in Advanced Slides; its `animate` classes. */
 export const LAYOUT_CSS = `
 [data-slide-box] > .note-body, [data-slide-box] > .note-body > .note-body-md { display: contents; }
 [data-slide-box] > .note-body > .note-body-md > :last-child { margin-bottom: 0; }
@@ -42,7 +37,6 @@ ${Object.entries(ANIMATIONS).map(([name, t]) => `@keyframes slides-${name} { ${/
 @media (prefers-reduced-motion: reduce) { ${Object.keys(ANIMATIONS).map((n) => `[data-deck] .${n}`).join(", ")} { animation-duration: 1ms; } }
 `
 
-/** What a box's items are: the blocks its Markdown draws (embeds and blocks too), and the boxes in it. */
 function* itemsOf(box: Element): Generator<HTMLElement> {
   for (const c of box.children) {
     if (!c.classList.contains("note-body")) { yield c as HTMLElement; continue }
@@ -53,7 +47,6 @@ function* itemsOf(box: Element): Generator<HTMLElement> {
   }
 }
 
-/** Each box's item style onto its items, again whenever they're drawn anew. */
 export function layOut(root: HTMLElement) {
   for (const b of root.querySelectorAll<HTMLElement>("[data-kids]")) {
     const nth: string[] = JSON.parse(b.dataset.nth || "[]")
@@ -70,7 +63,7 @@ type Ctx = { store: Store; path: string; fm: string }
 function BoxView({ box, ctx }: { box: Box; ctx: Ctx }) {
   const bg = box.bg && CSS.supports("color", box.bg) ? box.bg : ""
   const style = [box.style, bg && `background-color: ${bg}`].filter(Boolean).join("; ")
-  // (set as written: a deck's own CSS, which React's style prop would have to parse)
+  // A deck's own CSS, which React's style prop would have to parse.
   const ref = useCallback((el: HTMLDivElement | null) => { if (el) el.setAttribute("style", style) }, [style])
   return (
     <div ref={ref} data-slide-box={box.kind} className={cn(box.cls, bg && toneClass(bg)) || undefined} data-fragment-index={box.index}
@@ -80,7 +73,6 @@ function BoxView({ box, ctx }: { box: Box; ctx: Ctx }) {
   )
 }
 
-/** A slide's boxes and the Markdown between them. */
 export function Boxes({ items, ctx }: { items: (Box | string)[]; ctx: Ctx }) {
   return items.map((it, k) => typeof it === "string"
     ? <NoteBody key={k} store={ctx.store} path={ctx.path} body={it} fm={ctx.fm} className="slide-body" />

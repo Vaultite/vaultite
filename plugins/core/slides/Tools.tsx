@@ -1,10 +1,7 @@
-// Reveal.js' plugins as Advanced Slides has them, drawn the app's way: a laser pointer (Q), ink on a slide and a board
-// to write on (C, B: its chalkboard), the overview of every slide (O) and the time bar (`timeForPresentation`).
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react"
 import { Eraser, Presentation as Board, Undo2, X } from "lucide-react"
 import { cn } from "@vaultite"
 
-/** A line drawn on a slide, in its layout's px. */
 export type Stroke = { color: string; pts: number[] }
 export const INKS = ["red", "yellow", "blue", "green", "foreground"] as const
 export type InkColor = (typeof INKS)[number]
@@ -12,7 +9,6 @@ const WIDTH = 4
 
 const path = (pts: number[]) => pts.length < 4 ? `M${pts[0]} ${pts[1]}l0 0` : `M${pts[0]} ${pts[1]}${pts.slice(2).map((v, k) => (k % 2 ? ` ${v}` : `L${v}`)).join("")}`
 
-/** What's been drawn on a slide (or its board), over it at its size; `pen`: drawing now, in that colour. */
 export function Ink({ w, h, strokes, pen, board, onStroke }: { w: number; h: number; strokes: Stroke[]; pen: InkColor | null; board?: boolean; onStroke: (s: Stroke) => void }) {
   const [live, setLive] = useState<Stroke | null>(null)
   const at = (e: PointerEvent<SVGSVGElement>) => {
@@ -40,7 +36,6 @@ export function Ink({ w, h, strokes, pen, board, onStroke }: { w: number; h: num
 const tool = "grid size-9 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
 const NAMES: Record<InkColor, string> = { red: "Red", yellow: "Yellow", blue: "Blue", green: "Green", foreground: "Text colour" }
 
-/** The pen's bar while drawing: colours, undo, clear, the board, done. */
 export function InkBar({ color, board, canUndo, onColor, onUndo, onClear, onBoard, onDone }: {
   color: InkColor; board: boolean; canUndo: boolean; onColor: (c: InkColor) => void; onUndo: () => void; onClear: () => void; onBoard: () => void; onDone: () => void
 }) {
@@ -63,7 +58,6 @@ export function InkBar({ color, board, canUndo, onColor, onUndo, onClear, onBoar
   )
 }
 
-/** A laser pointer where the mouse is over `area`, which hides its own cursor. */
 export function Laser({ area }: { area: RefObject<HTMLElement | null> }) {
   const dot = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -88,8 +82,6 @@ export function Laser({ area }: { area: RefObject<HTMLElement | null> }) {
   )
 }
 
-/** Time taken against `timeForPresentation` (s), as a bar filling up over it; past the time, red. Paused with the
- *  presenter's timer. */
 export function TimeBar({ total, start, paused }: { total: number; start: number; paused: number | null }) {
   const taken = ((paused ?? Date.now()) - start) / 1000
   const [over, setOver] = useState(taken >= total)
@@ -108,7 +100,6 @@ export function TimeBar({ total, start, paused }: { total: number; start: number
 }
 export const TOOLS_CSS = "@keyframes slides-time { from { width: 0 } to { width: 100% } }"
 
-/** Every slide at a glance: arrows move, Enter or a click goes there, O or Escape closes it. */
 export function Overview({ n, at, label, thumb, onPick, onClose }: { n: number; at: number; label: (i: number) => string; thumb: (i: number) => ReactNode; onPick: (i: number) => void; onClose: () => void }) {
   const [sel, setSel] = useState(at)
   const grid = useRef<HTMLDivElement>(null)
@@ -146,5 +137,4 @@ export function Overview({ n, at, label, thumb, onPick, onClose }: { n: number; 
     </div>
   )
 }
-/** The open overview's keys, for the presentation's key handler (its window's and the presenter's). */
 export const overviewKeys: { current: ((key: string) => boolean) | null } = { current: null }

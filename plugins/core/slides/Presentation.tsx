@@ -1,5 +1,3 @@
-// A note presented one slide at a time, scaled to fit, with the usual keys, clicks and swipes; it follows the note's
-// changes while shown. Advanced Slides decks (slides.ts) also get their notes, fragments, backgrounds and <style>.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject, type TouchEvent } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, LayoutGrid, Maximize2, Minimize2, NotebookText, Pencil, ScreenShare, X } from "lucide-react"
@@ -13,26 +11,20 @@ import { revealTheme } from "./themes"
 import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
 import { slideMotion, type Leaving } from "./transitions"
 
-/** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */
 async function textOf(path: string) {
   const f = activeFile()
   return f?.path === path ? f.text() : (await readFile(path)).text
 }
 
-/** The widest a slide's text is laid out (then scaled up to the screen), and how far it's scaled at most. */
 const BASE = 720
 const MAX = 2.2
 const MIN = 0.6
-/** A title slide's text (a slide of only headings), bigger and centred. */
 export const TITLE = "text-center text-[22px] leading-[30px]"
-/** How a deck's slides are laid out. A themed deck as reveal.js lays one out: every slide its `width` × `height`
- *  (960 × 700), so its px (a theme's text, an annotation's) are the deck's. Else BASE wide, a placed slide of its shape. */
 export function frameOf(props: Record<string, unknown>) {
   const s = sizeOf(props)
   return revealTheme(props.theme) ? { w: s.w, h: s.h, fixed: true } : { w: BASE, h: Math.round((BASE * s.h) / s.w), fixed: false }
 }
 type Frame = ReturnType<typeof frameOf>
-/** A slide's content in its frame: a placed slide's is that shape, a themed deck's at least that tall. */
 export function SlideFrame({ slide, frame, center = true, children }: { slide?: Slide; frame: Frame; center?: boolean; children: ReactNode }) {
   if (slide?.canvas) return <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: frame.h }}>{children}</div>
   if (frame.fixed) return <div data-slide-frame className={cn("relative flex flex-col", center ? "justify-center" : "justify-start")} style={{ minHeight: frame.h }}>{children}</div>
@@ -40,8 +32,6 @@ export function SlideFrame({ slide, frame, center = true, children }: { slide?: 
 }
 
 type Bounds = { margin?: number; minScale?: number; maxScale?: number }
-/** Scale `inner` (laid out `base` wide, or the stage's width when narrower; `fixed`: always, scaled down to fit) to
- *  fit `stage`, within the deck's margin and scales. */
 function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown, fixed = false, base = BASE, { margin = 0, minScale, maxScale }: Bounds = {}) {
   const [fit, setFit] = useState({ w: base, scale: 1, h: 0 })
   const measure = useCallback(() => {
@@ -68,8 +58,6 @@ function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDi
   return fit
 }
 
-/** Element annotations onto what they annotate, as reveal.js does: the element just before the comment, else the one
- *  it's in; a comment on its own line, the block above. Fragmented list items: their item. */
 export function annotate(root: HTMLElement, slide: Slide) {
   for (const mark of root.querySelectorAll<HTMLElement>('span[class^="slide-el-"]')) {
     const a = slide.els[Number(mark.className.slice(9))]
@@ -91,7 +79,6 @@ export function annotate(root: HTMLElement, slide: Slide) {
   }
 }
 
-/** The slide's fragments in the order they come in: by data-fragment-index (one index, one step), then the rest. */
 function fragmentsOf(root: HTMLElement): HTMLElement[][] {
   const at = new Map<number, HTMLElement[]>(), rest: HTMLElement[][] = []
   for (const f of root.querySelectorAll<HTMLElement>(".fragment")) {
@@ -103,7 +90,6 @@ function fragmentsOf(root: HTMLElement): HTMLElement[][] {
   return [...[...at].sort((a, b) => a[0] - b[0]).map((e) => e[1]), ...rest]
 }
 
-/** The app's light or dark and colour scheme, as they change. */
 function useLook() {
   const read = () => { const r = document.documentElement; return `${r.classList.contains("dark") ? "dark" : "light"} ${r.dataset.scheme ?? ""}` }
   const [look, setLook] = useState(read)
@@ -113,7 +99,6 @@ function useLook() {
 }
 const IMAGE = /^(https?:|data:image\/)|\.(png|jpe?g|gif|webp|avif|svg|bmp)([?#]|$)/i
 
-/** Fragments as reveal.js draws them; the deck's own CSS vars (--r-*) where the app's would be. */
 export const DECK_CSS = `
 [data-deck] { --r-code-font: var(--font-code); background-color: var(--r-background-color, transparent); color: var(--r-main-color, inherit); }
 [data-deck] :is(code, pre, kbd) { font-family: var(--r-code-font), var(--font-code); }
@@ -164,7 +149,6 @@ ${[1, 2, 3, 4, 5, 6].map((n) => `[data-deck-theme] .note-prose .h${n} { font-siz
 [data-deck-theme] ::selection { color: var(--r-selection-color); background: var(--r-selection-background-color); }
 `
 
-/** A slide's background (its own, else the deck's `bg`), and the tone its text takes to read on it. */
 export function backgroundOf(slide: Slide | undefined, props: Record<string, unknown>, store: Store, path: string) {
   const raw = (slide?.bg ?? (typeof props.bg === "string" ? props.bg : "")).trim()
   const at = slide?.bgAttrs ?? {}
@@ -183,14 +167,11 @@ export function backgroundOf(slide: Slide | undefined, props: Record<string, unk
   return { style, tone }
 }
 
-/** A slide by its first heading, else its text. */
 const nextName = (md: string) => {
   const plain = md.replace(/<span class="slide-el-\d+"><\/span>/g, "")
   return snippet(/^#{1,6}\s+(.+)$/m.exec(plain)?.[1] ?? plain.replace(/!\[\[[^\]]*\]\]/g, ""))
 }
 
-/** The deck's stylesheet files (`css:`, a `theme:` that's one), as one sheet: read again when one changes, a missing
- *  or unreadable one left out. */
 function useSheets(path: string, props: Record<string, unknown>) {
   const refs = cssFiles(props).join("\n")
   const [css, setCss] = useState("")
@@ -213,8 +194,6 @@ function useSheets(path: string, props: Record<string, unknown>) {
   return css
 }
 
-/** The slide templates a deck names (and those they name), by name: their notes' text without frontmatter, read
- *  again when one changes. */
 function useTemplates(path: string, body: string, props: Record<string, unknown>, store: Store) {
   const [loaded, setLoaded] = useState(() => new Map<string, string>())
   const [n, setN] = useState(0)
@@ -244,16 +223,12 @@ function useTemplates(path: string, body: string, props: Record<string, unknown>
   return loaded
 }
 
-/** Speaker notes, shown or not, for every presentation till the app reloads. */
 let notesShown = false
 
-/** Where a presenter view can open (a window of its own): the desktop app, or a browser with a mouse. */
 const popups = () => isDesktop() && matchMedia("(pointer: fine)").matches
 
 type Source = { store: Store; path: string; fm: string; props: Record<string, unknown>; text: string | null }
 
-/** A slide as the presenter view shows it (now, or what's next), filling its box: background, theme, tone, its
- *  Markdown or layout scaled to fit and its first `step` fragments in. */
 function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slide; i: number; step: number; onClick?: (e: MouseEvent) => void }) {
   const { store, path, fm, props, text } = src
   const stage = useRef<HTMLDivElement>(null)
@@ -306,14 +281,12 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
 export function Presentation({ path, onClose }: { path: string; onClose: () => void }) {
   const exporting = exportAsked.use() === path
   const [text, setText] = useState<string | null>(null)
-  // The slide, and how many of its fragments are in (Infinity: all, coming back to it).
   const [pos, setPos] = useState({ at: 0, step: 0 })
   const [full, setFull] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const frags = useRef<HTMLElement[][]>([])
-  // How many fragments the slide has, for what the presenter view shows next.
   const [count, setCount] = useState(0)
   const screenBox = useRef<HTMLDivElement>(null)
   const store = getStore() as Store
@@ -330,14 +303,12 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const css = useMemo(() => scopeCss(`${sheets}\n${deck.css}`, "[data-deck]"), [sheets, deck.css])
   const { slides } = deck
   const hasNotes = slides.some((s) => s.notes)
-  // Reveal's plugins (Tools.tsx): the laser pointer, ink on slides and boards (kept while presenting), the overview.
   const [laser, setLaser] = useState(false)
   const [pen, setPen] = useState<InkColor | null>(null)
   const [color, setColor] = useState<InkColor>("red")
   const [board, setBoard] = useState(false)
   const [ink, setInk] = useState<Record<string, Stroke[]>>({})
   const [overview, setOverview] = useState(false)
-  // The time taken (the presenter view's timer), against frontmatter's timeForPresentation (s).
   const [timer, setTimer] = useState(() => ({ start: Date.now(), paused: null as number | null }))
   const total = Number(props.timeForPresentation) > 0 ? Number(props.timeForPresentation) : 0
   const [notes, setNotes] = useState(() => notesShown || props.showNotes === true)
@@ -348,7 +319,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const slide = slides[i] as Slide | undefined
   const md = slide?.md ?? ""
   const canvas = !!slide?.canvas
-  // The deck's size (frameOf) and scale (reveal's 1 is the deck's width).
   const deckSize = useMemo(() => sizeOf(props), [props])
   const frame = useMemo(() => frameOf(props), [props])
   const per = deckSize.w / frame.w
@@ -356,7 +326,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const theme = useMemo(() => revealTheme(props.theme), [props.theme])
   const look = useLook()
 
-  // Annotations and fragments are drawn onto the slide's DOM, again whenever its Markdown is drawn anew.
   const draw = useCallback(() => {
     const el = inner.current
     if (!el) return
@@ -376,7 +345,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     return () => mo.disconnect()
   }, [draw])
 
-  // A new slide comes in its way: the one leaving is kept (transitions.ts) till the new one is drawn, a frame later.
   const [motion] = useState(slideMotion)
   const gone = useRef<Leaving | null>(null)
   const layer = useRef<HTMLDivElement>(null)
@@ -397,7 +365,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     return () => cancelAnimationFrame(f)
   }, [i]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Forward or back a step: a fragment, else a slide (down a column, then on). `col`: a column at a time. */
   const go = (d: 1 | -1, col = false) => {
     const at = Math.min(pos.at, n - 1), count = frags.current.length, step = Math.min(pos.step, count)
     if (d > 0 && step < count) return setPos({ at, step: step + 1 })
@@ -409,8 +376,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   }
   const jump = (at: number) => moveTo({ at, step: 0 })
 
-  // Full screen where the browser has it (not iPhones: there the presentation fills the page). Leaving it (Escape,
-  // which the browser takes) ends the presentation, unless it was F or the presenter view opening (Chrome leaves it).
+  // iPhones have no full screen. The browser takes Escape, and Chrome leaves full screen when a popup opens.
   const leaving = useRef(false)
   const opened = useRef(0)
   const toggleFull = useCallback(() => {
@@ -434,8 +400,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     }
   }, [onClose])
 
-  // The presenter view: a window of its own (Presenter.tsx), closed with the presentation. Its slides are drawn as on
-  // this screen, at its size.
   const [presenter, setPresenter] = useState<PresenterWindow | null>(null)
   const togglePresenter = () => {
     if (presenter) return setPresenter(null)
@@ -461,7 +425,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     return () => ro.disconnect()
   }, [presenter, overview])
 
-  /** The presentation's keys, in its window and the presenter's (there F is that window's). */
   const key = (e: Keys, inPresenter = false) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return
     const k = e.key
@@ -488,8 +451,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     e.stopPropagation()
   }
 
-  // A click on the slide: the left third goes back, the rest forward; links, players and buttons do their own thing
-  // (a link to a note ends the presentation, to show it).
   const click = (e: MouseEvent) => {
     const t = e.target as Element
     if (t.closest("[data-wiki], [data-tag]")) { onClose(); return }
@@ -508,10 +469,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) { e.preventDefault(); go(dx < 0 ? 1 : -1) }
   }
 
-  // The slide's background (its own, else the deck's `bg`), and the tone its text takes to read on it.
   const bg = useMemo(() => backgroundOf(slide, props, store, path), [slide, props, store, path])
 
-  // The slide's own class and style (`<!-- .slide: … -->`).
   const box = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => { if (slide?.style) box.current?.setAttribute("style", slide.style); else box.current?.removeAttribute("style") }, [slide?.style, i])
 
@@ -521,7 +480,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const empty = !md && !slide?.bg && !slide?.boxes
   const ctx = { store, path, fm }
   const content = slide?.boxes ? <Boxes items={slide.boxes} ctx={ctx} /> : md && <NoteBody store={store} path={path} body={md} fm={fm} className="slide-body" />
-  // A tone other than the app's draws the scheme's other mode (Classic's, for a scheme with one mode).
   const other = bg.tone && bg.tone !== look.mode ? bg.tone : null
   const scheme = other && look.scheme && onlyMode(look.scheme) !== (other === "dark" ? "light" : "dark") ? look.scheme : undefined
   const src: Source = { store, path, fm, props, text }
@@ -545,7 +503,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
       <style>{DECK_CSS}{LAYOUT_CSS}{TOOLS_CSS}{css}</style>
       <div ref={screenBox} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
         data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
-        {/* the deck's own CSS reaches what's in [data-deck], never the controls; a theme's --r-* come from above it */}
         <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {bg.style && <div ref={bgEl} aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
           <div ref={layer} aria-hidden className="pointer-events-none absolute inset-0" />

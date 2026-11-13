@@ -1,5 +1,3 @@
-// reveal.js' and Advanced Slides' themes in the app's colours: each keeps its character (heading font, case and weight,
-// accent hue, background tone, text size) with colours mixed from the scheme's tokens. No imports: tests run it on Node.
 
 export type Tone = "light" | "dark"
 export type RevealTheme = { name: string; tone: Tone; vars: Record<string, string> }
@@ -7,32 +5,26 @@ export type RevealTheme = { name: string; tone: Tone; vars: Record<string, strin
 const mix = (a: string, b: string, pct: number) => `color-mix(in oklab, ${a} ${100 - pct}%, ${b})`
 const T = (t: string) => `var(--${t})`
 const TEXT = "var(--font-text, var(--font-sans))"
-// The themes' own fonts first (when installed), then a look-alike or the app's.
 const GOTHIC = "'League Gothic', 'Bebas Neue', Impact, 'Avenir Next Condensed', 'Arial Narrow', sans-serif"
 const SOURCE = `'Source Sans Pro', 'Source Sans 3', ${TEXT}`
 const SERIF = "'Palatino Linotype', 'Book Antiqua', Palatino, 'URW Palladio L', ui-serif, Georgia, serif"
-// League's and Beige's stacked 3D title, its greys from the scheme's.
 const g = (pct: number) => mix(T("gray"), "white", pct)
 const EXTRUDE = `0 1px 0 ${g(60)}, 0 2px 0 ${g(56)}, 0 3px 0 ${g(48)}, 0 4px 0 ${g(46)}, 0 5px 0 ${g(36)}, 0 6px 1px rgb(0 0 0 / .1), 0 0 5px rgb(0 0 0 / .1), 0 1px 3px rgb(0 0 0 / .3), 0 3px 5px rgb(0 0 0 / .2), 0 5px 10px rgb(0 0 0 / .25), 0 20px 20px rgb(0 0 0 / .15)`
 
-/** Heading sizes (em of the text), reveal's: its template's, black and white's smaller ones, consult's. */
+// reveal.js' heading sizes (em of the text): its template's, black and white's, consult's.
 const SIZES = { template: [3.77, 2.11, 1.55, 1, 0.8, 0.6], sans: [2.5, 1.6, 1.3, 1, 0.8, 0.6], consult: [3.75, 1.875, 1.5, 1, 0.75, 0.625] }
 
 type Spec = {
   tone: Tone; bg: string; link: string
-  /** Body and heading text colours (default the scheme's foreground). */
   main?: string; heading?: string
-  /** Heading font, case, weight, letter spacing, sizes; text font, size (px of the deck's 960-wide slide), weight. */
   head?: string; upper?: boolean; weight?: number | string; spacing?: string; sizes?: keyof typeof SIZES
   font?: string; size?: number; textWeight?: number
-  /** A radial glow from the middle (reveal's gradient backgrounds), as a % of white; the title's shadow. */
   glow?: number; shadow?: string; lineHeight?: string
   extra?: Record<string, string>
 }
 
 const blackish = (pct: number) => mix(T("background"), "black", pct)
 const whitish = (pct: number) => mix(T("card"), "white", pct)
-// Black and white (and their high-contrast twins): Source Sans, upper case, semibold, larger text.
 const SANS = { head: SOURCE, font: SOURCE, weight: 600, sizes: "sans", size: 42 } as const
 
 const SPECS: Record<string, Spec> = {
@@ -52,13 +44,10 @@ const SPECS: Record<string, Spec> = {
     extra: { "--r-heading-text-shadow": "2px 2px 2px rgb(0 0 0 / .5)", "--r-selection-background-color": mix(T("red"), "black", 15), "--r-selection-color": "white" } },
   dracula: { tone: "dark", bg: mix(T("card"), T("purple"), 12), heading: T("purple"), link: T("pink"), head: TEXT, weight: 600, upper: false,
     extra: { "--r-bold-color": T("orange"), "--r-italic-color": T("yellow"), "--r-inline-code-color": T("green"), "--r-list-bullet-color": T("teal") } },
-  // Advanced Slides' own.
   mattropolis: { tone: "dark", bg: mix(T("background"), T("gray"), 20), glow: 24, link: mix(T("orange"), T("yellow"), 45), lineHeight: "1", font: `Lato, ${TEXT}`, size: 24 },
   consult: { tone: "light", bg: mix(T("card"), T("gray"), 20), main: mix(T("foreground"), T("background"), 25), heading: mix(T("foreground"), T("background"), 25), link: T("blue"), head: `Calibri, Carlito, ${TEXT}`, font: `Calibri, Carlito, ${TEXT}`, weight: 600, upper: false, sizes: "consult", size: 16 },
 }
 
-/** A deck's `theme:` as one of these (by name, any case; `default` is black, as in Advanced Slides), else null: a CSS
- *  file or an unknown name keeps the app's look. */
 export function revealTheme(name: unknown): RevealTheme | null {
   const raw = typeof name === "string" ? name.trim().toLowerCase() : "", key = raw === "default" ? "black" : raw
   const s = Object.hasOwn(SPECS, key) ? SPECS[key] : null

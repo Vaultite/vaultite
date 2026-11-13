@@ -1,5 +1,3 @@
-// Export as HTML: the deck drawn as the presentation draws it, in one file that presents itself in any browser
-// (its images and the fonts it uses inside it; a small player for keys, clicks, swipes, fragments and notes).
 import { useEffect, useRef, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
@@ -9,14 +7,12 @@ import { exportAsked } from "./asked"
 import { isTitleSlide, type Slide } from "./slides"
 import { revealTheme } from "./themes"
 
-
 const dataUrl = (url: string) => fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${r.status}`)))).then((b) => new Promise<string>((ok, no) => {
   const fr = new FileReader()
   fr.onload = () => ok(String(fr.result)); fr.onerror = () => no(fr.error)
   fr.readAsDataURL(b)
 }))
 
-/** Images in, fonts loaded, math and embeds drawn (a slow image is given up on after 15 s, drawn as it is). */
 async function settled(root: HTMLElement) {
   const end = Date.now() + 15_000
   for (const img of root.querySelectorAll("img")) img.loading = "eager"
@@ -27,7 +23,6 @@ async function settled(root: HTMLElement) {
 }
 
 const URL_RE = /url\(\s*(["']?)([^"')]+)\1\s*\)/g
-/** The page's CSS, its addresses absolute, and the @font-faces of the families `root` uses inside it. */
 async function pageCss(root: HTMLElement) {
   const used = new Set<string>()
   for (const el of [root, ...root.querySelectorAll("*")]) for (const f of getComputedStyle(el).fontFamily.split(",")) used.add(f.trim().replace(/^["']|["']$/g, "").toLowerCase())
@@ -65,7 +60,6 @@ body.notes section.on > aside { display: block; position: fixed; top: 0; right: 
 .slide-bar { position: fixed; left: 0; bottom: 0; height: 3px; background: var(--primary); transition: width .2s; }
 `
 
-// Kept in step with Presentation.tsx's keys and fragments.
 const PLAYER = `(() => {
 const S = [...document.querySelectorAll("[data-deck] > section")], bar = document.querySelector(".slide-bar"), count = document.querySelector(".slide-count")
 let i = 0, step = 0
@@ -90,7 +84,6 @@ i = Math.max(0, Math.min(S.length - 1, (parseInt(location.hash.slice(1), 10) || 
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[c]};`)
 
-/** The deck as one HTML file, from its slides drawn in `root`. */
 async function build(root: HTMLElement, name: string, deckCss: string, theme: string | undefined) {
   const copy = root.cloneNode(true) as HTMLElement
   const urls = new Map<string, Promise<string>>()
@@ -119,11 +112,9 @@ async function build(root: HTMLElement, name: string, deckCss: string, theme: st
 `
 }
 
-/** Every slide of the deck drawn off screen, then saved as `<note>.html` (a browser's download). */
 export function DeckExport({ path, slides, fm, props, css }: { path: string; slides: Slide[]; fm: string; props: Record<string, unknown>; css: string }) {
   const root = useRef<HTMLDivElement>(null)
   const store = getStore() as Store
-  // A theme's --r-* on each slide, in its tone, as the presentation has them on its screen.
   const theme = revealTheme(props.theme), frame = frameOf(props), themeName = theme?.name
   const content = (s: Slide) => (s.boxes ? <Boxes items={s.boxes} ctx={{ store, path, fm }} /> : s.md && <NoteBody store={store} path={path} body={s.md} fm={fm} className="slide-body" />)
   useEffect(() => {

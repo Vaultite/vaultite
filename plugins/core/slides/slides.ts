@@ -1,49 +1,33 @@
-// A note's body as slides, read as Obsidian's Advanced Slides reads a deck (separators, notes, annotations, fragments,
-// <style>), never inside code. No imports: tests run it on Node.
 
 export type Annotation = { cls: string; style: string; bg?: string; index?: number; li?: boolean; data?: Record<string, string> }
-/** A layout box (`<split>`, `<grid>`, a `::: block`): what's in it in order, Markdown or boxes. `kids`: the style each
- *  of its items gets (the blocks its Markdown draws, the boxes in it), `nth`: the k-th one's own. */
 export type Box = { kind: "split" | "grid" | "block"; cls: string; style: string; bg?: string; index?: number; kids: string; nth: string[]; in: (Box | string)[] }
 export type Slide = {
-  /** What the slide shows (Markdown); an element annotation is an empty `<span class="slide-el-N">` in its place. */
   md: string
-  /** Its layout boxes and the Markdown between them, when it has any (`md` is then their Markdown, in order). */
   boxes?: (Box | string)[]
-  /** Something on it is placed (a grid's drop): it's drawn on a fixed slide, CANVAS, that drops are a share of. */
   canvas?: boolean
-  /** Speaker notes (Markdown), or "". */
   notes: string
-  /** Its column, and its place in that column (vertical slides). */
   h: number
   v: number
-  /** Element annotations, by N. */
   els: Annotation[]
-  /** From `<!-- slide … -->`: its background (a colour, an image's address or a [[link]]) and reveal's
-   *  data-background-* (opacity, size, position, repeat), and a class and style for the slide. */
   bg?: string
   bgAttrs: Record<string, string>
   cls: string
   style: string
-  /** Its other data-* (`data-transition`, `data-auto-animate`…), by name without `data-`. */
   data: Record<string, string>
 }
 export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; width?: unknown; height?: unknown; margin?: unknown; minScale?: unknown; maxScale?: unknown; center?: unknown; [fm: string]: unknown }
-/** A slide template's text (without its frontmatter) by the name in its `[[link]]`, or undefined when it isn't there. */
 export type Templates = (name: string) => string | undefined
 
 const SEP = /^\s{0,3}-{3,}\s*$/
 const VSEP = /^\s{0,3}--\s*$/
 const NOTES = /^\s*notes?:/i
 
-/** A frontmatter regex (reveal's), as a line's: its surrounding line breaks dropped; a bad one is matched as text. */
 function lineRegex(src: unknown, fallback: RegExp, flags = ""): RegExp {
   if (typeof src !== "string" || !src.trim()) return fallback
   const s = src.replace(/^(?:\\r\??)?\\n/, "").replace(/(?:\\r\??)?\\n$/, "")
   try { return new RegExp(s, flags) } catch { return new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags) }
 }
 
-/** `text` with `fn` applied outside its code fences only. */
 function outsideCode(text: string, fn: (s: string) => string): string {
   const out: string[] = []
   let buf: string[] = [], fence = ""
@@ -60,7 +44,6 @@ function outsideCode(text: string, fn: (s: string) => string): string {
   return out.join("\n")
 }
 
-/** Each line of `text` with whether it's inside a code fence (its fence lines count as inside). */
 function* fenced(text: string): Generator<[string, boolean]> {
   let fence = ""
   for (const line of text.split("\n")) {
@@ -73,7 +56,7 @@ function* fenced(text: string): Generator<[string, boolean]> {
   }
 }
 
-// (an unquoted value never runs into the next attribute: `style=bg="red"` is bg, as Advanced Slides reads it)
+// Advanced Slides: an unquoted value never runs into the next attribute (`style=bg="red"` is bg).
 const ATTR = /([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(?![^\s"'>]*=["'])([^\s"'>]+)))?/g
 function attrsOf(s: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -81,26 +64,20 @@ function attrsOf(s: string): Record<string, string> {
   return out
 }
 
-/** Advanced Slides' slide, which a drop's px are of. */
 export const CANVAS = { w: 960, h: 700 }
 type Size = { w: number; h: number }
 
-/** The deck's size and scale (frontmatter's width, height, margin, minScale, maxScale, center), Advanced Slides'
- *  defaults where unset; margin and the scales are undefined then, for the app's own. */
 export function sizeOf(opts: DeckOptions) {
   const num = (v: unknown, lo: number, hi: number) => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN; return Number.isFinite(n) && n >= lo && n <= hi ? n : undefined }
   return { w: num(opts.width, 100, 10000) ?? CANVAS.w, h: num(opts.height, 100, 10000) ?? CANVAS.h, margin: num(opts.margin, 0, 0.5),
     minScale: num(opts.minScale, 0.01, 100), maxScale: num(opts.maxScale, 0.01, 100), center: opts.center !== false && opts.center !== "false" }
 }
 const NAMED: Record<string, [number, number]> = { topleft: [0, 0], top: [0.5, 0], topright: [1, 0], left: [0, 0.5], center: [0.5, 0.5], right: [1, 0.5], bottomleft: [0, 1], bottom: [0.5, 1], bottomright: [1, 1] }
-/** Where `align` puts a grid's items: across, then along (`even`: spread out). */
 const ALIGN: Record<string, [string, string]> = { topleft: ["start", "start"], topright: ["end", "start"], bottomright: ["end", "end"], bottomleft: ["start", "end"],
   left: ["start", "even"], right: ["end", "even"], top: ["center", "start"], bottom: ["center", "end"], stretch: ["center", "even"], justify: ["center", "even"], block: ["center", "even"], center: ["center", "center"] }
 const FLEX: Record<string, string> = { start: "flex-start", end: "flex-end", even: "space-evenly", center: "center" }
 const round = (n: number) => +n.toFixed(3)
 
-/** A drop's box as percents of the slide (left, top, width, height): x and y from the left and top, negative from the
- *  right and bottom, or a named place; px are of CANVAS (all of them with `absolute`). Null when it doesn't read. */
 function placeOf(drag: string | undefined, drop: string, abs: boolean, size = CANVAS): number[] | null {
   const nums = (v: string) => v.trim().replace(/(\d)\s*x\s*(?=-?\d)/gi, "$1 ").split(/\s+/)
   const pct = (v: string | undefined, max: number) => (!v || !/^-?\d*\.?\d+(px)?$/i.test(v) ? NaN : /px$/i.test(v) || abs ? Number.parseFloat(v) / max * 100 : Number(v))
@@ -111,7 +88,6 @@ function placeOf(drag: string | undefined, drop: string, abs: boolean, size = CA
   return out.length === 4 && out.every(Number.isFinite) ? out.map(round) : null
 }
 
-/** What a grid's, a split's or an annotation's attributes draw, as Advanced Slides draws them. */
 function lookOf(at: Record<string, string>, kind?: Box["kind"], size = CANVAS) {
   const cls = [...(at.class ?? "").split(/\s+/), ...(at.animate ?? "").split(/\s+/)], st: string[] = [], kids: string[] = [], nth: string[] = []
   const index = Number.parseInt(at.frag ?? at["data-fragment-index"] ?? "", 10)
@@ -133,7 +109,6 @@ function lookOf(at: Record<string, string>, kind?: Box["kind"], size = CANVAS) {
     if (a === "stretch") { cls.push(row ? "stretch-row" : "stretch-column"); kids.push(row ? "flex: 1; height: 100%; width: 1%" : "flex: 1; height: 1%; width: 100%") }
   }
   if (kind === "split") {
-    // (no gap unless one's asked for, as in Advanced Slides)
     const gap = at.gap ? (/^\d*\.?\d+$/.test(at.gap) ? `${at.gap}em` : at.gap) : "0px"
     st.push(`--split-gap: ${gap}`, "display: flex", "flex-flow: row wrap", "align-content: center", "gap: var(--split-gap)")
     kids.push("min-width: 0")
@@ -152,11 +127,8 @@ function lookOf(at: Record<string, string>, kind?: Box["kind"], size = CANVAS) {
 const TAG = /<(\/?)(split|grid)\b((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/gi
 const BLOCK = /^\s*:::\s*([\w-]*)(.*)$/
 const MARK = /<span class="slide-el-(\d+)"><\/span>/g
-/** A line that's only an image: its own block in a box, as Advanced Slides has it (so a split's images are its columns). */
 const IMAGE_LINE = /^\s*!(?:\[[^\]]*\]\([^)]*\)|\[\[[^\]]+\]\])\s*(?:<span class="slide-el-\d+"><\/span>\s*)?$/
 
-/** The slide's Markdown as layout boxes (`<split>`, `<grid>`, `::: block` lines; outside code), or null without any.
- *  An annotation on a `:::` line is its block's; what's left open closes at the slide's end. */
 function layoutOf(md: string, s: Slide, size: Size): (Box | string)[] | null {
   const root: (Box | string)[] = [], open: Box[] = []
   let buf: string[] = [], any = false
@@ -185,7 +157,6 @@ function layoutOf(md: string, s: Slide, size: Size): (Box | string)[] | null {
     any = true
     return open.splice(k)[0]
   }
-  /** A `:::` line's annotations onto its block. */
   const annotateBox = (box: Box | null, rest: string) => {
     for (const m of rest.matchAll(MARK)) {
       const a = s.els[Number(m[1])]
@@ -202,7 +173,6 @@ function layoutOf(md: string, s: Slide, size: Size): (Box | string)[] | null {
     if (code || line.search(TAG) < 0) { buf.push(line); continue }
     let at = 0
     for (const m of line.matchAll(TAG)) {
-      // (not one in `code`)
       if ((line.slice(0, m.index).match(/`/g)?.length ?? 0) % 2) continue
       const before = line.slice(at, m.index)
       if (before.trim()) buf.push(before)
@@ -223,7 +193,6 @@ const SLIDE_NOTE = /<!--\s*(?:\.slide:|slide\b)([\s\S]*?)-->/g
 const ELEMENT_NOTE = /<!--\s*(?:\.element:|element\b)([\s\S]*?)-->/g
 
 const ELEMENT_LINE = /^\s*<!--\s*(?:\.element:|element\b)[\s\S]*-->\s*$/
-/** `text` with `fn` applied outside its inline code spans (`like this`), which show what they hold. */
 function outsideInline(text: string, fn: (s: string) => string): string {
   const kept: string[] = []
   return fn(text.replace(/(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/g, (m) => `\u0000${kept.push(m) - 1}\u0000`)).replace(/\u0000(\d+)\u0000/g, (_, k: string) => kept[Number(k)])
@@ -237,9 +206,8 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp, size: Size)
     if (inNotes) { notes.push(line); continue }
     const m = code ? null : notesRe.exec(line)
     if (m) { inNotes = true; md.push(line.slice(0, m.index)); notes.push(line.slice(m.index + m[0].length)); continue }
-    // A fragmented list: items marked `+` or `1)` come in one at a time, numbered from 1 (with a grid's `frag`).
     if (!code && /^\s*(?:\+|\d{1,9}\))\s+\S/.test(line)) { s.els.push({ cls: "fragment", style: "", li: true, index: ++listFrag }); md.push(`${line} <span class="slide-el-${s.els.length - 1}"></span>`); continue }
-    // An annotation right under a quote or callout is its, not (a lazy line) its last paragraph's.
+    // Markdown would read an annotation under a quote as a lazy line of its last paragraph.
     if (!code && ELEMENT_LINE.test(line) && /^\s*>/.test(md[md.length - 1] ?? "")) md.push("")
     md.push(line)
   }
@@ -274,20 +242,15 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp, size: Size)
   return s
 }
 
-// ---------- slide templates ----------
-
 const TEMPLATE = /(<!--\s*(?:\.slide:|slide\b)[^>]*?)\s*\btemplate\s*=\s*"\[\[([^\]|#]+)[^\]]*\]\]"([\s\S]*?-->)/
 const linkName = (v: unknown) => (typeof v === "string" ? /^\s*\[\[([^\]|#]+)[^\]]*\]\]\s*$/.exec(v)?.[1]?.trim() ?? (v.trim() || undefined) : undefined)
 
-/** The templates `text` names (`<!-- slide template="[[name]]" -->`, and frontmatter's `defaultTemplate`), to load. */
 export function templateNames(text: string, opts: DeckOptions = {}): string[] {
   const names = [...text.matchAll(new RegExp(TEMPLATE.source, "g"))].map((m) => m[2].trim())
   const def = linkName(opts.defaultTemplate)
   return [...new Set(def ? [def, ...names] : names)]
 }
 
-/** A slide in its template, as Advanced Slides does it: the slide is `<% content %>`, each of its `::: name` blocks the
- *  template's `<% name %>` (a block there), `<%? name %>` left out when unset; templates may use templates. */
 function templated(raw: string, notesRe: RegExp, templates: Templates, def?: string): string {
   let at = -1
   for (const [i, [line, code]] of [...fenced(raw)].entries()) if (!code && notesRe.test(line)) { at = i; break }
@@ -315,8 +278,6 @@ function templated(raw: string, notesRe: RegExp, templates: Templates, def?: str
   return notes ? `${md}\n\n${notes}` : md
 }
 
-/** The deck: its slides in order (columns, then down each, each in its template) and its <style> blocks' CSS. Obsidian
- *  comments (%% … %%) are left out first, so what they hide (a <style>, a `note:`) does nothing. */
 export function parseDeck(body: string, opts: DeckOptions = {}, templates: Templates = () => undefined): { slides: Slide[]; css: string } {
   const sep = lineRegex(opts.separator, SEP), vsep = lineRegex(opts.verticalSeparator, VSEP), notesRe = lineRegex(opts.notesSeparator, NOTES, "i")
   const css: string[] = [], size = sizeOf(opts)
@@ -348,7 +309,6 @@ export function parseDeck(body: string, opts: DeckOptions = {}, templates: Templ
   return { slides, css: css.filter(Boolean).join("\n") }
 }
 
-/** A title slide (headings only, maybe a short line under them): drawn centred. */
 export function isTitleSlide(md: string): boolean {
   const lines = md.replace(/<span class="slide-el-\d+"><\/span>/g, "").split("\n").map((l) => l.trim()).filter(Boolean)
   const heads = lines.filter((l) => /^#{1,6}\s/.test(l)).length
@@ -356,21 +316,16 @@ export function isTitleSlide(md: string): boolean {
   return heads > 0 && rest.length <= 1 && rest.every((l) => l.length <= 80 && !/^([-*+]|\d+\.|>|!?\[\[|```|\|)/.test(l))
 }
 
-// ---------- moving from one slide to the next, as reveal.js does ----------
-
 export type Style = "none" | "fade" | "slide" | "convex" | "concave" | "zoom"
 const STYLES = new Set(["none", "fade", "slide", "convex", "concave", "zoom"])
 const SPEEDS: Record<string, number> = { default: 800, fast: 400, slow: 1200 }
 export type Move = {
   out: Style; in: Style; outMs: number; inMs: number
-  /** The background's way (none when both slides have the same one). */
   bg: Style
   vertical: boolean; back: boolean
-  /** Auto-animate (both slides `data-auto-animate`, the same `data-auto-animate-id`): no slide transition then. */
   auto?: { ms: number; easing: string; unmatched: boolean }
 }
 
-/** A way in or out, from `zoom` or a pair like `fade-in slide-out`; else `fallback`'s. */
 function styleOf(t: unknown, way: "in" | "out", fallback: Style): Style {
   const words = typeof t === "string" ? t.toLowerCase().split(/\s+/) : []
   const paired = words.find((x) => x.endsWith(`-${way}`))?.slice(0, -way.length - 1)
@@ -379,8 +334,6 @@ function styleOf(t: unknown, way: "in" | "out", fallback: Style): Style {
 }
 const str = (v: unknown) => (["string", "number", "boolean"].includes(typeof v) ? String(v) : undefined)
 
-/** How the deck goes from slide `a` to `b`: `a` leaves its way, `b` comes in its own (frontmatter `transition`,
- *  `transitionSpeed`, `backgroundTransition`, `autoAnimate*` for the deck; a slide's data-* over them). */
 export function moveOf(a: Slide, b: Slide, opts: DeckOptions = {}): Move {
   const deck = styleOf(opts.transition, "in", "slide")
   const ms = (s: Slide) => SPEEDS[str(s.data["transition-speed"] ?? opts.transitionSpeed) ?? ""] ?? SPEEDS.default
@@ -402,34 +355,23 @@ export function moveOf(a: Slide, b: Slide, opts: DeckOptions = {}): Move {
   }
 }
 
-// ---------- the presenter view ----------
-
-/** What a step forward from slide `at` (`step` of its `count` fragments in) shows, as reveal's "Upcoming": its next
- *  fragment, else the next slide; null after the last. */
 export function upcoming(at: number, step: number, count: number, n: number): { at: number; step: number } | null {
   const k = Math.min(step, count)
   return k < count ? { at, step: k + 1 } : at + 1 < n ? { at: at + 1, step: 0 } : null
 }
 
-/** Time taken, as a timer shows it: 0:00, 4:05, 1:04:05. */
 export function elapsedText(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60
   const two = (v: number) => String(v).padStart(2, "0")
   return h ? `${h}:${two(m)}:${two(s % 60)}` : `${m}:${two(s % 60)}`
 }
 
-// ---------- the deck's CSS, kept to the presentation ----------
-
 const CSS_FILE = /^(https:\/\/\S+|[^\s<>"]+\.css([?#]\S*)?)$/i
-/** The deck's stylesheets, in the order they apply: a `theme` that's a CSS file or address, then `css` (a list, or
- *  names split by commas). */
 export function cssFiles(props: Record<string, unknown>): string[] {
   const list = (v: unknown) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : []).map((s) => String(s).trim().replace(/^\[\[([^\]|]+)[^\]]*\]\]$/, "$1"))
   return [...list(props.theme), ...list(props.css)].filter((s) => CSS_FILE.test(s))
 }
 
-/** Where a stylesheet `ref` named by the note at `note` may be in the vault, likeliest first: beside the note, from
- *  the vault's root, then Advanced Slides' own folder (its `css/…` themes). */
 export function cssPlaces(ref: string, note: string): string[] {
   const join = (dir: string, p: string) => {
     const out: string[] = []
@@ -442,17 +384,13 @@ export function cssPlaces(ref: string, note: string): string[] {
   return [...new Set([join(dir, p), join("", p), join(".obsidian/plugins/obsidian-advanced-slides", p)])]
 }
 
-/** A stylesheet's relative `url(…)`s (fonts, images) as addresses the browser loads: `toUrl` of the vault path each
- *  names from the sheet's folder `dir`. */
 export function cssUrls(css: string, dir: string, toUrl: (path: string) => string): string {
   return css.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (m, _q, u: string) =>
     /^([a-z][\w+.-]*:|\/\/|#)/i.test(u.trim()) ? m : `url(${JSON.stringify(toUrl(cssPlaces(u.trim(), `${dir}/x`)[0]))})`)
 }
 
-/** What a reveal.js deck's CSS calls the page or the presentation (`:root`, `.reveal .slides section`…): the deck here. */
 const PAGE = /^(?:(?::root|html|body|\.reveal-viewport)(?=$|[\s>+~.:#[])\s*)*(?:\.reveal(?=$|[\s>+~.:#[])(?:\s+\.slides(?=$|[\s>.:#[]))?(?:\s+section(?=$|[\s>.:#[]))?)?/
 
-/** Commas at the top level of a selector list (not inside :is(...) or [a=","]). */
 function splitList(sel: string): string[] {
   const out: string[] = []
   let depth = 0, q = "", at = 0
@@ -468,23 +406,18 @@ function splitList(sel: string): string[] {
   return out.map((s) => s.trim()).filter(Boolean)
 }
 
-/** One selector kept inside `scope`: what names the page or the presentation becomes the scope itself. */
 export function scopeSelector(sel: string, scope: string): string {
   return splitList(sel).map((one) => {
     const page = PAGE.exec(one)?.[0] ?? ""
     const after = one.slice(page.length), rest = after.trim()
     if (!rest) return scope
-    // (`.reveal.dark` is the deck itself; `.reveal .dark` something in it)
     return page && !/\s$/.test(page) && /^[.:#[]/.test(after) ? `${scope}${rest}` : `${scope} ${rest}`
   }).join(", ")
 }
 
-/** A deck's CSS with every rule kept inside `scope`: at-rules that nest rules (@media, @supports…) are scoped
- *  within; @keyframes and @font-face kept; what loads or reaches outside (@import, @page, @property…) dropped. */
 export function scopeCss(css: string, scope: string): string {
   const src = css.replace(/\/\*[\s\S]*?\*\//g, "")
   let i = 0
-  /** The text up to the brace that closes the block opened just before `i` (strings skipped). */
   const block = () => {
     const start = i
     let depth = 1, q = ""
@@ -503,7 +436,6 @@ export function scopeCss(css: string, scope: string): string {
       const open = src.indexOf("{", i), close = src.indexOf("}", i), semi = src.indexOf(";", i)
       if (close >= 0 && (open < 0 || close < open)) { i = close + 1; return out }
       if (open < 0) break
-      // A statement at-rule (@import url(x);) ends at its semicolon, before any brace.
       if (semi >= 0 && semi < open && src.slice(i, semi).trim().startsWith("@")) { i = semi + 1; continue }
       const prelude = src.slice(i, open).trim()
       i = open + 1

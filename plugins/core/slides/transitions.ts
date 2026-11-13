@@ -1,11 +1,8 @@
-// Slide transitions and auto-animate, as reveal.js draws them. What leaves is a copy of the stage (and of its
-// background) laid over the new slide till it's gone; auto-animate moves what matches from where it was (FLIP).
 import { moves } from "@vaultite"
 import type { Move, Style } from "./slides"
 
 const EASE = "cubic-bezier(0.26, 0.86, 0.44, 0.985)"
 
-/** Where a slide stands `d` from being shown (1: the one after, -1: before, 0: shown), as reveal.js's future and past. */
 function pose(style: Style, d: number, vertical: boolean) {
   const t3 = (v: string) => `translate3d(${vertical ? `0, ${v}, 0` : `${v}, 0, 0`})`
   const turn = (deg: number) => `${vertical ? "rotateX" : "rotateY"}(${deg * d}deg)`
@@ -18,7 +15,6 @@ function pose(style: Style, d: number, vertical: boolean) {
   }
 }
 
-/** What auto-animate pairs, keyed as reveal.js does: data-id, else the same text, image or code. */
 const MATCH = "[data-id], h1, h2, h3, h4, h5, h6, p, li, pre, img, video, iframe"
 const TEXT = /^(H[1-6]|P|LI|PRE)$/
 const keyOf = (el: Element) => {
@@ -31,7 +27,6 @@ const LOOK = ["opacity", "color", "backgroundColor", "borderColor", "borderRadiu
 const TYPE = ["fontSize", "lineHeight", "letterSpacing"] as const
 type Look = Record<string, string>
 const lookOf = (cs: CSSStyleDeclaration): Look => Object.fromEntries([...LOOK, ...TYPE].map((p) => [p, cs[p]]))
-/** The look to animate; text's size too (scaled by `k`, from one slide's scale to the other's), as it isn't scaled. */
 const pick = (l: Look, text: boolean, k: number) => Object.fromEntries((text ? [...LOOK, ...TYPE] : LOOK)
   .map((p) => [p, (TYPE as readonly string[]).includes(p) && l[p].endsWith("px") ? `${Number.parseFloat(l[p]) * k}px` : l[p]]))
 const scaleOf = (el: HTMLElement) => el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1
@@ -40,7 +35,6 @@ type Old = { key: string; rect: DOMRect; look: Look }
 export type Leaving = { move: Move; stage: HTMLElement | null; bg: HTMLElement | null; scroll: number; tone: string; old: Old[]; scale: number }
 export type Parts = { stage: HTMLElement; bg: HTMLElement | null; inner: HTMLElement }
 
-/** A still copy of what's on screen: not read out, not clicked, no slide of its own, nothing loading again. */
 function copy(el: HTMLElement) {
   const c = el.cloneNode(true) as HTMLElement
   c.inert = true
@@ -55,18 +49,15 @@ function copy(el: HTMLElement) {
   return c
 }
 
-/** One presentation's transitions: `leave` before the slide changes, `arrive` once the new one is drawn. */
 export function slideMotion() {
   let running: Animation[] = [], copies: Element[] = []
   const play = (el: Element, frames: Keyframe[], o: KeyframeAnimationOptions) => { const a = el.animate(frames, o); running.push(a); return a }
-  /** What's moving ends now, where it was going. */
   const settle = () => {
     for (const a of running) a.finish()
     for (const c of copies) c.remove()
     running = []; copies = []
   }
 
-  /** The slide as it is, before it changes: a copy of it and its background, or its elements' places for auto-animate. */
   const leave = (move: Move, p: Parts, tone: string): Leaving | null => {
     settle()
     if (!moves() || (move.in === "none" && move.out === "none" && move.bg === "none" && !move.auto)) return null
@@ -89,7 +80,6 @@ export function slideMotion() {
       if (p.bg) come(p.bg, m.bg, m.inMs)
     }
     if (l.stage) {
-      // (its text keeps the tone it had, over a background that's changed)
       const scheme = document.documentElement.dataset.scheme
       if (l.tone !== tone) l.stage.classList.add(l.tone === "dark" ? "dark" : "scheme-preview")
       if (l.tone !== tone && scheme) l.stage.dataset.scheme = scheme
@@ -100,7 +90,6 @@ export function slideMotion() {
     if (m.auto) autoAnimate(l, p.inner, m.auto)
   }
 
-  /** Each element that matches one on the slide before moves from its place, size and look there; the rest fade in. */
   const autoAnimate = (l: Leaving, inner: HTMLElement, o: NonNullable<Move["auto"]>) => {
     const s = scaleOf(inner), k = l.scale / s
     const pairs = new Map<HTMLElement, Old>(), used = new Set<Old>(), seen = new Map<string, number>()
@@ -108,7 +97,6 @@ export function slideMotion() {
       const key = keyOf(el), from = key ? l.old.filter((x) => x.key === key) : []
       const j = seen.get(key) ?? 0
       seen.set(key, j + 1)
-      // (the one at the same place among its matches, else the last)
       const at = [from[j], from[from.length - 1]].find((x) => x && !used.has(x))
       if (at) { used.add(at); pairs.set(el, at) }
     }

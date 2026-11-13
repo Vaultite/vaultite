@@ -1,5 +1,3 @@
-// The presenter view, as reveal.js' speaker view: a window of its own with the slide, the next step, the notes, a
-// timer and the clock. Drawn from the presentation's own React tree into the popup's document (one state, both windows).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from "lucide-react"
 import { cn, dateText, Tooltips } from "@vaultite"
@@ -8,8 +6,6 @@ import { elapsedText } from "./slides"
 export type PresenterWindow = { win: Window; root: HTMLElement; close: () => void }
 export type Keys = Pick<globalThis.KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "preventDefault" | "stopPropagation">
 
-/** Open (or take back) the presenter's window, with the app's stylesheets and look copied into it and kept in step;
- *  null when the browser won't open one. `gone`: the user closed it. */
 export function openPresenter(title: string, gone: () => void): PresenterWindow | null {
   const win = window.open("", "vaultite-presenter", `popup,width=${Math.min(1280, screen.availWidth)},height=${Math.min(800, screen.availHeight)}`)
   if (!win) return null
@@ -32,7 +28,7 @@ export function openPresenter(title: string, gone: () => void): PresenterWindow 
       if (!c) clones.set(o, (c = o.cloneNode(true) as Element))
       if (o instanceof HTMLLinkElement) { if ((c as HTMLLinkElement).href !== o.href) (c as HTMLLinkElement).href = o.href }
       else if (c.textContent !== o.textContent) c.textContent = o.textContent
-      // (moved only when out of place: moving a <link> loads its sheet again)
+      // Moving a <link> loads its sheet again.
       const at: Node | null = prev ? prev.nextSibling : doc.head.firstChild
       if (c !== at) doc.head.insertBefore(c, at)
       prev = c
@@ -43,18 +39,17 @@ export function openPresenter(title: string, gone: () => void): PresenterWindow 
   mo.observe(document.head, { childList: true, subtree: true, characterData: true, attributes: true })
   mo.observe(document.documentElement, { attributes: true })
   mo.observe(document.body, { attributes: true, attributeFilter: ["class"] })
-  // (polled too: a closed popup doesn't always say so)
+  // A closed popup doesn't always fire an event.
   const check = setInterval(() => { if (win.closed) left() }, 1000)
   const left = () => { stop(); gone() }
   const stop = () => { mo.disconnect(); clearInterval(check); win.removeEventListener("pagehide", left); removeEventListener("pagehide", close) }
   const close = () => { stop(); win.close() }
   win.addEventListener("pagehide", left)
-  addEventListener("pagehide", close) // the app reloading takes its presenter with it
+  addEventListener("pagehide", close)
   win.focus()
   return { win, root, close }
 }
 
-/** `children` (a slide as drawn on a screen `size`), scaled down into the box, the shape of that screen. */
 export function Screen({ size, label, bare, children }: { size: { w: number; h: number }; label: string; bare?: boolean; children: ReactNode }) {
   const frame = useRef<HTMLDivElement>(null)
   const [k, setK] = useState(0)
@@ -78,7 +73,7 @@ export function Screen({ size, label, bare, children }: { size: { w: number; h: 
   )
 }
 
-/** Now, every second (by the popup's clock: the presentation's window may be out of sight). */
+// The popup's clock: a browser slows the timers of a window out of sight.
 function useNow(win: Window) {
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -97,7 +92,6 @@ const ctl = "grid size-9 cursor-pointer place-items-center rounded-full text-mut
 export type Timer = { start: number; paused: number | null }
 export function Presenter({ win, size, at, n, current, next, notes, css, timer, setTimer, total, onKey, onPrev, onNext, canPrev, canNext }: {
   win: Window; size: { w: number; h: number }; at: number; n: number; current: ReactNode; next: ReactNode | null; notes: ReactNode; css: ReactNode
-  /** The presentation's timer (it's from when it started); `total`: its timeForPresentation (s), 0 for none. */
   timer: Timer; setTimer: (f: (t: Timer) => Timer) => void; total: number
   onKey: (e: Keys) => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean
 }) {
@@ -107,7 +101,7 @@ export function Presenter({ win, size, at, n, current, next, notes, css, timer, 
   const pause = () => setTimer((t) => (t.paused === null ? { ...t, paused: Date.now() } : { start: t.start + Date.now() - t.paused, paused: null }))
   const reset = () => setTimer((t) => ({ start: Date.now(), paused: t.paused === null ? null : Date.now() }))
   useEffect(() => { root.current?.focus() }, [])
-  // Keys from anywhere in the window: a button clicked and then disabled leaves the focus on its body.
+  // A button clicked and then disabled leaves the focus on the body.
   const keys = useRef(onKey)
   keys.current = onKey
   useEffect(() => {
