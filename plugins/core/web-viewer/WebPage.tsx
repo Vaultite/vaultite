@@ -1,5 +1,3 @@
-// A web page in a tab: a slim bar over the desktop app's native page. While anything of the app covers the box, the
-// window goes over its pages and shows the live page through a hole (layers.ts).
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Star, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
@@ -43,7 +41,7 @@ export default function WebPage(props: Props) {
   return webPages ? <Page web={webPages} {...props} /> : framing() ? <FramedPage {...props} /> : <Elsewhere url={splitArg(props.arg).url} />
 }
 
-/** On the web and phones: pages open outside (most sites refuse to be shown inside another page). */
+/** Most sites refuse to be shown inside another page (X-Frame-Options), so they open outside. */
 function Elsewhere({ url }: { url: string }) {
   return (
     <div className="mx-auto flex max-w-[520px] flex-col items-center px-8 pt-20 text-center" data-web-elsewhere>
@@ -54,8 +52,6 @@ function Elsewhere({ url }: { url: string }) {
   )
 }
 
-/** Where in the box the page goes: above the status bar's corners where they're drawn over the pane's foot (laid over
- *  one, the page would hide it, and one over the page would raise the window over it the whole time). */
 function pageArea(r: DOMRect) {
   const over = [...document.querySelectorAll("[data-status-bar]")].map((el) => el.getBoundingClientRect())
     .filter((bar) => bar.height && bar.left < r.right && bar.right > r.left && bar.top < r.bottom && bar.bottom > r.top)
@@ -63,8 +59,7 @@ function pageArea(r: DOMRect) {
   return new DOMRect(r.left, r.top, r.width, Math.max(0, Math.min(...over.map((bar) => bar.top)) - r.top))
 }
 
-/** The page's corners (Electron rounds all four alike): its card's curve where it fills the card (panes as cards, a
- *  tiled one), else square: under a bar, rounded tops would curve a second time below the bar's. */
+/** Electron rounds all four corners alike. */
 function corners(box: HTMLElement, r: DOMRect) {
   const card = box.closest<HTMLElement>("[data-pane-frame]")
   if (!card || card.hasAttribute("data-floating")) return 0
@@ -75,11 +70,8 @@ function corners(box: HTMLElement, r: DOMRect) {
 const spot = (r: Box, radius: number) => ({ x: r.left, y: r.top, width: r.width, height: r.height, radius })
 
 const http = (u: string) => /^https?:\/\//i.test(u)
-/** What a tab may follow and name: the web, an extension's own pages (its options) and a page's source. */
 const ownPage = (u: string) => http(u) || /^(chrome-extension:\/\/|(view-source|blob):https?:\/\/)/i.test(u)
 
-/** Whether tab `id` still shows a web page (else it went elsewhere: its page ends; gone, it closed or is in another
- *  workspace's tabs). */
 const stillWeb = (id: string) => {
   const t = allPanes(getTabLayout()).find((x) => x.id === id)
   return !t || t.to === "view:web" || t.to.startsWith("view:web/")
@@ -87,7 +79,6 @@ const stillWeb = (id: string) => {
 
 function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: WebPages }) {
   const { pane: tab, hidden: tabHidden } = usePane(), group = tab
-  // (a tab's container never changes under its page: index.tsx draws a page afresh for another)
   const { container, url: arg } = splitArg(tabArg)
   const setArg = (url: string) => setTabArg(argOf(url, container))
   const box = useRef<HTMLDivElement>(null)
@@ -96,23 +87,17 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const [id, setId] = useState(0)
   const [state, setState] = useState<WebPageState>({ url: arg, title: "", back: false, forward: false, loading: http(arg) })
   const [saving, setSaving] = useState(false)
-  useEnabled() // (other plugins' buttons, as they're switched)
-  // What the effects below read without starting again.
-  /** A passkey it asked for: drawn in its place till the phone answers. */
+  useEnabled()
   const passkey = passkeyAsks.use((m) => (id ? m.get(id) : undefined))
-  // An agent's own page it holds: a live picture of it here, never the page (AgentWatch.tsx).
   const agent = agentPages.use((l) => (id ? l.find((p) => p.id === id) : undefined))
   const held = !!agent?.held
   const live = useRef({ arg, state, setArg, setTabArg, error: false, passkey: false, held: false })
   useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error || !!state.crashed, passkey: !!passkey, held } })
-  // In its player (a window of its own): the tab says so, and nothing here places the page.
   const away = !!state.player
-  // Its find bar (FindBar.tsx), open per tab as in Chrome: `ask` bumped by ⌘F, ⌘G and ⇧⌘G (0: shown again, not asked).
   const [ask, setAsk] = useState<{ n: number; how: FindAsk } | null>(() => (findOpen(tab) ? { n: 0, how: "open" } : null))
   const [found, setFound] = useState<Found | null>(null)
   const askFind = (how: FindAsk) => { setFindOpen(tab, true); setAsk((a) => ({ n: (a?.n ?? 0) + 1, how })) }
 
-  // A container that needs Touch ID: whether it's locked now (null: not known yet), asked again as containers lock.
   const [locked, setLocked] = useState<boolean | null>(container ? null : false)
   useEffect(() => {
     if (!container) return
@@ -124,35 +109,26 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     return () => { gone = true; off() }
   }, [container, web])
 
-  // The page: the tab's own (shown again) or a new one; let go of as the tab hides (or its container locks), ended when
-  // the tab shows something else (closing it ends it too: onTabClose). A new web tab has none till an address is typed.
   const blank = !ownPage(arg)
-  // (hidden, it slides over the page: never the pane's title row; a new tab keeps it out, its address is what's used)
   const { hidden: barHid, out: barOut } = usePageBar(web, id, tabHidden ? undefined : group, bar, blank)
   usePaneTopBar(bar, !barHid)
-  /** The address the tab had when it got its page: one that went on in the background (an agent's) isn't sent back. */
   const taken = useRef("")
-  /** Shown again by `open`, it had the keyboard when it was hidden. */
   const shownFocused = useRef(false)
   useEffect(() => {
     if (locked !== false || blank) return
     let gone = false, mine = 0
-    // (once the window paints behind it again: hidden before, it leaves a see-through hole for a frame)
     const leave = (id: number) => void painted().then(() => { void web.release(id); if (tab && !stillWeb(tab)) void web.close(tab) })
     settingsRead().then(() => {
-      // Opened in none: a site that always opens in a container, or a workspace with one of its own, takes its tab
-      // there (drawn afresh, index.tsx), unless the user put it in none.
       watchTab(arg, tab)
       const into = container || keptOutside(arg) ? null : destination(arg, { from: null, fresh: true }).container
       if (into) { live.current.setTabArg(argOf(arg, into)); return Promise.reject(null) }
-      // (where its box is now: shown at once, not after this tab draws again; not under something of the app's)
       const el = box.current, r = el && !popupOpen() ? pageArea(el.getBoundingClientRect()) : null
       return web.open(arg, el && r && r.width >= 2 && r.height >= 2 ? spot(r, corners(el, r)) : null, profileIn(container), tab)
     }).then((r) => {
       if (gone) { leave(r.id); return }
       mine = r.id
       shownFocused.current = !!r.focused
-      forgetUnheard(r.id) // (what it said before is in `r.state`; what it says from now till its tab listens is kept)
+      forgetUnheard(r.id)
       taken.current = live.current.arg
       setId(r.id)
       setState(r.state)
@@ -161,7 +137,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked, blank])
 
-  // Its last picture (a relaunch, a closed tab reopened), drawn under its page till that paints: the page shows at once.
   const [frame, setFrame] = useState<{ src: string; width: number; height: number } | null>(null)
   useEffect(() => {
     if (locked !== false || blank || !web.frame) return
@@ -178,11 +153,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   }, [locked, blank])
   const framed = !!frame && !state.painted && !state.error && !state.crashed
 
-  // (made blank, Back to safety with nowhere to go back to: what its page said goes with it)
   useEffect(() => { if (blank) setState({ url: "", title: "", back: false, forward: false, loading: false }) }, [blank])
 
-  // The tab's address follows the page; one given to the tab (not from the page) is loaded. The page's own coming back
-  // can find it moved on (Forward just after Back): it was loaded over that move, a new entry, so Forward went nowhere.
   const told = useRef("")
   useEffect(() => {
     if (!id) return
@@ -195,14 +167,11 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     if (ownPage(state.url) && state.url !== live.current.arg) { told.current = state.url; live.current.setArg(state.url) }
     if (ownPage(state.url)) setTitle(state.url, state.title)
   }, [state.url, state.title])
-  // Another app's link no login chose reached a sign-in on the way (an app's auth start): where that account is, it
-  // starts there again (linklogins.ts).
   useEffect(() => {
     const { signIn, opened } = state
     if (signIn && opened && tab) void signInReached(tab, container, signIn, opened, (url, c) => live.current.setTabArg(argOf(url, c)))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.signIn])
-  // (another page: what was found was found there)
   useEffect(() => setFound(null), [state.url])
 
   const clip = async () => {
@@ -213,7 +182,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       const r = await post<{ path: string; title: string; existing?: boolean; video?: boolean }>("clip", { url: page.url, html: page.html })
       if (!r.existing) notify(`Saved "${r.title}"${r.video ? ": its video follows in a few minutes" : ""}`, { action: { label: "Open", run: () => openInSplit(`file:${r.path}`) } })
       else {
-        // Saved before: its note, and the page as it is now only if asked.
         openInSplit(`file:${r.path}`)
         notify(`Already saved: ${r.title}`, { action: { label: "Update", run: async () => {
           await post("clip", { url: page.url, html: page.html, update: true })
@@ -229,7 +197,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const clipRef = useRef(clip)
   useEffect(() => { clipRef.current = clip })
 
-  // What the desktop app says about this page (index.tsx's Background hands the events over).
   useEffect(() => {
     if (!id) return
     shown.set(id, {
@@ -242,21 +209,15 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     return () => { shown.delete(id) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, group, container, web])
-  // (a new web tab's keyboard is its address's)
   useEffect(() => { if (blank && focused && !typingIn(document.activeElement)) address.current?.focus() }, [blank, focused])
   useEffect(() => {
     if (!id) return
     setFocusedPage(id, focused)
-    // The pane was focused (its tab clicked, a pane switch): the keyboard goes to the page, unless it's typing elsewhere
-    // or the page has it (the pane followed it: handing it back after it moved on, two pages would trade it forever).
     if (focused && !hasKeyboard(id) && !typingIn(document.activeElement)) void web.go(id, "focus")
     return () => setFocusedPage(id, false)
   }, [id, focused, web])
 
-  // Keep the page over the box; the window goes over it while anything of the app covers it. What covers it is looked at
-  // again only when something that may change it did (`matters`, `moved`): the hit tests are costly, the floats aren't.
   const kick = useRef<() => void>(undefined)
-  // (held or let go: placed again, the page itself in or out)
   useEffect(() => { kick.current?.() }, [held])
   useEffect(() => {
     const el = box.current
@@ -283,13 +244,12 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       taken = img
       send({ type: "shot", motion, ok: !!shot })
       if (picture !== img) { URL.revokeObjectURL(img.src); return }
-      // (a frame later it's drawn: the pane may start moving as the page is told to go, it's gone within a frame)
       await new Promise(requestAnimationFrame)
       send({ type: "drawn", motion })
     }
     const run = (fx: PlaceEffect) => {
       switch (fx.do) {
-        // (A window that's hidden or covered gets no animation frames: a timer then, so the page is in place when it shows.)
+        // A hidden or covered window gets no animation frames.
         case "ask": if (!raf) raf = document.hidden ? window.setTimeout(frame, 50) : requestAnimationFrame(frame); return
         case "cover": return setCover(id, fx.cover)
         case "hole": return setHole(id, el, fx.at, fx.radius)
@@ -311,7 +271,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           return
         }
         case "off": {
-          // Off the window at its new size (the box's, without its pane's move), so it's laid out once it's back.
           const m = new DOMMatrixReadOnly(getComputedStyle(moving).transform), r = el.getBoundingClientRect()
           const to = pageArea(new DOMRect(r.left - m.m41, r.top - m.m42, el.offsetWidth, el.offsetHeight))
           return void web.place(id, { x: -40000, y: 0, width: Math.max(2, to.width), height: Math.max(2, to.height) }).catch(() => undefined)
@@ -322,8 +281,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const frame = () => { raf = 0; send({ type: "frame", seen: see() }) }
     const touch = (change: Change = "hits") => send({ type: "changed", change })
     kick.current = touch
-    // While its pane moves (core/panemotion.ts), a picture of the page slides with it: a native view moved each frame
-    // lags behind. The page waits off the window at its new size and comes back where the pane stops.
     const unmotion = onPaneMotion(({ moving: secs, finished }) => {
       const sec = secs.find((m) => m.contains(el))
       if (!sec || !web.shot) return
@@ -338,13 +295,11 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     ro.observe(el)
     const mo = new MutationObserver((rs) => { for (const m of rs) { if (s.dirty === "hits") return; touch(matters(m, el)) } })
     mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] })
-    // (something sliding over it is looked at as it starts, where it goes, and where it stops)
     const slid = (e: Event) => { if (s.dirty !== "hits") touch(moved(e, el)) }
     const all = () => touch()
     for (const ev of SLIDES) document.addEventListener(ev, slid, true)
     addEventListener("resize", all)
     document.addEventListener("visibilitychange", all)
-    // (and now and then where it is, for a move nothing above announces)
     const tick = setInterval(() => send({ type: "tick" }), 500)
     const unpass = passPointer(el, () => id, () => pageArea(el.getBoundingClientRect()))
     send({ type: "tick" })
@@ -367,11 +322,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       setOnScreen(id, false)
     }
   }, [id, web, away])
-  // (an error's note in the box: the page goes, and comes back with a retry)
   useEffect(() => kick.current?.(), [state.error, state.crashed, !!passkey])
-  // (no error page while it's tried again over http, below)
   const [retried, setRetried] = useState(false)
-  // An address typed with no scheme went to https: one that can't connect there is tried over http, as browsers do.
   useEffect(() => {
     if (!id || !state.error) return
     const to = fallbackFor(state.url, state.error) ?? fallbackFor(arg, state.error)
@@ -381,7 +333,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => { if (!state.error) setRetried(false) }, [state.error])
   const falling = !!state.error && (retried || fallsBack(state.url, state.error) || fallsBack(arg, state.error))
 
-  // What's typed in the address, kept till Esc, Enter or the page going elsewhere (while it's typed, it rebases).
   const [draft, setDraft] = useDraft(tab)
   const noHash = (u: string) => u.replace(/#.*$/, "")
   useEffect(() => {
@@ -389,9 +340,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     setDraft(document.activeElement === address.current ? { ...draft, on: state.url } : null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.url])
-  /** The address Enter would open now (the bar's first or chosen suggestion). */
   const [target, setTarget] = useState<string | null>(null)
-  // Where it opens, live on the chip while it's typed (and on a new tab): one answer for Enter, ⌥Enter and ⌘Enter.
   const drafting = blank || !!draft
   const where = (to: string) => destination(to, { from: container, fresh: blank, chosen: draft?.chosen })
   const into = drafting ? where(target ?? (blank ? "" : state.url || arg)) : { container, why: "" }
@@ -415,36 +364,29 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     if (guessed) guessedFor(to)
     const { container: c } = where(to)
     setDraft(null)
-    // (a new page in none stays there: the chip said so, whatever the workspace's container)
     if (c === null && (place !== "here" || !id || container !== null)) keepOutside(to)
     if (place !== "here") return openWebTab(to, c, place === "back", tab || undefined)
-    // (another container is another page: the tab moves there, its back history with it)
     if (c !== container) return setTabArg(argOf(to, c))
     if (!id) return setArg(to)
     void web.go(id, "load", to)
     void web.go(id, "focus")
   }
 
-  // (behind it, as a link's new tab: a tab of its own even when another shows that address, a copy is what Reload's asked for)
   const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openBehind(to, destination(to, { from: container, fresh: false, opened: true }).container, tab || undefined) }
 
   const onWeb = http(state.url)
-  // ⌘+ ⌘- ⌘0 in its pane: its site's zoom, said as Chrome's bubble would ("example.com 125%").
   useZoomTarget(box, id > 0 && onWeb ? async (step) => {
     const z = await web.go(id, step > 0 ? "zoom-in" : step < 0 ? "zoom-out" : "zoom-reset") as { host?: unknown; zoom?: unknown } | null | undefined
     if (typeof z?.zoom !== "number" || typeof z.host !== "string") return null
     return { text: `${z.host.replace(/^www\./, "")} ${Math.round(z.zoom * 100)}%`, actual: Math.abs(z.zoom - 1) < 0.001 }
   } : null)
   const bookmarked = useStore().store?.bookmarks?.some((b) => b.url === state.url) ?? false
-  // The bookmarks bar: always (⇧⌘B), else on a new tab's page once there are bookmarks, as Chrome's; hidden with the page bar.
   const store = useStore().store, always = settings.use().bookmarksBar === "shown"
   const marks = !barHid && (always || (blank && !!(store?.bookmarks?.length || store?.bookmarkFolders?.length)))
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
-  // Back and Forward walk the page's history, then the tab's (Back from a page opened from another tab goes back to it).
   const me = allPanes(getTabLayout()).find((t) => t.id === tab)
   const back = state.back || canNavigate(me, -1), forward = state.forward || canNavigate(me, 1)
   const walk = (dir: -1 | 1) => { if (dir < 0 ? state.back : state.forward) void web.go(id, dir < 0 ? "back" : "forward"); else navigate(dir) }
-  /** Back's or Forward's places, nearest first, as a menu under its button. */
   const places = async (el: HTMLElement, dir: -1 | 1) => {
     const h = await web.go(id, "history").catch(() => null) as { at: number; entries: { i: number; url: string; title: string }[] } | null
     if (!h) return
@@ -456,11 +398,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       { label: "Show full history", icon: History, sep: list.length > 0, run: () => openView("web-history", { newTab: true }) },
     ])
   }
-  // (its own buttons and the address have menus of their own)
   const barMenu = (e: React.MouseEvent) => { if (!(e.target as Element).closest("button, input, [role=listbox]")) menuFor(() => barItems())(e) }
   return (
     <div className={cn("relative flex h-full min-h-0 flex-col", barHid && "overflow-hidden")} data-web-page={id || ""}>
-      {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
       <div ref={bar} onContextMenu={barMenu} data-web-bar data-web-bar-hidden={barHid ? (barOut ? "out" : "in") : undefined}
         className={cn("group/bar @container/bar relative flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5",
           barHid && "absolute inset-x-0 top-0 z-20 bg-background shadow-[0_8px_20px_-12px_rgb(0_0_0/0.45)] [transition:translate_var(--motion)_var(--ease-out)]",
@@ -502,12 +442,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <Progress loading={id > 0 && state.loading && !state.error} />
       </div>
       {marks && <BookmarksBar page={{ url: state.url, title: state.title }} open={(to, place) => go(to, "bookmark", place)} />}
-      {/* (over the page's top right, under its bars: the bar hidden, it slides out over it) */}
       {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found} className={barHid ? "top-2" : marks ? "top-20" : "top-12"}
         close={() => { setFindOpen(tab, false); setAsk(null); setFound(null); void web.go(id, "focus") }} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
-        {/* The window drags wherever its page has a drag region, even under this page (Electron): cut out here, after
-            them in the document, as regions go. Empty, so one region (no-drag is inherited). */}
         <div aria-hidden data-web-cut className="pointer-events-none absolute inset-0 [-webkit-app-region:no-drag]" />
         {framed && <img src={frame.src} alt="" data-web-frame draggable={false} className="pointer-events-none absolute top-0 left-0 max-w-none select-none"
           style={{ width: frame.width, height: frame.height }} />}
@@ -527,8 +464,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   )
 }
 
-/** An agent at work in this tab, in its bar: who, what it's doing now, paused; its menu pauses agents here, or moves an
- *  agent's own page back to the background. Never a bar of its own: the page doesn't move as agents come and go. */
 function AgentChip({ id }: { id: number }) {
   const page = agentPages.use((l) => l.find((p) => p.id === id))
   const [, tick] = useState(0)
@@ -547,7 +482,6 @@ function AgentChip({ id }: { id: number }) {
     { label: "Show agents in the browser", icon: AppWindow, sep: true, run: () => openView("agent-runs", { newTab: true }) },
   ])
   const label = page.paused ? "Paused" : busy ? page.what : page.by
-  // (taken over: handing it back is one click, in sight)
   if (page.taken) return (
     <Button size="small" look="secondary" onClick={() => void takeOver(id, false)} data-web-agent="taken" data-web-agent-give
       data-tip={`You took this page over: ${page.by} is paused till you give it back`} className="ml-0.5 shrink-0">
@@ -566,8 +500,6 @@ function AgentChip({ id }: { id: number }) {
   )
 }
 
-/** What an agent asked the user to do in this tab (sign in, a check), with Done: a card at the tab's foot, under the page,
- *  never over it (what's asked is on the page). */
 function AskCard({ id }: { id: number }) {
   const page = agentPages.use((l) => l.find((p) => p.id === id && !!p.asking))
   if (!page?.asking) return null
@@ -590,12 +522,10 @@ function AskCard({ id }: { id: number }) {
   )
 }
 
-/** Its main video in a window over every other (the Mac's picture in picture), or back. */
 async function pictureInPicture(web: WebPages, id: number) {
   if ((await web.go(id, "pip").catch(() => null)) === "none") notify("No video on this page")
 }
 
-/** The tab of a page in its player. */
 function Away({ onShow, onBack }: { onShow: () => void; onBack: () => void }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center bg-background px-8 pt-20 text-center" data-web-away>
@@ -620,10 +550,8 @@ function Locked({ name, unlock }: { name: string; unlock: () => void }) {
   )
 }
 
-/** Why a page didn't load, in words (Chrome's), by Chromium's error: its heading and what to do. */
 function problemOf(error: string, host: string): { icon: LucideIcon; title: string; detail: string } {
   const e = error.replace(/^net::/, "")
-  // (an HTTP error with an empty page, electron/web.ts `emptyError`: the site's own answer, so it's named)
   const http = /^HTTP ERROR (\d{3})$/.exec(e)
   if (http) {
     const code = Number(http[1]), said = `It answered HTTP ${code} with an empty page.`
@@ -645,7 +573,6 @@ function problemOf(error: string, host: string): { icon: LucideIcon; title: stri
   if (/^ERR_(FILE_NOT_FOUND|INVALID_RESPONSE|INVALID_HTTP_RESPONSE|HTTP_RESPONSE_CODE_FAILURE)$/.test(e)) return { icon: FileWarning, title: `${host} sent nothing to show`, detail: "Its page may be broken." }
   return { icon: Globe, title: `Couldn't open ${host}`, detail: "Something went wrong loading it." }
 }
-/** Errors from being offline: tried again on their own once the Mac is back online, as Chrome does. */
 const OFFLINE = /^(net::)?ERR_(INTERNET_DISCONNECTED|NETWORK_CHANGED|NAME_NOT_RESOLVED|NAME_RESOLUTION_FAILED|ADDRESS_UNREACHABLE)$/
 
 const PANEL = "absolute inset-0 flex flex-col items-center overflow-y-auto bg-background px-8 pt-20 pb-10 text-center"
@@ -672,8 +599,6 @@ function Problem({ error, url, onRetry }: { error: string; url: string; onRetry:
   )
 }
 
-/** A certificate this Mac doesn't trust, as Chrome warns of it: back to safety, or (Advanced) on to the site anyway, which
- *  trusts that certificate for that site till the app quits. */
 function Unsafe({ error, url, onBack, onGo }: { error: string; url: string; onBack: () => void; onGo: () => void }) {
   const [more, setMore] = useState(false)
   const host = hostOf(url)
@@ -699,7 +624,6 @@ function Unsafe({ error, url, onBack, onGo }: { error: string; url: string; onBa
   )
 }
 
-/** Its page kept crashing (web.ts gave up reloading it): said, with Reload, never a blank tab. */
 function Crashed({ url, onReload }: { url: string; onReload: () => void }) {
   return (
     <div className={PANEL} data-web-crashed>
@@ -711,8 +635,7 @@ function Crashed({ url, onReload }: { url: string; onReload: () => void }) {
   )
 }
 
-/** A thin line under the bar while the page loads, as Safari's and Arc's: it eases most of the way, then fills and fades
- *  as the load ends. It says only that it's loading, not how much is left (Chromium doesn't know). */
+/** Chromium doesn't say how much of a load is left: it eases most of the way, then fills as the load ends. */
 function Progress({ loading }: { loading: boolean }) {
   const el = useRef<HTMLDivElement>(null), was = useRef(false)
   useEffect(() => {
@@ -733,8 +656,6 @@ function Progress({ loading }: { loading: boolean }) {
     style={{ background: "var(--primary)" }} />
 }
 
-/** `onNewTab`: a middle-click or ⌘-click, as on a link (Back's page in a new tab, Reload's a copy of this one). `onMenu`:
- *  a right-click or a press held, as Chrome's Back lists its places. */
 function BarButton({ icon: Icon, label, onClick, onNewTab, onMenu, disabled, className }: { icon: LucideIcon; label: string; onClick: () => void; onNewTab?: () => void
   onMenu?: (el: HTMLElement) => void; disabled?: boolean; className?: string }): ReactNode {
   const hold = useRef(0), held = useRef(false)
@@ -755,10 +676,8 @@ function BarButton({ icon: Icon, label, onClick, onNewTab, onMenu, disabled, cla
     </button>
   )
 }
-/** How long Back is held for its list. */
 const HOLD_MS = 450
 
-/** A site zoomed in or out: how much, a click putting it back to 100%. */
 function ZoomButton({ zoom, reset }: { zoom: number; reset: () => void }) {
   return (
     <button type="button" onClick={reset} aria-label={`Zoom ${Math.round(zoom * 100)}%: reset to 100%`} data-tip="Reset zoom" data-web-zoom={Math.round(zoom * 100)}
@@ -770,13 +689,9 @@ function ZoomButton({ zoom, reset }: { zoom: number; reset: () => void }) {
 
 const BAR_ICON = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
 
-/** Plugins' actions as menu rows. */
 const actionItems = (actions: WebPageAction[]): MenuItem[] => actions.map((a) => ({ label: a.label, icon: a.icon, run: a.run }))
-/** A group of rows after others: a line above its first. */
 const withSep = (items: MenuItem[]) => items.map((it, i) => (i === 0 ? { ...it, sep: true } : it))
 
-/** Save: a click saves the page to the vault (a note in Clippings); plugins' ways to save (Save video) are in its menu,
- *  the chevron beside it or a right-click. */
 function SaveButton({ disabled, saving, onSave, actions }: { disabled: boolean; saving: boolean; onSave: () => void; actions: WebPageAction[] }) {
   const more = actions.length > 0
   const menu = (e: React.MouseEvent) => {
@@ -802,7 +717,6 @@ function SaveButton({ disabled, saving, onSave, actions }: { disabled: boolean; 
   )
 }
 
-/** The bar's … menu: what's done with the page less often (`items` asked as it opens, for the button it opens under). */
 function MoreButton({ disabled, items }: { disabled: boolean; items: (at: HTMLElement) => MenuItem[] }) {
   return (
     <button type="button" disabled={disabled} aria-label="More for this page" aria-haspopup="menu" data-tip="More" data-web-more className={BAR_ICON}

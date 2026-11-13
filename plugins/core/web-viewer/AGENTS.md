@@ -1,241 +1,83 @@
 ## Browser
-A web browser in tabs of the desktop app, next to your notes. A tab `view:web/<address>` shows
-that page (`vau open "view:web/https://example.com"`); its bar has back, forward, reload, the address (an address or
-words to search for; the tab's container at its left, Shields at its right), pinned extensions, Save and a … menu; `pageBar: hidden` (Shown on hover) has the page fill its tab, the bar sliding
-over it while the pointer rests at the page's top, its pane's or the gap above its card (panes as cards). Save
-clips the page as it's shown (the Web clipper's `POST /api/clip` with its HTML, so a page you're logged in to works
-too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Find in page,
-Print, View page source (⌥⌘U: a view-source: tab, also in the page's right-click), Block an element, Open in another browser, Open as player, Picture in picture, plugins' other actions and
-Extensions. Keys are Chrome's: Back and Forward (the bar's, ⌘[ ⌘], ⌥⌘← →, the mouse's buttons) walk the
-page's history, then the tab's; a right-click or a hold on Back or Forward lists its places. ⌘F finds in the page (a card
-at its top right, as Chrome's: Enter, ⌘G, ⇧⌘G, Esc), ⌘+ ⌘- ⌘0 zoom its site (kept per site on the Mac; the address says 110% till a
-click resets it), a pinch magnifies it as Safari's does, ⌘R and ⇧⌘R reload it (past the cache), ⌥⌘I opens its DevTools, Esc stops a load; a site that takes
-⌘F or the zoom keys itself (a doc's own find) keeps them. ⌘W on a pinned web tab unloads it, back where it was pinned. Right-click an image in a
-page: Save image to vault (into the attachments folder, like a pasted one), Download image, Copy image, Copy image
-address. Commands: "Open web page…", "Clip current web page", "Open web pages in a tab". Pages keep their own logins,
-apart from the app's, on the Mac running the desktop app; nothing about them is kept in the vault.
-- Containers: a tab can open in a container (Personal, Work, or ones you add), each with logins of its own, so one site
-  has several accounts side by side. `view:web/@<container id>/<address>` opens one in a container (an agent: `vau open <address> --container Personal`, by its name); the page's bar
-  shows it (its colour, under the tab's icon too) and its menu moves the tab, always opens its site there or adds a
-  container. Containers are managed in Sites (Manage containers…): add one, and a container's options (rename, colour,
-  Touch ID, agent access, delete: deleting clears its logins) on its heading's … or right-click. They're the plugin's `containers` setting:
-  `[{ "id": "work", "name": "Work", "color": "orange", "sites": ["linear.app"] }]` (colours: blue, orange, green, red,
-  purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there; else, with
-  Workspaces, the workspace's `container`, else the workspace's own logins). While an address is typed, the chip
-  shows where it will open and why, and choosing there (or ⌥↑/⌥↓) applies on Enter; a tab moved to another container
-  keeps its back history, and one the user hasn't moved on since it opened (only redirects have: a sign-in) starts
-  there again from the address it opened with, so what its first pages set (a sign-in's state) is there too.
-  A link from another app (Vaultite as the Mac's browser) with no site rule opens where its site's account is: the one
-  container signed in to it, or a picker when several are (⌘Enter there always opens the site in the one picked); a
-  sign-in link's rule is the site it signs in to's (its `redirect_uri`), its account the identity provider's. One no
-  login chose that reaches another site's sign-in on the way (an app's auth start sending it to Google) chooses then,
-  starting again from its start. Links from inside the app and agents' pages never ask. What's opened from a page in a container (a link, a new window) opens in it too, even a site that always opens in another: the link is that account's (a Drive file from Work's Drive opens in Work), as in a browser profile; the rule takes what's typed, links from notes and pages in no container. A note's `container:` property (a container's id, or its name in any case) opens every web link followed from it in that container, before any site's rule (`container: work`: a Google Docs link there opens in Work though google.com always opens in another); one no container is called leaves its links to the rules, and ⌥⌘-click still sends one to the system browser. `"lock": true` makes a container need Touch ID: its pages don't open or
-  show until unlocked in its tab, and lock again when the Mac locks, sleeps or is idle 15 minutes ("Lock containers").
-- Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps
-  its page, closing it ends it, and ⌘⇧T opens it again with its Back and Forward (kept on the Mac, so a relaunch keeps
-  them too). Moved to a new window, its page goes along, live; Duplicate tab (its menu) is a copy beside it with its Back
-  and Forward. A loading tab's icon spins, a line under the bar with it. A page that didn't load says why in words, with
-  Try again (again by itself once back online); a certificate the Mac doesn't trust warns as Chrome does (Advanced: go
-  on to that site, this session only); one that keeps crashing says so, with Reload. When the Mac runs short of memory,
-  background tabs' pages may be let go (never one playing sound) and load again when shown, history and all. A tab playing sound shows
-  a speaker beside its site's icon: a click on it mutes or unmutes the tab, and while a page plays the status bar's "Web
-  pages playing" names it, its menu showing its tab or muting it. Playing lasts from a page's first sound till its media
-  pauses or ends, through quiet scenes; sound without media (a game) ends after 10 seconds of silence. While a page plays in a
-  tab out of sight (in the background, a folded group, a hidden pane), a card in a corner names it with Pause, Mute and
-  Show tab, several pages in one card; its X closes it for a page till that page plays again, and `soundCard: false`
-  turns it off.
-- Full screen: a page's own (a video's button) fills the window, which goes full screen, as in Chrome; Esc brings it back.
-- Players, to watch a page or share it in a call (Discord's window picker finds "Vaultite player"): "Open as player" (the
-  … menu, "Open current web page as player", ⌥⌘P) moves the tab's page, playing on and not loaded again, into a window
-  of its own with no title bar, at its video's aspect and kept to it, where the last one was on this computer
-  (`playerFullScreen: true`: full screen on a Space of its own), its main video's player filling it (the site's controls
-  and captions with it; a video in an embedded player of another site, that player; no video, the page itself). Its
-  window controls show with the pointer at its top, which drags it. The site's full screen (its button, YouTube's F) and
-  the window's are one: either takes the window full screen, and Esc or either way out brings it back as it was. It
-  plays on while the window is hidden, in the background or on another Space, and isn't let go when memory runs short.
-  Closing the window (⌘W) or the tab's Bring back return it to its tab, still playing; its tab says where it is
-  meanwhile, and closing the tab closes the player. Agents: `vau browser player <tab>` (`--full-screen`, `--window`,
-  `--off`), any tab. Picture in picture (the … menu) floats the page's video over every window instead.
-- Logins: each workspace's pages have their own (a different account per workspace for the same site; workspace 1 keeps
-  the ones pages shared before), or with `logins: shared` every page shares one.
-- The Sites panel (in the sidebar's Panels menu): the sites opened in this workspace's logins ("Default" without
-  workspaces) or a container's, picked on its heading's right (+ adds a container). Who's signed in leads: the account
-  (and its picture) for Google (YouTube and google.<country> in the same row, and any other Google accounts signed in
-  beside it), X, Reddit, GitHub, Hacker News (ycombinator.com), Claude and ChatGPT; a site whose login cookie is there is
-  signed in even when it won't say who ("Signed in", or the name it last gave) (Sign out clears a site's cookies and storage), with a container's always-open sites (see the Sites tab for their order); the
-  rest, latest visited first, and one line for trackers (cookies other sites' pages left, which it clears) fold behind
-  "N more sites" when there are more than a few. The Sites tab ("Show sites and logins") has every set of logins, each
-  container a card in its colour with its options (dragged by its name to reorder containers everywhere), and a filter by site or account.
-  A signed-in row dragged onto another card moves its login there (⌥: copies it), as its menu's Move to and Copy to
-  do: its cookies go there (a site keeping its login in storage instead stays put), its always-open rule follows, Undo
-  takes it back; the user's own act, never an op. Under them, "On M1" and the like: each other machine's browser
-  (Machines, with this vault) and who's signed in where there, its rows only opening the site here. A login dragged
-  onto one of its cards, or Copy to's, is copied there (only copied: nothing here signs it out there), sealed in this
-  app for that app's key, so the servers passing it on never read a cookie, and checked there as here. Deleting a
-  container signed in somewhere offers to move its logins first. Accounts and always-open sites keep the order they're dragged into (`siteOrder`, by profile), else
-  always-open first, then A to Z. The address bar's container menu names who's signed in
-  to the page's site (or what's typed: gmail.com is Google's login) in each container, filling in as they're listed. The Browser's settings have the same for every set of logins, under Sites and logins.
-- Icons: a site's is its home page's or its /favicon.ico; a page with one of its own under a path (Maps on google.com)
-  has it on its tab without changing its site's.
-- Notifications: a page's notifications become Inbox events (source: the site, kind `web`, linking to its tab), so
-  they're toasts and the Mac's notifications too; `notifications: false` drops them.
-- Claude Code on the web: with claude.ai signed in in a workspace's logins, the desktop app reads its sessions every 5
-  seconds while one is working or waiting, else every 15 (claude.ai's own list, with those logins: no claude.ai tab
-  needed). The Terminals panel lists them under Cloud, and one finishing or waiting for the user is an Inbox event:
-  "Claude Code finished" (kind `done`) or "Claude Code needs you" (`waiting`), `session` its address.
-- On the web and phones links open in the browser, and a web tab says so with a link out.
-- Pinned: Pin in a page's tab menu (or `vau pin <address>`) pins it to the sidebar by its address, with its site's icon
-  and its title, kept up to date while it's open; a click opens it here. While the plugin is off it doesn't show.
-- Links: web links clicked in the app (in notes, blocks, sheets, terminals) open in a web tab; ⌘-click (Ctrl elsewhere)
-  or a middle click opens one behind, ⌘⇧-click in front, ⌥⌘-click (and the link's menu) in the system browser, as does
-  every link with `openLinks: browser`. In a page, as in Chrome: ⌘-click, a middle click and the link's menu open a new
-  tab behind it (in the page's container and tab group, after the ones opened from it before), ⌘⇧-click and
-  target=_blank in front, right after the page (closing it straight away shows the page again; closing one of those
-  opened behind goes to the next of them, then the page), ⇧-click to the side, ⌥-click a glance (with Glance on); tabs
-  a page opened stay open when it closes; `window.open` keeps `window.opener`, a page's script opens nothing without a click (it says so, with
-  Open), a tab whose page only downloaded closes. The link's menu also has Open link in container, to the side, Glance
-  and Copy link text. A note's link's menu has Open link in container too (No container or one of them, in front, the
-  check where a click opens it now), and its Always open this note's links in sets the note's `container:` (the checked
-  one again takes it off). What an agent's page opens is its own page, never a tab of the user's.
-- Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,
-  `browser_act`, `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
-  `browser_evaluate`, `browser_download`, `browser_ask_user`, `browser_login`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a
-  machine: the app attaches to the always-on one there); a server without one passes each call to an always-on machine
-  in Machines that has one (its tab numbers, its Downloads), never to a laptop's app, and says so when none has. `vau browser tabs` lists the tabs, whose each is
-  (yours, another agent's, the user's) and what agents may do in it; `vau browser open <url> --task "<task>"` opens a
-  page for you in the background, in the Agents container (signed in to what the user signed in to there), answering
-  its number: no tab of the user's (they see it live in a card in the window's corner, and may open it as a tab, in a
-  tab group `<you>/<task>`: "Claude Code/flight search"; `--summary` says what for), once it has drawn, with its content
-  and refs; `vau browser close <tab>` closes one an agent opened (never the user's). How to use them well, in few calls:
-  `vau docs browsing`. Then `vau browser snapshot <tab>` (the page as an accessibility tree, its controls with refs like
-  e12; `--find` the lines with a word), `vau browser act <tab> <action> <ref>` or `--name "<its name>"` (else text the
-  page shows, where it's drawn) (click, dblclick, hover, fill/type with `--value` (type with no ref: at the caret), paste
-  `--value` with `--format markdown|html` (as a paste, never the user's clipboard), press with `--key`, check, uncheck,
-  select an option by its text, upload `--files` from the vault into a file input, scroll; fill `--fields` fills a whole
-  form, by refs or names; once the page settles, data it fetches included, it answers what changed on it, `--diff`
-  summary, none or a number of lines, or a new page's content, and what the step downloaded), `vau browser run <tab> '<script>'` (snapshot, act, fill, read, wait
-  and go composed in one call, in a sandbox, 30 s at most), `vau browser pdf <tab>` (the page as a PDF in the vault), `vau browser download <tab> <url>` (a file, with the tab's logins, into the vault), `vau browser go <tab> <url|back|forward|reload>`, `vau browser read
-  <tab>` (its text; `--main` its main part, `--find` only the lines with some words; a Google doc as Markdown, a sheet as CSV), `vau browser wait <tab>` (`--text`, `--url`,
-  `--download`, `--helped`) and `vau browser screenshot <tab>` (a PNG's path; a background tab too; MCP gives the
-  picture). An element keeps its ref while it's on the page; a new page gives new ones. A container's
-  `agents` setting says what agents may do in its pages (`read`, or `act`; unset: nothing, as in tabs in no container);
-  the user can pause agents in a tab. An agent from outside this machine (an AI app on the internet) never opens or uses
-  its addresses or its network's (localhost, the LAN, the tailnet), redirected there or not. Pages' scripts never run for agents, nor see what agents do:
-  `vau browser evaluate <tab> "<expression>"` (Act only) runs in a world of its own, which sees the DOM, not the page's
-  scripts. A site asking for a passkey shows a QR code in the tab for the user's phone. Where only the user can go on (a
-  sign-in, a passkey, a captcha), `vau browser ask <tab> "<what to do>"` opens the page as a tab, in front, with that
-  and a Done button in a card at its foot, and tells their Inbox (their phone too); `vau browser wait <tab>
-  --helped` waits for Done. While agents browse, a card in the window's corner (dragged to any
-  corner, as the mini player) has their pages out of sight, the picked one live with the agent's pointer moving in it
-  (its name beside it, a faint frame round the page): Open as tab, Pause, Close page; it closes till another page or an
-  ask. An agent's own page is laid out at 1280x800 and at 100% zoom wherever it's shown, so watching never moves it under
-  the agent: opened as a tab, the tab shows it live as a picture, as a screen share, with Take over; nothing the user
-  does there reaches the page. Take over gives them the page itself (the agent paused: its acts fail saying so, and
-  `vau browser tabs` says `taken`), and Give back, in the bar, returns it; input from the live view takes it over too.
-  Closing its tab sends it back to the background, where the agent goes on; an ask shows the page itself till Done.
-  In a tab, an agent at work shows in the bar (what it's doing; its menu takes over, pauses it, or moves its own page
-  back to the background) and as its pointer on the tab. A page an agent left a minute rests (draws nothing) till it's
-  back. Tab numbers are never reused, a restart included. A failed agent call is kept with the run's steps.
-  "Show agents in the browser": the tabs agents are at work in now, each a live picture with
-  Show tab and Pause, then past runs by day (each with its last picture, sites, length, steps, failures and how busy it
-  was), searched by agent, task, summary or site; each agent's steps are kept on the Mac for 14 days, with pictures, to
-  replay (never what's typed into a password field). A replay shows the page after the step picked, what it did, the
-  pause before it and how long the call took (a script's code, a failure's reason), over a strip of the run's time
-  (hover to preview a step, drag to scrub; pauses over a minute shortened) and a filmstrip of its steps by page, the
-  same step repeated on a page folded into one card ("Ran a script ×600", Show each); ← → step, Home and End go to its
-  ends, Space plays it.
-- Passwords for agents: agents log in without ever seeing a password. On the Mac whose browser agents use, an Agents
-  container's menu has "Passwords for agents…": a KeePass file and its password, kept in that Mac's Keychain, never the
-  vault. Make it with KeePassXC's KeeShare, exporting a group of the entries agents may use (Agents) to that file, with a
-  long generated password; the main database never leaves the Mac it's on. `vau browser login <tab>` (`browser_login`;
-  `--entry <title or username>` when the site has several, `--submit` presses Enter) fills what the page asks for from the
-  entry for its site: username and password, a username alone, or a one-time code (TOTP, as KeePassXC or KeePass keep
-  it). Matching is strict, as a password manager's: an entry's address (and its KP2A_URL ones) names a host, `example.com`
-  with its www., `*.example.com` every subdomain (never a public suffix's, like `*.co.uk`), an http page only for an http
-  entry, ports exact. An entry tagged `agent-free` fills at once; any other waits for the user's yes, given with a
-  passkey (Face ID, Touch ID) on a page of this server they open from the Inbox event (their phone hears of it): a yes
-  lasts 15 minutes for that entry and agent, and nothing else gives one, an agent least of all. The page shows the site,
-  the entry (title and username), the agent and its task. The passkeys are the Mac's, kept encrypted in its Keychain.
-  Adding one, at that Mac: serve its Vaultite over https on the tailnet (`tailscale serve --https=8447 8793`), open
-  Passwords for agents… > Passkeys that approve logins… > Add a passkey…, scan the QR code with the phone (Safari adds
-  the passkey), then confirm with Touch ID on the Mac. The code works once, for 10 minutes. Agents hear only
-  what happened (filled, entries to pick from, waiting for the user, no entry, said no). What's filled can't be read back:
-  snapshot, read, wait, run, act's changes, tabs and the steps kept to replay show it as •••, however the page shows it
-  (revealed, in its title, in its address); evaluate is off in a page holding it (or with any password typed in),
-  screenshot and pdf while the page shows it, and copying there; and a page an agent's script ran in gets no login till it
-  loads again. Each attempt is kept with the agent's steps (site, entry, result, who said yes) and in Activity.
-- History: every page's visits (address, title, time, logins, typed or a link) are kept on the Mac running the desktop
-  app, never in the vault, ranked by frecency. The address bar completes a site inline as you type and lists the search,
-  then open tabs ("Switch to tab"), bookmarks and history ranked together (⇧⌦ removes a history row); what's typed
-  stays till Esc, Enter or the page goes elsewhere; ⌥Enter opens it in a new tab, ⌘Enter behind; `nas:5000` and
-  `.local` names open over http, and a guessed https that can't connect tries http; "Open web page…" is a new web tab with
-  its address ready, the sites visited most under it. The History tab ("Show history", ⌘Y on a Mac): by day, searched,
-  rows removed (Undo), and "Clear browsing history…" for a time range.
-- Bookmarks are a note, `Bookmarks.md` (`type: bookmarks`; one moved keeps working): a heading per folder (`## Reading`,
-  `### Later` under it) and a `- [title](url)` line per bookmark, which the address bar suggests. Add with
-  `vau bookmark <url> --title ... --folder "Reading/Later"` (bookmarks.add, `links` for many) or the address bar's star (⌘D); rename or move one with
-  `vau bookmark edit <url> --title ... --folder ... --before <url>`, remove with `vau bookmark remove <url>`; folders with
-  `vau bookmark folder <path>` (`--rename`, `--remove`). The bookmarks bar under the page bar (⇧⌘B, or its right-click
-  menu's Always show bookmarks bar; on a new tab's page anyway) shows the note's top level: its links, then its folders.
-- "Import from Brave…" / "Import from Chrome…" (on the Mac whose browser it is): a profile's history into the Mac's
-  history, its bookmarks into `Bookmarks.md` under their folders; nothing twice when imported again, never passwords or
-  cookies.
-- Shields (setting `shields`, on by default): ads, trackers, malware sites and YouTube's video ads are blocked in every
-  page, with uBlock Origin's default lists (uBlock filters, privacy, badware, quick fixes, unbreak, EasyList,
-  EasyPrivacy, Peter Lowe's), updated daily on the Mac. A page's Shields button shows how many requests were blocked on
-  it; its menu turns Shields for <site> off (the page reloads), kept in `shieldsDown`: sites like `example.com`, their
-  subdomains too.
-- Blocked elements: parts of pages the user hid, as hiding rules (`youtube.com##ytd-reel-shelf-renderer`: a site, `##`
-  and a CSS selector, uBlock Origin's and Brave's syntax; no site: every site; `:has-text()` and uBlock's other
-  procedural ones work too) in the Browser's list, `.vaultite/plugins/web-viewer/blocked-elements.md` (the app's, not a
-  note): a `## <site>` heading per site and a `` - `rule` `` line per rule, words after it a note to yourself. Pages show a change
-  to the list at once, with no reload; they apply with Shields down too (they're the user's, not the lists'). "Block an
-  element…" (the Shields menu, or "Block an element on this page") picks one in the page: the element under the pointer
-  is outlined, a click picks it, Wider and Narrower (↑ ↓) walk to its parent and back, what the selector matches is
-  hidden as a preview and its selector can be edited; Block adds the rule (Esc cancels). The Shields menu lists the
-  site's rules ("Hidden on <site>": one clicked is shown again, with Undo) and its ready-made ones, off until chosen
-  (setting `hide`: `youtube-shorts`, `youtube-recommendations`, `youtube-comments`). Agents: `vau browser block
-  "<site>##<selector>"` (or a selector with `--site`), `vau browser unblock <rule>`, `vau browser blocked [site]`;
-  prefer selectors that last (a custom element's name, an id, a semantic attribute), never a generated class. Not
-  Focus's: what a managed extension blocks isn't here, and nothing here gets around it.
-- Site styles: a site's own CSS, `.vaultite/plugins/web-viewer/sites/<site>.css` (youtube.com.css: its subdomains too),
-  added to its pages before they paint and again as it's saved, no reload. Each declaration wins over the site's own (the
-  app makes them !important, in a layer), so none needs !important. The vault's look is there as variables, following
-  light, dark, the colour scheme and fonts: `--vault-background`, `--vault-foreground`, `--vault-card`, `--vault-popover`,
-  `--vault-muted`, `--vault-muted-foreground`, `--vault-primary`, `--vault-accent`, `--vault-border` and the app's other
-  colours, `--vault-font-ui`, `--vault-font-text`, `--vault-font-code`, `--vault-radius`, `--vault-color-scheme` (light
-  or dark), `--vault-paper-filter` (dark: a canvas' white paper onto the card, black text the foreground; light: none). Use them, not colours of your own, so a site follows the vault; on a site with its own colour tokens (YouTube's),
-  map those rather than restyling each part. The Shields menu has "Style for <site>" (the style the page gets: its host's
-  own, docs.google.com.css, else its parent site's; off: setting `unstyled`) and "Edit its style…" ("Style this site…"
-  for one without: its host's file from a template, opened beside the page); the palette's "Edit
-  this site's style" too. Agents: `vau browser style [site]` (`--css`, `--remove`); a page's dark mode fixed this way goes in
-  `@media (prefers-color-scheme: dark)` (its help says how).
-- Dark pages (setting `darkPages`, on by default): while the app's look is dark, pages follow it from their first
-  frame, never white while they load. A page with a dark look of its own, by its site (pages are told the user prefers
-  dark) or by a style of the vault's for it (above), shows it as it is: each page is judged as it looks with its style,
-  again as a style arrives or changes, so a site styled only in part (docs.google.com.css: the editors) has its other
-  pages (sign-in, errors) darkened. The rest are made dark by Chromium's auto dark mode and, in `darkPagesLook: theme`
-  (the default), tinted onto the colour scheme's background and text (accents a little toward them, pictures and video
-  toned to match, canvases with the page); `dark` is Chromium's plain dark, pictures as they are. A style that darkens a
-  canvas itself uses `--vault-paper-filter`. A page's Shields menu has "Dark pages for <host>" (off: setting
-  `darkPagesOff`, its subdomains too). The look changing (light, a colour scheme) applies to open pages at once; while
-  it's light, pages are as their sites make them.
-- Extensions (Chrome's, on the Mac running the desktop app; installed per Mac, never in the vault, since each is code
-  run on every site): "Extensions" (a command, or a page's … menu) lists them with a switch each,
-  Options, Pin to the bar and Remove, and adds one from a Chrome Web Store link or id, from a folder or `.crx` file, or
-  from another browser on the Mac (Brave, Chrome, Edge, Arc, Vivaldi: from the Web Store when it still has it, else
-  that browser's copy, as for Manifest V2 ones the store dropped), with its settings from that browser's profile
-  (chrome.storage: its options, sign-in, license), so it starts as it is there; an installed one that another browser
-  also has gets "Settings from Brave" in its … menu, which replaces its settings here with that profile's. On a Web Store extension's page the bar offers "Add
-  to Vaultite". Pinned ones show their button in every page's bar (badge and all; a narrow pane leaves them to the …
-  menu's Extensions); a click opens its popup under it. Web Store ones update about daily. An extension's settings and data are per logins (each workspace's, each
-  container's), as in Chrome's profiles. Not there: their items in the page's right-click menu, their keyboard
-  shortcuts, identity sign-in, side panels. `chrome.webRequest` works beside Shields (what Shields blocks, extensions
-  don't see).
-- Managed extensions, as Chrome's force-installed ones: what this Mac forces on, named only in a file its owner writes
-  in the terminal, `{ "extensions": ["<an unpacked extension's folder>", "<a Web Store id>"] }`: the Mac's
-  `/Library/Application Support/Vaultite/managed-extensions.json` (every Vaultite app; made with sudo, so changing it
-  takes sudo) or `managed-extensions.json` in one app's userData. They're on in every page, workspace and container
-  (Agents too), shown as Managed by this Mac with no switch or Remove; a change to the file applies within seconds, a
-  folder is copied again when its files change (at launch, Look for updates, daily), and one taken out of the file
-  stays as an ordinary extension. It's the owner's alone: agents never write it or work around what it blocks.
+Web pages in tabs of the desktop app. Their logins, history, extensions and steps live on the Mac running it, never in
+the vault. On the web and phones a web tab links out instead.
+
+- Tabs: `view:web/<address>` (`vau open "view:web/https://example.com"`), `view:web/@<container id>/<address>` in a
+  container (`vau open <address> --container Personal`, by name). Two tabs of one address are two pages. Tab numbers
+  are never reused, a restart included. `vau pin <address>` pins a page to the sidebar.
+- Containers: logins of their own, in the plugin's `containers` setting:
+  `[{ "id": "work", "name": "Work", "color": "orange", "sites": ["linear.app"], "lock": true, "agents": "read" }]`.
+  Colours: blue, orange, green, red, purple, pink, yellow, teal, indigo, gray. `sites`: a page of one opened in no
+  container opens there. `lock`: its pages need Touch ID, locking again when the Mac locks, sleeps or idles 15 minutes.
+  `agents`: `read` or `act`; unset, agents can't use its pages (nor tabs in no container). A link opens in: a note's
+  `container:` property (an id, or a name in any case) for every link followed from it, else its site's rule, else the
+  workspace's `container`, else the workspace's own logins (`logins: shared`: one set for every page). What a page
+  opens stays in its container.
+- Agents: `vau browser ...` and the MCP tools `browser_open`, `browser_tabs`, `browser_snapshot`, `browser_act`,
+  `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
+  `browser_evaluate`, `browser_download`, `browser_ask_user`, `browser_login`, `browser_close`. Read
+  `vau docs browsing` first.
+  - The browser is the desktop app attached to this server. A server without one passes each call to an always-on
+    machine in Machines that has one (its tab numbers, its Downloads), never to a laptop's app, and says when none has.
+  - `vau browser open <url> --task "<task>"` (`--summary`) opens your own page in the background, in the Agents
+    container, never a tab of the user's, answering its number, content and refs once it has drawn. It's laid out at
+    1280x800 and 100% zoom wherever it's shown. What it opens is yours too. `close` closes only agents' pages.
+  - `tabs` lists every tab: whose it is and what agents may do in it. `taken`: the user took it over and your acts fail
+    till they give it back. The user can pause agents in a tab. A page left a minute rests till you're back.
+  - `act <tab> <action> <ref>` or `--name "<its name>"`: click, dblclick, hover, fill/type `--value` (type with no ref:
+    at the caret), paste `--value --format markdown|html` (never the user's clipboard), press `--key`, check, uncheck,
+    select by option text, upload `--files` from the vault, scroll; `fill --fields` fills a form. It answers what
+    changed (`--diff`: summary, none or a number of lines) or the new page's content, and what it downloaded. A ref
+    lasts while its element is on the page.
+  - `run <tab> '<script>'` composes snapshot, act, fill, read, wait and go in a sandbox, 30 s at most. `read` (`--main`,
+    `--find`; a Google doc as Markdown, a sheet as CSV), `wait` (`--text`, `--url`, `--download`, `--helped`),
+    `screenshot` (a PNG's path; background tabs too), `pdf` and `download <tab> <url>` (with the tab's logins) into the
+    vault, `go <tab> <url|back|forward|reload>`, `player <tab>` (`--full-screen`, `--window`, `--off`).
+  - `evaluate` (`act` only) runs in a world of its own: it sees the DOM, not the page's scripts, and pages' scripts never
+    see what agents do.
+  - Where only the user can go on (a sign-in, a passkey, a captcha): `vau browser ask <tab> "<what to do>"` shows them
+    the page with a Done card and tells their Inbox; `wait <tab> --helped` waits for Done.
+  - An agent from outside this machine never reaches local addresses (localhost, the LAN, the tailnet), redirected
+    there or not.
+  - Each agent's steps are kept 14 days to replay ("Show agents in the browser"), never what's typed in a password
+    field. A failed call is kept with them.
+- Passwords for agents: `vau browser login <tab>` (`--entry <title or username>` when the site has several, `--submit`
+  presses Enter) fills a username and password, a username alone or a TOTP code from a KeePass file on that Mac (made
+  with KeePassXC's KeeShare; set in the Agents container's "Passwords for agents…"). Matching is strict: an entry's
+  address (and its KP2A_URL ones) names a host, `example.com` with its www., `*.example.com` every subdomain (never a
+  public suffix's), an http page only for an http entry, ports exact. An entry tagged `agent-free` fills at once; any
+  other waits for the user's yes with a passkey, from an Inbox event, lasting 15 minutes for that entry and agent.
+  Nothing else gives a yes. You hear only what happened (filled, entries to pick from, waiting, no entry, said no).
+  What's filled reads as ••• everywhere; `evaluate` is off in a page holding it (or any typed password), `screenshot`
+  and `pdf` while it shows; a page your script ran in gets no login till it loads again.
+  Adding a passkey, at that Mac: serve Vaultite over https on the tailnet (`tailscale serve --https=8447 8793`), then
+  Passwords for agents… > Passkeys that approve logins… > Add a passkey…, scan with the phone, confirm with Touch ID.
+- Bookmarks: the note `Bookmarks.md` (`type: bookmarks`; it may move): a heading per folder (`## Reading`, `### Later`
+  under it), a `- [title](url)` line per bookmark. `vau bookmark <url> --title ... --folder "Reading/Later"`
+  (`links` for many), `vau bookmark edit <url> --title ... --folder ... --before <url>`, `vau bookmark remove <url>`,
+  `vau bookmark folder <path>` (`--rename`, `--remove`). Importing from Brave or Chrome adds history and bookmarks,
+  never passwords or cookies.
+- Blocked elements: `.vaultite/plugins/web-viewer/blocked-elements.md`, a `## <site>` heading per site and a
+  `` - `rule` `` line per rule (words after it a note). Rules are uBlock Origin's and Brave's syntax
+  (`youtube.com##ytd-reel-shelf-renderer`; no site: every site; `:has-text()` and the other procedural ones work), and
+  apply with Shields down too. `vau browser block "<site>##<selector>"` (or `--site`), `unblock <rule>`,
+  `blocked [site]`. Prefer selectors that last (a custom element's name, an id, a semantic attribute), never a generated
+  class. A managed extension's blocking isn't here, and nothing here gets around it.
+- Site styles: `.vaultite/plugins/web-viewer/sites/<site>.css` (its subdomains too; a host's own file, like
+  `docs.google.com.css`, over its parent site's), applied before pages paint and again on save. Every declaration wins
+  over the site's (the app makes it !important, in a layer), so write none. The vault's look is variables: use them,
+  not colours of your own, and on a site with colour tokens of its own map those: `--vault-background`,
+  `--vault-foreground`, `--vault-card`, `--vault-popover`, `--vault-muted`, `--vault-muted-foreground`,
+  `--vault-primary`, `--vault-accent`, `--vault-border` and the app's other colours, `--vault-font-ui`,
+  `--vault-font-text`, `--vault-font-code`, `--vault-radius`, `--vault-color-scheme` (light or dark),
+  `--vault-paper-filter` (dark: a canvas' white paper onto the card; light: none). A site's dark mode goes in
+  `@media (prefers-color-scheme: dark)`. `vau browser style [site]` (`--css`, `--remove`).
+- Dark pages: a page dark by its site or by its style shows as it is, each judged as it looks with its style; the rest
+  get Chromium's auto dark mode. A style that darkens a canvas itself uses `--vault-paper-filter`.
+- Inbox events: a page's notifications (source: the site, kind `web`, linking to its tab). With claude.ai signed in to
+  a workspace's logins, Claude Code on the web's sessions: "Claude Code finished" (kind `done`) or "Claude Code needs
+  you" (`waiting`), `session` its address; the Terminals panel lists them under Cloud.
+- Extensions are per Mac, never in the vault. Managed ones are named only by the owner, in
+  `/Library/Application Support/Vaultite/managed-extensions.json` (every app; sudo) or `managed-extensions.json` in one
+  app's userData: `{ "extensions": ["<an unpacked extension's folder>", "<a Web Store id>"] }`. Agents never write it
+  or work around what it blocks.

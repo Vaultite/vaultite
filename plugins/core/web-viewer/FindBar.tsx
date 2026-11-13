@@ -1,19 +1,14 @@
-// Find in a web page, as Chrome's: a card over the page's top right, searched by its engine (electron/web.ts `web:find`).
-// The page is native, over the window: the card raises the window over it (`data-floats`, layers.ts), passing the rest on.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { cn, numberText, type WebPages } from "@vaultite"
 import { FindField, FindTools, floatingBar, floatingSpot } from "@plugins/find/tools"
 import type { FindAsk } from "./state"
 
-/** Each tab's find, as Chrome keeps it: its words, and whether its bar is open (shown again, it is). */
 const finds = new Map<string, { text: string; open: boolean }>()
 export const findOpen = (tab: string) => !!finds.get(tab)?.open
 export const setFindOpen = (tab: string, open: boolean) => finds.set(tab, { text: finds.get(tab)?.text ?? "", open })
 
 export type Found = { active: number; matches: number }
 
-/** `ask`: what was asked last (bumped by `n`), `found`: what the page found for it (null: not searched yet); `className`
- *  places it (under the page's bar). */
 export function FindBar({ web, id, tab, ask, found, close, className }: { web: WebPages; id: number; tab: string; ask: { n: number; how: FindAsk }; found: Found | null; close: () => void
   className?: string }) {
   const [text, setText] = useState(() => finds.get(tab)?.text ?? "")
@@ -23,7 +18,6 @@ export function FindBar({ web, id, tab, ask, found, close, className }: { web: W
   useEffect(() => { live.current = { text, matchCase, found } })
   const find = (t: string, o: { next?: boolean; forward?: boolean; matchCase?: boolean } = {}) =>
     void web.find?.(id, t, { matchCase: live.current.matchCase, ...o }).catch(() => {})
-  // (not searched yet, Next is a new search)
   const step = (forward: boolean) => { const l = live.current; if (l.text) find(l.text, { next: !!l.found, forward }) }
 
   useEffect(() => {
@@ -32,7 +26,6 @@ export function FindBar({ web, id, tab, ask, found, close, className }: { web: W
     else step(ask.how === "next")
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ask.n])
-  // (its highlights go with it)
   useEffect(() => () => void web.find?.(id, "").catch(() => {}), [web, id])
 
   const change = (t: string) => {

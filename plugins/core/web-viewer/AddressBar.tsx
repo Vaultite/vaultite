@@ -1,5 +1,3 @@
-// The page bar's address (the container chip and Shields inside it): completed inline, a list under it (search, open
-// tabs, bookmarks, history) over the native page. What's typed is the tab's draft (drafts.ts), kept on leaving the field.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { ArrowRight, Search, Star, X } from "lucide-react"
 import { closePane, cn, getTabLayout, isMac, openMenu, allPanes, selectPane, useStore, webPages, type MenuItem, type WebPageInfo } from "@vaultite"
@@ -11,9 +9,7 @@ import { removeVisits, searchHistory, useHistoryChanged, type Found } from "./hi
 import { SiteIcon } from "./icons"
 import { profile, settings } from "./state"
 
-/** Where an address opens: this tab, a new tab in front (⌥Enter) or behind (⌘Enter). */
 export type Place = "here" | "front" | "back"
-/** Open `url` (typed, or a bookmark's); `guessed`: https only because no scheme was typed. */
 export type Go = (url: string, how: "typed" | "bookmark", place: Place, guessed?: boolean) => void
 
 type Row =
@@ -25,13 +21,11 @@ type Row =
 
 const MAX = 8
 const bare = (u: string) => u.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "")
-/** The address as a browser shows it while it isn't being edited: no https://, no lone slash after the host. */
 const trimmed = (u: string) => u.replace(/^https:\/\//i, "").replace(/^([^/?#]+)\/$/, "$1")
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const placeOf = (e: { altKey: boolean; metaKey: boolean; ctrlKey: boolean }): Place => (e.altKey ? "front" : (isMac ? e.metaKey : e.ctrlKey) ? "back" : "here")
 
 type OpenTab = WebPageInfo & { arg: string; tab: string; container: string | null }
-/** The web pages of this window that a tab of this workspace has open (shown or kept in the background). */
 async function openTabs(): Promise<OpenTab[]> {
   const list = await webPages?.list?.().catch(() => []) ?? []
   const mine = profile(), here = new Set(allPanes(getTabLayout()).map((p) => p.id))
@@ -42,30 +36,21 @@ async function openTabs(): Promise<OpenTab[]> {
 }
 
 export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inputRef, onGo, onTurn, onTarget, onLeave, more }: {
-  /** The page's address (what shows while not edited). */
   url: string
-  /** The bar's own items, at the foot of the field's menu (the field is most of the bar). */
   more?: () => MenuItem[]
-  /** This tab's id: it isn't offered as a tab to switch to. */
   tab: string
-  /** It has no page yet (a new tab): switching to another tab from it closes it. */
   blank: boolean
   draft: Draft | null
   setDraft: (d: Draft | null) => void
-  /** Inside the field, before and after what's typed (the container chip, Shields). */
   lead?: ReactNode
   trail?: ReactNode
   inputRef: RefObject<HTMLInputElement | null>
   onGo: Go
-  /** ⌥↑/⌥↓: the container what's typed opens in, the one before or after. */
   onTurn: (by: 1 | -1) => void
-  /** The address Enter would open now (null: none typed), for the chip to say where it opens. */
   onTarget: (url: string | null) => void
-  /** Esc with nothing to close or revert: the keyboard goes back to the page. */
   onLeave: () => void
 }) {
   const [focused, setFocused] = useState(false)
-  /** Inline completion is offered (not after deleting, nor after Esc or leaving). */
   const [auto, setAuto] = useState(true)
   const [composing, setComposing] = useState(false)
   const [open, setOpen] = useState(false)
@@ -74,16 +59,13 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
   const [answer, setFound] = useState<{ for: string; data: Found } | null>(null)
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [version, setVersion] = useState(0)
-  /** The selection to put back as the keyboard returns from the chip's menu (instead of selecting it all). */
   const back = useRef<[number, number] | null>(null)
-  /** Select it all once the address is drawn back (Esc's revert: typing then replaces it). */
   const reselect = useRef(false)
   useLayoutEffect(() => { if (reselect.current) { reselect.current = false; inputRef.current?.select() } })
   const bookmarks = useStore().store?.bookmarks ?? NONE
   const { search } = settings.use()
   useHistoryChanged(useMemo(() => () => setVersion((v) => v + 1), []))
 
-  /** What's typed (null: not edited), without the inline completion. */
   const typed = draft?.text ?? null
   const text = typed ?? ""
   const edit = (t: string | null) => setDraft(t === null && draft?.chosen === undefined ? null : { text: t, chosen: draft?.chosen, on: url })
@@ -96,7 +78,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
   }, [typed, text, version])
 
   const found = typed !== null && text.trim() ? answer : null
-  // The site completed inline: what the history completes what's typed to, while it still starts so.
   const c = found?.data.complete ?? null
   const suffix = focused && auto && !composing && typed && c && !/\s/.test(typed) && c.text.length > typed.length && c.text.toLowerCase().startsWith(typed.toLowerCase())
     && typed.toLowerCase().startsWith(found!.for.trim().toLowerCase().slice(0, typed.length)) ? c.text.slice(typed.length) : ""
@@ -113,7 +94,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
     if (done) head.push({ kind: "url", url: done.url, title: titled(done.url) })
     else if (to && !words) head.push({ kind: "url", url: to, title: titled(to), guessed: guessedHttps(t) })
     if (!/^https?:\/\//i.test(t)) head.push({ kind: "search", url: searchUrl(t, search), words: t, engine: hostOf(searchUrl("", search)) })
-    // The rest by how well each matches, whatever its kind: the history's score, more for an open tab or a bookmark.
     const scores = new Map(found?.data.rows.map((r) => [r.url, r.score]) ?? [])
     const least = Math.min(1, ...scores.values())
     const ws = t.toLowerCase().split(/\s+/)
@@ -124,7 +104,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
       ...(found?.data.rows ?? []).map((r): [Row, number] => [{ kind: "history", url: r.url, title: r.title }, r.score]),
     ]
     const out: Row[] = [], seen = new Set<string>()
-    // (an open tab is offered beside the same address typed: switching to it is another thing to do)
     for (const r of [...head, ...rest.sort((a, b) => b[1] - a[1]).map(([r]) => r)]) {
       const k = r.kind === "tab" ? `tab ${r.arg}` : r.url
       if (out.length < MAX && !seen.has(k)) { seen.add(k); out.push(r) }
@@ -133,7 +112,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
   }, [typed, text, suffix, c, found, search, tabs, bookmarks, tab])
   const list = focused && open && rows.length > 0
   const at = Math.min(sel, Math.max(0, rows.length - 1))
-  // ↑/↓ show the chosen row's address in the field, as Chrome does; typing goes on from it.
   const filled = list && moved && at > 0 ? (rows[at].kind === "search" ? (rows[at] as { words: string }).words : rows[at].url) : null
   const shown = filled ?? (typed !== null ? typed + suffix : focused ? url : trimmed(url))
   const target = typed === null ? null : (list ? rows[at] : rows[0])?.url ?? null
@@ -157,7 +135,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
     setDraft(null)
     closeList()
     selectPane(r.tab)
-    // (a new tab that was only for finding it isn't left behind)
     if (blank) closePane(tab)
   }
   const forget = async (r: Row) => {
@@ -184,7 +161,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
       else if (rows.length) pick(list ? rows[at] : rows[0], placeOf(e))
     } else if (e.key === "Escape") {
       e.preventDefault()
-      // First the list (and the completion), then what's typed (back to the page's address), then the page.
       if (list || suffix) { closeList(); setAuto(false); return }
       if (draft) { setDraft(null); setAuto(true); reselect.current = true; return }
       e.currentTarget.blur()
@@ -193,12 +169,10 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
       e.preventDefault()
       void forget(rows[at])
     } else if ((e.key === "ArrowRight" || e.key === "End") && suffix) {
-      // (taking the completion: it's typed now)
       edit(typed + suffix)
     }
   }
 
-  // Right-click: the field's own menu, with Paste and go (Paste and search for words), as browsers have.
   const menu = (e: MouseEvent<HTMLInputElement>) => {
     e.preventDefault()
     const el = e.currentTarget, at = { x: e.clientX, y: e.clientY }
@@ -221,7 +195,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
     <div className="relative mx-1 min-w-12 flex-1" data-web-address-bar>
       <div onMouseDown={(e) => {
         if (e.target === e.currentTarget) { e.preventDefault(); inputRef.current?.focus(); return }
-        // The chip, while typing: the field keeps the keyboard (and what's typed), and gets it back from its menu as it was.
         const el = inputRef.current
         if (el && document.activeElement === el && e.target !== el) { e.preventDefault(); back.current = [el.selectionStart ?? 0, el.selectionEnd ?? 0] }
       }}
@@ -247,7 +220,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
             const was = back.current
             back.current = null
             if (was) { const el = e.currentTarget; requestAnimationFrame(() => el.setSelectionRange(was[0], was[1])); return }
-            // (a draft comes back as it was left, its list too; else the whole address, ready to replace)
             if (typed !== null) setOpen(true)
             e.currentTarget.select()
           }}
@@ -255,7 +227,6 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
             setFocused(false)
             setComposing(false)
             closeList()
-            // (a container picked with nothing typed was for this edit only)
             if (draft && typed === null && url && !back.current) setDraft(null)
           }}
           onKeyDown={onKeyDown}
@@ -316,7 +287,6 @@ function Suggestion({ row: r, selected, words, onHover, onPick, onForget }: { ro
   )
 }
 
-/** The typed words, where they start a word of `text`, drawn bold. */
 function Marked({ text, words }: { text: string; words: string }): ReactNode {
   const ws = words.trim().toLowerCase().split(/\s+/).filter(Boolean)
   if (!ws.length) return text

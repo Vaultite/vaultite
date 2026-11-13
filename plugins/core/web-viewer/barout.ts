@@ -1,8 +1,5 @@
-/** How long the pointer rests at the page's top or the pane's before the bar comes (a quick pass doesn't bring it), and
- *  how long it's been off the bar before it goes. */
 export const REST_MS = 60, LINGER_MS = 350
 
-/** Both can hold: the page's word on its top comes later than the window's on the pane's. */
 type At = { page: boolean; pane: boolean }
 export type Bar = At & { kind: "in" | "resting" | "out" | "lingering" }
 export const barStart: Bar = { kind: "in", page: false, pane: false }

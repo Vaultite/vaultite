@@ -1,5 +1,3 @@
-// The History tab: the pages visited, newest first, by day (a page once a day, at its last visit), searched, opened with
-// a click, removed one or several at a time (Undo puts them back), and Clear browsing history for a time range.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Copy, Globe, Search, Trash2 } from "lucide-react"
 import {
@@ -14,7 +12,6 @@ export const HISTORY_LIST = "web-history"
 const PAGE = 300
 const TIME = { hour: "numeric", minute: "2-digit" } as const
 
-/** A page as the list shows it: its last visit that day, and every visit of it that day (what removing it takes). */
 type Row = { key: string; url: string; title: string; host: string; at: number; ids: number[] }
 type Day = { day: string; rows: Row[] }
 
@@ -32,11 +29,9 @@ function byDay(visits: Visit[]): Day[] {
   return days
 }
 
-/** Rows removed from here: gone at once, back if it fails or on Undo. A whole range cleared: hidden from `cleared`. */
 const removing = removals()
 const cleared = cell<number | null>(null)
 
-/** Put back what was removed, from a toast's Undo. */
 const undoable = (text: string, gone: Removed[], keys: string[]) => {
   if (!gone.length) return
   notify(text, { action: { label: "Undo", run: () => { removing.back(keys); return restoreVisits(gone).then(() => {}) } } })
@@ -50,7 +45,6 @@ function removeRows(rows: Pick<Row, "ids" | "key">[]) {
     .then((ok) => ok && undoable(`Removed ${pages(rows.length)} from history`, gone, keys))
 }
 
-/** Remove a site's history (`rows`: the ones of it shown, which go at once). */
 function forgetSite(host: string, rows: Row[]) {
   const keys = rows.map((r) => r.key)
   let gone: Removed[] = []
@@ -65,7 +59,6 @@ const RANGES: { id: string; label: string; ms: number | null }[] = [
   { id: "month", label: "The last 4 weeks", ms: 28 * 86_400_000 },
   { id: "all", label: "All time", ms: null },
 ]
-/** Clear browsing history…: pick a time range, then confirm (it can't be undone). */
 export function askClear() {
   choose({
     title: "Clear browsing history", heading: "Clear the history of", placeholder: "Time range",
@@ -89,7 +82,6 @@ export function askClear() {
 }
 
 export function HistoryView({ openPage, onImport }: { openPage: (url: string) => void
-  /** Import another browser's history (shown while there's none). */
   onImport?: () => void }) {
   const [q, setQ] = useState("")
   const [text, setText] = useState("")
@@ -99,7 +91,6 @@ export function HistoryView({ openPage, onImport }: { openPage: (url: string) =>
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { const t = setTimeout(() => setText(q.trim()), 150); return () => clearTimeout(t) }, [q])
 
-  // The newest visits again, as many as were listed (a visit, a delete, Undo).
   const shown = useRef(0)
   const reload = useCallback(() => {
     void listHistory({ text, limit: Math.min(1000, Math.max(PAGE, shown.current)) }).then((r) => {
@@ -178,7 +169,6 @@ function dayTitle(day: string) {
 }
 
 function HistoryRow({ row: r, openPage, filter, leaving, siteRows }: { row: Row; openPage: (url: string) => void; filter: (q: string) => void; leaving?: ""
-  /** The rows shown of a site (what removing it takes off at once). */
   siteRows: (host: string) => Row[] }) {
   const picked = useSelected(HISTORY_LIST, r.key)
   const host = hostOf(r.url)

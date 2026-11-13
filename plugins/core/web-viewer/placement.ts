@@ -1,5 +1,3 @@
-// A web page kept over its box (WebPage.tsx runs it): one look at a time, the hole in step with the page, and the page
-// off the window behind its picture while its pane moves. Every change of it is a `placeStep`.
 
 import { overlap, sameBox, type Box, type Change, type Cover } from "./box.ts"
 
@@ -88,7 +86,6 @@ function motion(s: Placement, e: EventOf<"motion">): PlaceStep {
   const p = s.phase, at = overOf(s)
   if (p.kind === "pictured" || p.kind === "thawing") return go({ ...s, phase: { kind: "pictured", motion: e.motion, sentOff: p.kind === "pictured" && p.sentOff } })
   if (!at) return go(s)
-  // (the window over the live page till its picture's up: a sidebar coming in slides over it, not under)
   const cover = s.cover ?? "through"
   return go({ ...s, cover, phase: { kind: "shooting", motion: e.motion, was: at.at } }, !s.cover && { do: "cover", cover }, { do: "shoot", motion: e.motion })
 }

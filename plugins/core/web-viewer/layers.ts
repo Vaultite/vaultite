@@ -1,5 +1,3 @@
-// The window over its pages (electron/appwindow.ts): raised while anything of it covers a page, see-through behind
-// each so the live page shows there, passing the pointer on where nothing of it is (but under a menu, dialog or drag).
 import { webPages } from "@vaultite"
 import { overlap, sameBox, type Box, type Change, type Cover } from "./box.ts"
 
@@ -7,7 +5,6 @@ import { overlap, sameBox, type Box, type Change, type Cover } from "./box.ts"
 const covers = new Map<number, Cover>()
 let raised: Cover = null
 
-/** Page `id` is covered so now; the window is raised as the most any page needs. */
 export function setCover(id: number, c: Cover) {
   if ((covers.get(id) ?? null) === c) return
   if (c) covers.set(id, c)
@@ -20,29 +17,18 @@ export function setCover(id: number, c: Cover) {
   void webPages?.raise(want).catch(() => {})
 }
 
-/** What the app draws over pages that says what it is: dialogs (the app's menus, sheets and boxes are), popovers, menus
- *  and lists. Found wherever they are, however small. */
 const POPUPS = "dialog[open], :popover-open, [role=menu], [role=listbox], [role=dialog], [role=alertdialog]"
-// (a float takes the pointer only on itself, as a toast does: the agents' panel)
 const NEVER = "[data-sonner-toaster], [data-under-pages], [data-status-bar], [data-floats]"
-/** Whether a popup is open anywhere (a page isn't shown before what covers it is known). */
 export const popupOpen = () => [...document.querySelectorAll(POPUPS)].some((p) => p.getClientRects().length > 0)
-/** How far apart the hit tests along the page's edges are, and how many across its inside. */
 const EDGE_STEP = 64, INSIDE = 4
 
-/** What's over the page: a popup or a drag takes every click there ("app": a click beside a menu only closes it), else
- *  each its own ("through"). Toasts, the status bar never count. Hit tests: popups where they are, the edges, a few inside. */
 export function hitCover(box: HTMLElement, r: Box): Cover {
   if ("dragging" in document.documentElement.dataset) return "app"
-  // (8px in from the edges: the dividers beside a pane, the sidebar's edge, a split's, reach a few pixels into it)
   const E = 8, L = r.left + E, T = r.top + E, R = r.right - E, B = r.bottom - E
   if (R <= L || B <= T) return null
   const w = innerWidth - 1, h = innerHeight - 1
   const hit = (x: number, y: number) => document.elementFromPoint(Math.min(w, x), Math.min(h, y))
-  // (what's see-through draws nothing over the page: a pane's handle till its bar is hovered. Shown, it fades in, which
-  // `moved` hears)
   const over = (at: Element | null) => !!at && at !== box && !box.contains(at) && !at.closest(NEVER) && at.checkVisibility({ opacityProperty: true })
-  // A popup over the page, hit where it is: its middle and around it (one with no pointer is a float's, below).
   for (const p of document.querySelectorAll(POPUPS)) {
     if (box.contains(p)) continue
     const b = p.getBoundingClientRect()
@@ -54,7 +40,6 @@ export function hitCover(box: HTMLElement, r: Box): Cover {
       if (over(at) && (at === p || p.contains(at))) return "app"
     }
   }
-  // Along the edges, then a few across the inside.
   const steps = (from: number, to: number, n: number) => Array.from({ length: n + 1 }, (_, i) => from + ((to - from) * i) / n)
   const xs = steps(L, R, Math.max(1, Math.ceil((R - L) / EDGE_STEP))), ys = steps(T, B, Math.max(1, Math.ceil((B - T) / EDGE_STEP)))
   for (const x of xs) if (over(hit(x, T)) || over(hit(x, B))) return "through"
@@ -63,25 +48,20 @@ export function hitCover(box: HTMLElement, r: Box): Cover {
   return slides(box, new DOMRect(L, T, R - L, B - T)) ? "through" : null
 }
 
-/** A transition of only a colour: it moves nothing. */
 const COLOUR = /color|shadow|outline|fill|stroke/
-/** Whether something moving or fading (a sidebar sliding in or out) is over `r` now or where it stops: the window is
- *  raised for its whole run. By its box, not hit tests: what slides out is already inert, and what slides in not there yet. */
 function slides(box: HTMLElement, r: DOMRect) {
   const runs = new Map<Element, Animation[]>(), holding: Animation[] = []
   for (const a of document.getAnimations()) {
     const t = a.effect instanceof KeyframeEffect ? a.effect.target : null, end = a.effect?.getComputedTiming().endTime
     if (!t || a.playState !== "running" || typeof end !== "number" || !Number.isFinite(end)) continue
     if (a instanceof CSSTransition && COLOUR.test(a.transitionProperty)) continue
-    // (what holds the page moves it, never covers it: a pane resizing)
     if (t.contains(box)) holding.push(a)
     else if (!box.contains(t) && !t.closest(NEVER) && changeAt(t, box) === "hits") runs.set(t, [...(runs.get(t) ?? []), a])
   }
   if (!runs.size) return false
   const crosses = (at: DOMRect) => [...runs.keys()].some((t) => { const b = t.getBoundingClientRect(); return b.width > 0 && b.height > 0 && !!overlap(b, at) })
   if (crosses(r)) return true
-  // Where they stop, against where the page will be: each looked at just before its end (at it, it would finish and say
-  // so), then put back unseen.
+  // Just before its end: at it, an animation finishes and fires its events.
   const now = box.getBoundingClientRect(), all = [...runs.values()].flat().concat(holding), was = all.map((a) => a.currentTime)
   try {
     for (const a of all) a.currentTime = (a.effect!.getComputedTiming().endTime as number) - 0.01
@@ -92,8 +72,6 @@ function slides(box: HTMLElement, r: DOMRect) {
   }
 }
 
-/** Whether only what lets the pointer through is over the page ("through"): tooltips and toasts, found by where they are
- *  (they take no pointer, so no hit test finds them). */
 export function floatCover(r: Box): Cover {
   const floats = document.querySelectorAll<HTMLElement>("[data-floats], [data-sonner-toast][data-visible=true]:not([data-removed=true])")
   for (const f of floats) { const b = f.getBoundingClientRect(); if (b.width > 1 && b.height > 1 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) return "through" }
@@ -112,33 +90,25 @@ export function matters(r: MutationRecord, box: HTMLElement): Change {
   if (c || !t || box.contains(t) || t.closest("[data-status-bar]")) return c
   return r.type === "childList" && [...r.addedNodes].some((n) => n instanceof HTMLElement && getComputedStyle(n).position === "fixed") ? "hits" : null
 }
-/** The events `moved` reads. */
 export const SLIDES = ["transitionrun", "transitionend", "transitioncancel", "animationstart", "animationend", "animationcancel"]
-/** The same for a transition or animation that started or ended: what slides is looked at where it goes (`slides`) and
- *  again where it stopped (never a colour's). */
 export function moved(e: Event, box: HTMLElement): Change {
   if (e instanceof TransitionEvent && COLOUR.test(e.propertyName)) return null
   return e.target instanceof Element ? changeAt(e.target, box) : null
 }
 
-/** Electron's cursor names (Chromium's: "pointer" is the arrow, "hand" CSS's pointer) that are CSS's too; the rest, a
- *  site's own image among them, show the arrow. */
+// Electron's cursor names: "hand" is CSS's pointer, "pointer" the arrow; the rest (a site's own image too) show the arrow.
 const CURSORS = new Set(["crosshair", "text", "wait", "help", "e-resize", "n-resize", "ne-resize", "nw-resize",
   "s-resize", "se-resize", "sw-resize", "w-resize", "ns-resize", "ew-resize", "nesw-resize", "nwse-resize", "col-resize", "row-resize",
   "move", "vertical-text", "cell", "context-menu", "alias", "progress", "copy", "none", "not-allowed", "zoom-in", "zoom-out", "grab", "grabbing"])
 const RENAMED: Record<string, string> = { hand: "pointer", nodrop: "no-drop" }
 export const cssCursor = (c: unknown) => (typeof c !== "string" ? "" : RENAMED[c] ?? (CURSORS.has(c) ? c : ""))
 
-/** The keys held that a passed pointer's event carries (a ⌘-click, a pinch's ⌃), by Electron's names. */
 const KEYS = ["alt", "control", "meta", "shift"] as const
 const HELD = { alt: "altKey", control: "ctrlKey", meta: "metaKey", shift: "shiftKey" } as const
-/** The pointer over a page's box while the window lets it through, passed on to the page, and the page's cursor shown
- *  there. A press in the page keeps the pointer till it's let go, as a real one does (a drag out over the mini player). */
 export function passPointer(box: HTMLElement, id: () => number | null, area: () => DOMRect) {
   let held = 0
   const send = (e: MouseEvent, type: "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel") => {
     const page = id()
-    // (a press taken while it was through is let go in the page, though what was over it went meanwhile)
     if ((raised !== "through" && !(held && (type === "mouseUp" || type === "mouseMove"))) || page === null) return
     const r = area()
     void webPages?.pointer(page, { type, x: e.clientX - r.left, y: e.clientY - r.top, button: (["left", "middle", "right"] as const)[e.button] ?? "left",
@@ -154,19 +124,15 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
     [box, "mouseleave", (e) => { if (!held) send(e, "mouseLeave") }],
     [box, "wheel", (e) => send(e, "mouseWheel")]]
   for (const [at, ev, fn] of on) at.addEventListener(ev, fn as EventListener, { passive: true })
-  // (the box is under the page but while the window's over it: its cursor is then the one macOS shows)
   const off = webPages?.on((m) => { if (m.type === "cursor" && m.id === id()) box.style.cursor = cssCursor(m.cursor) })
   return () => { for (const [at, ev, fn] of on) at.removeEventListener(ev, fn as EventListener); off?.(); box.style.cursor = "" }
 }
 
-// ---------- the hole: only backgrounds are cut, never what's drawn over the page ----------
 
 const holes = new Map<number, { box: HTMLElement; r: Box; radius: number }>()
-/** The elements whose backgrounds are cut, with the CSS they were given. */
 let cut = new Map<HTMLElement, string>()
 let soon = 0
 
-/** Page `id` shows at `r` of `box` (null: it doesn't), its corners rounded by `radius`: what's behind it is cut away. */
 export function setHole(id: number, box: HTMLElement, r: Box | null, radius = 0) {
   const had = holes.get(id)
   if (!r) { if (!had) return; holes.delete(id) }
@@ -174,7 +140,6 @@ export function setHole(id: number, box: HTMLElement, r: Box | null, radius = 0)
   else holes.set(id, { box, r, radius })
   schedule()
 }
-/** Once the holes as set now are on screen: two frames after the one that cuts them (it's then been shown). */
 export const painted = () => new Promise<void>((done) => {
   if (document.hidden) { setTimeout(done, 50); return }
   const after = (n: number) => requestAnimationFrame(() => (n ? after(n - 1) : done()))
@@ -194,14 +159,13 @@ function apply() {
     s.textContent = STYLE
     document.head.append(s)
   }
-  // Every element painting behind a page: its colour as four (or more) strips around the holes in it.
   const next = new Map<HTMLElement, string>()
   const under = new Map<HTMLElement, { r: Box; radius: number }[]>()
   for (const { box, r, radius } of holes.values()) {
     for (let el: HTMLElement | null = box; el; el = el.parentElement) under.set(el, [...(under.get(el) ?? []), { r, radius }])
   }
   for (const [el, rs] of under) {
-    // (its own colour: read with the cut off, which restyles without painting)
+    // Read with the cut off: a restyle within a task never paints.
     const was = el.hasAttribute("data-web-hole")
     if (was) el.removeAttribute("data-web-hole")
     const st = getComputedStyle(el), color = st.backgroundColor
@@ -221,7 +185,6 @@ function apply() {
   cut = next
 }
 
-/** A rounded page's hole keeps what's outside its corners' curves painted: the page shows only inside them. */
 function corners(h: Box, radius: number, color: string) {
   if (radius <= 0) return []
   const at = (x: number, y: number, centre: string) => ({ image: `radial-gradient(circle at ${centre}, transparent ${radius - 0.5}px, ${color} ${radius + 0.5}px)`,
@@ -230,7 +193,6 @@ function corners(h: Box, radius: number, color: string) {
   return [at(h.left, h.top, "100% 100%"), at(R, h.top, "0 100%"), at(h.left, B, "100% 0"), at(R, B, "0 0")]
 }
 
-/** `a` without `h`: up to four rects. */
 function minus(a: DOMRect, h: Box): DOMRect[] {
   const l = Math.max(a.left, h.left), r = Math.min(a.right, h.right), t = Math.max(a.top, h.top), b = Math.min(a.bottom, h.bottom)
   if (l >= r || t >= b) return [a]
@@ -239,7 +201,6 @@ function minus(a: DOMRect, h: Box): DOMRect[] {
   return out.filter((x) => x.width > 0 && x.height > 0)
 }
 
-// (a theme or a pane's colour changing changes what's painted behind: cut again)
 if (typeof MutationObserver !== "undefined") {
   new MutationObserver(() => { if (holes.size) schedule() }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-translucent"] })
 }

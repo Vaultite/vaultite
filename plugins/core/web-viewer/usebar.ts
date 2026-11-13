@@ -1,29 +1,20 @@
-// The page bar hidden (setting `pageBar`, as Zen's compact mode): the page fills its tab; the bar slides over it while
-// the pointer's at the page's top, its pane's (`paneTopOf`) or the bar, on a click at those tops, the keyboard in it, a new tab.
 import { useEffect, useState, type RefObject } from "react"
 import { trace, useBarsHidden, type WebPages } from "@vaultite"
 import { barStart, barStep, type BarEvent, type Pressed } from "./barout"
 import { settings } from "./state"
 
-/** The pane whose top `el` is in: its bar (Tabs.tsx's strip, title or tabs) or the gap above its card (Workspace.tsx). */
 const paneTopOf = (el: Element | null) => {
   const top = el?.closest<HTMLElement>("[data-pane-bar], [data-pane-gap]")
   return top ? top.dataset.paneBar ?? top.dataset.paneGap : undefined
 }
 const elOf = (e: Event) => (e.target instanceof Element ? e.target : null)
 
-/** Whether the bar is hidden (setting), and whether it's out now (always, when it isn't hidden; `keep`: kept out).
- *  `group`: its pane, whose top brings it too (`paneTopOf`). */
 export function usePageBar(web: WebPages, id: number, group: string | undefined, bar: RefObject<HTMLElement | null>, keep: boolean) {
-  // (a pop-out with its bars hidden: hidden too, and only the keyboard brings it, ⌘L; the pointer at its top is the
-  // window's, to move it)
   const bare = useBarsHidden()
   const hidden = settings.use().pageBar === "hidden" || bare
   const [pointer, setPointer] = useState(false)
   const [typing, setTyping] = useState(false)
 
-  // (the window hears nothing over a page: the desktop app tells when the pointer's at its top; out, the window is over
-  // the page and hears it everywhere)
   useEffect(() => {
     if (!hidden || bare) return
     let s = barStart, timer = 0
@@ -64,7 +55,6 @@ export function usePageBar(web: WebPages, id: number, group: string | undefined,
     }
   }, [hidden, bare, id, group, web, bar])
 
-  // The keyboard in it (⌘L, a Tab to it): out till it leaves.
   useEffect(() => {
     const el = bar.current
     if (!hidden || !el) return

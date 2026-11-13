@@ -1,7 +1,5 @@
-// Looking for words in what a tab answers (read --find, snapshot --find), so an agent gets the lines it needs, not the page.
 import { OpError } from "../../../core/plugins.ts"
 
-/** The lines of a tree (two spaces a level) that have `find` (any case; /a regex/ too), each with the lines it's inside. */
 export function within(tree: string, find: string, max = 80) {
   const re = pattern(find)
   const lines = tree.split("\n"), keep = new Set<number>()
@@ -21,7 +19,6 @@ const pattern = (find: string) => {
   catch { throw new OpError(`not a regex: ${find}`) }
 }
 
-/** The lines of `text` that have `find` (any case; /a regex/ too), a line around each, numbered. */
 export function grep(text: string, find: string, max = 50) {
   const re = pattern(find)
   const lines = text.split("\n"), keep = new Set<number>(), hits: number[] = []

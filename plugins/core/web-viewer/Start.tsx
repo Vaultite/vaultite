@@ -1,4 +1,3 @@
-// A new web tab's page, under its address (which has the keyboard): the sites visited most, a click away.
 import { useCallback, useEffect, useState } from "react"
 import { History } from "lucide-react"
 import { SidebarHeading, SidebarRow, openView } from "@vaultite"

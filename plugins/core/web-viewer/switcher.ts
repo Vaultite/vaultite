@@ -1,5 +1,3 @@
-// The Browser in the quick switcher: tabs, bookmarks, history and rows opening what's typed or searching for it (⌘T's: a
-// site completed inline and first, as in the address bar). The web app has no web tabs: only bookmarks, in the system browser.
 import { Search } from "lucide-react"
 import { getStore, getTabLayout, onTabLayoutChange, openWebLink, allPanes, focusedPane, shownTab, selectPane, webPages, type PluginDef, type SearchDoc, type Store } from "@vaultite"
 import { addressOf, guessedHttps, hostOf, searchUrl } from "./address"
@@ -14,10 +12,8 @@ import { settings, titleOf } from "./state"
 const TINT = "var(--muted-foreground)"
 const bare = (u: string) => u.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "")
 const http = (u: string) => /^https?:\/\//i.test(u)
-/** Completions' addresses by their text ("github.com"), as the history gave them. */
 const completedTo = new Map<string, string>()
 
-/** The web tabs of every pane here (not the one in front), each with its tab's id. */
 function webTabs() {
   if (!webPages) return []
   const l = getTabLayout(), front = shownTab(l)
@@ -28,16 +24,13 @@ function webTabs() {
   })
 }
 
-/** The history's answer for what's typed, asked once for the completion and the rows both. */
 let asked: { q: string; at: number; answer: Promise<Found> } | null = null
 const historyFor = (q: string) => (asked?.q === q && Date.now() - asked.at < 2000 ? asked : (asked = { q, at: Date.now(), answer: searchHistory(q, 8) })).answer
 
-/** What the switcher finds, opening pages with `openPage` (a web tab in `container`: a new one, or the one showing it). */
 export function switcherSearch(openPage: (url: string, container?: string | null) => void): Pick<PluginDef, "search" | "searchLive" | "searchQuery"> {
   const open = (url: string, how: "typed" | "bookmark", into?: Where) => {
     if (!webPages) return openWebLink(url)
     markTyped(url, how)
-    // (where its row said it opens: in none, it stays there, whatever the workspace's container)
     if (into && !into.container) keepOutside(url)
     openPage(url, into?.container)
   }
@@ -46,7 +39,6 @@ export function switcherSearch(openPage: (url: string, container?: string | null
       id: `web-bookmark-${b.url}`, title: b.title || hostOf(b.url), meta: ["Bookmark", ...b.folder.split("/").filter(Boolean), bare(b.url)].join(" · "),
       kind: "Bookmark", icon: siteIcon(b.url), tint: TINT, run: () => open(b.url, "bookmark"), text: `${b.url} ${b.folder}`, recent: 0, weight: 4,
     })),
-    // (an open tab outranks notes: going to it beats opening the page again)
     searchLive: {
       subscribe: onTabLayoutChange,
       docs: () => webTabs().map((t): SearchDoc => {
@@ -59,7 +51,6 @@ export function switcherSearch(openPage: (url: string, container?: string | null
     },
     searchQuery: {
       section: "History",
-      // (what's open or bookmarked is listed as that)
       find: async (q) => {
         if (!hasHistory()) return []
         const { rows } = await historyFor(q)
@@ -81,7 +72,6 @@ export function switcherSearch(openPage: (url: string, container?: string | null
         const done = complete ? completedTo.get(complete.toLowerCase()) ?? null : null
         const typed = addressOf(t, engine), words = searchUrl(t, engine)
         const to = done ?? (typed && typed !== words ? typed : null)
-        // Where each opens (as the address bar's chip says); ⌥↓/⌥↑ choose another container for both.
         const ids = [null, ...containers().map((c) => c.id)]
         const first = destination(to ?? words, { from: null, fresh: true }).container
         const chosen = turn ? ids[(((ids.indexOf(first) + turn) % ids.length) + ids.length) % ids.length] : undefined
