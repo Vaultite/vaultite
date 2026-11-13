@@ -4,6 +4,8 @@ import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
 import { standIn } from "../lib.ts"
 
+const desktopAllows = (paths: string[]) => process.emit("message", { type: "allow", paths }, undefined)
+
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, vault, write } = $
   {
@@ -77,7 +79,6 @@ export default async ($: VaultTest) => {
   {
     // A page from outside the vault: only once the desktop app allowed it, sandboxed, with no storage of the vault's;
     // nothing next to it.
-    const O = await import("../../../core/outside.ts")
     const dir = path.join(tmp, "Downloads")
     fs.mkdirSync(dir, { recursive: true })
     const ext = path.join(dir, "Chart.html")
@@ -85,7 +86,7 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(path.join(dir, "secret.txt"), "x")
     page = await app.serve("v", ext, ext.slice(1), {})
     check("an outside page nobody allowed isn't served", page?.status === 404, page?.status)
-    O.allow([ext])
+    desktopAllows([ext])
     page = await app.serve("v", ext, `${ext.slice(1)}?frame=1`, { frame: "1" })
     const text = String((page?.body as Any)?.text ?? "")
     check("an allowed outside page is served sandboxed, its storage empty", page?.status === 200 && /connect-src 'none'/.test((page?.body as Any)?.headers["Content-Security-Policy"]) &&
@@ -190,12 +191,11 @@ export default async ($: VaultTest) => {
   }
 
   // Files from outside the vault (desktop app): only paths its main process allowed.
-  const { allow } = await import("../../../core/outside.ts")
   const outsideFile = path.join(tmp, "Outside.md")
   fs.writeFileSync(outsideFile, "Outside text.\n")
   ;[code] = await api("GET", `file?path=${outsideFile}`)
   check("outside: not allowed, not there", code === 404, code)
-  allow([outsideFile])
+  desktopAllows([outsideFile])
   let o: Any
   ;[code, o] = await api("GET", `file?path=${outsideFile}`)
   check("outside: an allowed file opens", code === 200 && o.text === "Outside text.\n", o)

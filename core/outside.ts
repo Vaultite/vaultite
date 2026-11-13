@@ -3,6 +3,7 @@ import path from "node:path"
 import { kindOf, tooBig } from "./filetypes.ts"
 import { HTTPError, reply } from "./plugins.ts"
 import { planSave, type saveBody } from "./contracts/save.ts"
+import { onHostMessage } from "./desktopapp.ts"
 import { readText, writeText } from "./vault.ts"
 
 const allowed = new Set<string>()
@@ -15,10 +16,12 @@ const real = (p: string) => {
   }
 }
 
-export function allow(paths: unknown) {
+function allow(paths: unknown) {
   if (!Array.isArray(paths)) return
   for (const p of paths) if (typeof p === "string" && path.isAbsolute(p)) allowed.add(real(p))
 }
+
+onHostMessage("allow", (m) => allow(m.paths))
 
 export { isOutside } from "./fileprops.ts"
 

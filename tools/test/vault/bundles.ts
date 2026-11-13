@@ -575,10 +575,12 @@ export default async ($: VaultTest) => {
     check("bundles: saved, a setup pins each install: its commit and files' hash", savedPin?.commit === pinned && savedPin?.hash === booksPin.hash && savedPin?.source === "Vaultite/plugins/books", savedPin)
     await api("POST", "bundles/restore")
     reader({ commit: pinned, hash: "0123456789abcdef" })
+    write(".vaultite/bundles/reader/Reading/Shelf.md", "# Shelf\n")
     const now = setup()
     ;[code, r] = await apply("reader")
-    check("bundles: files that aren't the ones recorded are refused, saying which and that nothing changed", code === 422 && /^Reader isn't applied: couldn't install Books/.test(r.error) &&
-      /its files at commit \w{7} aren't the ones recorded/.test(r.error) && /Nothing was installed or changed/.test(r.error) && !exists(".vaultite/plugins/books") && setup() === now, [code, r])
+    check("bundles: files that aren't the ones recorded are refused, saying which and that nothing changed (installs go before the bundle's files)", code === 422 && /^Reader isn't applied: couldn't install Books/.test(r.error) &&
+      /its files at commit \w{7} aren't the ones recorded/.test(r.error) && /Nothing was installed or changed/.test(r.error) && !exists(".vaultite/plugins/books") && !exists("Reading/Shelf.md") && setup() === now, [code, r])
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/reader/Reading"), { recursive: true })
 
     // Getting a bundle the user has again (an update) says what changed, and replaces theirs only when told to.
     const exp = JSON.parse((await api("GET", `bundles/${readerAgain}/export?all=1`))[1])

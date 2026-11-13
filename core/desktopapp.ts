@@ -2,6 +2,8 @@ import type { WebSocket } from "ws"
 
 /** Raised when what the two sides say to each other changes: an app and a server that differ don't attach. */
 export const DESKTOP_PROTOCOL = 1
+/** What a server prints once it listens: apps and tools of other versions wait for it. */
+export const LISTENING = "vaultite on http://"
 
 type Msg = { type?: string; rid?: number; value?: unknown; error?: string; [k: string]: unknown }
 /** close codes: 4000 another protocol, 4001 another app attached (don't come back), 4002 come back later. */

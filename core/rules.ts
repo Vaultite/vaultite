@@ -11,8 +11,9 @@ import { isObj as isMap } from "./values.ts"
 const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
 const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
 export const nodeSide = (file: string) => BACKEND.has(path.basename(file)) || /(^|\.)test\.ts$/.test(path.basename(file))
-const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts", "layout.ts"])
-export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline|agents|layout)(?:\.ts)?$/
+const PLUGIN_API = ["plugins", "vault", "client", "timeline", "agents", "layout"]
+const CORE_FOR_PLUGINS = new Set(PLUGIN_API.map((m) => `${m}.ts`))
+export const VAULT_CORE = new RegExp(`^@vaultite/core/(${PLUGIN_API.join("|")})(?:\\.ts)?$`)
 
 export function exportFile(dir: string, name: string, manifest?: Record<string, unknown>): string | null {
   let m = manifest

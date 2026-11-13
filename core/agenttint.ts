@@ -1,4 +1,8 @@
-export const AGENT_TINTS = ["teal", "purple", "green", "pink", "indigo", "blue", "yellow"] as const
+import type { Color } from "./colors.ts"
+
+type NeedsYou = "orange"
+type Recording = "red"
+export const AGENT_TINTS = ["teal", "purple", "green", "pink", "indigo", "blue", "yellow"] as const satisfies readonly Exclude<Color, NeedsYou | Recording>[]
 
 export function agentTint(id: string) {
   let h = 0

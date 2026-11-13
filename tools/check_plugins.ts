@@ -420,6 +420,17 @@ const LOADERS: Record<string, string> = {
   if (!errorsKey || !fs.readFileSync(path.join(ROOT, "web", "index.html"), "utf8").includes(`"${errorsKey}"`)) problems.push("web/src/core/errors.ts: KEY is the queue index.html writes before the app starts: the same key in both")
 }
 
+{
+  const runtimeImports = (f: string) => [...fs.readFileSync(path.join(ROOT, f), "utf8").matchAll(/^\s*(?:import|export)\s+(type\s+)?(?:[^"';]*?\bfrom\s*)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']/gm)]
+    .flatMap((m) => (m[1] ? [] : [m[2] ?? m[3]]))
+  for (const [f, why] of [["core/sandbox.ts", "the desktop app's main process makes sandboxes with it, without the server's code"],
+    ["core/winbin.ts", "plugins/core/terminal/starter.ts loads it alone, before each terminal's program starts"]])
+    for (const spec of runtimeImports(f)) if (!spec.startsWith("node:")) problems.push(`${f}: imports ${spec}: it imports only Node's own modules (${why})`)
+  const { COLORS } = await import("../core/colors.ts")
+  const css = fs.readFileSync(path.join(ROOT, "web", "src", "index.css"), "utf8")
+  for (const c of COLORS) if (!css.includes(`--${c}:`)) problems.push(`core/colors.ts: '${c}' isn't a colour token of web/src/index.css (--${c}): name one it has, or add it there for every scheme`)
+}
+
 const ratchet = spawnSync(process.execPath, [path.join(ROOT, "tools", "ratchet.ts")], { cwd: ROOT, encoding: "utf8" })
 if (ratchet.status !== 0) problems.push((ratchet.stderr || ratchet.stdout).trim())
 

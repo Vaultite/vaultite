@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { chromium } from "playwright-core"
+import { LISTENING } from "../../core/desktopapp.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const args = process.argv.slice(2)
@@ -37,7 +38,7 @@ async function start(root: string, i: number, browser: Browser): Promise<Run> {
   try {
     await new Promise<void>((resolve, reject) => {
       let out = ""
-      child.stdout!.on("data", (b: Buffer) => { out += b; if (/vaultite on http/.test(out)) resolve() })
+      child.stdout!.on("data", (b: Buffer) => { out += b; if (out.includes(LISTENING)) resolve() })
       child.on("exit", () => reject(new Error("the server exited")))
     })
     const line = performance.now() - t0

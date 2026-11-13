@@ -6,6 +6,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { chromium } from "playwright-core"
+import { LISTENING } from "../../core/desktopapp.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
@@ -31,7 +32,7 @@ server.stderr!.on("data", (b: Buffer) => { said = (said + b).slice(-20000) })
 if (arg("log", "")) server.stderr!.pipe(fs.createWriteStream(arg("log", "")))
 await new Promise<void>((ok, fail) => {
   let out = ""
-  server.stdout!.on("data", (b: Buffer) => { out += b; if (/vaultite on http/.test(out)) ok() })
+  server.stdout!.on("data", (b: Buffer) => { out += b; if (out.includes(LISTENING)) ok() })
   server.once("exit", () => fail(new Error(`the server exited: ${said.slice(-2000)}`)))
 })
 const APP = { "X-Vaultite-Client": "app/web", "Content-Type": "application/json" }

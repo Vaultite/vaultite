@@ -46,7 +46,7 @@ const events = await import("./core/events.ts")
 Live.web = () => web.read().entry
 web.on(() => Live.newWeb())
 const { clean } = await import("./core/files.ts")
-const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
+const { allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
 const { thumbOf } = await import("./core/thumbs.ts")
 const { tooBig } = await import("./core/filetypes.ts")
@@ -55,7 +55,7 @@ const { contentType, enabled, FileAnswer, HTTPError, LOADED, LOCAL, matchSocket,
 const { fetchFromICloud, iCloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
 const { answers, bequeath, claim, reclaim, servingKey } = await import("./core/serving.ts")
-const { attach, detach, inDesktop, onHost, onHostMessage } = await import("./core/desktopapp.ts")
+const { attach, detach, inDesktop, LISTENING, onHost, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
 const HOST = process.env.HOST || "127.0.0.1"
@@ -145,7 +145,6 @@ async function switchTo(p: string) {
   log.info(`now serving ${p}`)
 }
 
-onHostMessage("allow", (m) => allow(m.paths))
 const roots = (await import("./core/update/lease.ts")).rootsHeld(import.meta.filename, "server")
 void roots.take(web.dist)
 onHostMessage("adopt-web", (m) => {
@@ -657,7 +656,7 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
 
 server.listen(PORT, HOST, () => {
   starting.mark("listen")
-  console.log(`vaultite on http://${HOST}:${PORT}  vault=${VAULT_AT}`)
+  console.log(`${LISTENING}${HOST}:${PORT}  vault=${VAULT_AT}`)
   if (DESKTOP && process.connected) process.send!({ type: "desktop:listening" })
 })
 

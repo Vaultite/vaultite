@@ -10,7 +10,7 @@ import type { Adopted } from "./heir.ts"
 import type { Serving } from "../core/serving.ts"
 import { talkCall } from "./talklog.ts"
 import { codeRoot, commitAt, hold } from "./storehost.ts"
-import { DESKTOP_PROTOCOL } from "../core/desktopapp.ts"
+import { DESKTOP_PROTOCOL, LISTENING } from "../core/desktopapp.ts"
 import { appUpdates, lookNow, mainBehind } from "./updates.ts"
 import { mainLog } from "./mainlog.ts"
 import { ServerWatch } from "./serverwatch.ts"
@@ -146,7 +146,7 @@ export function startServer(v: Known, port: number, own = false): Promise<ChildP
       child.kill()
     }
     child.on("message", (m: { type?: string }) => { if (m?.type === "desktop:listening") listening() })
-    const look = setInterval(() => { if (/vaultite on http/.test(said())) listening() }, 500)
+    const look = setInterval(() => { if (said().includes(LISTENING)) listening() }, 500)
     child.once("exit", (code, signal) => {
       clearTimeout(timer)
       clearInterval(look)

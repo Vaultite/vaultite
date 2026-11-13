@@ -4,6 +4,8 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
+const desktopAllows = (paths: string[]) => process.emit("message", { type: "allow", paths }, undefined)
+
 export default async ($: VaultTest) => {
   const { VAULT, api, check, tmp } = $
   // Binary formats (Spreadsheets, Documents, Presentations, E-books): their text for /api/render and search, from made-up
@@ -133,19 +135,19 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(out, "%PDF-1.4 made up")
     ;[code] = await api("GET", `file/info?path=${out}`)
     check("outside: a file not allowed is a 404", code === 404, code)
-    O.allow([out])
+    desktopAllows([out])
     let info: Any
     ;[code, info] = await api("GET", `file/info?path=${out}`)
     check("outside: an allowed file's info", code === 200 && info.kind === "pdf" && info.size === 16, info)
     check("outside: allowedPath only for allowed files", O.allowedPath(out) === out && (() => { try { O.allowedPath(path.join(tmp, "x.pdf")); return false } catch { return true } })())
     fs.writeFileSync(out.replace(".pdf", ".bin"), Buffer.from([0x41, 0, 0x42]))
-    O.allow([out.replace(".pdf", ".bin")])
+    desktopAllows([out.replace(".pdf", ".bin")])
     ;[code] = await api("GET", `file?path=${out.replace(".pdf", ".bin")}`)
     check("outside: a binary file isn't read as text", code === 415, code)
     // (an editor's save: only its edit and the base's fingerprint, as web/src/core/autosave.ts sends it)
     const note = path.join(tmp, "elsewhere", "Note.md")
     fs.writeFileSync(note, "Written outside.\n")
-    O.allow([note])
+    desktopAllows([note])
     const { textHash } = await import("../../../core/texthash.ts")
     let saved: Any
     ;[code, saved] = await api("PUT", "file", { path: note, edit: { at: 17, cut: 0, add: "Edited.\n" }, baseHash: textHash("Written outside.\n"), lean: true })
@@ -163,7 +165,7 @@ export default async ($: VaultTest) => {
     ]
     const inVault = "Notes/Saved alike.md", outFile = path.join(tmp, "elsewhere", "Saved alike.md")
     fs.writeFileSync(outFile, disk)
-    O.allow([outFile])
+    desktopAllows([outFile])
     for (const [what, body] of saves) {
       fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
       fs.writeFileSync(path.join(VAULT, inVault), disk); fs.writeFileSync(outFile, disk)

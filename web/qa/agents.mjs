@@ -18,6 +18,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, freePort, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
+import { LISTENING } from "../../core/desktopapp.ts"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-agents-"))
@@ -310,7 +311,7 @@ const plain = testServer({ stdio: ["ignore", "pipe", "pipe"],
 let plainOut = ""
 plain.stdout.on("data", (d) => { plainOut += d })
 plain.stderr.on("data", (d) => { plainOut += d })
-await until(() => /vaultite on http/.test(plainOut), 60000)
+await until(() => plainOut.includes(LISTENING), 60000)
 const machinesFile = path.join(VAULT, ".vaultite/plugins/machines/data.json")
 fs.mkdirSync(path.dirname(machinesFile), { recursive: true })
 const list = (ms) => fs.writeFileSync(machinesFile, JSON.stringify({ machines: ms }))

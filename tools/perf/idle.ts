@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { chromium, devices, type Browser, type BrowserContext, type Page } from "playwright-core"
 import { slot } from "../qa_slots.ts"
+import { LISTENING } from "../../core/desktopapp.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const args = process.argv.slice(2)
@@ -85,7 +86,7 @@ let browser: Browser | null = null
 try {
   await new Promise<void>((resolve, reject) => {
     let out = ""
-    child.stdout!.on("data", (b: Buffer) => { out += b; if (/vaultite on http/.test(out)) resolve() })
+    child.stdout!.on("data", (b: Buffer) => { out += b; if (out.includes(LISTENING)) resolve() })
     child.on("exit", () => reject(new Error("the server exited")))
   })
   browser = await chromium.launch({ executablePath: CHROME })

@@ -25,17 +25,16 @@ import { isObj } from "./values.ts"
 export const DIR = ".vaultite/plugins"
 const CACHE = path.join(LOCAL, "cache", "plugins")
 const CSS = path.join(ROOT, "web", "src", "index.css") // the app's Tailwind setup: a plugin's classes compile against it
-// Part of every plugin's version: a new way of building (bump it), or a new app stylesheet, builds bundles again (read
-// when asked: a stylesheet changed under a running server rebuilds them, no restart).
+const short = (...parts: string[]) => parts.reduce((h, p) => h.update(p).update("\0"), crypto.createHash("sha256")).digest("hex").slice(0, 8)
 let built: { at: string; build: string } | null = null
 function buildKey() {
   const st = fs.statSync(CSS), at = `${st.mtimeMs}:${st.size}`
-  if (built?.at !== at) built = { at, build: "5:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8) }
+  if (built?.at !== at) built = { at, build: short(readText(CSS), ...[styles, compileStyles, classesOfApp, escapeClass, withStyles].map(String)) }
   return built.build
 }
-// What its code bundles against: the app's packages. A new stylesheet alone only redoes its styles (an update that
-// bundled Excalidraw again took seconds off the app's start).
-const CODE = "7:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
+// Apart from the styles' key: bundling Excalidraw again for each new stylesheet took seconds off the app's start.
+const CODE = short(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {}), JSON.stringify([...SHARED, ...SHARED_EDITOR]),
+  ...[bundle, withAssets].map(String))
 
 export type VaultPlugin = {
   id: string; dir: string; manifest: Manifest

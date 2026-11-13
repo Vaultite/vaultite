@@ -11,6 +11,7 @@ import { slot } from "../qa_slots.ts"
 import { backendName, serverFiles } from "../../plugins/core/terminal/backend.ts"
 import { PROTOCOL } from "../../plugins/core/terminal/termd/protocol.ts"
 import { netem, PROFILES, type Netem, type Profile } from "./netem.ts"
+import { LISTENING } from "../../core/desktopapp.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const args = process.argv.slice(2)
@@ -77,7 +78,7 @@ async function serve(rootSpec: string, dir: string): Promise<Server> {
   })
   let log = ""
   await new Promise<void>((resolve, reject) => {
-    const on = (b: Buffer) => { log = (log + b).slice(-20_000); if (/vaultite on http/.test(log)) resolve() }
+    const on = (b: Buffer) => { log = (log + b).slice(-20_000); if (log.includes(LISTENING)) resolve() }
     child.stdout!.on("data", on); child.stderr!.on("data", (b: Buffer) => { log = (log + b).slice(-20_000) })
     child.on("exit", () => reject(new Error(`the server at ${root} exited:\n${log.slice(-2000)}`)))
   })

@@ -79,8 +79,8 @@ export default async ($: VaultTest) => {
     const ps = K.presencesOf(rows, [k], seen, T)
     check("presences: agents at work, needing the user or done show (no shell, no idle agent), those needing them first",
       ps.map((p) => `${p.id}:${p.state}`).join() === "claude-1:needs you,claude-2:needs you,codex-3:done" && ps[0].line === "Ready to look" && ps[0].knock === "k1", ps)
-    check("presences: each has its agent's own tint, the same on every machine, never the attention orange",
-      ps.every((p) => p.tint === A.agentTint(p.id)) && A.agentTint("claude-1") === A.agentTint("claude-1@m4") && (A.AGENT_TINTS as readonly string[]).every((t) => t !== "orange" && t !== "red"))
+    check("presences: each has its agent's own tint, the same on every machine",
+      ps.every((p) => p.tint === A.agentTint(p.id)) && A.agentTint("claude-1") === A.agentTint("claude-1@m4"))
     const jobs = K.presencesOf([{ id: "claude-6", agent: "claude", state: "done", name: "Tab list fix" }, { id: "claude-7", agent: "claude", state: "working", msg: "Running  npm test" },
       { id: "claude-8", agent: "claude", state: "working" }], [], new Map(), T, { ready: new Set(["claude-6"]) })
     check("presences: a job ready for review is ready (calm), not needs you; a working one says what it does now",
