@@ -1,5 +1,3 @@
-// People: who's due a check-in (the People dashboard's blocks) and a profile per person (```block-person) with their
-// timeline of contact and facts.
 import {
   BookOpen, Cake, Flag, Handshake, Mail, MapPin, MessageCircle, MessageSquare, Phone, StickyNote, Users, type LucideIcon,
 } from "lucide-react"
@@ -11,9 +9,7 @@ import { ageOn, birthdayText, bornOn, nearness, nextBirthday, parseBirthday, unt
 import { often } from "./often"
 import type { Interaction, Person } from "./types"
 
-
 const TINT = "var(--people)"
-/** Interaction kinds. Every kind but `note` is contact and counts for "last in touch". */
 const KINDS: Record<string, { label: string; icon: LucideIcon }> = {
   call: { label: "Call", icon: Phone },
   "hang out": { label: "Hang out", icon: Users },
@@ -25,12 +21,10 @@ const KINDS: Record<string, { label: string; icon: LucideIcon }> = {
   note: { label: "Note", icon: StickyNote },
 }
 const kindOf = (k: string) => KINDS[k] ?? { label: capitalize(k), icon: MessageCircle }
-/** For `## Timeline` sections (drawn by the core): contact kinds tinted, notes grey. */
 export const TIMELINE_KINDS: Record<string, TimelineKind> = Object.fromEntries(
   Object.entries(KINDS).map(([k, v]) => [k, k === "note" ? v : { ...v, tint: TINT }]))
 const daysBetween = (a: string, b: string) => Math.round((parse(b).getTime() - parse(a).getTime()) / 864e5)
 
-/** Everything logged about a person, newest first (grouped by person once per store: every row asks). */
 const byPerson = new WeakMap<Store, Map<string, Interaction[]>>()
 function timeline(s: Store, p: Person) {
   let all = byPerson.get(s)
@@ -41,12 +35,10 @@ function timeline(s: Store, p: Person) {
   }
   return all.get(p.id) ?? []
 }
-/** Actual contact only: notes are facts about them, not a check-in. */
 const contacts = (s: Store, p: Person) => timeline(s, p).filter((i) => i.kind !== "note")
 function status(s: Store, p: Person) {
   const last: Interaction | undefined = contacts(s, p)[0]
   const since = last ? daysBetween(last.date, today()) : null
-  // (A target of 0 days or less is a typo, flagged on the file: never due.)
   const every = (p.every_days ?? 0) > 0 ? p.every_days! : 0
   const due = !!every && (since === null || since >= every)
   const overdue = every ? (since === null ? Infinity : since - every) : -Infinity
@@ -54,11 +46,9 @@ function status(s: Store, p: Person) {
 }
 const ago = (since: number | null) =>
   since === null ? "Never" : since === 0 ? "Today" : since === 1 ? "Yesterday" : `${since} d ago`
-/** "today", "yesterday", "Saturday", "Sep 20": fmtDay mid-sentence (only its relative words lower-cased). */
 const dayIn = (d: string) => fmtDay(d).replace(/^(Today|Yesterday)$/, (w) => w.toLowerCase())
 const lastLine = (last?: Interaction) => (last ? `Last ${kindOf(last.kind).label.toLowerCase()} ${dayIn(last.date)}` : "No check-ins yet")
 
-/** The last 14 days as small dots, one per day you were in touch. */
 function Dots({ s, p }: { s: Store; p: Person }) {
   const days = new Set(contacts(s, p).map((i) => i.date))
   return (
@@ -74,7 +64,6 @@ function Dots({ s, p }: { s: Store; p: Person }) {
 const open = (p: Person) => () => openFile(`${p.id}.md`)
 const everyone = (s: Store) => s.people.filter((p) => !isArchived(p)).map((p) => ({ p, st: status(s, p) }))
 
-/** ```block-people-due: people you're overdue to check in with (their `every_days` has passed). */
 export function PeopleDue({ store }: BlockCtx) {
   const all = everyone(store)
   const due = all.filter((x) => x.st.due && x.st.last).sort((a, b) => b.st.overdue - a.st.overdue)
@@ -96,7 +85,6 @@ export function PeopleDue({ store }: BlockCtx) {
   )
 }
 
-/** ```block-people-wants: people with a `want_to` (someone to call, meet, write to). */
 export function PeopleWants({ store }: BlockCtx) {
   const wants = everyone(store).filter((x) => x.p.want_to)
   return (
@@ -116,13 +104,11 @@ export function PeopleWants({ store }: BlockCtx) {
   )
 }
 
-/** A birthday's colour by how near it is: red under a week, orange under a month. */
 const NEAR = { soon: "var(--red)", near: "var(--orange)" } as const
 const nearTint = (days: number) => { const n = nearness(days); return n ? NEAR[n] : undefined }
 const MONTH = { month: "short" } as const, WEEKDAY = { weekday: "long" } as const, MONTH_DAY = { month: "short", day: "numeric" } as const
 const MONTH_DAY_YEAR = { ...MONTH_DAY, year: "numeric" } as const
 
-/** The day as a calendar page, month over day, tinted when it's near (the row's meta says the weekday). */
 function DayTile({ date, tint }: { date: string; tint?: string }) {
   return (
     <span role="img" aria-label={dateText(parse(date), MONTH_DAY)} className={cn("flex size-10 shrink-0 flex-col items-center justify-center rounded-[8px]", !tint && "bg-muted")}
@@ -133,7 +119,6 @@ function DayTile({ date, tint }: { date: string; tint?: string }) {
   )
 }
 
-/** ```block-people-birthdays: the next `count` birthdays (default 10), soonest first. */
 export function PeopleBirthdays({ store, options }: BlockCtx) {
   const next = upcoming(store.people.filter((p) => !isArchived(p)), today(), Number(options.count) || 10)
   return (
@@ -156,7 +141,6 @@ export function PeopleBirthdays({ store, options }: BlockCtx) {
   )
 }
 
-/** A profile's birthday: "Oct 21, 1990 · age 35", and "in 4 days" when it's under a month away. */
 function BirthdayValue({ value }: { value: string }) {
   const b = parseBirthday(value)
   if (!b) return <>{value}</>
@@ -171,14 +155,11 @@ function BirthdayValue({ value }: { value: string }) {
 
 const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(",") : []).map((x) => x.trim().toLowerCase()).filter(Boolean)
 
-/** ```block-people-group: everyone with one of the `relations` (all when it's left out), with when you were last in
- *  touch. Options: title, relations ([partner, family]). */
 export function PeopleGroup({ store, options }: BlockCtx) {
   const relations = strs(options.relations)
   const title = typeof options.title === "string" ? options.title : "People"
   const members = store.people.filter((p) => !isArchived(p) && (!relations.length || relations.includes(p.relation)))
   if (!members.length) return <Panel title={title} tint={TINT}><Empty>No one {relations.length ? `with relation ${relations.join(" or ")}` : "yet"}.</Empty></Panel>
-  // The usual groups' people are described by how you know them; mentors and contacts by that, or their relation.
   const close = relations.some((r) => ["partner", "family", "roommate", "friend"].includes(r))
   return (
     <Panel title={title} tint={TINT}>
@@ -209,8 +190,6 @@ function ContactValue({ v }: { v: string }) {
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v))
 const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : str(v).split(",")).map((t) => t.trim()).filter(Boolean)
 
-/** ```block-person: how you know them, where they are, what's next and how often you're in touch, read from the file as
- *  it is in the editor so it follows every edit; its fields change in place where the file can be. */
 export function PersonBlock({ fm, body, path, setProperty }: BlockCtx) {
   const entries = timelineOf(body)
   const touch = entries.filter((i) => i.kind !== "note").sort((a, b) => b.date.localeCompare(a.date))
@@ -267,13 +246,11 @@ export function PersonBlock({ fm, body, path, setProperty }: BlockCtx) {
           </List>
         </div>
       )}
-      {/* Worth a grid only once there's a rhythm to see (daily calls, weekly hangouts). */}
       {touch.length >= 3 && (
         <Section title="Check-ins">
           <WeeksGrid tint={TINT} weeks={8} tip={(d) => byDate.get(d)?.map((i) => kindOf(i.kind).label).join(", ") ?? null} />
         </Section>
       )}
-      {/* No timeline in the file yet: its Add is here (the timeline, once there, has its own). */}
       {!/^#{1,6}\s+timeline\s*#*\s*$/im.test(body) && <AddToTimeline path={path} kinds={TIMELINE_KINDS} />}
     </div>
   )

@@ -5,12 +5,9 @@ import { AreaPanel, WeekGoals } from "./sections"
 import { between, fieldText, logsOf, type Log } from "./types"
 import { mockLogs } from "./mock"
 
-/** A list option (`areas: [workouts, study]`, or `areas: workouts, study`). */
 const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(",") : []).map((x) => x.trim()).filter(Boolean)
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined)
 
-/** ```block-area: an area's weeks and latest sessions; `meta` fields on each row, `total` a field summed this week,
- *  `empty` the text when there's nothing yet. */
 function Area({ store, options }: BlockCtx) {
   const slug = str(options.area)
   if (!slug) return <p className="text-[15px] text-muted-foreground">Name the area: area: workouts</p>
@@ -37,20 +34,16 @@ function Area({ store, options }: BlockCtx) {
 export default definePlugin({
   mock: mockLogs,
   blocks: {
-    // ```block-log: the fields of the log file it's in.
     log: ({ store, path }) => {
       const l = store.logs.find((x) => `${x.id}.md` === path)
       return l ? <LogFields store={store} log={l} /> : null
     },
-    // ```block-week-goals: sessions this week against each area's weekly goal. Options: areas (default: every area with
-    // a goal), title.
     "week-goals": ({ store, options }) => {
       const areas = list(options.areas)
       return <WeekGoals store={store} slugs={areas.length ? areas : undefined} title={str(options.title)} />
     },
     area: (ctx) => <Area {...ctx} />,
   },
-  // A log is its file (Logs/<Area>/<date> <title>.md): links and old #…/log/… addresses open it.
   details: {
     log: {
       render: () => null,
@@ -61,7 +54,6 @@ export default definePlugin({
       file: (s, [id]) => (s.logs.some((x) => x.id === id) ? `${id}.md` : null),
     },
   },
-  // A log file: ```block-log draws its fields.
   files: {
     types: ["log"], folders: ["Logs"], icon: ScrollText, tint: "var(--muted-foreground)",
   },
@@ -74,7 +66,6 @@ export default definePlugin({
       recent: t(l.date), weight: 0,
     }))
   },
-  // (its blocks with made-up logs, in the vault's areas)
   preview: (s) => (
     <div className="space-y-4">
       <WeekGoals store={s} />

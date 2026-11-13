@@ -1,5 +1,3 @@
-// The metro areas people are grouped into; anyone outside them is grouped by their location text. Shared by app and
-// server, so it imports nothing.
 const REGIONS: { name: string; lat: number; lon: number; km: number }[] = [
   { name: "Bay Area", lat: 37.7, lon: -122.2, km: 90 },
   { name: "Los Angeles area", lat: 34.05, lon: -118.25, km: 80 },

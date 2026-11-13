@@ -5,7 +5,6 @@ import { mockPeople } from "./mock"
 
 export default definePlugin({
   mock: mockPeople,
-  // A person is their file (People/<name>.md): links and old #…/person/… addresses open it.
   details: {
     person: {
       render: () => null,
@@ -13,12 +12,9 @@ export default definePlugin({
       file: (s, [id]) => (s.people.some((x) => x.id === id) ? `${id}.md` : null),
     },
   },
-  // How a person's file looks: their profile on top, the Timeline section drawn as a timeline.
   files: {
     types: ["person"], folders: ["People"], icon: User, tint: "var(--people)",
   },
-  // ```block-person: the profile, on top of a person's file. The People dashboard (pages/People.md): who's due, who you
-  // want to reach, the next birthdays, and groups by relation.
   blocks: {
     person: (ctx) => <PersonBlock {...ctx} />,
     "people-due": (ctx) => <PeopleDue {...ctx} />,
@@ -32,7 +28,6 @@ export default definePlugin({
     tint: "var(--people)", detail: detailPath("person", p.id), file: `${p.id}.md`,
     text: [p.context, p.location, p.tags, plainText(p.notes), p.want_to].join(" "), recent: 0, weight: 10,
   })),
-  // [[Alice Park]] or an alias; an archived person's names count only when no one else answers to them (core/links.ts).
   links: (s) => s.people.map((p) => ({
     kind: "person", id: p.id, title: p.name, detail: detailPath("person", p.id), names: p.aliases,
   })),

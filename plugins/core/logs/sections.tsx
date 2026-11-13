@@ -1,5 +1,3 @@
-// Log cards other plugins build on (Health, Learning, Work require Logs): an area's weeks and recent sessions, and
-// this week against each area's goal (also on Today).
 import type { ReactNode } from "react"
 import { ArrowUpRight, Target } from "lucide-react"
 import {
@@ -52,7 +50,6 @@ export function AreaPanel({
   const thisWeek = between(logs, weekStart(today()), today())
   const useTime = area?.track_duration !== false
   const days = sessionDays(thisWeek)
-  // (by day once: the grid asks for every day of its weeks)
   const byDay = new Map<string, Log[]>()
   for (const l of logs) { const on = byDay.get(l.date); if (on) on.push(l); else byDay.set(l.date, [l]) }
   const onDay = (d: string) => byDay.get(d) ?? []
@@ -87,7 +84,6 @@ export function AreaPanel({
   )
 }
 
-/** An area's `link` setting (e.g. a gym's booking app), top right of its card. */
 function AreaLink({ label, url }: { label: string; url: string }) {
   return (
     <a href={url} target="_blank" rel="noreferrer"

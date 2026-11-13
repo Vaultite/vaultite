@@ -1,5 +1,3 @@
-// People's operations: a timeline line, and a lasting fact kept where it belongs (ME.md or a person's file), finding
-// the person as the user says the name (file, alias, a first name only one has), never by a guess.
 import { OpError, type Plugin, quoted, today } from "../../../core/plugins.ts"
 import { timelineKind } from "../../../core/timeline.ts"
 import { type Item, str } from "../../../core/vault.ts"
@@ -7,11 +5,8 @@ import { type Item, str } from "../../../core/vault.ts"
 const nameOf = (id: unknown) => String(id).split("/").pop()!
 const enc = encodeURIComponent
 
-/** `line` added to a file's text under the heading `heading` (made at the end when there's none; null: the body before
- *  its first ## heading, a person's facts): as a list item when that section is a list, else as a paragraph of its own. */
 export function addUnder(textIn: string, heading: string | null, line: string) {
   const lines = textIn.replace(/\n+$/, "").split("\n")
-  // The body starts after the frontmatter.
   let at = 0
   if (lines[0] === "---") {
     const end = lines.indexOf("---", 1)
@@ -23,26 +18,21 @@ export function addUnder(textIn: string, heading: string | null, line: string) {
     if (h < 0) return `${lines.join("\n")}\n\n${heading}\n\n${line.startsWith("- ") ? line : `- ${line}`}\n`
     start = h + 1
   } else start = at
-  // Its end: the next heading of the same or a higher level (any ## for a person's body: the timeline).
   const level = heading ? /^#+/.exec(heading)![0].length : 2
   let stop = lines.findIndex((l, i) => i >= start && new RegExp(`^#{1,${level}}\\s`).test(l))
   if (stop < 0) stop = lines.length
-  // Its last line with something on it (a block's fence counts: the fact goes after a person's profile block).
   let last = stop - 1
   while (last >= start && !lines[last].trim()) last--
   const asItem = last >= start && /^\s*[-*]\s/.test(lines[last])
   const add = asItem ? [`- ${line.replace(/^- /, "")}`] : last >= start ? ["", line.replace(/^- /, "")] : [line.replace(/^- /, "")]
   const before = lines.slice(0, last + 1)
   const after = lines.slice(last + 1)
-  // Keep one blank line between what's added and the heading after it.
   const tail = after.length && after.some((l) => l.trim()) ? ["", ...after.slice(after.findIndex((l) => l.trim()))] : []
   const head = last < start && before.length && before[before.length - 1].trim() ? [...before, ""] : before
   return [...head, ...add, ...tail].join("\n") + "\n"
 }
 
 export function peopleOps(plugin: Plugin) {
-  /** A person from what the user calls them: [their name (the file's), its vault id]. Throws, listing who it might be,
-   *  when it's no one or several. */
   function personNamed(raw: string): [string, string] {
     const name = raw.trim()
     const exact = plugin.vault.get("people", name)
@@ -95,7 +85,6 @@ the file stays as it was.
     did: (p) => ({ action: "save", text: `Added to ${p.person.trim()}'s timeline${p.kind.trim() ? ` (${p.kind.trim()})` : ""}` }),
   })
 
-  /** The user's own file (the Me plugin's: ME.md, or wherever theirs is), or why there's none. */
   function mePath(): string {
     const file = plugin.service("me:file")?.()
     if (typeof file !== "string") throw new OpError("the Me plugin is off, so the user's own facts have no file: ask them to turn it on, or name the person it's on", 409)
@@ -142,7 +131,6 @@ The same fact twice is kept once.
       let base: string, made = false
       try { base = String((await ctx.api("GET", `file?path=${enc(rel)}`)).text ?? "") } catch (e) {
         if (!me) throw e
-        // (no file yet: made, so there's nothing to merge with)
         base = "---\ntype: me\n---\n"
         made = true
       }

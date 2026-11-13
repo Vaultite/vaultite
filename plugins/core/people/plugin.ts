@@ -1,5 +1,3 @@
-// People: a file per person, profile in frontmatter, facts, then "## Timeline". The timeline is read leniently and an
-// entry the app didn't change is written back exactly as it was; new ones use the canonical form.
 import { bullets, daysBetween, HTTPError, Plugin, reply, section } from "../../../core/plugins.ts"
 import { entryLine, entryProblem, parseEntry, timelineKind } from "../../../core/timeline.ts"
 import { cmp, isArchived, type Item, Kind, num, safeName, sortBy, splitTags, str, truthy } from "../../../core/vault.ts"
@@ -9,15 +7,12 @@ import { often } from "./often.ts"
 import { peopleOps } from "./ops.ts"
 
 export const plugin = new Plugin(import.meta.url)
-// Pins are looked up when a place is entered through the app or a map needs one, and kept in the plugin's cache, never
-// in the person's file (coordinates someone wrote there by hand win).
 const places = geocoder(() => (plugin.readCache({})!.places ?? {}) as Places, (ps) => plugin.writeCache({ ...plugin.readCache({}), places: ps }))
 /** A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place. */
 plugin.provide("geocode", places.locate)
 /** A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet). */
 plugin.provide("geocode:known", places.known)
 
-/** An item with its pin: the file's own coordinates, else the cached lookup of its location (never looked up here). */
 export function pinned<T extends Item>(x: T): T {
   if (typeof x.lat === "number" && typeof x.lon === "number") return x
   const ll = truthy(x.location) ? places.known(str(x.location)) : null
@@ -29,17 +24,13 @@ const TIMELINE = "## Timeline"
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/
 const FIELDS = ["date", "kind", "duration_min", "subject", "notes", "url"] as const
 
-/** The canonical line for an entry (core/timeline.ts, as any file's timeline gets them). */
 const line = (i: Item) => entryLine({
   date: i.date, kind: i.kind || "call", duration_min: truthy(i.duration_min) ? Number(i.duration_min) : null,
   subject: truthy(i.subject) ? str(i.subject) : "", notes: truthy(i.notes) ? str(i.notes) : "", url: truthy(i.url) ? str(i.url) : "",
 })
 
-/** What an entry says, to tell whether it changed. */
 const sig = (i: Item) => JSON.stringify(FIELDS.map((k) => (truthy(i[k]) ? i[k] : null)))
 
-/** The lines under the Timeline heading -> entries. Lines that aren't entries are kept as {_raw: line} so they are
- *  written back where they were; an entry remembers its source lines (_src) to be written back unchanged. */
 function parseTimeline(lines: string[]): [Item[], string[]] {
   const out: Item[] = [], problems: string[] = []
   for (const raw of lines) {
@@ -62,8 +53,6 @@ function parseTimeline(lines: string[]): [Item[], string[]] {
   return [out, problems]
 }
 
-/** body -> [notes, heading line or "", timeline lines, after]. The timeline is the section under a "Timeline"
- *  heading (any level, any case), up to the next heading of the same or a higher level. */
 function splitBody(body: string): [string, string, string[], string] {
   const lines = body.split("\n")
   const at = lines.findIndex((l) => { const m = HEADING.exec(l); return m !== null && m[2].trim().toLowerCase() === "timeline" })
@@ -102,7 +91,6 @@ function parse(fm: Item, body: string, stem: string): [Item, string[]] {
   return [p, [...problems, ...bad]]
 }
 
-/** The real entries of a timeline, with their index in it (the index is the interaction's id). */
 function entries(p: Item): [number, Item][] {
   return ((p.timeline ?? []) as Item[]).map((i, n) => [n, i] as [number, Item]).filter(([, i]) => !("_raw" in i))
 }
@@ -119,7 +107,7 @@ function render(p: Item): [Item, string] {
   const lines: string[] = []
   for (const i of (p.timeline ?? []) as Item[]) {
     if ("_raw" in i) lines.push(i._raw)
-    else if (i._src !== undefined && i._src !== null && i._sig === sig(i)) lines.push(i._src) // untouched: as it was written
+    else if (i._src !== undefined && i._src !== null && i._sig === sig(i)) lines.push(i._src)
     else lines.push(line(i))
   }
   const parts = [str(p.notes).trim()]
@@ -128,8 +116,6 @@ function render(p: Item): [Item, string] {
   return [owned, parts.filter(Boolean).join("\n\n")]
 }
 
-/** An update. A timeline sent from outside lost the private parts that keep the file as written: unchanged entries get
- *  their source lines back, and non-entry lines go back after the entry they followed. */
 function merge(old: Item, patch: Item): Item {
   const neu: Item = { ...old, ...patch }
   const tl = patch.timeline as Item[] | undefined
@@ -148,7 +134,6 @@ function merge(old: Item, patch: Item): Item {
     }
     out.push(i)
   }
-  // Lines that aren't entries, back where they were.
   let last: Item | null = null
   const placed: Item[] = []
   for (const o of olds) {
@@ -170,12 +155,9 @@ function merge(old: Item, patch: Item): Item {
   return neu
 }
 
-/** A place entered through the app is looked up (in the background: the pin goes to the cache, not the file). The
- *  coordinates the file had stay unless the place changed without them: they were the old place's. */
 export function locate(p: Item, before: Item | null) {
   const moved = before !== null && str(p.location) !== str(before.location)
   if (moved && p.lat === before.lat && p.lon === before.lon) p.lat = p.lon = null
-  // (a pin the app showed, sent back whole: not the user's coordinates)
   const ll = truthy(p.location) ? places.known(str(p.location)) : null
   if (ll && (before === null || before.lat === null || before.lat === undefined) && p.lat === ll[0] && p.lon === ll[1]) p.lat = p.lon = null
   if (truthy(p.location) && (before === null || moved)) void places.locate(str(p.location))
@@ -191,14 +173,11 @@ plugin.kind(new Kind({
   key: (p) => str(p.name).toLowerCase(),
   blocks: ["person"],
   sections: ["timeline"],
-  // `sort` is optional and never written by the app: those who have one first, by it; the rest after them, by name.
   order: (ps) => sortBy(ps, (p) => [p.sort ?? 1e9, p.name]),
 }))
 
 const publicPerson = (p: Item) => Object.fromEntries(Object.entries(p).filter(([k]) => !k.startsWith("_") && k !== "timeline"))
 
-// Each person as the app gets them, and their interactions: the same objects while their file and pin are, so an edit
-// elsewhere serializes none of them again (core/statepatch.ts).
 const shown = new WeakMap<Item, { pin: string; person: Item; inter: Item[] }>()
 
 let stated: { ps: readonly Item[]; pins: string; out: Item } | null = null
@@ -231,7 +210,6 @@ function personFor(body: Item) {
   return p
 }
 
-/** An interaction id ("People/Alice Park#3": its 4th entry, counting only entries) -> [person, timeline index]. */
 function splitId(iid: string): [Item, number] {
   const at = iid.lastIndexOf("#")
   const pid = at >= 0 ? iid.slice(0, at) : "", n = at >= 0 ? iid.slice(at + 1) : iid
@@ -241,8 +219,6 @@ function splitId(iid: string): [Item, number] {
   return [p, es[Number(n)][0]]
 }
 
-/** {"person": "Alice Park", "date": "2026-09-28", "kind": "call", ...}: a line in their timeline, placed by date (newest
- *  first) among the others; every other line of the file stays as it was. */
 plugin.route("POST", "interactions", async (req) => {
   const body = { ...req.body }
   let p = personFor(body)
@@ -257,7 +233,7 @@ plugin.route("POST", "interactions", async (req) => {
   const tl = [...p.timeline]
   const es = entries(p)
   let at = es.find(([, x]) => x.date <= i.date)?.[0]
-  if (at === undefined) at = (es.length ? es[es.length - 1][0] : -1) + 1 // older than everything: after the last entry
+  if (at === undefined) at = (es.length ? es[es.length - 1][0] : -1) + 1
   tl.splice(at, 0, i)
   p = (await plugin.vault.save("people", { timeline: tl }, p.id))!
   return reply(201, { ok: true, person: p.id })
@@ -277,18 +253,13 @@ plugin.route("DELETE", "interactions/*", async (req) => {
   return { ok: true }
 })
 
-peopleOps(plugin) // person.timeline-add, people.remember (ops.ts)
+peopleOps(plugin)
 
-/** What a location would be pinned at: /api/geocode?q=Austin, TX (looked up once, then from the cache; the map asks
- *  for the pins it's missing). */
 plugin.route("GET", "geocode", async (req) => {
   const ll = await places.locate(req.query.q ?? "")
   return { q: req.query.q ?? "", lat: ll && ll[0], lon: ll && ll[1] }
 })
 
-// ---------- blocks as text (GET /api/render) ----------
-
-/** The newest timeline entry that's contact (not a note), or null. */
 function lastContact(p: Item): Item | null {
   const touch = entries(p).map(([, i]) => i).filter((i) => i.kind !== "note" && truthy(i.date))
   return touch.reduce<Item | null>((best, i) => (best === null || cmp(i.date, best.date) > 0 ? i : best), null)
@@ -302,7 +273,6 @@ function since(p: Item, today: string) {
 const ago = (n: number | null) => (n === null ? "never" : n === 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`)
 const active = () => plugin.vault.items("people").filter((p) => !isArchived(p))
 
-/** "Birthday: Oct 21, 1990 (age 35, turns 36 in 4 days)", or "" without a valid one. */
 function birthdayLine(p: Item, today: string) {
   const b = parseBirthday(str(p.birthday))
   if (!b) return ""
@@ -362,7 +332,6 @@ plugin.block("people-group", (ctx) => {
   const ps = active().filter((p) => !rel.length || rel.includes(p.relation))
   if (!ps.length) return ""
   ctx.source(ps)
-  // Described like the card: by how you know them, else (the usual groups) relation, usual way and how often.
   const close = rel.some((r: string) => ["partner", "family", "roommate", "friend"].includes(r))
   const about = (p: Item) => str(p.context) || (close
     ? [p.relation !== "friend" && p.relation !== "family" && cap(str(p.relation)), p.usual && cap(str(p.usual)), p.every_days && often(p.every_days)]

@@ -1,5 +1,3 @@
-// The People map, lazily loaded (MapLibre is big): avatar pins by relation, merging when they overlap; "You" is the
-// blue dot. If the style can't load it calls onFail and the page shows the list only.
 import { useEffect, useRef } from "react"
 import * as maplibregl from "maplibre-gl"
 import type { Map as MLMap, Marker } from "maplibre-gl"
@@ -17,10 +15,9 @@ type P = Person & { lat: number; lon: number }
 type Item = { key: string; lat: number; lon: number; people: P[]; me: boolean }
 export type Focus = { points: [number, number][]; seq: number } | null
 
-const R = 46 // px: pins closer than this merge into a group
+const R = 46
 const PAD = { top: 76, bottom: 40, left: 40, right: 40 }
 
-/** Greedy screen-space grouping, densest spots first. "You" joins a group when it overlaps one. */
 function cluster(map: MLMap, people: P[], me: Me | null): Item[] {
   type Pt = { p: P | null; x: number; y: number; lat: number; lon: number }
   const pts: Pt[] = people.map((p) => ({ p, lat: p.lat, lon: p.lon, ...map.project([p.lon, p.lat]) }))
@@ -35,7 +32,6 @@ function cluster(map: MLMap, people: P[], me: Me | null): Item[] {
     members.forEach((m) => used.add(m))
     const ps = members.flatMap((m) => (m.p ? [m.p] : []))
     const hasMe = members.some((m) => !m.p)
-    // A group sits on its people, not on you (the blue dot peeks from under the pin).
     const anchor = ps.length ? members.filter((m) => m.p) : members
     out.push({
       key: [...ps.map((p) => p.id).sort(), hasMe ? "me" : ""].join(","),
@@ -68,8 +64,6 @@ function avatar(name: string, color: string, cls = "pm-avatar") {
   return a
 }
 
-/** A mixed group's bubble: one slice per relation, sized by how many people it has, biggest first. Past four
-    colours it stops reading, so the smallest ones merge into a grey "others" slice. */
 function slices(people: P[]) {
   const n = new Map<string, number>()
   for (const p of people) n.set(colorOf(p.relation), (n.get(colorOf(p.relation)) ?? 0) + 1)
@@ -87,7 +81,7 @@ function slices(people: P[]) {
 function pinElement(it: Item) {
   const b = el("button", "pm-pin") as HTMLButtonElement
   b.type = "button"
-  if (!it.people.length) { // just you
+  if (!it.people.length) {
     b.classList.add("pm-pin-me")
     b.append(el("span", "pm-me"), el("span", "pm-label", "You"))
     b.setAttribute("aria-label", "You")
@@ -149,12 +143,10 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
     if (all.length === 1) map.flyTo({ center: [all[0][1], all[0][0]], zoom: 9, animate })
     else map.fitBounds(boundsOf(all), { padding: PAD, maxZoom: 9, animate, duration: 700 })
   }
-  // Latest props for the map's event handlers, which are bound once.
   const live = useRef({ people, me, onOpen, onFail, all })
   live.current = { people, me, onOpen, onFail, all }
   const redraw = useRef<(() => void) | null>(null)
 
-  // (made once it comes near the screen)
   const near = useNearScreen(box)
   useEffect(() => {
     if (!box.current || !near) return
@@ -163,7 +155,6 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
     const { map } = started
     mapRef.current = map
 
-    // Markers, diffed by group key so pins don't flash when the zoom changes.
     const markers = new Map<string, Marker>()
     let popup: maplibregl.Popup | null = null
     const closePopup = () => { popup?.remove(); popup = null }
@@ -208,7 +199,6 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [near])
 
-  // People change (Claude wrote something while the page was open, a pin was looked up): redraw pins; the first ones fit.
   useEffect(() => {
     if (!redraw.current) return
     if (!fitted.current) fitAll(false)

@@ -1,5 +1,3 @@
-// Logs: one file per entry, its area's fields in frontmatter (format: AGENTS.md). Areas are this plugin's settings,
-// brought by the plugins that draw them (`log-areas`); POST upserts on (source, ext_id) so imports can rerun.
 import { bullets, fmtMin, HTTPError, LOADED, OpError, Plugin, section, source, today, weekStart } from "../../../core/plugins.ts"
 import { dirOf, isArchived, type Item, joinPath, Kind, num, safeName, slug, sortBy, str, truthy } from "../../../core/vault.ts"
 
@@ -7,15 +5,14 @@ export const plugin = new Plugin(import.meta.url)
 
 const RESERVED = ["area", "date", "duration_min", "title", "source", "ext_id"]
 
-/** The areas the plugins that are on bring (plugin.provide("log-areas", () => [{slug, name, icon, tint, parent, fields,
- *  weekly_goal, blocks}])), in plugin order; the first to bring a slug wins. */
+/** The service `log-areas`: () => Area[] (logs/types.ts), asked of each plugin that's on; the first to bring a slug wins. */
 function brought(): Item[] {
   const skip = plugin.vault.switchedOff()
   const seen = new Set<string>(), out: Item[] = []
   for (const p of LOADED) {
     if (skip.has(p.id) || !Object.hasOwn(p.services, "log-areas")) continue
     let list: unknown
-    try { list = p.services["log-areas"]() } catch { continue } // one plugin's areas failing mustn't take the others
+    try { list = p.services["log-areas"]() } catch { continue }
     for (const a of Array.isArray(list) ? list : []) {
       if (a && typeof a === "object" && typeof a.slug === "string" && !seen.has(a.slug)) { seen.add(a.slug); out.push(a) }
     }
@@ -23,13 +20,10 @@ function brought(): Item[] {
   return out
 }
 
-/** A colour's name (`pink`, or a plugin's: `health`), as a dashboard's `tint:` names one; anything else is none. */
 const colour = (v: unknown) => (typeof v === "string" && /^[a-z][a-z-]*$/.test(v) ? v : null)
 
 const title = (s: string) => s.replace(/[A-Za-z]+/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
 
-/** The areas setting (else the areas plugins bring), normalised: [{slug, name, icon, tint, parent, track_duration,
- *  fields, weekly_goal, blocks, archived, link}]. */
 export function areas(): Item[] {
   const set = plugin.settings({}).areas
   const theirs = brought()
@@ -44,8 +38,6 @@ export function areas(): Item[] {
   }))
 }
 
-/** The area `given` (a slug, or a name: "Deep work") as its slug, added to the areas setting when it isn't there yet:
- *  a log for a new area makes it (with the areas brought so far, which the setting then lists). */
 function ensureArea(given: string): string {
   const known = areas()
   const hit = known.find((a) => a.slug === given) ?? known.find((a) => str(a.name).toLowerCase() === given.toLowerCase())
@@ -63,10 +55,8 @@ function areaName(slug: unknown) {
   return areas().find((a) => a.slug === slug)?.name ?? title(truthy(slug) ? str(slug) : "Other")
 }
 
-/** Frontmatter keys that are the core's, never a log's data (core/fileprops.ts). */
 const CORE_KEYS = ["type", "archived"]
 
-// The areas' slugs, once per change of the settings or the plugins (a vault's sync parses every log).
 let slugsOf: { key: string; slugs: Set<string> } | null = null
 function areaSlugs() {
   const key = `${plugin.vault.settingsVersion}:${LOADED.length}`
@@ -80,7 +70,6 @@ function parse(fm: Item, body: string, stem: string): [Item, string[]] {
   const area = fm.area
   if (!truthy(area)) problems.push("missing `area:`")
   else if (!slugs.has(area)) problems.push(`area \`${str(area)}\` isn't in the areas setting (.vaultite/plugins/logs/data.json)`)
-  // Every other key is the log's data, but the core's: `type`, and `archived` (the vault puts it on the item).
   const data: Item = {}
   for (const [k, v] of Object.entries(fm)) if (!RESERVED.includes(k) && !CORE_KEYS.includes(k)) data[k] = v
   return [{
@@ -96,16 +85,12 @@ function render(log: Item): [Item, string] {
   return [owned, log.notes || ""]
 }
 
-/** Where a log goes: an existing one stays in its folder unless its area changed; else where that area's logs are, else
- *  a folder named after the area next to the other areas' folders, else Logs/<Area>/. */
 function filename(log: Item, at: { folder: string; old: Item | null }) {
-  // (only what a file name or a link can't hold goes: an emoji stays)
   const t = safeName(str(log.title).split(/\s+/).filter(Boolean).join(" ") || areaName(log.area))
   const name = `${log.date} ${t || "Log"}`
   if (at.old && at.old.area === log.area) return joinPath(at.folder, name)
   const own = plugin.vault.home("logs", (l) => l.area === log.area)
   if (own !== null) return joinPath(own, name)
-  // (the folder set for logs holds the areas' folders; else where most are: an area's folder, or the Logs folder itself)
   const set = plugin.vault.folderSet("logs"), most = set ?? plugin.vault.home("logs")
   const base = set ?? (most === null ? "Logs" : most.split("/").pop() === "Logs" ? most : dirOf(most))
   return joinPath(joinPath(base, safeName(areaName(log.area))), name)
@@ -119,12 +104,9 @@ plugin.kind(new Kind({
     log.data ??= {}
     return log
   },
-  // data is merged, so fields added later (a climbing grade told to Claude) survive a re-import
   merge: (old, patch) => ({ ...old, ...patch, data: { ...(old.data ?? {}), ...(patch.data ?? {}) } }),
   key: (log) => (truthy(log.ext_id) ? JSON.stringify([log.source ?? null, log.ext_id]) : null),
-  // Newest day first; within a day, the file changed last first (the entry logged last).
   order: (logs) => sortBy(sortBy(logs, (l) => [l.modified, l.id], true), (l) => l.date, true),
-  /** ```block-log, then the area's own blocks (a workout's exercises). */
   blocks: (fm) => ["log", ...(areas().find((a) => a.slug === fm.area)?.blocks ?? [])],
 }))
 
@@ -132,7 +114,6 @@ plugin.state(() => ({ areas: areas(), logs: plugin.vault.shared("logs") }))
 /** The areas as the app has them (Today's routines take their icon and weekly goal). */
 plugin.provide("logs:areas", areas)
 
-/** ?from=YYYY-MM-DD&to=...&area=gym (an area includes its sub-areas)&limit=N; archived logs only with &archived=true */
 plugin.route("GET", "logs", (req) => {
   const q = req.query
   let out = plugin.vault.items("logs")
@@ -145,9 +126,6 @@ plugin.route("GET", "logs", (req) => {
   return out.slice(0, Number(q.limit ?? 100000))
 })
 
-// ---------- operations (core/ops.ts): `vau log`, MCP's write_log, POST /api/ops/log.create ----------
-
-/** JSON written as text (the API's: `vau log '<json>'`): an object or a list, else null. */
 function jsonOf(v: unknown): unknown {
   if (typeof v !== "string" || !/^\s*[[{]/.test(v)) return null
   try { const o = JSON.parse(v); return o && typeof o === "object" ? o : null } catch { return null }
@@ -197,7 +175,6 @@ of them) as the one argument works too.
       const date = str(x.date).trim() || today()
       if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new OpError(`\`date\` is YYYY-MM-DD (got '${date}')`)
       const id = str(x.ext_id).trim() || `${area}-${date}-${slug(title)}`
-      // Corrected by another AI than the one that logged it (no source given): the same log, not a second one.
       const before = str(x.source).trim() ? [] : plugin.vault.items("logs").filter((l) => l.ext_id === id && l.area === area)
       const log: Item = { ...x, area, title, date, source: str(x.source).trim() || (before.length === 1 ? before[0].source : null) || ctx.who.source, ext_id: id }
       for (const k of Object.keys(log)) if (log[k] === undefined || log[k] === null) delete log[k]
@@ -217,9 +194,6 @@ of them) as the one argument works too.
   },
 })
 
-// ---------- blocks as text (GET /api/render) ----------
-
-/** An area's logs (its sub-areas' too), archived ones left out. */
 function ofArea(slug: string) {
   const kids = new Set([slug, ...areas().filter((a) => a.parent === slug).map((a) => a.slug)])
   return plugin.vault.items("logs").filter((l) => kids.has(l.area) && !isArchived(l))
@@ -263,15 +237,12 @@ plugin.block("area", (ctx) => {
   return areaSummary(slug, t, list(o.meta), undefined, 5, truthy(o.total) ? str(o.total) : null)
 })
 
-/** A field's value as text: a number with its unit (minutes as 1 h 30 min), anything else as it is. */
 function fieldText(v: unknown, unit?: unknown) {
   if (typeof v !== "number") return v === null || v === undefined || typeof v === "object" ? "" : str(v)
   if (unit === "min") return fmtMin(v)
   return `${(Math.round(v * 10) / 10).toLocaleString("en-US")}${truthy(unit) ? ` ${str(unit)}` : ""}`
 }
 
-/** An area's week and its latest sessions, as text. `meta`: fields shown on each (topic); `extra(log)`: more;
- *  `total`: a number field summed over the week (pages). */
 export function areaSummary(slug: string, today: string, meta: string | string[] | null = null, extra?: (log: Item) => string,
   n = 5, total: string | null = null) {
   const a = areas().find((x) => x.slug === slug) ?? { name: slug, weekly_goal: null, track_duration: true, fields: [] }
@@ -299,4 +270,4 @@ export function areaSummary(slug: string, today: string, meta: string | string[]
   return section(a.name, head, "Latest:\n" + bullets(rows))
 }
 
-plugin.exports.areaSummary = areaSummary // for plugins that require Logs (Health's workouts)
+plugin.exports.areaSummary = areaSummary

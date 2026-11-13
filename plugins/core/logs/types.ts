@@ -1,5 +1,3 @@
-// What Logs keeps in the store (/api/state's `areas` and `logs`, from its plugin.ts) and the helpers other plugins build
-// on (plugins that require Logs import this, like Health and Work; a plugin that only enhances Logs reads `Store["logs"]`).
 import { fmtMin, isArchived, numberText, type Store } from "@vaultite"
 
 export type Field = { key: string; label: string; type: string; unit?: string }

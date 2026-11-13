@@ -1,4 +1,3 @@
-// What People keeps in the store (/api/state's `people` and `interactions`, from its plugin.ts).
 export type Person = {
   id: string; name: string; relation: string; every_days: number | null; usual: string; notes: string
   /** Optional order (lower first); people without one come after, by name. */

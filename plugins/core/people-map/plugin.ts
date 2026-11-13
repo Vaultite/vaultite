@@ -1,14 +1,10 @@
-/** People map: everyone's pin (the web app's map). Here: its block as text, for AIs (GET /api/render). */
 import { bullets, Plugin, section } from "../../../core/plugins.ts"
 import { cmp, isArchived, type Item, str } from "../../../core/vault.ts"
 import { regionOf } from "./regions.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** Everyone by where they live, grouped like the card (PeoplePlaces.tsx): your place first, then the biggest; then the
- *  people who aren't on the map (no location, or one that wasn't found). */
 plugin.block("people-map", (ctx) => {
-  // (pins: the files' coordinates, else People's cached lookups)
   const pinned = (x: Item) => (plugin.peer("people")?.exports.pinned(x) ?? x) as Item
   const people = plugin.vault.has("people") ? plugin.vault.items("people").filter((p) => !isArchived(p)).map(pinned) : []
   const on = (x: Item) => typeof x?.lat === "number" && typeof x?.lon === "number"

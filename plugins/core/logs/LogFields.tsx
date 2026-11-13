@@ -1,5 +1,3 @@
-// ```block-log: a log's fields, on top of its file (Logs/<Area>/<date> <title>.md). The file's text below is its notes;
-// other blocks an area adds (its `blocks`, drawn by the plugin that brings the area) sit under it.
 import type { ReactNode } from "react"
 import { fmtMin, Group, KV, openDetail, pluginById, resolver, type Store } from "@vaultite"
 import { fieldText, isRecord, type Log } from "./types"
@@ -10,16 +8,11 @@ const Link = ({ href }: { href: string }) => (
     {href.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
   </a>
 )
-// Who wrote it: Claude, the user, or an importer (a plugin: "From Hevy").
 const WRITERS: Record<string, string> = { claude: "Logged by Claude", manual: "Logged by you" }
 const sourceText = (s: string) => WRITERS[s] ?? `From ${pluginById(s)?.name ?? s}`
-// Values of these fields are words ("conversation", "planned"): shown capitalised.
 const WORDS = new Set(["kind", "status"])
 export const human = (k: string) => (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " ")
-// Lists of records (a workout's exercises, a session's climbs) are left to the plugins that draw them (the area's
-// `blocks`): isRecord.
 
-/** A log's fields (its area's, then any others), and where it came from. */
 export function LogFields({ store, log }: { store: Store; log: Log }) {
   const area = store.areas.find((a) => a.slug === log.area)
   const link = resolver(store)
@@ -28,11 +21,8 @@ export function LogFields({ store, log }: { store: Store; log: Log }) {
   const value = (v: unknown, unit?: string): ReactNode => (isUrl(v) ? <Link href={v} /> : fieldText(v, unit))
   const rows: [string, ReactNode][] = []
   if (log.duration_min) rows.push(["Duration", fmtMin(log.duration_min)])
-  // A text value that names something in the vault (a person, a colleague, a book) links to it. Not a log: their titles
-  // repeat (every "Morning workout"), and a place named like the session's title would link to the session itself.
   const logIds = new Set(store.logs.map((l) => l.id))
   const shown = (k: string, v: unknown, unit?: string): ReactNode => {
-    // (from the log's own file, so the closest file of a name wins)
     const found = typeof v === "string" ? link(v, `${log.id}.md`) : null
     const t = found && !logIds.has(found.id) ? found : null
     if (t) return <button type="button" onClick={() => openDetail(t.detail)} className="cursor-pointer text-primary hover:underline">{t.title}</button>

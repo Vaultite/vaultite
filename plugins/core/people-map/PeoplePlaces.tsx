@@ -1,5 +1,3 @@
-// ```block-people-map: the lazy map plus the same people grouped by place, which works alone if the map can't load.
-// `places: false` leaves the list out.
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, MapPin, MapPinOff } from "lucide-react"
 import { cn, detailPath, Empty, get, glide, isArchived, List, openDetail, Panel, type Store } from "@vaultite"
@@ -10,7 +8,6 @@ import type { Focus } from "./PeopleMap"
 const PeopleMap = lazy(() => import("./PeopleMap"))
 const TINT = "var(--people)"
 
-/** A failed chunk import (or a crash inside MapLibre) falls back to the list instead of taking the page down. */
 class MapBoundary extends Component<{ onFail: () => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
@@ -36,7 +33,6 @@ function YouDot() {
   )
 }
 
-/** "Austin, TX" -> "Austin"; "Brooklyn, New York, NY" -> "Brooklyn, New York". */
 const shortPlace = (s: string | null | undefined) => (s ?? "").replace(/,\s*[A-Z]{2}$/, "")
 
 function PersonRow({ p }: { p: Person }) {
@@ -60,8 +56,6 @@ function PersonRow({ p }: { p: Person }) {
 
 type Pin = [number, number] | null
 
-/** Pins for the places shown without one: asked of the server one by one (it looks each up once and remembers it,
- *  never in the person's file), while the map is shown. */
 function usePins(places: string[]) {
   const [pins, setPins] = useState<Record<string, Pin>>({})
   const want = places.filter((l) => !(l in pins)).join("\n")
@@ -103,7 +97,6 @@ export function PeoplePlaces({ store, list = true }: { store: Store; list?: bool
     const points: [number, number][] = pl.people.map((p) => [p.lat, p.lon])
     if (pl.me && me) points.push([me.lat, me.lon])
     setFocus((f) => ({ points, seq: (f?.seq ?? 0) + 1 }))
-    // The map is above the list: bring it back into view.
     mapRef.current?.scrollIntoView({ behavior: glide(), block: "nearest" })
   }
 
@@ -134,7 +127,6 @@ export function PeoplePlaces({ store, list = true }: { store: Store; list?: bool
 
       {list && <Panel title="By place" icon={MapPin} tint={TINT}>
         {!places.length && <Empty>Nobody has a location yet. Tell Claude where people live.</Empty>}
-        {/* One column on phones; on wider screens the places flow into columns, like an index. */}
         <div className="gap-8 md:columns-2">
           {places.map((pl) => (
             <div key={pl.name} className="mb-4 break-inside-avoid">
@@ -161,7 +153,6 @@ export function PeoplePlaces({ store, list = true }: { store: Store; list?: bool
               </List>
             </div>
           ))}
-          {/* Rows like every place's (a location that wasn't found shows as it's written). */}
           {!!missing.length && (
             <div className="mb-4 break-inside-avoid">
               <div className="flex min-h-9 items-center">

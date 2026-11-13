@@ -1,5 +1,3 @@
-// Made-up logs for plugin previews (Plugins → a plugin), in the vault's real areas (configuration, not personal data),
-// so every page that shows logs renders its real layout.
 import { addDays, today, type Store } from "@vaultite"
 import type { Log } from "./types"
 

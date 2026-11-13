@@ -1,4 +1,3 @@
-// Made-up people for plugin previews (Plugins → a plugin).
 import { addDays, today, type Store } from "@vaultite"
 import type { Interaction, Person } from "./types"
 

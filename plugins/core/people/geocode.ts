@@ -1,7 +1,4 @@
-// Free-text place -> [lat, lon] for the People map, from Nominatim, remembered in the plugin's cache (never in the
-// person's file). No guesses: offline or not found is null, and no pin beats a wrong one.
 export type LatLon = [number, number]
-/** By place (trimmed, lower-cased): its pin, or null when Nominatim found nothing. */
 export type Places = Record<string, LatLon | null>
 
 export const placeKey = (location: string) => (location ?? "").trim().toLowerCase().replace(/\s+/g, " ")
@@ -19,17 +16,15 @@ async function nominatim(location: string, timeout = 5000): Promise<LatLon | nul
   return hits.length ? [round4(Number(hits[0].lat)), round4(Number(hits[0].lon))] : null
 }
 
-/** Lookups through a cache that `load` reads and `save` writes, one request a second at most (Nominatim's policy). */
+/** Nominatim's usage policy: one request a second at most. */
 export function geocoder(load: () => Places, save: (places: Places) => void, lookup = nominatim, gap = 1100) {
   let queue: Promise<unknown> = Promise.resolve()
   let last = 0
   const pending = new Map<string, Promise<LatLon | null>>()
-  /** The cached pin: [lat, lon], null (not found), or undefined (never looked up). */
   const known = (location: string): LatLon | null | undefined => {
     const k = placeKey(location)
     return k ? load()[k] : null
   }
-  /** [lat, lon] or null. Never throws; a network failure isn't remembered, so it's tried again later. */
   const locate = (location: string): Promise<LatLon | null> => {
     const k = placeKey(location)
     if (!k) return Promise.resolve(null)
