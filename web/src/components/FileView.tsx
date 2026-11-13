@@ -5,7 +5,7 @@ import { Banner } from "@/components/Banner"
 import { menuFor, menuOnCard } from "@/components/ContextMenu"
 import { copyToVault, copyToVaultItem, folderMenu, revealItem } from "@/components/FileActions"
 import { mediaItems } from "@/components/EmbedMenu"
-import { useCommandKeys, useCommands } from "@/core/commands"
+import { typingIn, useCommandKeys, useCommands } from "@/core/commands"
 import { dropActiveFile, setActiveFile, type ActiveFile } from "@/core/active"
 import { askMove } from "@/components/FileTree"
 import { fmtAgo, type Store } from "@/core/data"
@@ -51,18 +51,18 @@ import { ink } from "@/lib/ink"
 import { useWideSheet } from "@/components/DetailSheet"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { useHeldFocus } from "@/core/focus"
-import { useEditAt } from "@/core/anchors"
+import { useEditAt, type DrawnLine } from "@/core/anchors"
 import { conflictText, theirName, useAutosave, type SaveStatus } from "@/core/autosave"
-import { addRestore, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
+import { trace } from "@/core/trace"
+import { addRestore, afterPlaced, cancelRestores, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
 import { capitalize, cn, plural } from "@/lib/utils"
 import { haptic } from "@/core/haptics"
 import type { EditorApi } from "@/editor/Editor"
 import { Editor } from "@/editor/lazy"
 import type { PreviewConfig } from "@/editor/livePreview"
 
-import { CODE_VIEWS, MODES, opensReading, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
-import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps } from "@/components/filePlace"
-import { useViewSwitch } from "@/components/useViewSwitch"
+import { beforeMode, CODE_VIEWS, MODES, opensReading, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
+import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps, spotOf, useTextFocus, type Spot } from "@/components/filePlace"
 import { share } from "@/core/share"
 
 const Notebook = lazy(() => import("@/editor/Notebook"))
@@ -399,7 +399,11 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     v.focus()
   }
   const article = useRef<HTMLElement>(null)
+  const spot = useRef<Spot | null>(null)
+  const shownNow = useRef(shown)
+  shownNow.current = shown
   const { focused, hidden: behind } = usePane()
+  const noteSpot = () => { spot.current = spotOf(article.current, editor.current?.api ?? null, fmLines(cur.current)) }
   const keepAt = () => {
     const v = editor.current?.api.view
     if (!v?.dom.isConnected || v.contentDOM.contentEditable !== "true") return
@@ -407,14 +411,110 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const head = v.state.selection.main.head, line = v.state.doc.lineAt(head)
     keepCursor(path, line.number - 1 - above, head - line.from)
   }
+  const intoText = useRef(false)
+  const setMode = useCallback((m: Mode) => {
+    if (m !== shownNow.current) {
+      noteSpot()
+      if (editor.current?.api.view.hasFocus) keepAt()
+      trace("editor", { ev: "view", path, from: shownNow.current, to: m, at: cursorOf(path) })
+      intoText.current = m !== "read"
+      const at = document.activeElement
+      if (m === "read" && (at instanceof HTMLElement || at instanceof SVGElement) && article.current?.contains(at)) at.blur()
+    }
+    pick(m)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- noteSpot and keepAt read refs; path is fixed per mount
+  }, [pick])
+  const placing = useRef<{ s: Spot; stop: (() => void) | null; landed?: () => void } | null>(null)
+  const placeAt = (s: Spot, ed: { api: EditorApi; source: boolean } | null, landed?: () => void) => {
+    const art = article.current
+    if (art) art.style.visibility = "hidden"
+    let once = false
+    const show = () => { clearTimeout(late); if (art) art.style.visibility = ""; if (!once) { once = true; landed?.() } }
+    const late = setTimeout(show, 400)
+    return keepPlace(s, ed?.api ?? null, fmLines(cur.current), art, show, show)
+  }
   const follows = override === null && !drawn && !code && !format
+  const followsNow = useRef(follows)
+  followsNow.current = follows
+  useEffect(() => {
+    const before = (m: Mode, tab: string) => { if (tab === tabId && followsNow.current && m !== shownNow.current && !spot.current) noteSpot() }
+    beforeMode.add(before)
+    return () => { beforeMode.delete(before) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- noteSpot reads refs
+  }, [tabId])
   const canFocus = !ro && !hidden && isDesktop() && !(format && shown !== "source")
-  const { propertiesInDocument: propsIn, readableLineLength: readable, showInlineTitle } = useEditorSettings(store)
-  const { setMode, toLine, ready } = useViewSwitch({ path, tabId, article, editor, cur, shown, edit, follows, canFocus, locked: ro || hidden,
-    propsHidden: propsIn === "hidden", opens: pane && focused && !fresh && !kept && shown !== "read" && canFocus, pick, keepAt, resume: (api) => resume(api),
-    coming: () => !board && !drawing && !(notebook && !source) && !(json && !source) })
+  const focusText = useTextFocus(editor, article, shownNow, cur)
+  const revealing = useRef(false)
+  const putBack = useRef<(() => void) | null>(null)
+  const tookLine = useRef(false)
+  const toLine = useCallback((line: number, find?: string, from?: DrawnLine, col = 0) => {
+    if (ro || hidden) return
+    tookLine.current = true
+    putBack.current?.(); putBack.current = null
+    cancelRestores()
+    // opacity, not visibility: a visibility:hidden editor can't take the cursor.
+    let there: (() => void) | undefined
+    const art = article.current
+    if (shownNow.current === "read") {
+      revealing.current = true
+      pick(edit)
+      if (art) {
+        art.style.opacity = "0"
+        there = () => { clearTimeout(late); art.style.opacity = "" }
+        const late = setTimeout(there, 600)
+      }
+    }
+    const fm = fmLines(cur.current)
+    focusText([Math.max(0, line - fm), col, find], { hold: from && { line: Math.max(0, from.line - fm), y: from.y }, there })
+  }, [ro, hidden, pick, edit, focusText])
   const articleEl = useCallback(() => article.current, [])
   useEditAt(path, articleEl, toLine)
+  const { propertiesInDocument: propsIn, readableLineLength: readable, showInlineTitle } = useEditorSettings(store)
+  useEffect(() => {
+    const on = (e: Event) => {
+      if (!(e instanceof CustomEvent) || e.detail !== path || ro || hidden) return
+      const to = propsIn === "hidden" ? "source" : edit
+      if (shownNow.current !== to && (shownNow.current === "read" || propsIn === "hidden")) pick(to)
+    }
+    addEventListener("vau:properties", on)
+    return () => removeEventListener("vau:properties", on)
+  }, [path, ro, hidden, pick, edit, propsIn])
+  useLayoutEffect(() => {
+    if (revealing.current) { revealing.current = false; spot.current = null }
+    const s = spot.current
+    spot.current = null
+    const into = intoText.current && canFocus && shown !== "read"
+    intoText.current = false
+    let stopFocus: (() => void) | undefined
+    const landed = into ? () => { trace("editor", { ev: "land", path, at: cursorOf(path) }); stopFocus = focusText(cursorOf(path)) } : undefined
+    if (!s) { landed?.(); return () => stopFocus?.() }
+    const ed = editor.current?.api.view.dom.isConnected ? editor.current : null
+    const coming = !ed && !board && !drawing && !(notebook && !source) && !(json && !source)
+    if (!coming) {
+      const stopPlace = placeAt(s, ed, landed)
+      return () => { stopPlace(); stopFocus?.() }
+    }
+    const p: { s: Spot; stop: (() => void) | null; landed?: () => void } = { s, stop: null, landed }
+    placing.current = p
+    const art = article.current
+    if (art) art.style.visibility = "hidden"
+    const shownLate = setTimeout(() => { if (art) art.style.visibility = "" }, 800)
+    const late = setTimeout(() => { if (placing.current === p) { placing.current = null; p.stop = placeAt(s, null, landed) } }, 5000)
+    return () => {
+      clearTimeout(shownLate)
+      clearTimeout(late)
+      if (placing.current === p) placing.current = null
+      p.stop?.()
+      stopFocus?.()
+      if (art) art.style.visibility = ""
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a change of view only
+  }, [shown])
+  const ready = (api: EditorApi, source: boolean) => {
+    const p = placing.current
+    if (p) { placing.current = null; p.stop = placeAt(p.s, { api, source }, p.landed); return }
+    resume(api)
+  }
   useEffect(() => {
     if (!pane || behind || !article.current) return
     const box = article.current.closest<HTMLElement>("[data-pane], [data-kept], [data-stacked]")
@@ -442,6 +542,24 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       () => { drop(); r.show() }, r.show)
     drop = addRestore(stop)
   }
+  useEffect(() => {
+    if (!pane || !focused || fresh || kept || shown === "read" || !canFocus) return
+    let stop: (() => void) | undefined
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const a = document.activeElement
+        if (a && a !== document.body && typingIn(a) && !article.current?.contains(a)) return
+        let stopFocus: (() => void) | undefined
+        if (tookLine.current) return
+        const press = () => stop?.()
+        addEventListener("pointerdown", press, true)
+        const unwait = afterPlaced(`file:${path}`, () => { removeEventListener("pointerdown", press, true); if (!tookLine.current) stopFocus = focusText(cursorOf(path)) })
+        stop = putBack.current = () => { removeEventListener("pointerdown", press, true); unwait(); stopFocus?.() }
+      })
+    })
+    return () => { cancelAnimationFrame(frame); stop?.() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the file opens
+  }, [])
   useEffect(() => {
     const el = article.current
     if (!el) return
@@ -729,7 +847,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                 onReady={(api) => {
                   const me = { api, source }
                   editor.current = me
-                  ready(); saver.reshow(); if (kept?.write) toText()
+                  ready(api, source); saver.reshow(); if (kept?.write) toText()
                   return () => { if (editor.current === me) editor.current = null }
                 }}
                 onChange={(text, start, remote) => typed(text, source || fmText ? null : start, remote)} />

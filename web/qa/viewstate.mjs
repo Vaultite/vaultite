@@ -1,5 +1,5 @@
 // Where you left a place (core/viewstate.ts): scroll and Properties' folds coming back, and the same line on top across
-// views (components/viewSwitch.ts, components/useViewSwitch.ts), on a computer and a phone. WRITES a long note: throwaway.
+// views, on a computer and a phone. WRITES a long note: throwaway server only.
 //   node web/qa/viewstate.mjs <base url> <vault path>
 import { readFileSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
