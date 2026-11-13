@@ -3,7 +3,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { isTextKind, kindOf } from "../../../core/plugins.ts"
 import { FM, frontmatter, nowStamp, safeName, setPropertyText, str, type Vault, writeAtomic } from "../../../core/vault.ts"
-import { aboutOf, type Chat, isObj, type Job, type Memory, type Project } from "./chat.ts"
+import { aboutOf, type Chat, isObj, type Job, type Memory, type Project, said } from "./chat.ts"
 export type { Job } from "./chat.ts"
 import * as chatgpt from "./chatgpt.ts"
 import * as claude from "./claude.ts"
@@ -167,7 +167,7 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     job.source ??= chat.source
     const ext = `${chat.source}-${chat.id}`
     const { fm } = chatNote(chat)
-    if (!known.has(ext) && (fm.messages as number) < opts.minMessages) { job.skipped++; return }
+    if (!known.has(ext) && said(chat) < opts.minMessages) { job.skipped++; return }
     if (same(ext, fm)) { job.unchanged++; return }
     const label = LABELS[chat.source]
     for (const m of chat.messages) for (const p of m.parts) {
@@ -198,7 +198,7 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   let n = 0
   const streams = zip ? convs.map((e) => () => entryStream(file, e)) : [() => fs.createReadStream(file)]
   for (const stream of streams) for await (const item of jsonItems(stream(), onBytes)) {
-    try { await take(item) } catch (err) { if (job.problems.length < 10) job.problems.push(String((err as Error).message ?? err)) }
+    try { await take(item) } catch (err) { if (job.problems.length < 10) job.problems.push(err instanceof Error ? err.message : String(err)) }
     if (++n % 50 === 0) await turn()
   }
   await flush()

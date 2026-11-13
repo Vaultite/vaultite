@@ -25,6 +25,8 @@ export function linearize(msgs: Msg[], current?: string) {
   return { path: path.reverse(), others: Math.max(0, leaves.length - 1) }
 }
 
+const ARTIFACT_LANG: Record<string, string> = { "text/markdown": "markdown", "text/html": "html", "image/svg+xml": "svg", "application/vnd.ant.mermaid": "mermaid",
+  "application/vnd.ant.react": "jsx", "application/vnd.ant.code": "" }
 function toolUse(b: Record<string, unknown>): Part[] {
   const name = text(b.name)
   const input = isObj(b.input) ? b.input : {}
@@ -35,8 +37,7 @@ function toolUse(b: Record<string, unknown>): Part[] {
       const diff = [...text(input.old_str).split("\n").map((l) => `- ${l}`), ...text(input.new_str).split("\n").map((l) => `+ ${l}`)].join("\n")
       return [{ kind: "code", text: diff, lang: "diff", title: `Changed ${title}` }]
     }
-    const lang = text(input.language) || ({ "text/markdown": "markdown", "text/html": "html", "image/svg+xml": "svg", "application/vnd.ant.mermaid": "mermaid",
-      "application/vnd.ant.react": "jsx", "application/vnd.ant.code": "" } as Record<string, string>)[text(input.type)] || ""
+    const lang = text(input.language) || ARTIFACT_LANG[text(input.type)] || ""
     return text(input.content).trim() ? [{ kind: "code", text: text(input.content), lang, title, open: true }] : [{ kind: "note", text: `Made ${title}` }]
   }
   if (typeof input.query === "string") return [{ kind: "note", text: `${name === "web_search" ? "Searched the web" : `Used ${name}`}: ${input.query}` }]

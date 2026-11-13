@@ -48,9 +48,10 @@ async function jsonBody(req: Request) {
   const chunks: Buffer[] = []
   let size = 0
   for await (const c of http) {
-    size += (c as Buffer).length
+    const piece: Buffer = c
+    size += piece.length
     if (size > 1 << 20) throw new HTTPError(413, "a JSON body this big? Send the export itself as the body")
-    chunks.push(c as Buffer)
+    chunks.push(piece)
   }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") } catch { throw new HTTPError(400, "the body isn't JSON") }
 }
@@ -66,7 +67,7 @@ function start(file: string, name: string, opts: Options, temporary: boolean) {
       await runImport(plugin.vault, file, opts, job)
     } catch (e) {
       job.state = "failed"
-      job.error = String((e as Error)?.message ?? e)
+      job.error = e instanceof Error ? e.message : String(e)
     } finally {
       job.finished = Date.now()
       if (temporary) fs.rmSync(file, { force: true })
@@ -97,7 +98,7 @@ plugin.route("POST", "ai-import", async (req) => {
     await pipeline(req.http!, fs.createWriteStream(file))
   } catch (e) {
     fs.rmSync(file, { force: true })
-    throw new HTTPError(400, `the upload broke off: ${(e as Error).message}`)
+    throw new HTTPError(400, `the upload broke off: ${e instanceof Error ? e.message : String(e)}`)
   }
   if (!fs.statSync(file).size) { fs.rmSync(file, { force: true }); throw new HTTPError(400, "the body is empty: send the export's zip") }
   return reply(202, start(file, str(req.query.name) || "export.zip", opts, true))
@@ -125,20 +126,23 @@ plugin.route("GET", "ai-import/jobs/*", (req) => {
   return job
 })
 
-export async function applyReview(text: string, source: string, run: (args: Record<string, unknown>) => Promise<string | { person?: string | null; already?: boolean; path?: string }>) {
+type Remembered = string | { person?: string | null; already?: boolean; path?: string }
+function answerOf(said: Remembered) {
+  if (typeof said === "string") {
+    return { person: /^Remembered in People\/(.+?)\.md/.exec(said)?.[1] ?? (/^People\/(.+?)\.md already/.exec(said)?.[1]), already: /already says that/.test(said), mine: "ME.md" }
+  }
+  return { person: said.person ?? undefined, already: said.already === true, mine: said.path || "ME.md" }
+}
+
+export async function applyReview(text: string, source: string, run: (args: Record<string, unknown>) => Promise<Remembered>) {
   const results: Applied[] = []
   for (const it of reviewItems(text).filter((x) => x.done)) {
     try {
-      const said = await run({ fact: it.fact, about: it.about, source })
-      const person = typeof said === "string"
-        ? /^Remembered in People\/(.+?)\.md/.exec(said)?.[1] ?? (/^People\/(.+?)\.md already/.exec(said)?.[1])
-        : said.person ?? undefined
-      const already = typeof said === "string" ? /already says that/.test(said) : said.already === true
-      const mine = typeof said === "object" && said.path ? said.path : "ME.md"
+      const { person, already, mine } = answerOf(await run({ fact: it.fact, about: it.about, source }))
       const where = it.about === "me" ? `${mine}, About me` : it.about === "preference" ? `${mine}, How to work with me` : `[[${person ?? it.about}]]`
       results.push({ fact: it.fact, where: already ? `${where} (already there)` : where })
     } catch (e) {
-      results.push({ fact: it.fact, error: String((e as Error)?.message ?? e) })
+      results.push({ fact: it.fact, error: e instanceof Error ? e.message : String(e) })
     }
   }
   return results

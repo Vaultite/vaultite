@@ -11,7 +11,7 @@ export async function* jsonItems(stream: Readable | AsyncIterable<Buffer | strin
   const whole: Buffer[] = []
   const parse = (bufs: Buffer[]) => {
     const text = Buffer.concat(bufs).toString("utf8")
-    try { return JSON.parse(text) } catch (e) { throw new Error(`broken JSON: ${(e as Error).message}`) }
+    try { return JSON.parse(text) } catch (e) { throw new Error(`broken JSON: ${e instanceof Error ? e.message : String(e)}`) }
   }
   for await (const raw of stream) {
     const chunk = typeof raw === "string" ? Buffer.from(raw, "utf8") : raw

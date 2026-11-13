@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { CliError, done, flag, need, type PluginCli } from "../../../core/cli.ts"
+import { type Any, CliError, done, flag, need, type PluginCli } from "../../../core/cli.ts"
 
 async function upload(url: string, file: string, headers: Record<string, string>) {
   const u = new URL(url)
@@ -58,8 +58,7 @@ in the vault: vau ai-import.run <path>.
       }
       if (r.status === 404 && !r.body.error) throw new CliError("the server has no /api/ai-import (an older version? restart it)")
       if (r.status >= 400) throw new CliError(String(r.body.error ?? r.status))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let job = r.body as any
+      let job: Any = r.body
       if (a.flags["no-wait"]) return done(job, `Importing ${job.name} (job ${job.id}): vau ai-import.job ${job.id} --wait follows it.`)
       let last = ""
       while (job.state === "queued" || job.state === "running") {

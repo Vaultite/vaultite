@@ -1,8 +1,11 @@
 // ChatGPT's export has no memory list: memories come from `bio` calls, model_set_context and custom instructions.
 import { arr, type Chat, factsOf, isObj, type Memory, type Message, type Part, text, timeOf, aboutOf } from "./chat.ts"
+import { z } from "zod"
 import { dataLine, fenceDil } from "../genui/dil.ts"
 
-type Node = { id: string; message?: Record<string, unknown> | null; parent?: string | null; children?: string[] }
+const ChatNode = z.object({ id: z.string().catch(""), message: z.record(z.string(), z.unknown()).nullable().catch(null),
+  parent: z.string().nullable().catch(null), children: z.array(z.unknown()).catch([]) })
+type Node = z.infer<typeof ChatNode>
 
 // ChatGPT's private-use citation markers ("\ue200cite\ue202turn0search1\ue201") and its file citations
 const clean = (s: string) => s.replace(/[ \t]*\ue200[^\ue201]*\ue201/g, "").replace(/\u3010\d+(?::\d+)?\u2020[^\u3011]*\u3011/g, "")
@@ -10,8 +13,10 @@ const clean = (s: string) => s.replace(/[ \t]*\ue200[^\ue201]*\ue201/g, "").repl
 // "file-service://file-AbC" and "sediment://file_00ab" -> "file-AbC", "file_00ab"
 export const assetId = (pointer: string) => pointer.replace(/^[a-z-]+:\/\//, "").trim()
 
-function line(mapping: Record<string, Node>, current: unknown) {
-  const nodes = Object.values(mapping).filter(isObj) as Node[]
+function line(raw: Record<string, unknown>, current: unknown) {
+  const mapping: Record<string, Node> = {}
+  for (const [k, v] of Object.entries(raw)) { const n = ChatNode.safeParse(v); if (n.success) mapping[k] = n.data }
+  const nodes = Object.values(mapping)
   const leaves = nodes.filter((n) => !arr(n.children).some((c) => typeof c === "string" && mapping[c]))
   let end = typeof current === "string" && mapping[current] ? current : null
   if (!end && leaves.length) {
@@ -54,7 +59,7 @@ export function readConversation(c: unknown): ChatGptRead | null {
   if (!isObj(c) || !isObj(c.mapping)) return null
   const id = text(c.conversation_id) || text(c.id)
   if (!id) return null
-  const { nodes, others } = line(c.mapping as Record<string, Node>, c.current_node)
+  const { nodes, others } = line(c.mapping, c.current_node)
   const messages: Message[] = []
   const memories: Memory[] = []
   let memoryList: { at: number; facts: string[] } | undefined
