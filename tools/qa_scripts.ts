@@ -2,6 +2,7 @@
 // exercise), and which ones a change reaches (tools/verify.ts).
 import fs from "node:fs"
 import path from "node:path"
+import { parseSync } from "rolldown/utils"
 
 export const QA = path.resolve(import.meta.dirname, "../web/qa")
 /** Not tests (benchmarks, a library, the smoke test), needing more than one machine (machines, inboxmachines), or another
@@ -18,11 +19,25 @@ export const MEASURES = new Map([
   ["screendraw", "asserts frame rates and no long task while the choreography glides"],
 ])
 
-/** Every script's name, the skipped ones too. */
 export const allScripts = () => fs.readdirSync(QA).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).sort()
 
+const headOf = (text: string) => text.split("\n").filter((l) => l.startsWith("//")).join("\n")
 /** Its comment lines (from the top level: the head comment and the section notes), one text. */
-export const head = (name: string) => fs.readFileSync(path.join(QA, `${name}.mjs`), "utf8").split("\n").filter((l) => l.startsWith("//")).join("\n")
+export const head = (name: string) => headOf(fs.readFileSync(path.join(QA, `${name}.mjs`), "utf8"))
+
+export function usageArgs(name: string, text = head(name)): string[] {
+  const m = new RegExp(`node web/qa/${name}\\.mjs([^\\n(]*)`).exec(text)
+  return (m?.[1] ?? "").match(/<[^>]+>|\[[^\]]+\]/g) ?? []
+}
+
+const program = (file: string, text: string) => {
+  const parsed = parseSync(file, text)
+  return parsed.errors.length ? null : JSON.stringify(parsed.program).replace(/"(start|end)":\d+,?/g, "")
+}
+export function runsTheSame(file: string, before: string, after: string): boolean {
+  const name = path.basename(file, ".mjs"), was = program(file, before)
+  return was !== null && was === program(file, after) && usageArgs(name, headOf(before)).join(" ") === usageArgs(name, headOf(after)).join(" ")
+}
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 /** Whether `text` names path `p` on its own, not inside a longer one (core/x.ts isn't in plugins/core/x.ts nor in

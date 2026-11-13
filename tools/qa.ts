@@ -10,7 +10,7 @@ import path from "node:path"
 import { freePort, killTree, lastTimes, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { alone, front, slotTill } from "./qa_slots.ts"
 import { filesState, passes } from "./verify_passed.ts"
-import { FRONT, MEASURES, QA, SKIP, allScripts, head } from "./qa_scripts.ts"
+import { FRONT, MEASURES, QA, SKIP, allScripts, usageArgs } from "./qa_scripts.ts"
 import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
@@ -89,12 +89,6 @@ if (process.platform === "darwin" && !process.env.VAULTITE_QA_JOB && await throt
   const code = await asInteractiveJob(process.argv.slice(1))
   if (code !== null) process.exit(code)
   console.log("qa: launchd wouldn't take the job (no GUI session?): running here, motion checks may fail")
-}
-
-
-function usage(name: string) {
-  const m = new RegExp(`node web/qa/${name}\\.mjs([^\\n(]*)`).exec(head(name))
-  return (m?.[1] ?? "").match(/<[^>]+>|\[[^\]]+\]/g) ?? []
 }
 
 /** Stand-ins for the coding agents the app starts by name (its own and Vaultite/plugins'): they say their name, then sleep.
@@ -211,11 +205,11 @@ async function setUpAndRun(name: string, mark: string): Promise<Ran> {
     made = Date.now() - began
     const { vault, local, repos } = copyTemplate(from, tmp)
     const env = envFor(claude, repos)
-    if ((usage(name) as string[]).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${repos}` })
+    if (usageArgs(name).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${repos}` })
     const main = await serve(vault, local, env)
     servers.push(main)
     const args: string[] = []
-    for (const tok of usage(name)) {
+    for (const tok of usageArgs(name)) {
       const t = tok.slice(1, -1).replace(/^<|>$/g, "")
       if (/^fresh base url$/.test(t)) {
         fs.mkdirSync(path.join(tmp, "fresh"))

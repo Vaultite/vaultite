@@ -6,7 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { AREAS } from "./test/vault/index.ts"
 import { gitEnv } from "../core/gitenv.ts"
-import { qaFor } from "./qa_scripts.ts"
+import { qaFor, runsTheSame } from "./qa_scripts.ts"
 import { changeRisk, describe } from "./osrisk.ts"
 import { WAIT_SECONDS, startTry, waitTry, type Waited } from "./try.ts"
 import { findMachines } from "./try_machines.ts"
@@ -40,8 +40,16 @@ function areasFor(files: string[]): string[] {
   return all.filter((a) => out.has(a))
 }
 
-const web = changed.some((f) => f.startsWith("web/"))
-const areas = areasFor(changed), qa = [...qaFor(changed).keys()].sort()
+const since = git("merge-base", base, "HEAD")[0]
+function commentsOnly(f: string) {
+  if (!/^web\/qa\/.*\.mjs$/.test(f) || !fs.existsSync(path.join(ROOT, f))) return false
+  const was = spawnSync("git", ["show", `${since}:${f}`], { cwd: ROOT, encoding: "utf8", env: gitEnv() })
+  return was.status === 0 && runsTheSame(f, was.stdout, fs.readFileSync(path.join(ROOT, f), "utf8"))
+}
+const unrun = changed.filter(commentsOnly)
+const runs = changed.filter((f) => !unrun.includes(f))
+const web = runs.some((f) => f.startsWith("web/"))
+const areas = areasFor(changed), qa = [...qaFor(runs).keys()].sort()
 type Stage = { name: string; cmd: string[]; why: string }
 const picked: Stage[] = [
   ...(changed.some((f) => f.startsWith("web/src/") || f === "tools/test_web.ts" || f.startsWith("tools/test/web/")) ? [{ name: "test_web", cmd: ["node", "tools/test_web.ts"], why: "web/src or its test changed" }] : []),
@@ -80,6 +88,7 @@ const ago = (at: number) => { const m = Math.round((Date.now() - at) / 60_000); 
 
 const risks = changeRisk(ROOT, base)
 say(`${changed.length} files changed since ${base}`)
+if (unrun.length) say(`${unrun.length} QA files changed only in comments: not run for them`)
 if (risks.length) say(`OS-sensitive: ${describe(risks)}`)
 const rows: { name: string; why: string; s: string; ok: boolean | null; cmd: string[] }[] = []
 const t0 = Date.now(), also = argv.includes("--surfaces") ? ["surfaces"] : []
