@@ -44,10 +44,10 @@ function plain(v: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   seen.add(v)
   const next = (x: unknown) => plain(x, seen, depth + 1)
   if (Array.isArray(v) || v instanceof Set || (typeof NodeList !== "undefined" && v instanceof NodeList) || (typeof HTMLCollection !== "undefined" && v instanceof HTMLCollection)) {
-    return [...(v as Iterable<unknown>)].slice(0, 1000).map(next)
+    return [...v].slice(0, 1000).map(next)
   }
   if (v instanceof Map) return Object.fromEntries([...v].slice(0, 1000).map(([k, x]) => [String(k), next(x)]))
-  const toJSON = (v as { toJSON?: () => unknown }).toJSON
+  const toJSON = "toJSON" in v ? v.toJSON : undefined
   if (typeof toJSON === "function") { try { return next(toJSON.call(v)) } catch { /* as an object */ } }
   return Object.fromEntries(Object.entries(v).slice(0, 1000).map(([k, x]) => [k, next(x)]))
 }

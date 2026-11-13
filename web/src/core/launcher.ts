@@ -12,8 +12,8 @@ function newTabViews(disabled = getPrefs().disabled) {
     v.asNewTab && v.asNewTab.here?.() !== false ? [{ target: `view:${name}`, label: v.asNewTab.label }] : []))
 }
 
-export const opensChoices = () => [{ value: null, label: "Page" }, { value: "switcher", label: "Quick switcher" },
-  ...newTabViews().map((v) => ({ value: v.target, label: v.label }))] as { value: string | null; label: string }[]
+export const opensChoices = (): { value: string | null; label: string }[] => [{ value: null, label: "Page" }, { value: "switcher", label: "Quick switcher" },
+  ...newTabViews().map((v) => ({ value: v.target, label: v.label }))]
 export const setOpens = (opens: string | null) => setPrefs({ newTab: { ...getPrefs().newTab, opens } })
 
 function viewHere(opens: string | null) {

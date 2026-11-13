@@ -22,28 +22,38 @@ export const DENSITIES: Options<Density> = [{ value: "compact", label: "Compact"
 export const ANIMATIONS: Options<Animation> = [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }]
 export const BAR_FADES: Options<FileBarFade> = [{ value: "off", label: "Never" }, { value: "typing", label: "While typing" }, { value: "always", label: "Always" }]
 export const barFadeOf = (v: unknown): FileBarFade => (v === "typing" || v === "always" ? v : "off")
-export type Indent = "tab" | "2" | "4"
+export type Indent = "tab" | `${number}`
 export const INDENTS: Options<Indent> = [{ value: "tab", label: "Tab" }, { value: "2", label: "2 spaces" }, { value: "4", label: "4 spaces" }]
 export const PLUGIN_UPDATE_POLICIES: Options<UpdatePolicy> = [{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]
-export const indentOf = (e: { useTab: boolean; tabSize: number }): Indent => (e.useTab ? "tab" : (String(e.tabSize) as Indent))
+export const indentOf = (e: { useTab: boolean; tabSize: number }): Indent => (e.useTab ? "tab" : `${e.tabSize}`)
 
 const list = (o: ChoiceOption[]) => () => o
+type Typed<V extends string> = Omit<ChoiceDef, "options" | "get" | "set" | "preview"> &
+  { options: Options<V>; get: () => V; set: (v: V) => unknown; preview?: (v: V | null) => void }
+function typed<V extends string>(c: Typed<V>): ChoiceDef {
+  const of = (id: string) => c.options.find((o) => o.value === id)?.value
+  const { preview } = c
+  return {
+    ...c, options: () => c.options, set: (id) => { const v = of(id); return v === undefined ? undefined : c.set(v) },
+    preview: preview && ((id) => preview(id === null ? null : of(id) ?? null)),
+  }
+}
 const editorValue = (k: "defaultView" | "editingMode" | "propertiesInDocument") => ({
   section: "editor", get: () => String(editorSettings()[k] ?? ""), set: (v: string) => setEditor({ [k]: v }),
 })
 
 // `id` and `name` first, literal: core/appsource.ts lists commands from the source.
 const CORE: ChoiceDef[] = [
-  { id: "setting:theme", name: "Theme", section: "appearance", icon: SunMoon, words: "dark mode light mode", options: list(THEMES),
-    get: () => getPrefs().theme, set: (v) => setPrefs({ theme: v as Theme }), preview: (v) => previewLook(v === null ? null : { theme: v as Theme }) },
-  { id: "setting:density", name: "Density", section: "appearance", icon: UnfoldVertical, words: "spacing", options: list(DENSITIES),
-    get: () => (getPrefs().density === "comfortable" ? "comfortable" : "compact"), set: (v) => setPrefs({ density: v as Density }),
-    preview: (v) => previewLook(v === null ? null : { density: v as Density }) },
-  { id: "setting:animation", name: "Animations", section: "appearance", icon: Sparkles, words: "motion reduce speed spring", options: list(ANIMATIONS),
-    get: () => getPrefs().animation, set: (v) => setPrefs({ animation: v as Animation }) },
-  { id: "setting:file-bar-fade", name: "Fade the file bar", section: "appearance", icon: PanelTopDashed, words: "hide path breadcrumb focus zen writing reading distraction typing hover auto-hide",
+  typed<Theme>({ id: "setting:theme", name: "Theme", section: "appearance", icon: SunMoon, words: "dark mode light mode", options: THEMES,
+    get: () => getPrefs().theme, set: (theme) => setPrefs({ theme }), preview: (theme) => previewLook(theme === null ? null : { theme }) }),
+  typed<Density>({ id: "setting:density", name: "Density", section: "appearance", icon: UnfoldVertical, words: "spacing", options: DENSITIES,
+    get: () => (getPrefs().density === "comfortable" ? "comfortable" : "compact"), set: (density) => setPrefs({ density }),
+    preview: (density) => previewLook(density === null ? null : { density }) }),
+  typed<Animation>({ id: "setting:animation", name: "Animations", section: "appearance", icon: Sparkles, words: "motion reduce speed spring", options: ANIMATIONS,
+    get: () => getPrefs().animation, set: (animation) => setPrefs({ animation }) }),
+  typed<FileBarFade>({ id: "setting:file-bar-fade", name: "Fade the file bar", section: "appearance", icon: PanelTopDashed, words: "hide path breadcrumb focus zen writing reading distraction typing hover auto-hide",
     sub: () => ({ off: "", typing: "While typing, back when the pointer moves", always: "Back while the pointer is over it" })[barFadeOf(getPrefs().fileBarFade)],
-    options: list(BAR_FADES), get: () => barFadeOf(getPrefs().fileBarFade), set: (v) => setPrefs({ fileBarFade: v as FileBarFade }) },
+    options: BAR_FADES, get: () => barFadeOf(getPrefs().fileBarFade), set: (fileBarFade) => setPrefs({ fileBarFade }) }),
   { id: "setting:new-tabs", name: "New tabs open", section: "appearance", icon: AppWindow, words: "new tab launcher start blank",
     options: () => opensChoices().map((c) => ({ value: c.value ?? "", label: c.label })),
     get: () => { const o = getPrefs().newTab.opens; return opensChoices().some((c) => c.value === o) ? o ?? "" : "" }, set: (v) => setOpens(v || null) },
@@ -53,11 +63,11 @@ const CORE: ChoiceDef[] = [
   { id: "setting:properties-in-document", name: "Properties in document", icon: Tags, words: "frontmatter yaml metadata show hide", options: list(PROPERTIES_SHOWN), ...editorValue("propertiesInDocument") },
   { id: "setting:indent", name: "Indent", section: "editor", icon: IndentIncrease, words: "tabs spaces tab size", options: list(INDENTS),
     get: () => indentOf(editorSettings()), set: (v) => setEditor(v === "tab" ? { useTab: true } : { useTab: false, tabSize: Number(v) }) },
-  { id: "setting:plugin-updates", name: "Plugin updates", section: "plugins", icon: RefreshCw, words: "update automatically plugins", options: list(PLUGIN_UPDATE_POLICIES),
-    sub: () => "Which plugins update on their own", get: () => getPrefs().updates, set: (v) => setPrefs({ updates: v as UpdatePolicy }) },
-  { id: "setting:file-sort", name: "Sort order", plugin: { id: "files", key: "fileSort" }, icon: ArrowDownWideNarrow, words: "file explorer tree sort by name modified created",
-    sub: () => "Of the file tree; folders stay first, by name", options: () => SORTS.flat(), when: () => isEnabled("files", getPrefs().disabled),
-    get: () => getPrefs().fileSort, set: (v) => setPrefs({ fileSort: v as FileSort }) },
+  typed<UpdatePolicy>({ id: "setting:plugin-updates", name: "Plugin updates", section: "plugins", icon: RefreshCw, words: "update automatically plugins", options: PLUGIN_UPDATE_POLICIES,
+    sub: () => "Which plugins update on their own", get: () => getPrefs().updates, set: (updates) => setPrefs({ updates }) }),
+  typed<FileSort>({ id: "setting:file-sort", name: "Sort order", plugin: { id: "files", key: "fileSort" }, icon: ArrowDownWideNarrow, words: "file explorer tree sort by name modified created",
+    sub: () => "Of the file tree; folders stay first, by name", options: SORTS.flat(), when: () => isEnabled("files", getPrefs().disabled),
+    get: () => getPrefs().fileSort, set: (fileSort) => setPrefs({ fileSort }) }),
 ]
 
 export const coreChoice = (id: string) => CORE.find((c) => c.id === id)!
