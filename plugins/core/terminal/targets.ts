@@ -1,20 +1,27 @@
+import { z } from "zod"
 import { parseTerminal } from "../../../core/agents.ts"
 import { byUser, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, splitMachine } from "../../../core/plugins.ts"
 import { allPanes, clean } from "../../../core/layout.ts"
-import type { Trouble } from "./backend.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any
-export type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string; state?: string; kind?: string; msg?: string
-  needs?: boolean; note?: string; backend?: string; session?: string; name?: string; cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
-  machine?: string; machineLabel?: string; pid?: number; via?: number }
-export type Ended = { id: string; backend: string; command: string; name?: string; note?: string; started: number; exit: { code: number; signal: number; at: number; lost?: boolean } }
-export type TabAt = { workspace: number; tab: string }
+const opt = { s: z.string().optional(), n: z.number().optional(), b: z.boolean().optional() }
+export const Session = z.looseObject({ id: z.string(), agent: z.string().nullable(), process: z.string(), busy: opt.b, clients: z.number(), started: z.number(), title: opt.s,
+  state: opt.s, kind: opt.s, msg: opt.s, needs: opt.b, note: opt.s, backend: opt.s, session: opt.s, name: opt.s, cwd: opt.s, command: opt.s, cols: opt.n, rows: opt.n,
+  activity: opt.n, machine: opt.s, machineLabel: opt.s, pid: opt.n, via: opt.n })
+export type Session = z.infer<typeof Session>
+const Exit = z.object({ code: z.number(), signal: z.number(), at: z.number(), lost: opt.b })
+export const Ended = z.looseObject({ id: z.string(), backend: z.string(), command: z.string(), name: opt.s, note: opt.s, started: z.number(), exit: Exit })
+export type Ended = z.infer<typeof Ended>
+export const TabAt = z.object({ workspace: z.number(), tab: z.string() })
+export type TabAt = z.infer<typeof TabAt>
+export const Trouble = z.object({ since: z.number(), pid: z.number(), text: z.string() })
+const Sessions = z.object({ sessions: z.array(Session), ended: z.array(Ended).optional(), starting: z.array(z.string()).optional(), trouble: Trouble.optional() })
 
 export const freshAgent = (id: string) => { const t = parseTerminal(id); return !!t && !t.resume && !t.machine }
 
-export async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[]; ended?: Ended[]; starting?: string[]; trouble?: Trouble }> {
-  return await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`)
+export async function sessions(ctx: OpCtx, ended = false) {
+  return Sessions.parse(await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`))
 }
 
 export async function tabsOf(ctx: OpCtx): Promise<Map<string, TabAt[]>> {

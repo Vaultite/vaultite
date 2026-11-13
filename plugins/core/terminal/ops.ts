@@ -1,8 +1,16 @@
 import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
 import { fmtAgo, type Machine, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
-import type { Trouble } from "./backend.ts"
+import { z } from "zod"
 import { homeOf } from "./backends.ts"
-import { type Any, closeTabs, elsewhere, type Ended, freshAgent, passOn, type Session, sessions, show, shown, type TabAt, tabsOf, target, there } from "./targets.ts"
+import { type Any, closeTabs, elsewhere, Ended, freshAgent, passOn, Session, sessions, show, shown, TabAt, tabsOf, target, there, Trouble } from "./targets.ts"
+
+const Shown = Session.extend({ tabs: z.array(TabAt) })
+const Listing = z.looseObject({ sessions: z.array(Shown), gone: z.array(z.object({ id: z.string(), tabs: z.array(TabAt), agent: z.boolean() })).default([]),
+  ended: z.array(Ended).optional(), machines: z.record(z.string(), z.string()).optional(), trouble: Trouble.optional() })
+type Listing = z.infer<typeof Listing>
+const Sent = z.object({ at: z.number(), by: z.string(), text: z.string().optional(), keys: z.array(z.string()).optional() })
+const Got = z.union([Ended.extend({ ended: z.literal(true) }), Shown.extend({ inputs: z.array(Sent).optional(), ended: z.undefined().optional() })])
+const Pressed = z.looseObject({ id: z.string(), keys: z.array(z.string()) })
 
 const where = (tabs: TabAt[] | undefined) => (tabs?.length ? `tab in workspace ${[...new Set(tabs.map((t) => t.workspace))].join(", ")}` : "no tab")
 const SPLIT = { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down) the current one, not a new tab (the user's only: an agent's goes behind theirs)" } as const
@@ -62,31 +70,31 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
     },
     run: async ({ machine, ended }, ctx) => {
       const m = machine === "all" ? null : await elsewhere(plugin, machine ?? "")
-      if (m) return await there(plugin, ctx, m, "terminal.list", { ...(ended ? { ended } : {}) })
+      if (m) return Listing.parse(await there(plugin, ctx, m, "terminal.list", { ...(ended ? { ended } : {}) }))
       const [ss, tabs] = await Promise.all([sessions(ctx, !!ended), tabsOf(ctx)])
       const live = new Set([...ss.sessions.map((s) => s.id), ...(ss.starting ?? [])])
       const gone = [...tabs].filter(([t]) => !t.includes("@") && !live.has(t)).map(([t, at]) => ({ id: t, tabs: at, agent: freshAgent(t) }))
-      const out: { sessions: (Session & { tabs: TabAt[] })[]; gone: typeof gone; ended?: Ended[]; machines?: Record<string, string>; trouble?: Trouble } =
+      const out: Listing =
         { sessions: ss.sessions.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone, ...(ended ? { ended: ss.ended ?? [] } : {}), ...(ss.trouble ? { trouble: ss.trouble } : {}) }
       if (machine === "all") {
         const all = await plugin.ask<Machine[]>("machines", [])
         const others = all.filter((x) => !x.self && x.online && x.plugins?.includes("terminal"))
-        const lists = await Promise.all(others.map((x) => passOn(plugin, ctx, x.id, "terminal.list", {}).then((r) => ({ x, r }), (e: Error) => ({ x, e }))))
+        const lists = await Promise.all(others.map((x) => passOn(plugin, ctx, x.id, "terminal.list", {}).then((r) => ({ x, r: Listing.parse(r) }), (e: Error) => ({ x, e }))))
         out.machines = {}
         for (const l of lists) {
           if ("e" in l) { out.machines[l.x.id] = l.e.message; continue }
-          out.machines[l.x.id] = (l.r.trouble as Trouble | undefined)?.text ?? "ok"
-          out.sessions.push(...(l.r.sessions as Session[]).map((s) => ({ ...s, id: `${s.id}@${l.x.id}`, machine: l.x.id, machineLabel: l.x.label, tabs: tabs.get(`${s.id}@${l.x.id}`) ?? [] })))
+          out.machines[l.x.id] = l.r.trouble?.text ?? "ok"
+          out.sessions.push(...l.r.sessions.map((s) => ({ ...s, id: `${s.id}@${l.x.id}`, machine: l.x.id, machineLabel: l.x.label, tabs: tabs.get(`${s.id}@${l.x.id}`) ?? [] })))
         }
       }
       return out
     },
     text: (r) => {
-      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map(row)
-      const gone = (r.gone as { id: string; tabs: TabAt[]; agent: boolean }[]).map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
-      const ended = ((r.ended ?? []) as Ended[]).map((e) => `${e.id}  ${e.command || "-"}${e.name ? `  named "${e.name}"` : ""}  ended ${ago(e.exit.at)} (${how(e.exit)})`)
-      const away = Object.entries((r.machines ?? {}) as Record<string, string>).filter(([, v]) => v !== "ok").map(([k, v]) => `${k}: ${v}`)
-      const t = r.trouble as Trouble | undefined
+      const rows = r.sessions.map(row)
+      const gone = r.gone.map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
+      const ended = (r.ended ?? []).map((e) => `${e.id}  ${e.command || "-"}${e.name ? `  named "${e.name}"` : ""}  ended ${ago(e.exit.at)} (${how(e.exit)})`)
+      const away = Object.entries(r.machines ?? {}).filter(([, v]) => v !== "ok").map(([k, v]) => `${k}: ${v}`)
+      const t = r.trouble
       const trouble = t ? `${t.text[0].toUpperCase()}${t.text.slice(1)} (${ago(t.since)}), so they aren't listed here. vau errors says more.\n\n` : ""
       return trouble + (rows.length ? rows.join("\n") : "(no terminal sessions)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "") +
         (ended.length ? `\n\nEnded lately:\n${ended.join("\n")}` : "") + (away.length ? `\n\nNot listed:\n${away.join("\n")}` : "")
@@ -113,18 +121,18 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
     run: async ({ id }, ctx) => {
       if (!id) throw new OpError("which terminal? give its id (vau terminal lists them): you don't run in one of the app's (no VAULTITE_TERMINAL)")
       const [t, machine] = await target(plugin, ctx, id, { ended: true })
-      if (machine) return await there(plugin, ctx, machine, "terminal.get", { id: t })
+      if (machine) return Got.parse(await there(plugin, ctx, machine, "terminal.get", { id: t }))
       const [r, tabs] = await Promise.all([sessions(ctx, true), tabsOf(ctx)])
       const s = r.sessions.find((x) => x.id === t)
-      if (s) return { ...s, tabs: tabs.get(t) ?? [], inputs: (await ctx.api("GET", `terminals/${encodeURIComponent(t)}/inputs`).catch(() => ({ inputs: [] }))).inputs }
+      if (s) return Got.parse({ ...s, tabs: tabs.get(t) ?? [], inputs: (await ctx.api("GET", `terminals/${encodeURIComponent(t)}/inputs`).catch(() => ({ inputs: [] }))).inputs })
       const e = r.ended?.find((x) => x.id === t)
-      if (e) return { ...e, ended: true }
+      if (e) return Got.parse({ ...e, ended: true })
       throw new OpError(`there's no terminal '${t}' (vau terminal lists them)`, 404)
     },
     text: (r) => {
       if (r.ended) return `${r.id}  ${r.command || "-"}${r.name ? `  named "${r.name}"` : ""}  ended ${ago(r.exit.at)} (${how(r.exit)})`
-      const s = r as Session & { tabs: TabAt[] }
-      const sent = ((r.inputs ?? []) as { at: number; by: string; text?: string; keys?: string[] }[]).slice(-3)
+      const s = r
+      const sent = (r.inputs ?? []).slice(-3)
         .map((x) => `  ${ago(x.at)} by ${x.by}: ${x.text ? quoted(x.text, 60) : ""}${x.keys ? ` ${x.keys.join(" ")}` : ""}`)
       return [row(s), ...[s.pid && `pid: ${s.pid}`, s.command && `runs: ${s.command}`, s.cwd && `in: ${s.cwd}`, s.cols && `size: ${s.cols}x${s.rows}`, s.msg && `says: ${s.msg}`,
         `clients: ${s.clients}`, s.activity && `last activity: ${ago(s.activity)}`, sent.length && `sent lately:\n${sent.join("\n")}`].filter(Boolean)].join("\n")
@@ -413,10 +421,9 @@ them; arrows go as the terminal's mode has them (a full-screen program's). In or
     run: async ({ id, keys }, ctx) => {
       const [t, machine] = await target(plugin, ctx, id)
       if (!keys?.length) throw new OpError("which keys? Enter, C-c, Up...")
-      if (machine) return await there(plugin, ctx, machine, "terminal.key", { id: t, keys })
-      return await ctx.api("POST", `terminals/${encodeURIComponent(t)}/send`, { keys })
+      return Pressed.parse(machine ? await there(plugin, ctx, machine, "terminal.key", { id: t, keys }) : await ctx.api("POST", `terminals/${encodeURIComponent(t)}/send`, { keys }))
     },
-    text: (r) => `Pressed ${(r.keys as string[]).join(" ")} in ${r.id}.`,
+    text: (r) => `Pressed ${r.keys.join(" ")} in ${r.id}.`,
     did: ({ id, keys }) => ({ action: "run", text: `Pressed ${(keys ?? []).join(" ")} in the terminal ${id}` }),
   })
 

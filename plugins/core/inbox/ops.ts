@@ -1,14 +1,16 @@
-import { localTime, type Op, quoted } from "../../../core/plugins.ts"
+import { defineOp, localTime, type Op, quoted } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { decisionRow } from "./asked.ts"
 import { clip, type InboxEvent } from "./model.ts"
+import { others } from "./live.ts"
+import { shown } from "./store.ts"
 import { asResults, withTldr } from "./results.ts"
 import { plugin } from "./server.ts"
 import { NEEDS } from "./rows.ts"
 import { stampOf } from "./snooze.ts"
 import { lists } from "./threads.ts"
 
-const listOp: Op = {
+const listOp = defineOp({
   id: "inbox.list",
   cli: "inbox",
   mcp: "inbox",
@@ -28,8 +30,8 @@ inbox.snooze take it). done: the latest done ones too.
     done: { type: "boolean", description: "the latest done events too" },
   },
   run: async ({ limit, done }, ctx) => {
-    const [ev, items] = await Promise.all([ctx.api("GET", "inbox/events?all=1"), ctx.api("GET", "inbox")]) as [Item, Item[]]
-    const l = lists(ev.events as InboxEvent[], asResults(items ?? []))
+    const [, items] = await Promise.all([others(), ctx.api("GET", "inbox")])
+    const l = lists(shown(), asResults(items ?? []))
     const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
     const cut = <T>(xs: T[]) => xs.slice(0, limit)
     return { decisions: cut(l.decisions.map(decisionRow)), pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
@@ -43,7 +45,7 @@ inbox.snooze take it). done: the latest done ones too.
       `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`
     const list = (title: string, xs: string[]) => { if (xs.length) out.push(`${out.length ? "\n" : ""}${title}:`, ...xs) }
     list("Decisions", r.decisions.map((d: Item) => `  ${d.blocking ? "[waits on you]" : `[went with ${d.default}]`} ${d.question}  (${d.path})`))
-    list("Pinned", r.pinned.map((x: Item) => (x.path ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x as InboxEvent))))
+    list("Pinned", r.pinned.map((x) => ("path" in x ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x))))
     list("Needs you", r.needs.map(line))
     list("To review", r.results.map((x: Item) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
     list("Working on it", r.working.map((e: InboxEvent) => (e.progress ? line({ ...e, preview: e.progress }) : line(e))))
@@ -54,7 +56,7 @@ inbox.snooze take it). done: the latest done ones too.
     if (r.decisions.length) out.push(`\nAnswer one: vau inbox decide <path> <answer> (vau inbox decisions has their options).`)
     return out.length ? out.join("\n") : "Nothing new."
   },
-}
+})
 
 const addOp: Op = {
   id: "inbox.add",

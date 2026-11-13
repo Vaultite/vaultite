@@ -107,7 +107,7 @@ export { clean as vaultPath } from "./files.ts"
 export { guestRefusal, liveIn as liveMarkdown } from "./guests.ts"
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
-export { byUser, NOT_THE_USER, userSurface, type Op, type OpCtx, type OpDid, OpError, type Param, quoted, type Who, whoOf } from "./ops.ts"
+export { byUser, defineOp, NOT_THE_USER, userSurface, type Op, type OpCtx, type OpDid, OpError, type Param, quoted, type Who, whoOf } from "./ops.ts"
 export type { OpEntry, Schema } from "./contracts/ops.ts"
 export type { EventFilter, VaultEvent } from "./events.ts"
 /** A path as the user says it ("Today", "Alice Park") made a vault path, given GET /api/files (core/ops.ts): for an op's

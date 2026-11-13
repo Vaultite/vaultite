@@ -891,6 +891,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `contentType(path)`: The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes).
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
 - `daysBetween(a, b)`: Days from a to b (YYYY-MM-DD).
+- `defineOp(def)`: An op with its parameters' and result's types inferred: `params` written in place, or constants that `satisfies Param`.
 - `diffLines(a, b)`: How to turn a into b, as textedit's opcodes (equal runs and changed runs), for any number of lines.
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
 - `distros()`: WSL's distros on this machine, the default first (none off Windows, or without WSL).
