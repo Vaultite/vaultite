@@ -88,8 +88,7 @@ function go(v: DocView, anchor: string) {
   v.scrollTo(line)
 }
 
-/** Open a file at a heading ("Heading", "Parent#Child") or a block ("^id"); no anchor: just open it. The file's editor
- *  may still be on its way, so the place is looked for as it registers (a few seconds at most). */
+/** Open a file at a heading ("Heading", "Parent#Child") or a block ("^id"); no anchor: just open it. */
 export function openAt(path: string, anchor: string, opts: { newTab?: boolean; pane?: string } = {}) {
   const a = anchor.trim()
   const v = viewOf(path)
@@ -101,10 +100,20 @@ export function openAt(path: string, anchor: string, opts: { newTab?: boolean; p
 /** Scroll a file shown inside `within` (a glance's sheet) to a heading or block, once its editor is there. */
 export const showAnchorIn = (within: Element, path: string, anchor: string) => { if (anchor.trim()) awaitAnchor({ path, anchor: anchor.trim(), within }) }
 
+/** How long a place asked for waits for its file's view: a loaded machine or a phone's network can take seconds. */
+const ON_ITS_WAY_MS = 15_000
+function whileOnItsWay(look: () => void, done: () => boolean, drop: () => void) {
+  const t = setInterval(() => { look(); if (done()) end() }, 100)
+  const off = () => { drop(); end() }
+  const end = () => { clearInterval(t); removeEventListener("pointerdown", off, true); removeEventListener("keydown", off, true) }
+  addEventListener("pointerdown", off, true); addEventListener("keydown", off, true)
+  look()
+  if (done()) end()
+}
+
 function awaitAnchor(p: { path: string; anchor: string; within?: Element }) {
-  pending = { ...p, until: Date.now() + 4000 }
-  let n = 0
-  const t = setInterval(() => { tryPending(); if (!pending || ++n > 40) clearInterval(t) }, 100)
+  const asked = pending = { ...p, until: Date.now() + ON_ITS_WAY_MS }
+  whileOnItsWay(tryPending, () => pending !== asked, () => { if (pending === asked) pending = null })
 }
 
 // ---------- editing a line: a block's "Edit source" ----------
@@ -133,10 +142,8 @@ function deliver() {
  *  or `find` selected there), scrolled to; `from`: a line (numbered the same) on screen now, kept where it is. */
 export function editAt(path: string, line: number, opts: { newTab?: boolean; pane?: string; find?: string; col?: number; from?: DrawnLine } = {}) {
   openFile(path, { newTab: opts.newTab, pane: opts.pane })
-  wanted = { path, line, find: opts.find, from: opts.from, col: opts.col, until: Date.now() + 4000 }
-  let n = 0
-  const t = setInterval(() => { deliver(); if (!wanted || ++n > 40) clearInterval(t) }, 100)
-  deliver()
+  const asked = wanted = { path, line, find: opts.find, from: opts.from, col: opts.col, until: Date.now() + ON_ITS_WAY_MS }
+  whileOnItsWay(deliver, () => wanted !== asked, () => { if (wanted === asked) wanted = null })
 }
 
 /** A file's view takes editAt's requests for its path while it's mounted. */

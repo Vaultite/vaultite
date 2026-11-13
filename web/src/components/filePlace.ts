@@ -47,7 +47,7 @@ export function useTextFocus(editor: { current: { api: EditorApi; source: boolea
   return useCallback((at: [line: number, col: number, find?: string] | null, reveal: boolean | Reveal = false) => {
     const { hold, there } = typeof reveal === "object" ? reveal : {}
     let frame = 0, stopped = false
-    const until = performance.now() + (reveal ? 4000 : 1000)
+    const until = performance.now() + (reveal ? 15_000 : 1000)
     const untrack = reveal ? trackSoon("a cursor going to its line", () => !stopped) : () => {}
     const stop = () => {
       stopped = true
