@@ -6,17 +6,17 @@ import path from "node:path"
 import { mayOpen, mayPicture } from "./browser/engine.ts"
 import { writeAtomic } from "./setup.ts"
 import { logger } from "../core/log.ts"
+import { type Frame, framesFrom, type Past, pastsFrom } from "./filewire.ts"
 
 const log = logger("browser")
 
 // ---------- each tab's page history ----------
 
-type Past = { profile: string; index: number; entries: { url: string; title: string; pageState?: string }[]; at: number }
 const pastFile = () => path.join(app.getPath("userData"), "web-tab-history.json")
 let pasts: Map<string, Past> | null = null
 const pastsOf = () => {
   if (pasts) return pasts
-  try { pasts = new Map(Object.entries(JSON.parse(fs.readFileSync(pastFile(), "utf8")) as Record<string, Past>)) } catch { pasts = new Map() }
+  try { pasts = pastsFrom(fs.readFileSync(pastFile(), "utf8")) } catch { pasts = new Map() }
   return pasts
 }
 let pastTimer: NodeJS.Timeout | null = null
@@ -63,15 +63,13 @@ export const pastTitles = () => Object.fromEntries([...pastsOf().values()].flatM
 
 // ---------- each tab's page as last seen: drawn in its place while the page comes back ----------
 
-/** A tab's picture (`<tab>.jpg`): the page it shows, in which logins, its size in the window's CSS px. */
-export type Frame = { url: string; profile: string; width: number; height: number; at: number }
 const FRAMES = 40
 const dir = () => path.join(app.getPath("userData"), "web-frames")
 const fileOf = (tab: string) => path.join(dir(), `${tab}.jpg`)
 let frames: Map<string, Frame> | null = null
 const framesOf = () => {
   if (frames) return frames
-  try { frames = new Map(Object.entries(JSON.parse(fs.readFileSync(path.join(dir(), "frames.json"), "utf8")) as Record<string, Frame>)) } catch { frames = new Map() }
+  try { frames = framesFrom(fs.readFileSync(path.join(dir(), "frames.json"), "utf8")) } catch { frames = new Map() }
   return frames
 }
 /** The newest FRAMES of the last 30 days kept (none a locking container's), the rest's pictures deleted. */

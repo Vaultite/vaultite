@@ -5,18 +5,8 @@ import fs from "node:fs"
 import path from "node:path"
 import { AppWindow } from "./appwindow.ts"
 import { writeAtomic } from "./setup.ts"
+import { type Download, downloadsFrom } from "./filewire.ts"
 
-export type DownloadState = "progressing" | "paused" | "completed" | "cancelled" | "interrupted"
-export type Download = {
-  id: number; name: string; path: string; url: string; profile: string
-  state: DownloadState; received: number; total: number; at: number; done?: number
-  /** It may go on where it stopped (interrupted, Chromium kept its part). */
-  resumable?: boolean
-  /** Started by an agent's page: listed, never toasted. */
-  agent?: boolean
-  /** Finished, and its file is gone since (moved, deleted). */
-  gone?: boolean
-}
 
 const KEPT = 30
 /** How often a download's progress is told, at most. */
@@ -29,10 +19,7 @@ let next = 1
 
 function all() {
   if (list) return list
-  try {
-    const j = JSON.parse(fs.readFileSync(file(), "utf8"))
-    list = Array.isArray(j) ? (j as Download[]).filter((d) => d && typeof d.id === "number" && typeof d.path === "string") : []
-  } catch { list = [] }
+  try { list = downloadsFrom(fs.readFileSync(file(), "utf8")) } catch { list = [] }
   // (one the last run left going ended with it)
   for (const d of list) if (d.state === "progressing" || d.state === "paused") { d.state = "interrupted"; d.resumable = false }
   next = Math.max(0, ...list.map((d) => d.id)) + 1

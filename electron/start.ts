@@ -20,7 +20,7 @@ if (!fs.existsSync(path.join(ROOT, "node_modules", "electron", "path.txt"))) {
 }
 // The built app encrypts its cookies (electron/sign.cjs), and a run from source may share its userData ("Vaultite"): Electron's
 // own binary (the package's export; .bin's is a script, a .cmd on Windows) gets the fuse, else that drops those cookies.
-const electron = createRequire(import.meta.url)("electron") as string
+const electron = String(createRequire(import.meta.url)("electron"))
 const { FuseV1Options, FuseVersion, flipFuses, getCurrentFuseWire } = fuses
 // (a fuse is a byte: "1" on)
 if ((await getCurrentFuseWire(electron))[FuseV1Options.EnableCookieEncryption] !== "1".charCodeAt(0))

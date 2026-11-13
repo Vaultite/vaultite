@@ -6,6 +6,7 @@ import path from "node:path"
 import { isOnTop, setOnTop, watchFocus } from "./ontop.ts"
 import { quiet } from "./quiet.ts"
 import { writeAtomic } from "./setup.ts"
+import { type PopupKept, popupsFrom } from "./filewire.ts"
 import { lightsShown, noStrip, topStrip } from "./topstrip.ts"
 
 const MAC = process.platform === "darwin"
@@ -36,14 +37,13 @@ const BEAT = 200, FIRST_PAGE_MS = 1500
 
 /** A pop-out's window as last left, per opener's site: its title bar hidden or not, kept on top. This Mac's (userData),
  *  as a player keeps its place. */
-type Kept = { bare?: boolean; onTop?: boolean }
 const keptFile = () => path.join(app.getPath("userData"), "popup-windows.json")
-function keptFor(site: string): Kept {
-  try { const k = (JSON.parse(fs.readFileSync(keptFile(), "utf8")) as Record<string, Kept>)[site]; return k && typeof k === "object" ? k : {} } catch { return {} }
+function keptFor(site: string): PopupKept {
+  try { return popupsFrom(fs.readFileSync(keptFile(), "utf8"))[site] ?? {} } catch { return {} }
 }
-function keep(site: string, k: Kept) {
-  let all: Record<string, Kept> = {}
-  try { all = JSON.parse(fs.readFileSync(keptFile(), "utf8")) as Record<string, Kept> } catch { /* the first */ }
+function keep(site: string, k: PopupKept) {
+  let all: Record<string, PopupKept> = {}
+  try { all = popupsFrom(fs.readFileSync(keptFile(), "utf8")) } catch { /* the first */ }
   all[site] = { ...all[site], ...k }
   try { writeAtomic(keptFile(), JSON.stringify(all)) } catch { /* this run's only */ }
 }

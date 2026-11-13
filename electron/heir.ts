@@ -2,6 +2,7 @@
 // launch's own: told things over its host socket (host.ts), standing in for the ChildProcess of one servers.ts forked.
 import { EventEmitter } from "node:events"
 import type { Link } from "./host.ts"
+import { codeOf } from "../core/values.ts"
 
 export class Adopted extends EventEmitter {
   pid: number
@@ -35,4 +36,4 @@ export class Adopted extends EventEmitter {
   }
 }
 
-const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM" } }
+const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return codeOf(e) === "EPERM" } }

@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
+import { z } from "zod"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 if (process.platform !== "linux") {
@@ -15,7 +16,8 @@ if (process.platform !== "linux") {
   process.exit(1)
 }
 
-const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+const PKG = z.object({ build: z.object({ linux: z.object({ synopsis: z.string(), category: z.string(), fileAssociations: z.array(z.object({ mimeType: z.string().optional() })) }) }) })
+const pkg = PKG.parse(JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")))
 // Vaultite Main, as npm run app:build names it
 const config = createRequire(import.meta.url)("./source.cjs")
 const NAME: string = config.productName
@@ -43,7 +45,7 @@ for (const size of [256, 512]) {
   fs.copyFileSync(path.join(ROOT, "web", "public", `icon-${size}.png`), path.join(dir, `${EXE}.png`))
 }
 
-const mimes = (pkg.build.linux.fileAssociations as { mimeType?: string }[]).map((f) => f.mimeType).filter(Boolean)
+const mimes = pkg.build.linux.fileAssociations.map((f) => f.mimeType).filter(Boolean)
 const apps = path.join(DATA, "applications")
 fs.mkdirSync(apps, { recursive: true })
 fs.writeFileSync(path.join(apps, `${EXE}.desktop`), [

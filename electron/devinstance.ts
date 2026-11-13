@@ -5,10 +5,14 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
+import { z } from "zod"
+import { readJson } from "../core/jsonfile.ts"
 import { readShell, userDataOf } from "./shell/roots.mjs"
 
+const INSTANCE = z.object({ pid: z.number(), root: z.string(), worktree: z.string().catch(""), headless: z.boolean().catch(false),
+  debugPort: z.number().nullable().catch(null), started: z.number().catch(0) })
 /** What a running instance says of itself (<its userData>/instance.json, electron/devroot.ts). */
-export type Instance = { pid: number; root: string; worktree: string; headless: boolean; debugPort: number | null; started: number }
+export type Instance = z.infer<typeof INSTANCE>
 
 const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
 /** A worktree's folder name for its instances: its name, and a hash of where it is (two may share a name). */
@@ -34,10 +38,8 @@ export function devApp(root: string) {
 
 /** An instance's own record, null when there's none (never started, or quit). */
 export function instanceAt(userData: string): Instance | null {
-  try {
-    const i = JSON.parse(fs.readFileSync(path.join(userData, "instance.json"), "utf8"))
-    return typeof i?.pid === "number" && typeof i.root === "string" ? i as Instance : null
-  } catch { return null }
+  const r = readJson(path.join(userData, "instance.json"), INSTANCE)
+  return r.ok ? r.value : null
 }
 
 const list = (dir: string) => { try { return fs.readdirSync(dir) } catch { return [] } }

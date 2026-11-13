@@ -8,6 +8,7 @@ import { lightsShown, topStrip } from "./topstrip.ts"
 import { isOnTop, setOnTop, watchFocus } from "./ontop.ts"
 import { writeAtomic } from "./setup.ts"
 import { MAIN_VIDEO } from "./playerpage.ts"
+import { playerPlaceFrom } from "./filewire.ts"
 
 // Picture in picture for the page's main video, or out of it. A quiet copy (quiet.ts) marks the video instead
 // (data-vaultite-pip): the system's window would show over the user's work.
@@ -44,10 +45,7 @@ const WATCH_MS = 120
 /** The window's last place on this machine (userData), as its area and centre: the next player has it at its aspect. */
 const keptFile = () => path.join(app.getPath("userData"), "player-window.json")
 function kept(): Rectangle | null {
-  try {
-    const k = JSON.parse(fs.readFileSync(keptFile(), "utf8")) as Rectangle
-    return [k.x, k.y, k.width, k.height].every(Number.isFinite) && k.width >= 160 && k.height >= 90 ? k : null
-  } catch { return null }
+  try { return playerPlaceFrom(fs.readFileSync(keptFile(), "utf8")) } catch { return null }
 }
 
 /** Where a player at `aspect` (width / height) opens: where the last one was, else centred on `near`'s screen. */

@@ -5,6 +5,9 @@ import os from "node:os"
 import path from "node:path"
 import { agentName } from "../core/terminalids.ts"
 import { vauShims } from "../core/vaushims.ts"
+import { recordOf } from "../core/jsonfile.ts"
+import { codeOf } from "../core/values.ts"
+import { z } from "zod"
 
 export type Where = {
   home: string
@@ -42,13 +45,13 @@ const obsidianJson = (home: string) => [
   path.join(home, "snap", "obsidian", "current", ".config", "obsidian", "obsidian.json"),
 ].find(exists)
 
+const OBSIDIAN = z.object({ vaults: recordOf(z.object({ path: z.string(), ts: z.unknown().optional().transform((t) => Number(t) || 0) })) }).catch({ vaults: {} }).transform((o) => o.vaults)
 export function obsidianVaults(w: Where): { path: string; name: string }[] {
   try {
-    const j = JSON.parse(fs.readFileSync(obsidianJson(w.home) ?? "", "utf8"))
-    const list = Object.values(j?.vaults ?? {}) as { path?: unknown; ts?: unknown }[]
-    return list.filter((v) => typeof v?.path === "string" && fs.statSync(v.path, { throwIfNoEntry: false })?.isDirectory())
-      .sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0))
-      .map((v) => ({ path: v.path as string, name: path.basename(v.path as string) }))
+    const list = Object.values(OBSIDIAN.parse(JSON.parse(fs.readFileSync(obsidianJson(w.home) ?? "", "utf8"))))
+    return list.filter((v) => fs.statSync(v.path, { throwIfNoEntry: false })?.isDirectory())
+      .sort((a, b) => b.ts - a.ts)
+      .map((v) => ({ path: v.path, name: path.basename(v.path) }))
   } catch { return [] }
 }
 
@@ -244,7 +247,7 @@ export function linkSystem(shim: string): Promise<void> {
   if (process.platform !== "darwin") {
     // pkexec: 126 when the password dialog was dismissed, 127 when not allowed (or no polkit agent to ask).
     return new Promise((ok, fail) => execFile("pkexec", ["/bin/sh", "-c", script], (e) =>
-      (e ? fail(new Error((e as { code?: unknown }).code === 126 ? "Cancelled" : (e as { code?: unknown }).code === "ENOENT" ? "pkexec isn't installed: run `sudo ln -sf " + shim + " " + sys + "`" : String(e.message))) : ok())))
+      (e ? fail(new Error(e.code === 126 ? "Cancelled" : codeOf(e) === "ENOENT" ? "pkexec isn't installed: run `sudo ln -sf " + shim + " " + sys + "`" : String(e.message))) : ok())))
   }
   return new Promise((ok, fail) => execFile("osascript", ["-e", `do shell script ${JSON.stringify(script)} with administrator privileges`],
     (e) => (e ? fail(new Error(/-128/.test(String(e)) ? "Cancelled" : String(e.message))) : ok())))

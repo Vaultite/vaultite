@@ -6,6 +6,7 @@ import net from "node:net"
 import path from "node:path"
 import { appData, devApp, instanceAt, instances, instancesOf, ownedNow, shellDir } from "./devinstance.ts"
 import { webStale } from "./webfresh.ts"
+import { codeOf } from "../core/values.ts"
 import { fingerprint } from "./shell/print.mjs"
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -24,7 +25,7 @@ if (process.platform !== "darwin") {
   process.exit(1)
 }
 
-const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM" } }
+const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return codeOf(e) === "EPERM" } }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const run = (cmd: string, args: string[], env: NodeJS.ProcessEnv = {}) => {
   const r = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } })
@@ -93,7 +94,7 @@ async function serverOf(userData: string) {
   return null
 }
 const freePort = () => new Promise<number>((resolve, reject) => {
-  const s = net.createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => resolve(p)) }).on("error", reject)
+  const s = net.createServer().listen(0, "127.0.0.1", () => { const a = s.address(); s.close(() => (a && typeof a === "object" ? resolve(a.port) : reject(new Error("no port")))) }).on("error", reject)
 })
 
 /** What it's given: this worktree as its code, data of its own; never Main's compile cache a terminal may carry. */

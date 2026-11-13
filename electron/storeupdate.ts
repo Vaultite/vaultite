@@ -11,16 +11,18 @@ import { stopRuns, type Recipe, type Root, type RootStore } from "../core/update
 import type { Applied, Update, UpdaterOptions } from "../core/update/updater.ts"
 import { BRANCH, CODE, HOST, SHELL } from "./identity.ts"
 import { mainLog } from "./mainlog.ts"
-import { readJson, SHA, type StoreHost, userData } from "./storehost.ts"
+import { SHA, type StoreHost, userData } from "./storehost.ts"
+import { shellBad, shellBuiltAt } from "./filewire.ts"
 import { policyFor, SHELL_EVERY, storeDir } from "./storepolicy.ts"
 import { messageOf } from "./browser/messageof.ts"
+import { isObj } from "../core/values.ts"
 import { atExit } from "../core/exit.ts"
 
 const exec = promisify(execFile)
 const ROOT = path.dirname(import.meta.dirname)
 const engine = () => Promise.all([import("../core/update/store.ts"), import("../core/update/updater.ts"), import("../core/update/plan.ts")])
   .then(([store, updater, plan]) => ({ ...store, ...updater, ...plan }))
-const errText = (e: unknown) => String((e as { stderr?: string }).stderr || messageOf(e) || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
+const errText = (e: unknown) => String((isObj(e) && e.stderr) || messageOf(e) || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
 
 let opts: UpdaterOptions | null = null
 async function storeOf(h: StoreHost, recipe?: Recipe): Promise<RootStore> {
@@ -80,7 +82,7 @@ async function apply(h: StoreHost, store: RootStore, u: Update): Promise<Applied
   mainLog(`store: prepared ${u.to.slice(0, 7)}`)
   if (r.fingerprint !== SHELL.fingerprint) {
     // (a new shell: the app built and signed again, from this root, then put in place as before)
-    const at = Number(readJson<number>(SHELL_AT())) || 0
+    const at = shellBuiltAt(SHELL_AT())
     if (Date.now() - at < SHELL_EVERY) throw new Error(`${u.to.slice(0, 7)} needs a new shell, built at most hourly: the next after ${new Date(at + SHELL_EVERY).toLocaleTimeString()}`)
     fs.writeFileSync(SHELL_AT(), String(Date.now()))
     try { await buildShell(h, r) } catch (e) { return { failed: `its new shell didn't build: ${errText(e)}`, cause: e } }
@@ -154,8 +156,7 @@ export async function ready(h: StoreHost) {
     try { store.markGood(sha) } catch (e) { h.log(`store: ${sha.slice(0, 7)} not marked good: ${errText(e)}`) }
     void holdRoot(path.join(here, "electron", "main.ts"), "main")
   }
-  const bad = readJson<Record<string, { why: string }>>(path.join(userData(), "shell", "bad.json")) ?? {}
-  for (const [root, b] of Object.entries(bad)) {
+  for (const [root, b] of Object.entries(shellBad(userData()))) {
     const c = path.basename(root)
     if (path.dirname(root) === path.join(store.dir, "roots") && SHA.test(c) && !store.bad(c)) store.markBad(c, `it didn't start: ${b.why}`)
   }
