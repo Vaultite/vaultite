@@ -1,5 +1,3 @@
-// Agents' lines in a note's editor: a bar in the writer's colour (dashed: the user edited it too), who on hover or menu,
-// the text washed in it with `authorship: tint`; with `hidden`, only the menu says who. Sidecar spans (plugin.ts) found in the text a moment after each change.
 import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { editorMenuItems, type EditorCtx, fmtStamp, fmtTime, get, onVaultChange, openMenu } from "@vaultite"
@@ -10,7 +8,6 @@ type Got = { mode: Mode; spans: Span[] }
 
 const sameDay = (t: number) => new Date(t).toDateString() === new Date().toDateString()
 const when = (t: number) => (sameDay(t) ? fmtTime(new Date(t).toISOString()) : fmtStamp(t))
-/** What a line's bar says: "Opus · Opus 5.5 high · 7:36 PM", and that the user edited it too. */
 const tipOf = (a: Author, mixed: boolean) => `${authorText(a, when)}${mixed ? ", edited by you" : ""}`
 
 class Bar extends WidgetType {
@@ -27,7 +24,6 @@ class Bar extends WidgetType {
     el.setAttribute("data-tip", this.tip)
     el.setAttribute("data-tip-side", "right")
     el.setAttribute("aria-hidden", "true")
-    // (clicked or tapped: its line's menu, as a right-click on it shows: who wrote it, what an agent offers for it)
     el.addEventListener("mousedown", (e) => e.preventDefault())
     el.addEventListener("click", (e) => {
       const root = el.closest<HTMLElement>(".cm-editor"), view = root && EditorView.findFromDOM(root)
@@ -45,7 +41,6 @@ class Bar extends WidgetType {
 const set = StateEffect.define<Got>()
 const marks = StateEffect.define<DecorationSet>()
 
-/** The decorations of `marks` found in `doc`. */
 function decorate(view: EditorView, got: Got): DecorationSet {
   if (got.mode === "off" || got.mode === "hidden" || !got.spans.length) return Decoration.none
   const doc = view.state.doc, found = resolve(doc.toString(), got.spans)
@@ -63,11 +58,8 @@ function decorate(view: EditorView, got: Got): DecorationSet {
   return b.finish()
 }
 
-/** Each editor's spans as last read, for its menu (a held finger has no hover). */
 const shown = new WeakMap<EditorView, () => Got>()
 
-/** Who wrote the line at the cursor (or at `pos`; `by`: as the user knows it, Claude), as its bar's tip says it, and
- *  that run of lines; null for the user's. */
 export function authorAt(view: EditorView, pos = view.state.selection.main.head) {
   const got = shown.get(view)?.()
   if (!got || got.mode === "off" || !got.spans.length) return null
@@ -112,7 +104,7 @@ export function authorshipExtension(ctx: EditorCtx): Extension {
         if (!this.on) return
         this.view.dispatch({ effects: set.of({ mode: got.mode, spans: Array.isArray(got.spans) ? got.spans : [] }) })
         this.redraw(0)
-      }).catch(() => { /* not a note the server knows (yet): nothing to draw */ })
+      }).catch(() => {})
     }
     redraw(ms = 250) {
       clearTimeout(this.timer)
@@ -128,15 +120,12 @@ export function authorshipExtension(ctx: EditorCtx): Extension {
 
 const theme = EditorView.baseTheme({
   ".cm-line.cm-authored": { position: "relative" },
-  // (in the margin, between the fold arrows and the text; the span is its hit area, the bar its ::after)
-  // (above the fold arrows' gutter, which spans the margin, without reaching their arrows)
+  // zIndex: over CodeMirror's fold gutter, which spans the margin
   ".cm-authored-bar": { position: "absolute", left: "-7px", top: "0", bottom: "0", width: "7px", zIndex: "2", cursor: "pointer" },
-  // (a finger's target: wider into the margin, the bar where it was)
   "@media (pointer: coarse)": { ".cm-authored-bar": { left: "-16px", width: "16px" }, ".cm-authored-bar::after": { left: "11px" } },
   ".cm-authored-bar::after": { content: "''", position: "absolute", left: "2px", top: "0", bottom: "0", width: "2px", background: "color-mix(in srgb, var(--c) 75%, transparent)" },
   ".cm-authored-bar.is-first::after": { top: "3px", borderTopLeftRadius: "1px", borderTopRightRadius: "1px" },
   ".cm-authored-bar.is-last::after": { bottom: "3px", borderBottomLeftRadius: "1px", borderBottomRightRadius: "1px" },
-  // (both wrote it: the agent's colour in dashes, the gaps a neutral, as the user has no colour)
   ".cm-authored-bar.is-mixed::after": { background: "repeating-linear-gradient(to bottom, color-mix(in srgb, var(--c) 75%, transparent) 0 4px, color-mix(in srgb, var(--foreground) 22%, transparent) 4px 7px)" },
   ".cm-line.cm-authored-tint": { backgroundColor: "color-mix(in srgb, var(--c) 9%, transparent)" },
   ".cm-line.cm-authored-tint.is-mixed": { backgroundColor: "color-mix(in srgb, var(--c) 5%, transparent)" },

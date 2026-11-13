@@ -1,23 +1,11 @@
-// Who wrote which lines of a note: agents' writes kept beside it as spans of the lines they wrote, found again in its
-// text by their words (so they follow edits, as companion comments do). Both halves use it: no Node, no DOM.
-
-/** Who wrote a span: the agent's name as the user knows it (Opus, Claude), its kind, model, effort, colour, when; `guest`:
- *  a shared folder's guest wrote it (by: their name), text to treat as untrusted. */
 export type Author = { by: string; agent?: string; model?: string; effort?: string; tint?: string; t: number; guest?: boolean }
-/** Lines an agent wrote: as it wrote them, from line `line` (1-based, frontmatter counted) when it did. `mixed`: the
- *  indexes of lines it rewrote from the user's (both wrote them). */
 export type Span = Author & { line: number; lines: string[]; mixed?: number[] }
-/** A line of the note now, as authored: by span `span` (its index), alone or `mixed` with the user. */
 export type Mark = { line: number; span: number; mixed: boolean }
 
-/** At most this many spans per note: the oldest go first. */
 export const MAX_SPANS = 400
-/** How alike a line must be to one written to count as that line edited (mixed): 0 to 1. */
 const ALIKE = 0.5
-/** How far (lines) a span's lost line is looked for around where it was. */
 const NEAR = 60
 
-/** How alike two lines are, 0 to 1: what their starts and ends share, or their words, whichever says more. */
 export function alike(a: string, b: string) {
   a = a.trim(); b = b.trim()
   if (a === b) return 1
@@ -27,7 +15,6 @@ export function alike(a: string, b: string) {
   while (p < n && a[p] === b[p]) p++
   let q = 0
   while (q < n - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++
-  // (all of a line kept, with more added: the user went on writing an agent's line, or the other way round)
   const ends = Math.max((p + q) / Math.max(a.length, b.length), Math.min(a.length, b.length) >= 8 ? 0.75 * (p + q) / Math.min(a.length, b.length) : 0)
   const wa = a.toLowerCase().split(/\s+/), wb = b.toLowerCase().split(/\s+/), left = new Map<string, number>()
   for (const w of wa) left.set(w, (left.get(w) ?? 0) + 1)
@@ -37,15 +24,12 @@ export function alike(a: string, b: string) {
 }
 
 const blank = (s: string) => !s.trim()
-/** The frontmatter's last line (1-based; 0: none): spans never mark it (Properties show it). */
 export function frontmatterEnd(lines: string[]) {
   if (lines[0]?.trimEnd() !== "---") return 0
   for (let i = 1; i < lines.length; i++) if (/^(---|\.\.\.)\s*$/.test(lines[i])) return i + 1
   return 0
 }
 
-/** Where each span's lines are in `text` now: line -> its mark, the newest span's when two claim a line. A line edited
- *  since (alike, not the same) is mixed; one the user rewrote, or a span whose text is gone, marks nothing. */
 export function resolve(text: string, spans: Span[]): Map<number, Mark> {
   const doc = text.replace(/\r\n/g, "\n").split("\n")
   const at = new Map<string, number[]>()
@@ -59,11 +43,9 @@ export function resolve(text: string, spans: Span[]): Map<number, Mark> {
   return out
 }
 
-/** A span's lines in `doc` (0-based index -> mixed). */
 function place(doc: string[], at: Map<string, number[]>, s: Span): Map<number, boolean> {
   const L = Array.isArray(s.lines) ? s.lines : [], hint = Math.max(0, (s.line ?? 1) - 1), was = new Set(s.mixed ?? [])
   const found = new Map<number, boolean>()
-  // Its start: where most of its lines are still as written in a row, nearest where it was.
   const starts = new Map<number, number>()
   L.forEach((l, j) => { if (!blank(l)) for (const d of at.get(l) ?? []) starts.set(d - j, (starts.get(d - j) ?? 0) + 1) })
   let start = -1, best = 0
@@ -71,7 +53,6 @@ function place(doc: string[], at: Map<string, number[]>, s: Span): Map<number, b
     if (n > best || (n === best && Math.abs(st - hint) < Math.abs(start - hint))) { start = st; best = n }
   }
   if (start === -1) {
-    // None as written: each line where the most alike one is near where it was (a paragraph since edited).
     let from = Math.max(0, hint - NEAR)
     L.forEach((l, j) => {
       if (blank(l)) return
@@ -85,7 +66,6 @@ function place(doc: string[], at: Map<string, number[]>, s: Span): Map<number, b
     })
     return found
   }
-  // From there, line by line: the same (or the same a few lines on: some added between), alike (edited), or gone.
   let d = start
   for (let j = 0; j < L.length; j++) {
     const l = L[j]
@@ -96,13 +76,10 @@ function place(doc: string[], at: Map<string, number[]>, s: Span): Map<number, b
     for (let k = 1; k <= 3 && d + k < doc.length; k++) if (doc[d + k] === l) { skip = d + k; break }
     if (skip >= 0) { found.set(skip, was.has(j)); d = skip + 1; continue }
     if (d < doc.length && !blank(doc[d]) && alike(l, doc[d]) >= ALIKE) { found.set(d, true); d++; continue }
-    // (deleted: the next line written looks where this one was)
   }
   return found
 }
 
-/** The spans a write adds: the lines of `after` that aren't in `before` (frontmatter aside), in runs. A line rewritten
- *  from the user's (alike one that was there, not this agent's) is mixed; `marks` say whose `before`'s lines were. */
 export function written(before: string | null, after: string, author: Author, diff: (a: string[], b: string[]) => [string, number, number, number, number][],
   marks?: Map<number, Mark>): Span[] {
   const a = (before ?? "").replace(/\r\n/g, "\n").split("\n"), b = after.replace(/\r\n/g, "\n").split("\n")
@@ -120,7 +97,6 @@ export function written(before: string | null, after: string, author: Author, di
         if (blank(l)) return
         for (let i = i1; i < i2; i++) {
           if (blank(a[i]) || alike(a[i], l) < ALIKE) continue
-          // (the user's line, or one already mixed: still both; this agent's own line rewritten stays its)
           const m = marks?.get(i + 1)
           if (!m || m.mixed) { mixed.push(k); break }
           if (m) break
@@ -132,7 +108,6 @@ export function written(before: string | null, after: string, author: Author, di
   return out
 }
 
-/** A span's who, as its tip says it: "Opus · Opus 5.5 high · 19:36" (`time`: how to say when). */
 export function authorText(a: Author, time: (t: number) => string) {
   const how = [a.model, a.effort].filter(Boolean).join(" ")
   return [a.guest ? `${a.by} (guest)` : a.by, how, a.t ? time(a.t) : ""].filter(Boolean).join(" · ")

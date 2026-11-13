@@ -6,17 +6,11 @@ import {
 } from "@vaultite"
 import "./types"
 
-// Provenance: who wrote a file (`origin`), a label and never a lock, as a PropertyChip in every file's header and status
-// bar; a note keeps it in its frontmatter, any other file in the plugin's list (plugin.ts). Agents' lines: gutter.ts.
-
 const KEY = "origin"
 const valuesOf = (store: Store | null): ChipValue[] => chipValues(store?.provenance?.values)
-/** An unlabeled file's empty chip: always in the status bar; in its header only when the user's own notes get labels
- *  (else no label means theirs, and the header would ask on every one). */
 const unsetHere = (store: Store | null, place: "bar" | "line" | "status") => place === "status" || !!store?.provenance?.labelUser
 
 const isNote = (path: string) => /\.md$/i.test(path)
-/** Labelled here: any file in the vault (not settings, not the trash, not outside it), whatever its kind. */
 const labelled = (path: string) => !!path && !isHidden(path) && !path.startsWith("/")
 
 type Origin = { origin: string | null; from: "frontmatter" | "list" | "file" | null }
@@ -29,11 +23,8 @@ function Label({ file, place }: { file: FileHead; place: "bar" | "line" | "statu
   return <PropertyChip file={file} prop={KEY} values={valuesOf(store)} place={place} showUnset={showUnset} name="Origin" unset="Unlabeled" unsetTip="Who wrote it, you or an AI: not labeled yet" />
 }
 
-/** A file that isn't a note (an image, a PDF): its label from the server, the list's or what its bytes say, set through
- *  the op (its bytes never change). */
 function OtherLabel({ file, place, values, showUnset }: { file: FileHead; place: "bar" | "line" | "status"; values: ChipValue[]; showUnset: boolean }) {
   const { data } = useLive<Origin>(`provenance/origin?path=${encodeURIComponent(file.path)}`)
-  // What was just set, until the server's answer changes.
   const [set, setSet] = useState<(Origin & { path: string }) | null>(null)
   useEffect(() => setSet(null), [data])
   const now = set?.path === file.path ? set : data
@@ -44,14 +35,11 @@ function OtherLabel({ file, place, values, showUnset }: { file: FileHead; place:
         .then((r) => setSet({ ...r, path: file.path })).catch((e) => notifyError(e, "Couldn't label it"))
     },
   }), [file, now?.origin])
-  // An unlabelled file whose bytes say an AI made it: its value, with why.
   const shown = useMemo(() => (now?.from === "file" ? values.map((v) => (v.value === now.origin ? { ...v, hint: "The file says an AI made it" } : v)) : values), [values, now?.from, now?.origin])
   if (!data && !set) return null
   return <PropertyChip file={head} prop={KEY} values={shown} place={place} showUnset={showUnset} name="Origin" unset="Unlabeled" unsetTip="Who made it, you or an AI: not labeled yet" />
 }
 
-/** Label the file in the focused tab: a note as a small edit of the file (the open editor merges it in; the same label
- *  again writes nothing), any other file in the list. */
 async function label(v: string | undefined) {
   const path = currentFile()
   try {
@@ -71,7 +59,6 @@ function pick() {
   })
 }
 
-/** Its values, edited in place (saved as `values` in its settings), and the defaults back. */
 function SettingsPanel({ store }: { store: Store }) {
   const values = valuesOf(store)
   const defaults = chipValues(store.provenance?.defaults)
@@ -89,14 +76,12 @@ function SettingsPanel({ store }: { store: Store }) {
   )
 }
 
-// (gutter.ts loads with the first note)
 let gutter: Promise<typeof import("./gutter")> | null = null
 let gutterMod: typeof import("./gutter") | null = null
 const loadGutter = () => (gutter ??= import("./gutter").then((m) => (gutterMod = m)))
 
 export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path && isNote(ctx.path) && labelled(ctx.path) ? (await loadGutter()).authorshipExtension(ctx) : []),
-  // (a held finger or a right-click on an agent's line: who wrote it, and its lines selected)
   editorMenu: ({ view, path }) => {
     const at = path && gutterMod ? gutterMod.authorAt(view) : null
     return at ? [{ label: `Written by ${at.tip}`, icon: Bot, run: () => view.dispatch({ selection: { anchor: at.from, head: at.to } }) }] : []

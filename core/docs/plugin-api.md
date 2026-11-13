@@ -268,11 +268,11 @@ by its path.
 - `pins:installed` (workspaces): Pages a plugin just pinned in the vault's list: a workspace with a list of its own gets them too, at its end.
 - `pins:of` (workspaces): Workspace n's pinned pages, for Pinned's ops (`vau pin`): its own list (null: pages.json's) and one change to it.
 - `property-types` (other-apps)
-- `provenance:user` (provenance): What the user said or wrote, made by another plugin's backend (Inbox's voice notes): the label to give it.
-- `provenance:agent` (provenance): And what an agent's are labelled (an AI app's note for the inbox).
-- `provenance:wrote` (provenance): What an agent wrote that the app saves for it (the companion's edits, typed in the window): the request's agent.
+- `provenance:user` (provenance): The label for what the user said or wrote, made by another plugin's backend (Inbox's voice notes).
+- `provenance:agent` (provenance): The label for what an agent wrote (an AI app's note for the inbox).
+- `provenance:wrote` (provenance): Records what an agent wrote that the app saves for it (the companion's edits): the request's agent.
 - `provenance:by-guest` (provenance): Whether a shared folder's guest wrote line `line` (1-based, frontmatter counted) of a note as it is now.
-- `provenance:authored` (provenance): Lines agents wrote in a note between two times that are still there, by who: the day's recap says them.
+- `provenance:authored` (provenance): Lines agents wrote in a note between two times that are still there, by who (the day's recap).
 - `sample` (claude-code)
 - `screen:front` (screen): For pair mode's awareness: what's in front now, or null when no desktop app said.
 - `setting-defaults` (other-apps)
