@@ -111,10 +111,11 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check } = $
   const { Host, listen } = await import("../../../plugins/core/claude-code/chathost.ts")
-  const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chat.ts")
+  const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chatwire.ts")
   const { settled } = await import("../../../plugins/core/inbox/plugin.ts")
   const { Reader } = await import("../../../plugins/core/claude-code/chatlog.ts")
-  const { IMAGES, merge } = await import("../../../plugins/core/claude-code/chat.ts")
+  const { IMAGES } = await import("../../../plugins/core/claude-code/chatpictures.ts")
+  const { merge } = await import("../../../plugins/core/claude-code/chatentries.ts")
   const { matchSocket } = await import("../../../core/plugins.ts")
   const as = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
     headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage

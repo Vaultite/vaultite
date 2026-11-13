@@ -48,7 +48,7 @@ export default async ($: VaultTest) => {
   }
 
   const { Host, listen } = await import("../../../plugins/core/claude-code/chathost.ts")
-  const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chat.ts")
+  const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chatwire.ts")
   const { settled } = await import("../../../plugins/core/inbox/plugin.ts")
   // An agent's vau: Claude Code's, from inside session `session` (its variables filled in, as vau does).
   const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage

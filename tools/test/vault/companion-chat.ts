@@ -68,7 +68,7 @@ async function window(path: string, how: { hidden?: boolean; closes?: boolean } 
 
 export default async ($: VaultTest) => {
   const { api, check, write, VAULT, CLAUDE_DIR } = $
-  const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chat.ts")
+  const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chatwire.ts")
 
   // The keeper keeps a relayed tool call the server hasn't answered: a server that comes back (follows) is told it again,
   // and its answer reaches the session. Through a keeper process and the SDK's own MCP server.

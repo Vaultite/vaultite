@@ -1,19 +1,22 @@
 // Claude Code's chat sessions on the server: the keeper's client (chatd.ts: started when first needed, followed while it
-// runs, so a server that comes back hears what it missed), the ops, the chat tab's socket, and what the inbox hears.
+// runs, so a server that comes back hears what it missed); the chat tab, the ops and the inbox's part are chatsocket.ts, chatops.ts, chatinbox.ts.
 import { spawn } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import readline from "node:readline"
 import type { WebSocket } from "ws"
-import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, repoName, Transcript, transcripts } from "../../../core/agents.ts"
-import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, type Param, outliving, pipeSockets, type Plugin, runtimeDir,
-  splitMachine, Text, userSurface } from "../../../core/plugins.ts"
+import { type Asking, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
+import { agentLines, OpError, outliving, type Plugin } from "../../../core/plugins.ts"
 import { byUser as asUser } from "../../../core/writegate.ts"
-import { type Entry, IMAGE_MAX, IMAGE_TYPES, IMAGES_MAX, type ImageType, imageType, Reader } from "./chatlog.ts"
-import { type Answer, codeOf, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { merge, PAGE } from "./chatentries.ts"
+import { chatInbox } from "./chatinbox.ts"
+import { type Entry, Reader } from "./chatlog.ts"
+import { chatOps } from "./chatops.ts"
+import { type Answer, codeOf, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { chatTab } from "./chatsocket.ts"
+import { CHAT_SOCKET, FILES, NAME, port, SESSION, WIN, Wire } from "./chatwire.ts"
 import { modelId, notAModel } from "./models.ts"
 import { memoryLines, unsaid } from "./memory.ts"
 
@@ -54,15 +57,9 @@ export type ChatStart = { prompt?: string; cwd?: string; account?: string; model
    *  commands refused outright; auto mode's rules (chathost.ts' Spec). */
   confirm?: string; never?: string[]; autoMode?: Record<string, string[]> }
 
-const SESSION = /^[\w-]{1,80}$/
-const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
-  dontAsk: "Don't ask", bypassPermissions: "Bypass permissions" }
-/** Entries a page of history has (the chat tab's first, and each Show earlier). */
-const PAGE = 300
 /** Byte strings a transcript line needs to be read for the chat (the rest is tool output). */
 const WANTED = ['"type":"user"', '"type":"assistant"', '"queued_command"', '"compact_boundary"', '"ai-title"', '"custom-title"']
 
-/** A transcript read for the chat: its entries, title and folder. */
 class Talk {
   r = new Reader()
   title = ""
@@ -83,54 +80,20 @@ class Talk {
   get list() { return [...this.r.entries.values()] }
 }
 
-/** The keeper's name follows the port, as the terminal keeper's does (terminal/backend.ts backendName): a QA server's
- *  sessions stay its own, and an app serving no port (a test's) never reaches the live one's. */
-const port = Number(process.env.PORT) || 0
-const NAME = port === 8793 ? "vaultite" : `vaultite-${port || `x${process.pid}`}`
-const WIN = process.platform === "win32"
-const FILES = path.join(runtimeDir(), `vaultite-chatd1-${NAME}.sock`)
-export const CHAT_SOCKET = WIN ? `\\\\.\\pipe\\vaultite-chatd1-${NAME}-${crypto.createHash("sha256").update(os.userInfo().username).digest("hex").slice(0, 8)}` : FILES
-
-/** One connection to the keeper: requests with answers, and its events. */
-class Wire {
-  sock: net.Socket
-  seq = 0
-  waiting = new Map<number, { ok: (v: Record<string, unknown>) => void; fail: (e: Error) => void }>()
-  closed = false
-  constructor(sock: net.Socket, hear: (m: Record<string, unknown>) => void, gone: () => void) {
-    this.sock = sock
-    eachMessage(sock, (m) => {
-      const w = typeof m.re === "number" ? this.waiting.get(m.re) : undefined
-      if (w) { this.waiting.delete(m.re as number); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m) } else hear(m)
-    })
-    const end = () => {
-      if (this.closed) return
-      this.closed = true
-      for (const w of this.waiting.values()) w.fail(new Error("the chat keeper went away"))
-      this.waiting.clear()
-      gone()
-    }
-    sock.on("close", end)
-    sock.on("error", end)
-  }
-  request(op: string, params: Record<string, unknown> = {}, ms = 15000): Promise<Record<string, unknown>> {
-    if (this.closed) return Promise.reject(new Error("the chat keeper went away"))
-    const re = ++this.seq
-    return new Promise((ok, fail) => {
-      const timer = setTimeout(() => { this.waiting.delete(re); fail(new Error(`the chat keeper didn't answer ${op}`)) }, ms)
-      this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v) }, fail: (e) => { clearTimeout(timer); fail(e) } })
-      this.sock.write(JSON.stringify({ op, re, ...params }) + "\n")
-    })
-  }
-  close() { this.sock.destroy() }
+export function chats(plugin: Plugin, d: ChatDeps) {
+  const { core, chat } = chatCore(plugin, d)
+  chatTab(plugin, core)
+  chatOps(plugin, core)
+  return chat
 }
 
-export function chats(plugin: Plugin, d: ChatDeps) {
+export type ChatCore = ReturnType<typeof chatCore>["core"]
+
+function chatCore(plugin: Plugin, d: ChatDeps) {
   /** The sessions the keeper runs, as it last told. */
   const hosted = new Map<string, Summary>()
   /** What each asks now (its ask entries), for the inbox's words and agent-asking. */
   const asking = new Map<string, Map<string, Extract<Entry, { k: "ask" }>>>()
-  /** The chat tabs watching each session. */
   const watching = new Map<string, Set<WebSocket>>()
   /** How the sessions plugins started run (their tools, words, account...), by session: a resume runs them so again. */
   const owned = new Map<string, ChatStart>()
@@ -287,7 +250,6 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     asking.clear()
   }
 
-  /** What the keeper says. */
   function hear(m: Record<string, unknown>) {
     const e = m as Event
     if (e.t === "put") {
@@ -335,44 +297,6 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       result = { isError: true, content: [{ type: "text", text: String((err as Error)?.message ?? err) }] }
     }
     await ask("tool-result", { call, result }).catch(() => {})
-  }
-
-  // ---------- the inbox: each session's news through its intake (inbox:session), once each (the keeper's seq and told)
-
-  /** Each session's news told in turn, its title read first (the name Claude Code gave it). */
-  const telling = new Map<string, Promise<void>>()
-  /** The news told so far, by session (the keeper's `told` can trail it a moment). */
-  const toldInbox = new Map<string, number>()
-  const isNews = (s: Summary) => s.seq > Math.max(s.told, toldInbox.get(s.id) ?? 0)
-  function tellInbox(s: Summary) {
-    if (!isNews(s)) return
-    const now = { ...s }
-    const p = (telling.get(s.id) ?? Promise.resolve()).then(() => readTitle(s.id).catch(() => null)).then(() => { if (isNews(now)) tellNow(now) })
-    telling.set(s.id, p)
-    void p.finally(() => { if (telling.get(s.id) === p) telling.delete(s.id) })
-  }
-  function tellNow(s: Summary) {
-    const tell = plugin.service("inbox:session") as ((c: Record<string, unknown>) => Promise<unknown>) | null
-    // (the inbox not there yet, as the server starts: told on the next look)
-    if (!tell && !s.quiet) return
-    if (tell && !s.quiet) {
-      const a = [...(asking.get(s.id)?.values() ?? [])].at(-1), cmd = (a?.input as { command?: unknown } | undefined)?.command
-      // (its thread's id once the inbox gave it: the same thread whatever becomes of the session's id)
-      const thread = kept[s.id]?.thread
-      const base = { agent: "claude", session: s.id, cwd: s.cwd, ...(thread ? { thread } : {}), ...(titleOf(s.id) ? { title: titleOf(s.id) } : {}) }
-      const said = s.state === "working" ? { state: "working" }
-        : s.state === "waiting" ? { state: "waiting", ask: a?.kind ?? "permission", ...(a?.questions?.length ? { questions: a.questions } : {}),
-          text: a?.kind === "plan" ? a.plan ?? "" : a ? a.title + (typeof cmd === "string" ? `: ${cmd.slice(0, 200)}` : a.detail ? `: ${a.detail}` : "") : "" }
-        : s.state === "idle" && s.turn ? { state: "done", text: s.turn.text, prompt: s.turn.prompt }
-        : s.state === "error" ? { state: "error", text: s.error ?? s.turn?.text ?? "", prompt: s.turn?.prompt ?? "" } : null
-      if (said) void tell({ ...base, ...said }).then((e) => {
-        const id = (e as { id?: unknown } | null)?.id
-        if (typeof id === "string" && kept[s.id] && kept[s.id].thread !== id) { kept[s.id] = { ...kept[s.id], thread: id }; save() }
-      }, (e) => console.error("chat: inbox:", e))
-    }
-    toldInbox.set(s.id, s.seq)
-    if (toldInbox.size > 500) toldInbox.delete(toldInbox.keys().next().value!)
-    void ask("told", { id: s.id, seq: s.seq }).catch(() => {})
   }
 
   async function sayTitle(id: string) {
@@ -530,30 +454,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     if (!at) throw new OpError("it doesn't ask anything now", 409)
     return (await ask("answer", { id, ask: at, answer: a }) as { s: Summary }).s
   }
+  const { tellInbox } = chatInbox(plugin, { asking, kept: () => kept, save, titleOf, readTitle, ask, can, hosted, d, busyElsewhere, send, answer, start })
 
-  /** Whether session `id` is the chat's to talk to: it runs here, or it ran here before (resumed by a message), and no
-   *  terminal runs it now. A terminal's session that ended is the inbox's to resume as it sees fit. */
-  async function ours(id: string) {
-    if (!SESSION.test(id) || !can()) return false
-    if (hosted.has(id)) return true
-    const f = kept[id] ? d.sessionFile(id) : null
-    return !!f && !f.account.private && !(await busyElsewhere(id))
-  }
-  // The inbox's replies and answers to a session with no terminal (its host's services): taken here when it's ours.
-  plugin.provide("agent-reply:claude", async (id: string, text: string) => {
-    if (!(await ours(id))) return false
-    await send(id, text)
-    return true
-  })
-  plugin.provide("agent-answer:claude", async (id: string, a: { answer?: "approve" | "deny"; picks?: Choice[]; chat?: boolean }) => {
-    if (!hosted.has(id) || !asking.get(id)?.size) return false
-    if (a.picks) await answer(id, { answers: a.picks })
-    else if (a.chat) await answer(id, { chat: true })
-    else if (a.answer) await answer(id, { allow: a.answer === "approve" })
-    else return false
-    return true
-  })
-  plugin.provide("agent-chat-new:claude", (async (o) => (can() ? { id: (await start({ prompt: o.prompt, account: o.account, cwd: o.cwd, by: o.by ?? "app" })).id } : null)) satisfies AgentChatNew)
 
   /** What a session the keeper runs waits on (agent-asking), in its own words; undefined when it doesn't run it. */
   function askingNow(id: string): Asking | null | undefined {
@@ -569,7 +471,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     return s?.turn ? { session: id, prompt: s.turn.prompt, text: s.turn.text, at: s.at, final: s.state !== "working", ...(titleOf(id) ? { title: titleOf(id) } : {}) } : null
   }
 
-  // ---------- the chat tab: its socket (the conversation, then each change), and its pickers' choices
+  // ---------- what the chat tab hears and reads (chatsocket.ts)
 
   /** What each tab not yet sent its hello hears meanwhile: sent after it, so nothing told is lost or undone. */
   const holding = new WeakMap<WebSocket, string[]>()
@@ -598,13 +500,13 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     return "auto"
   }
 
-  /** The effort an account's sessions run at when none is chosen: its settings' for the model, else its own. */
   /** The model an account's sessions start with (its settings' `model`), "" when Claude Code picks. */
   function modelDefault(account: string) {
     const a = d.accounts().find((x) => x.id === account)
     try { const m = a ? (JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")) as { model?: unknown }).model : ""; return typeof m === "string" ? m : "" } catch { return "" }
   }
 
+  /** The effort an account's sessions run at when none is chosen: its settings' for the model, else its own. */
   function effortDefault(account: string, model = "") {
     const a = d.accounts().find((x) => x.id === account)
     if (!a) return ""
@@ -631,497 +533,41 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       history: page(list), tui: s ? null : await d.tuiOf(id), found: !!(s || t), driven: drivenBy(id) }
   }
 
-  // Every tab's socket is pinged (and told so, as /api/events is): a phone back from the background finds a socket that
-  // went quiet and connects again; one that stopped answering is ended here.
-  const answered = new Map<WebSocket, boolean>(), told = new WeakSet<WebSocket>()
-  function alive(ws: WebSocket, tell: boolean) {
-    answered.set(ws, true)
-    ws.on("pong", () => { if (answered.has(ws)) answered.set(ws, true) })
-    ws.on("close", () => answered.delete(ws))
-    if (tell) told.add(ws)
-  }
-  const pinging = setInterval(() => {
-    for (const [ws, ok] of answered) {
-      if (ws.readyState !== ws.OPEN) continue
-      if (!ok) { ws.terminate(); continue }
-      answered.set(ws, false)
-      try { ws.ping(); if (told.has(ws)) ws.send(PING) } catch { ws.terminate() }
-    }
-    sweep()
-  }, PING_MS)
-  pinging.unref?.()
-  plugin.onUnload(() => clearInterval(pinging))
-
-  plugin.socket("claude-code/chat/*", async (ws, req, { wild }) => {
-    const [id, at] = splitMachine(wild[0] ?? "")
-    const why = await plugin.refusal(req, "Claude Code's chat")
-    const m = !why && at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
-    if (m && !m.self) {
-      // (another machine's session: its own socket, joined both ways; not reached now, the tab tries again)
-      const away = () => { if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "unreachable", reason: `${m.label} isn't answering` })); ws.close(1013, "unreachable") } }
-      if (!m.online) return away()
-      const up = machineSocket(m, `claude-code/chat/${encodeURIComponent(id)}`)
-      alive(ws, true)
-      up.once("open", () => alive(up, false))
-      return pipeSockets(ws, up, away)
-    }
-    if (why || !SESSION.test(id) || (at && !m)) {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "refused", reason: why || (at ? `no machine '${at}'` : "not a session id") }))
-      return ws.close(4003, "refused")
-    }
-    let set = watching.get(id)
-    if (!set) watching.set(id, (set = new Set()))
-    const held: string[] = []
-    holding.set(ws, held)
-    set.add(ws)
-    alive(ws, true)
-    // A session the keeper doesn't run (a terminal's, or one ended) is read again as its transcript grows.
-    const sent = new Map<string, Entry>()
-    let tui: string | null = null
-    const poll = setInterval(async () => {
-      if (hosted.has(id) || ws.readyState !== ws.OPEN) return
-      const t = await readTitle(id).catch(() => null)
-      for (const e of t?.list.slice(-PAGE) ?? []) if (sent.get(e.id) !== e) { sent.set(e.id, e); ws.send(JSON.stringify({ t: "put", e })) }
-      const now = await d.tuiOf(id)
-      if (now !== tui) { tui = now; ws.send(JSON.stringify({ t: "tui", tui, title: t?.title ?? "" })) }
-    }, 2500)
-    ws.on("close", () => { clearInterval(poll); set!.delete(ws); if (!set!.size) watching.delete(id) })
-    try {
-      const h = await hello(id)
-      for (const e of h.history.entries) sent.set(e.id, e)
-      tui = h.tui
-      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify(h)); for (const text of held) ws.send(text) }
-    } catch (e) {
-      // (closed, so the tab tries again, and says it couldn't load after a few)
-      console.error(`chat: hello for ${id}:`, e)
-      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: String((e as Error)?.message ?? e) })); ws.close(1011, "hello failed") }
-    } finally { holding.delete(ws) }
-  })
-
-  plugin.route("GET", "claude-code/chat/*/history", async (req) => {
-    await plugin.ownerOnly(req, "Claude Code's chat")
-    const [id, at] = splitMachine(req.arg(0))
-    const m = at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
-    if (m && !m.self) {
-      const r = await fetch(`${m.url}/api/claude-code/chat/${encodeURIComponent(id)}/history?${new URLSearchParams(req.query)}`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(15000) }).catch(() => null)
-      if (!r?.ok) throw new OpError(`${m.label} doesn't answer`, 502)
-      return await r.json()
-    }
-    if (!SESSION.test(id)) throw new OpError(`'${id}' isn't a session id`, 404)
-    const { list } = await conversation(id)
-    return page(list, req.query.before !== undefined ? Math.trunc(Number(req.query.before)) || 0 : undefined, Math.min(1000, Math.max(1, Number(req.query.limit) || PAGE)))
-  }, { sync: false })
-
-  // A user message's pictures: the file the server wrote while it's fresh, else from its transcript (another machine's
-  // session asked of it), so a tab shows them live and read back alike.
-  plugin.route("GET", "claude-code/chat/*/image/*/*", async (req) => {
-    await plugin.ownerOnly(req, "Claude Code's chat")
-    const [id, at] = splitMachine(req.arg(0)), entry = req.arg(1), n = req.arg(2)
-    if (!SESSION.test(id) || !SESSION.test(entry) || !/^\d{1,3}$/.test(n)) throw new OpError("no such picture", 404)
-    const m = at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
-    if (at && !m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
-    if (m && !m.self) {
-      const r = await fetch(`${m.url}/api/claude-code/chat/${encodeURIComponent(id)}/image/${encodeURIComponent(entry)}/${n}`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(30000) }).catch(() => null)
-      if (r?.status === 404) throw new OpError("no such picture", 404)
-      if (!r?.ok) throw new OpError(`${m.label} doesn't answer`, 502)
-      return new Text(Buffer.from(await r.arrayBuffer()), r.headers.get("content-type") ?? "application/octet-stream", KEEP_IMAGE)
-    }
-    const b = pictureFile(entry, Number(n)) ?? await pictureIn(d.sessionFile(id)?.file, entry, Number(n))
-    const type = b && imageType(b)
-    if (!b || !type) throw new OpError("no such picture", 404)
-    return new Text(b, type, KEEP_IMAGE)
-  }, { sync: false })
-
-  // (as sessions' folders are said: the vault through a link, iCloud's, is the same folder as their cwd)
-  const realVault = () => { try { return fs.realpathSync(plugin.vault.path) } catch { return plugin.vault.path } }
-  plugin.route("GET", "claude-code/chat/options", async (req) => {
-    await plugin.ownerOnly(req, "Claude Code's chat")
-    const m = d.models()
-    return { models: m.models, efforts: m.efforts, modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })),
-      accounts: d.accounts().filter((a) => !a.private).map((a) => { const model = modelDefault(a.id); return { id: a.id, label: a.label, model, effort: effortDefault(a.id, model), mode: modeDefault(a.id) } }),
-      folders: (await d.folders()).slice(0, 12), vault: realVault(), home: HOME }
-  }, { sync: false })
-
-  // ---------- ops: vau chat ..., MCP's tools
-
-  const ID = { type: "string", required: true, description: "the session's id (vau chat list; <id>@<machine>: another machine's)" } as const
-
-  /** An op on a session, which another machine's (`<id>@<machine>`) runs there, once (not passed on again). */
-  function onMachines(def: Op) {
-    plugin.op({ ...def, run: async (p, ctx) => {
-      const [sid, at] = splitMachine(String(p.id ?? ""))
-      const m = at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
-      if (!at || m?.self) return def.run({ ...p, id: sid }, ctx)
-      if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
-      const out = await onMachine(ctx, m, def.id, { ...p, id: sid })
-      return { ...out, ...(typeof out.id === "string" ? { id: `${out.id}@${m.id}` } : {}) }
-    } })
-  }
-  /** An op of this plugin run on another machine (a call passed on from one runs where it's sent). */
-  async function onMachine(ctx: { who: { client: string | null } }, m: Machine, op: string, body: Record<string, unknown>) {
-    if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
-    if (!m.online) throw new OpError(`${m.label} is offline`, 502)
-    let r: Response
-    try {
-      r = await fetch(`${m.url}/api/ops/${op}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
-        body: JSON.stringify(body), signal: AbortSignal.timeout(30000) })
-    } catch { throw new OpError(`${m.label} doesn't answer`, 502) }
-    const out = await r.json().catch(() => ({})) as Record<string, unknown>
-    if (!r.ok) throw new OpError(`${m.label}: ${String(out.error ?? `answered ${r.status}`)}`, r.status)
-    return out
-  }
-  const OWNER = "Claude Code's chat"
-  /** A session as chat-list gives it: its title too (another machine's knows its own). */
-  type Listed = Summary & { title?: string }
-  const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${MODE_LABELS[s.mode] ?? s.mode}${s.account ? ` · ${s.account}` : ""}`
-  const theUser = (ctx: OpCtx) => { if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403) }
-
-  /** Open its tab in the user's window: theirs at once, an agent's behind their tab with a toast. */
-  async function show(ctx: OpCtx, id: string) {
-    const path = `view:claude-session/${id}`
-    try {
-      if (byUser(ctx.who)) return void await ctx.ui({ action: "open", path, newTab: true })
-      await ctx.ui({ action: "open", path, background: true })
-      const who = ctx.who.label
-      await ctx.ui({ action: "notify", text: `${who[0].toUpperCase()}${who.slice(1)} started a chat with Claude`, button: { label: "Show", open: path } })
-    } catch (e) {
-      if (!(e instanceof OpError && e.status === 409)) throw e
-    }
-  }
-
-  plugin.op({
-    id: "claude-code.chat-start", cli: "chat start", mcp: "chat_start", owner: OWNER, kind: "write", lock: false,
-    summary: "Start a Claude Code chat session: run in the app (not a terminal), drawn in a chat tab, its questions and permissions answered there and in the inbox.",
-    help: `It runs in the app's chat keeper, so it goes on when the server restarts, and it's a normal Claude Code session:
-claude --resume <id> in a terminal opens the same conversation. account: one of Claude Code's accounts (its config
-folders; vau chat start --help lists none: GET /api/claude-code/accounts); cwd: the folder it works in (the vault by
-default); model (sonnet, opus, haiku, fable or a full id), effort (low to max) and mode (default, acceptEdits, plan,
-auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, else auto). open: show its tab (an agent's opens behind the user's, with a toast).
-
-  vau chat start "Fix the flaky upload test" --cwd ~/code/lighthouse --model sonnet
-  vau chat start "Plan the release" --mode plan --open`,
-    params: {
-      prompt: { type: "string", description: "its first message (none: it waits for one)" },
-      cwd: { type: "string", description: "the folder it works in (default: the vault's)" },
-      account: { type: "string", description: "the Claude Code account to run in (default: default)" },
-      model: { type: "string", description: "sonnet, opus, haiku, fable, or a model's full id" },
-      effort: { type: "string", enum: EFFORTS, description: "how hard it thinks" },
-      mode: { type: "string", enum: MODES, description: "its permission mode (default: the account's permissions.defaultMode, else auto)" },
-      open: { type: "boolean", description: "open its chat tab in the user's window" },
-      images: IMAGES_PARAM,
-    },
-    args: ["prompt"],
-    run: async (p, ctx) => {
-      const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
-      const s = await start({ prompt: p.prompt, cwd: p.cwd ? path.resolve(String(p.cwd).replace(/^~(?=$|\/)/, HOME)) : undefined, account: p.account,
-        model: p.model, effort: p.effort, mode: p.mode, by: byUser(ctx.who) ? "app" : ctx.who.agent || ctx.who.client || "agent", ...(images.length ? { images, uuid } : {}) })
-      if (p.open) await show(ctx, s.id)
-      return { id: s.id, state: s.state, cwd: s.cwd, account: s.account }
-    },
-    text: (r) => `Started chat ${r.id} in ${r.cwd} (${r.account}): vau chat read ${r.id}.`,
-    did: ({ prompt }) => ({ action: "run", text: prompt ? `Started a chat: ${String(prompt).slice(0, 60)}` : "Started a chat" }),
-  })
-
-  onMachines({
-    id: "claude-code.chat-send", cli: "chat send", mcp: "chat_send", owner: OWNER, kind: "write", lock: false,
-    summary: "Tell a Claude Code session something: straight into it while it runs in the app (queued during a turn), else it's resumed with it.",
-    help: `While it asks something (a permission, a plan), the message is the answer: no, and do this instead; to questions,
-a reply in their place. A session running in a terminal is answered there, not here.
-
-  vau chat send 3f2a... "Also update the changelog"`,
-    params: { id: ID, text: { type: "string", description: "what to say (none: only its pictures)" },
-      model: { type: "string", description: "resuming it: the model to run" }, effort: { type: "string", enum: EFFORTS, description: "resuming it: its effort" },
-      mode: { type: "string", enum: MODES, description: "resuming it: its permission mode" }, images: IMAGES_PARAM },
-    args: ["id", "text"],
-    run: async (p) => {
-      const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
-      return { id: p.id, ...(await send(p.id, String(p.text ?? ""), { model: p.model, effort: p.effort, mode: p.mode, ...(images.length ? { images, uuid } : {}) })) }
-    },
-    text: (r) => (r.answered ? "It was asking: that's its answer." : r.resumed ? "Resumed it with that." : "Sent."),
-  })
-
-  onMachines({
-    id: "claude-code.chat-interrupt", cli: "chat interrupt", mcp: "chat_interrupt", owner: OWNER, kind: "write", lock: false,
-    summary: "Stop a Claude Code chat session's turn, as Esc does in the terminal: what it was doing stops, the session stays.",
-    help: `Messages sent while it worked that it hadn't started on are taken back (taken: each one's id, text and pictures, to
-send again), as Esc gives them back in a terminal.`,
-    params: { id: ID }, args: ["id"],
-    run: async (p) => {
-      hostedOr404(p.id)
-      const r = await ask("interrupt", { id: p.id }) as { taken?: Extract<Entry, { k: "user" }>[] }
-      return { id: p.id, taken: r.taken ?? [] }
-    },
-    text: (r) => `Interrupted.${r.taken.length ? ` Taken back, not sent: ${r.taken.map((e: Entry) => (e.k === "user" ? JSON.stringify(e.text) : "")).join(", ")}.` : ""}`,
-  })
-
-  onMachines({
-    id: "claude-code.chat-answer", cli: "chat answer", owner: OWNER, kind: "write", lock: false,
-    summary: "Answer what a Claude Code chat session asks: allow or deny a permission (always: and its rule), pick answers to its questions (or Chat about this), approve its plan or keep planning.",
-    help: `The user's alone: from the app or their phone, never an agent nor vau. picks: one per question, an option's number
-or name (several, comma-separated, in a multi-select) or text of its own; typed: what's typed in each one's Type
-something row (with a multi-select's picks). chat: Chat about this, its questions put aside for it to ask what to
-clarify. message: with a denial, what to do instead; with a plan sent back, what to change. mode: the permission mode
-after an approved plan (acceptEdits, default...).`,
-    params: {
-      id: ID,
-      ask: { type: "string", description: "which ask (its entry id); default: the newest" },
-      allow: { type: "boolean", description: "allow the permission, approve the plan" },
-      always: { type: "boolean", description: "with allow: its suggested rule too, so it isn't asked again" },
-      picks: { type: "array", items: { type: "string" }, description: "the questions' answers, in order" },
-      typed: { type: "array", items: { type: "string" }, commas: false, description: "with picks: what's typed in each question's Type something row (\"\" for none)" },
-      chat: { type: "boolean", description: "Chat about this: its questions put aside" },
-      message: { type: "string", description: "why not, or what to do instead" },
-      mode: { type: "string", enum: MODES, description: "after an approved plan, the permission mode" },
-    },
-    args: ["id"],
-    run: async (p, ctx) => {
-      theUser(ctx)
-      const qs = [...(asking.get(p.id)?.values() ?? [])].find((e) => !p.ask || e.id === p.ask)?.questions ?? []
-      const typed = (p.typed ?? []) as string[]
-      if (p.picks?.length && p.picks.length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`)
-      const answers = p.picks?.length ? (p.picks as string[]).map((x, i) => choiceOf(qs[i], x, typed[i] ?? "")) : undefined
-      const s = await answer(p.id, { ...(p.allow !== undefined ? { allow: p.allow } : {}), ...(p.always ? { always: true } : {}), ...(p.chat ? { chat: true } : {}),
-        ...(answers ? { answers } : {}), ...(p.message ? { message: p.message } : {}), ...(p.mode ? { mode: p.mode } : {}) }, p.ask)
-      return { id: p.id, state: s.state }
-    },
-    text: () => "Answered.",
-  })
-
-  onMachines({
-    id: "claude-code.chat-set", cli: "chat set", mcp: "chat_set", owner: OWNER, kind: "write", lock: false,
-    summary: "Change how a Claude Code chat session runs from its next step: its model, effort or permission mode.",
-    params: { id: ID, model: { type: "string", description: "sonnet, opus, haiku, fable, or a full id" },
-      effort: { type: "string", enum: EFFORTS, description: "how hard it thinks" }, mode: { type: "string", enum: MODES, description: "its permission mode" } },
-    args: ["id"],
-    run: async (p) => {
-      hostedOr404(p.id)
-      if (!p.model && !p.effort && !p.mode) throw new OpError("`model`, `effort` or `mode`: what to change")
-      const { s } = await ask("set", { id: p.id, ...(p.model ? { model: runsAs(p.model) } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
-      return { id: p.id, model: s.model, effort: s.effort, mode: s.mode }
-    },
-    text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${MODE_LABELS[r.mode as Mode] ?? r.mode}.`,
-  })
-
-  /** The sessions running in the app's chat here, on machine `at`, or on every machine (`all`): another's are <id>@<machine>. */
-  async function chatList(at: string, ctx: { who: { client: string | null } }): Promise<{ sessions: Listed[]; away?: Record<string, string> }> {
-    const here = async () => {
-      await keeper(false).catch(() => null)
-      return [...hosted.values()].map((s) => ({ ...s, title: titleOf(s.id) }))
-    }
-    if (at && at !== "all") {
-      const m = await plugin.ask<Machine | null>("machines:machine", null, at)
-      if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
-      if (m.self) return { sessions: await here() }
-      const r = await onMachine(ctx, m, "claude-code.chat-list", {}) as { sessions: Listed[] }
-      return { sessions: r.sessions.map((s) => ({ ...s, id: `${s.id}@${m.id}` })) }
-    }
-    const sessions: Listed[] = await here()
-    if (at !== "all") return { sessions }
-    const others = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("claude-code"))
-    const away: Record<string, string> = {}
-    await Promise.all(others.map((m) => onMachine(ctx, m, "claude-code.chat-list", {}).then(
-      (r) => { sessions.push(...(r.sessions as Listed[]).map((s) => ({ ...s, id: `${s.id}@${m.id}` }))) },
-      (e: Error) => { away[m.id] = e.message })))
-    return { sessions, ...(Object.keys(away).length ? { away } : {}) }
-  }
-
-  // Every machine's chats, for the Agents panel (polled while it shows): a route, so a look isn't an op call in Activity.
-  plugin.route("GET", "claude-code/chats", async (req) => {
-    await plugin.ownerOnly(req, OWNER)
-    const client = req.http?.headers["x-vaultite-client"]
-    const r = await chatList("all", { who: { client: typeof client === "string" ? client : null } })
-    // (a turn's words cut to what a row can say: a list polled every few seconds)
-    const progress = plugin.service("inbox:progress") as ((t: string, s: string) => string | null) | null
-    return { ...r, sessions: r.sessions.map((s) => {
-      const said = progress?.("", splitMachine(s.id)[0]) ?? null
-      // (its repository named here, where its folder is: another machine's says its own)
-      const project = (s as { project?: string }).project ?? (s.id.includes("@") ? "" : repoName(s.cwd))
-      return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}), ...(project ? { project } : {}) }
-    }) }
-  }, { sync: false })
-
-  plugin.op({
-    id: "claude-code.chat-list", cli: "chat list", mcp: "chat_list", owner: OWNER, kind: "read", lock: false,
-    summary: "The Claude Code sessions running in the app's chat now: each one's state, what it asks, folder, model and mode; machine all: every machine's.",
-    help: `Claude Code sessions the app runs itself, through the Agent SDK, not in a terminal: chat tabs, the companion, and the
-sessions a companion's job or an inbox reply resumes. So vau terminal doesn't list them. machine names another of the
-Machines (its sessions are <id>@<machine>), all every machine's.
-
-  vau chat list
-  vau chat list --machine all`,
-    params: { machine: { type: "string", description: "another of the Machines, by its id (studio), or all: every machine's" } },
-    run: ({ machine }, ctx) => chatList(String(machine ?? ""), ctx),
-    text: (r) => (r.sessions.length ? r.sessions.map(line).join("\n") : "No chat sessions are running.") +
-      Object.entries((r.away ?? {}) as Record<string, string>).map(([k, v]) => `\n${k}: ${v}`).join(""),
-  })
-
-  onMachines({
-    id: "claude-code.chat-read", cli: "chat read", mcp: "chat_read", owner: OWNER, kind: "read", lock: false,
-    summary: "A Claude Code session's conversation as the chat tab shows it: what was said, each tool call, what it asks now.",
-    params: { id: ID, limit: { type: "number", description: "how many of the newest entries (default 30)" } },
-    args: ["id"],
-    run: async (p) => {
-      const h = await hello(p.id)
-      if (!h.found) throw new OpError(`no session ${p.id} on this machine (or it's in a private account)`, 404)
-      return { id: p.id, title: h.title, cwd: h.cwd, state: h.s?.state ?? (h.tui !== null ? "in a terminal" : "ended"), entries: h.history.entries.slice(-(Number(p.limit) || 30)) }
-    },
-    text: (r) => [`# ${r.title || "Chat"} (${r.state})`, ...r.entries.map(entryText).filter(Boolean)].join("\n\n"),
-  })
-
-  onMachines({
-    id: "claude-code.chat-stop", cli: "chat stop", mcp: "chat_stop", owner: OWNER, kind: "write", lock: false,
-    summary: "End a Claude Code chat session's process (what it was doing stops); the conversation stays, to resume with a message or in a terminal.",
-    params: { id: ID }, args: ["id"],
-    run: async (p) => {
-      const s = hosted.get(p.id)
-      if (!s) return { id: p.id, stopped: false }
-      if (s.state === "error") await ask("forget", { id: p.id })
-      else await ask("stop", { id: p.id })
-      return { id: p.id, stopped: true }
-    },
-    text: (r) => (r.stopped ? "Stopped; claude --resume " + r.id + " opens it in a terminal." : "It wasn't running."),
-  })
-
   return {
-    hosted: (id: string) => hosted.has(id),
-    /** The plugin whose tools session `id` runs with while it runs here, or "". */
-    driving: (id: string) => (hosted.has(id) ? drivenBy(id) : ""),
-    askingNow, turnNow,
-    /** A plugin's sessions (the companion's): resumed as started (its tools...); `serve` gives them again after a
-     *  restart; `on` hears each state (null: its process ended, idle a while: the next message resumes it). */
-    api: {
-      start: (o: ChatStart) => start(o, true),
-      send: (id: string, text: string, o: ChatStart = {}) => send(id, text, o),
-      stop: async (id: string) => { owned.delete(id); return hosted.has(id) ? await ask("stop", { id }) : { stopped: false } },
-      /** Stop its turn where it is (the user's Esc): false when none runs. */
-      interrupt: async (id: string) => {
-        const s = hosted.get(id)
-        if (!s || (s.state !== "working" && s.state !== "waiting")) return false
-        await ask("interrupt", { id })
-        return true
+    core: { d, hosted, asking, watching, holding, kept: () => kept, save, ask, keeper, can, titleOf, readTitle, start, send, answer, hostedOr404, runsAs,
+      busyElsewhere, hello, conversation, page, modelDefault, effortDefault, modeDefault },
+    chat: {
+      hosted: (id: string) => hosted.has(id),
+      /** The plugin whose tools session `id` runs with while it runs here, or "". */
+      driving: (id: string) => (hosted.has(id) ? drivenBy(id) : ""),
+      askingNow, turnNow,
+      /** A plugin's sessions (the companion's): resumed as started (its tools...); `serve` gives them again after a
+       *  restart; `on` hears each state (null: its process ended, idle a while: the next message resumes it). */
+      api: {
+        start: (o: ChatStart) => start(o, true),
+        send: (id: string, text: string, o: ChatStart = {}) => send(id, text, o),
+        stop: async (id: string) => { owned.delete(id); return hosted.has(id) ? await ask("stop", { id }) : { stopped: false } },
+        /** Stop its turn where it is (the user's Esc): false when none runs. */
+        interrupt: async (id: string) => {
+          const s = hosted.get(id)
+          if (!s || (s.state !== "working" && s.state !== "waiting")) return false
+          await ask("interrupt", { id })
+          return true
+        },
+        list: () => [...hosted.values()],
+        /** A session of the plugin's is about to be used (its Talk key pressed, an ask on its way): the keeper isn't ended
+         *  for a while, so what was warmed for it is still there. */
+        touch: () => { busyAt = Date.now() },
+        serve(id: string, o: ChatStart) {
+          owned.set(id, { ...o, prompt: undefined })
+          // (cut off mid-turn by a keeper that ended, before its tools were back: taken up again now)
+          if (kept[id] && midTurn(kept[id]) && !hosted.has(id) && can()) void keeper(!!port).then(() => recover(new Set(hosted.keys()))).catch(() => {})
+        },
+        on(fn: (id: string, s: Summary | null) => void) { listeners.add(fn); return () => { listeners.delete(fn) } },
+        /** What it asks now, in words ("Claude wants to run a command: rm -rf build"). */
+        asking: (id: string) => [...(asking.get(id)?.values() ?? [])].map((a) => a.title + (a.detail ? `: ${a.detail}` : "")),
       },
-      list: () => [...hosted.values()],
-      /** A session of the plugin's is about to be used (its Talk key pressed, an ask on its way): the keeper isn't ended
-       *  for a while, so what was warmed for it is still there. */
-      touch: () => { busyAt = Date.now() },
-      serve(id: string, o: ChatStart) {
-        owned.set(id, { ...o, prompt: undefined })
-        // (cut off mid-turn by a keeper that ended, before its tools were back: taken up again now)
-        if (kept[id] && midTurn(kept[id]) && !hosted.has(id) && can()) void keeper(!!port).then(() => recover(new Set(hosted.keys()))).catch(() => {})
-      },
-      on(fn: (id: string, s: Summary | null) => void) { listeners.add(fn); return () => { listeners.delete(fn) } },
-      /** What it asks now, in words ("Claude wants to run a command: rm -rf build"). */
-      asking: (id: string) => [...(asking.get(id)?.values() ?? [])].map((a) => a.title + (a.detail ? `: ${a.detail}` : "")),
+      letGo,
     },
-    letGo,
-  }
-}
-
-const IMAGES_PARAM = { type: "array", description: `pictures sent with it (at most ${IMAGES_MAX}, ${IMAGE_MAX >> 20} MB each): {data: base64, type: ${IMAGE_TYPES.join(" | ")}}`,
-  items: { type: "object", properties: { data: { type: "string" }, type: { type: "string", enum: IMAGE_TYPES } }, required: ["data", "type"] } } satisfies Param
-const EXT: Record<ImageType, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }
-/** Where the pictures given to the ops wait for the keeper to read them (this machine's, out of the vault), by the
- *  message they go with, a day at most: a transcript has them after. */
-export const IMAGES = path.join(os.tmpdir(), `vaultite-chat-images-${NAME}`)
-const IMAGE_DAYS = 1
-const KEEP_IMAGE = { "Cache-Control": "private, max-age=31536000, immutable" }
-const PING_MS = 20_000, PING = JSON.stringify({ t: "ping" })
-
-/** The pictures an op was given, checked (each one's bytes say what it is), written for message `uuid`: their files. */
-export function picturesFor(uuid: string, given: unknown): string[] {
-  if (given === undefined || given === null) return []
-  if (!Array.isArray(given)) throw new OpError("`images`: a list of {data, type}")
-  if (given.length > IMAGES_MAX) throw new OpError(`\`images\`: at most ${IMAGES_MAX} a message (${given.length} given)`)
-  const pics = given.map((g: { data?: unknown; type?: unknown } | null, i) => {
-    const data = typeof g?.data === "string" ? g.data.replace(/\s+/g, "") : "", type = g?.type as ImageType
-    if (!IMAGE_TYPES.includes(type)) throw new OpError(`\`images\`: picture ${i + 1}'s type is ${IMAGE_TYPES.join(", ")}`)
-    if (data.startsWith("data:")) throw new OpError(`\`images\`: picture ${i + 1}'s data is base64 alone, without its data: prefix`)
-    if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) throw new OpError(`\`images\`: picture ${i + 1}'s data isn't base64`)
-    if (Math.floor(data.length * 3 / 4) - (data.match(/=+$/)?.[0].length ?? 0) > IMAGE_MAX) throw new OpError(`\`images\`: picture ${i + 1} is over ${IMAGE_MAX >> 20} MB`)
-    const bytes = Buffer.from(data, "base64"), is = imageType(bytes)
-    if (!is) throw new OpError(`\`images\`: picture ${i + 1} isn't a PNG, JPEG, GIF or WebP picture`)
-    if (is !== type) throw new OpError(`\`images\`: picture ${i + 1} is ${is}, not ${type}`)
-    return { bytes, type }
-  })
-  if (!pics.length) return []
-  fs.mkdirSync(IMAGES, { recursive: true, mode: 0o700 })
-  sweep()
-  return pics.map((p, n) => {
-    const f = path.join(IMAGES, `${uuid}-${n}.${EXT[p.type]}`)
-    fs.writeFileSync(f, p.bytes, { mode: 0o600 })
-    return f
-  })
-}
-/** Picture `n` of message `entry` as the server wrote it, while it's kept. */
-function pictureFile(entry: string, n: number) {
-  for (const ext of Object.values(EXT)) { try { return fs.readFileSync(path.join(IMAGES, `${entry}-${n}.${ext}`)) } catch { /* not this one */ } }
-  return null
-}
-/** Picture `n` of message `entry` as its transcript keeps it (a user line, or one sent mid-turn: its queued_command). */
-async function pictureIn(file: string | undefined, entry: string, n: number) {
-  if (!file) return null
-  const lines = readline.createInterface({ input: fs.createReadStream(file, "utf8"), crlfDelay: Infinity })
-  try {
-    for await (const line of lines) {
-      if (!line.includes(entry) || !line.includes('"image"')) continue
-      let d: { uuid?: unknown; message?: { content?: unknown }; attachment?: { source_uuid?: unknown; prompt?: unknown } }
-      try { d = JSON.parse(line) } catch { continue }
-      const content = d.uuid === entry ? d.message?.content : d.attachment?.source_uuid === entry ? d.attachment.prompt : null
-      if (!Array.isArray(content)) continue
-      const img = content.filter((c) => c?.type === "image")[n] as { source?: { type?: string; data?: unknown } } | undefined
-      return img?.source?.type === "base64" && typeof img.source.data === "string" ? Buffer.from(img.source.data, "base64") : null
-    }
-  } catch { /* gone */ } finally { lines.close() }
-  return null
-}
-let swept = 0
-/** The pictures kept past IMAGE_DAYS removed (at most hourly). */
-function sweep() {
-  if (Date.now() - swept < 3600_000) return
-  swept = Date.now()
-  let names: string[] = []
-  try { names = fs.readdirSync(IMAGES) } catch { return }
-  for (const name of names) {
-    const f = path.join(IMAGES, name)
-    try { if (Date.now() - fs.statSync(f).mtimeMs > IMAGE_DAYS * 86400_000) fs.rmSync(f, { force: true }) } catch { /* gone */ }
-  }
-}
-
-/** A transcript with the keeper's entries (`live`) merged in: shared ones where the transcript has them, the keeper's
- *  own (asks, failed turns, notes) after the one before them there; a "Stopped" left out beside an "Interrupted". */
-export function merge(history: Entry[], live: Entry[]): Entry[] {
-  const at = new Map(history.map((e, i) => [e.id, i]))
-  const out = [...history], before = new Map<number, Entry[]>(), after = new Map<number, Entry[]>(), tail: Entry[] = []
-  let prev = -1, waiting: Entry[] = []
-  for (const e of live) {
-    const i = at.get(e.id)
-    if (i === undefined) { (prev < 0 ? waiting : after.get(prev) ?? (after.set(prev, []), after.get(prev)!)).push(e); continue }
-    out[i] = e
-    if (prev < 0 && waiting.length) { before.set(i, waiting); waiting = [] }
-    prev = i
-  }
-  tail.push(...waiting)
-  const all = out.flatMap((e, i) => [...(before.get(i) ?? []), e, ...(after.get(i) ?? [])]).concat(tail)
-  // (each turn's own: from a user message to the next)
-  const only = new Set(live.filter((e) => !at.has(e.id)).map((e) => e.id)), drop = new Set<string>()
-  for (let i = 0, from = 0; i <= all.length; i++) {
-    if (i < all.length && all[i].k !== "user") continue
-    const turn = all.slice(from, i)
-    if (turn.some((e) => e.k === "note" && e.text === "Interrupted")) for (const e of turn) if (e.k === "note" && e.text === "Stopped" && only.has(e.id)) drop.add(e.id)
-    from = i
-  }
-  return drop.size ? all.filter((e) => !drop.has(e.id)) : all
-}
-
-/** An entry as one Markdown paragraph, for an agent reading a chat. */
-function entryText(e: Entry): string {
-  switch (e.k) {
-    case "user": return `**You:** ${e.text}${e.images?.length ? ` (${e.images.length} picture${e.images.length > 1 ? "s" : ""})` : ""}`
-    case "text": return e.text
-    case "thinking": return ""
-    case "tool": return `\`${e.name}\` ${e.summary}${e.error ? " (failed)" : ""}`
-    case "ask": return `**Asks** (${e.kind}): ${e.title}${e.detail ? `: ${e.detail}` : ""}${e.answer ? ` · ${e.answer}` : ""}`
-    case "result": return e.ok ? "" : `**Stopped:** ${e.error ?? ""}`
-    case "note": return `_${e.text}_`
   }
 }
