@@ -123,7 +123,7 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
 }
 
 export function Background({ store }: { store: Store }) {
-  const w = (store as unknown as { workspaces?: unknown }).workspaces
+  const w = store.workspaces
   useVersion()
   const tint = lookOf(litNow()).tint
   useEffect(() => {

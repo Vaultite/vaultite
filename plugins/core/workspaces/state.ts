@@ -30,7 +30,7 @@ let seen: unknown = undefined
 let seenDef = ""
 let local: Slots | null = null
 export function slots(): Slots | null {
-  const w = (getStore() as unknown as { workspaces?: unknown } | null)?.workspaces
+  const w = getStore()?.workspaces
   const d = JSON.stringify(savedSidebars())
   if (w !== seen || d !== seenDef) {
     seen = w; seenDef = d
@@ -51,7 +51,7 @@ function queue(write: () => Promise<unknown>): Promise<unknown> {
   return writing.catch(() => {}).then(async () => {
     for (let wait = 1000; ; wait *= 2) {
       try { return await write() } catch (e) {
-        const status = (e as { status?: number }).status
+        const status = e instanceof Error && "status" in e ? e.status : undefined
         if ((status !== undefined && status !== 503) || wait > 16_000) throw e
         await new Promise((r) => setTimeout(r, wait))
       }

@@ -18,7 +18,7 @@ export function markIcon(n: number, { icon, tint }: Look): LucideIcon {
   if (!c) {
     c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => (
       <span className={cn(className, "grid place-items-center")}><Mark n={n} icon={icon} tint={tint} look="border border-current font-medium text-[13px] md:text-[11px]" size="size-full" glyph="size-full" /></span>
-    )) as unknown as LucideIcon
+    ))
     icons.set(key, c)
   }
   return c

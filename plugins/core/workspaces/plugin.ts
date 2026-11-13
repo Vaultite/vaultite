@@ -59,8 +59,8 @@ plugin.onSync((vault) => {
 })
 function migrateLayouts() {
   for (let i = 0; i < MAX; i++) {
-    const k = keptOfSlot(i), l = k.layout as Item | undefined
-    if (!l || typeof l !== "object" || Array.isArray(l.tabs) || !l.root) continue
+    const k = keptOfSlot(i), l: unknown = k.layout
+    if (!l || typeof l !== "object" || ("tabs" in l && Array.isArray(l.tabs)) || !("root" in l) || !l.root) continue
     const w = clean(l)
     plugin.keep(String(i + 1), { ...k, layout: w ?? undefined }, { shared: true })
   }
@@ -128,7 +128,7 @@ function slotList(): (Item | null)[] {
   while (list.length < MAX) list.push(null)
   return list
 }
-const obj = (v: unknown): Item => (v && typeof v === "object" && !Array.isArray(v) ? v as Item : {})
+const obj = (v: unknown): Item => (v && typeof v === "object" && !Array.isArray(v) ? { ...v } : {})
 
 plugin.route("PUT", "workspaces/*", (req) => putSlot(slot(req.arg(0)), req.body))
 
@@ -391,7 +391,10 @@ const allTabs = () => shown().flatMap((w, i) => (w ? [workspaceTabs(w, i + 1)] :
 const allPanesIn = () => allTabs().flatMap((w) => w.tabs.flatMap((t) => t.panes.map((p) => ({ ...p, tab: t.id, alone: t.panes.length === 1, workspace: w.workspace }))))
 
 async function windowOn(ctx: OpCtx): Promise<number | null> {
-  try { const n = (await ctx.ui(null) as Item)?.workspace; return Number.isInteger(n) ? n as number : null } catch { return null }
+  try {
+    const a = await ctx.ui(null), n = a instanceof Object && "workspace" in a ? a.workspace : null
+    return Number.isInteger(n) ? Number(n) : null
+  } catch { return null }
 }
 
 const N = (description: string, required = true): Param => ({ type: "integer", minimum: 1, maximum: MAX, required, description })
