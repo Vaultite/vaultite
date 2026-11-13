@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Unlinked mentions skip #tags**: a note's name inside a tag (`#lighthouse/launch`) counted as a mention, and Link
+  rewrote the tag into a link; tags are now left alone, like links and code.
 - **The companion's cursor and your words show after an update**: when the menu-bar helper started while the server
   restarted, its overlay never loaded and drew nothing while the window hid its own cursor; it now loads again by itself.
 - **A follow-up to a job arrives whole**: after a terminal's screen started over, a long message typed to a job reached it

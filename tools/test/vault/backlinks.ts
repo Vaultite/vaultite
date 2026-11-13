@@ -35,6 +35,9 @@ export default async ($: VaultTest) => {
     ;[c] = await api("POST", "backlinks/link", { path: "Links test/Crlf.md", target: "Links test/Theo Marsh.md", line: "Last line", nth: 0, col: 0, len: 4, text: "Last" })
     check("Link: only a name of the file it links to", c === 400, c)
     const { findMentions } = await import("../../../plugins/core/backlinks/mentions.ts")
+    check("mentions: never inside a #tag, nested or not; the plain word beside it is one",
+      JSON.stringify(findMentions("#lighthouse/launch and #work/lighthouse, then Lighthouse.", ["Lighthouse"]).map((m) => m.col)) === JSON.stringify([46]),
+      findMentions("#lighthouse/launch and #work/lighthouse, then Lighthouse.", ["Lighthouse"]))
     check("mentions: aliases, longest name first, unicode words", JSON.stringify(findMentions("Met Zoë and Zoë Souza; zoëlle no", ["Zoë Souza", "Zoë"]).map((m) => m.text)) ===
       JSON.stringify(["Zoë", "Zoë Souza"]), findMentions("Met Zoë and Zoë Souza; zoëlle no", ["Zoë Souza", "Zoë"]))
   }
