@@ -305,6 +305,11 @@ Some words before the steps.
   check("proof: nothing to show: what its report says it changed and where to see it, plainly; never commit ids or diff counts",
     said === "Made the save button blue in the toolbar. Also tidied its hover." && report === "Renamed the Jobs page to Work, so the sidebar says Work. To see it, open the note Work." &&
     P.summaryOf({ title: "Fix it" }) === `It finished "Fix it", but didn't say what changed.` && P.summaryOf({ title: "x", result: { text: "Merged: abc1234 (3 commits)." } }) === `It finished "x", but didn't say what changed.`, [said, report])
+  const notYet = ["desktop", "helper", "server"].flatMap((part) => ["itself", "restart", "never"].map((by) => P.notYetSaid({ part, by })))
+  check("proof: merged but not in the app here yet: why, and how to get it now, in plain words (never a commit, a file or a part's name)",
+    notYet.every((n) => !/[0-9a-f]{7}|\.ts\b|helper|electron/i.test(`${n.why} ${n.how ?? ""}`)) && /next update/.test(P.notYetSaid({ part: "helper", by: "itself" }).how ?? "")
+    && /Check for updates/.test(P.notYetSaid({ part: "desktop", by: "itself" }).how ?? "") && /Restart to update/.test(P.notYetSaid({ part: "desktop", by: "restart" }).how ?? "")
+    && !!P.notYetSaid().why, notYet)
   const [nat] = parseTour({}, `1. The Jobs heading is bold now [ring "Jobs"], in the menu bar's Vaultite menu.\n2. And here [point "Settings"].`, "Bold jobs")
   const [site] = parseTour({ site: ["example.com"] }, `1. In the menu bar [ring "Jobs"].`, "x")
   check("proof: a step naming the Mac's own UI (the menu bar, the notch) is found, so tour-save warns; on a site it isn't", T.nativeSteps(nat).join() === "1" && !T.nativeSteps(site).length &&

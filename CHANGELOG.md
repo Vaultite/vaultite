@@ -14,6 +14,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   sidebar pinned, they no longer sit a gap low in the window's corner.
 - **An update being prepared is never cut short**: the app no longer relaunches or restarts its servers while it builds
   the next commit, and a build still running when it quits ends with it rather than running on alone (and crashing).
+- **Show me says plainly why a merged change isn't on this Mac yet**: what changed, that the app picks it up at its
+  next update, and how to get it now, never commit ids or file names; and `vau version` names the commit the menu-bar
+  helper really runs after it reloads onto an update, so a change already live there no longer reads as missing.
 - **The companion and agents see where a page's links go**: what they read of a web page or a note (the text under the
   pointer, a page's text and snapshot, a panel) has each link's host and path beside its words, without tracking parameters.
 - **Stopping the companion as its session starts ends that session**: the session it was starting no longer stays up

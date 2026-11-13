@@ -11,6 +11,9 @@ import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
 
 const short = (sha: unknown) => String(sha).slice(0, 7)
+type Part = NonNullable<Verdict["behind"]>["part"]
+type By = NonNullable<Verdict["behind"]>["by"]
+const partOf = (id: string | undefined): Part => (id === "web" || id === "desktop" || id === "helper" ? id : "server")
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** How often a wait looks again (each look is a few git commands). */
 const LOOK_MS = 3000
@@ -27,18 +30,19 @@ export function verdict(o: { given: string; full: string | null; parts: PartRuns
     return { commit, live: true, final: true, outcome: "live", why: `${name} is live here: ${how.join("; ")}` }
   }
   const not = (final: boolean, why: string): Verdict => ({ commit, live: false, final, outcome: final ? "never" : "pending", why: `${name} ${final ? "won't be live here" : "isn't live here yet"}: ${why}` })
-  const fromApp = (pre = "") => {
-    if (!app) return not(true, `${pre}this server doesn't update itself (not a service install following a branch, nor in the desktop app)`)
+  const behind = (v: Verdict, part: Part, by: By): Verdict => ({ ...v, behind: { part, by } })
+  const fromApp = (pre = "", part: Part = "desktop") => {
+    if (!app) return behind(not(true, `${pre}this server doesn't update itself (not a service install following a branch, nor in the desktop app)`), part, "never")
     if (app === "unknown") return not(true, `${pre}the desktop app runs it and didn't say how it updates (an older app)`)
-    if (!app.available || app.mode === "off") return not(true, `${pre}the desktop app's updates are off`)
-    if (app.mode === "notify") return not(true, `${pre}the desktop app ${app.ready ? `has ${short(app.ready)} ready` : "offers updates"}: it runs once someone restarts the app`)
-    return not(false, `${pre}the desktop app updates by itself${app.doing ? `: ${app.doing}` : app.ready ? `: ${short(app.ready)} ready, restarting when nobody's using it` : ""}`)
+    if (!app.available || app.mode === "off") return behind(not(true, `${pre}the desktop app's updates are off`), part, "never")
+    if (app.mode === "notify") return behind(not(true, `${pre}the desktop app ${app.ready ? `has ${short(app.ready)} ready` : "offers updates"}: it runs once someone restarts the app`), part, "restart")
+    return behind(not(false, `${pre}the desktop app updates by itself${app.doing ? `: ${app.doing}` : app.ready ? `: ${short(app.ready)} ready, restarting when nobody's using it` : ""}`), part, "itself")
   }
   // (only the desktop app's own processes behind: theirs are the desktop app's updates, even beside a service's)
   const app_ = lagging.filter((p) => p.id === "desktop" || p.id === "helper")
   if (o.full && o.taken && app_.length === lagging.length) {
     const p = app_[0]
-    return fromApp(`${said(p)} ${p.runs === "older" ? `runs ${short(p.commit)}, before it, and it changes ${p.file}` : `may not run it (${p.why})`}; `)
+    return fromApp(`${said(p)} ${p.runs === "older" ? `runs ${short(p.commit)}, before it, and it changes ${p.file}` : `may not run it (${p.why})`}; `, p.id === "helper" ? "helper" : "desktop")
   }
   if (u.branch) {
     // (what an agent left in the checkout doesn't go away by itself; before it has the commit, the next look decides)
@@ -46,9 +50,9 @@ export function verdict(o: { given: string; full: string | null; parts: PartRuns
     if (u.state === "failed" && o.failed) return not(true, `its update failed: ${u.error?.message ?? u.why}`)
     const red = o.full && u.state === "waiting" && u.ci ? redRoute(u.ci, o.full) : null
     if (red) return { ...not(true, `CI failed on ${red === o.full ? "it" : `${short(red)}, the newest commit with it, and passed on none between`}: it goes live with a fix CI passes`), red }
-    if (!o.full) return not(false, `this checkout doesn't have it yet (it fetches ${u.branch} each time its updates look: ${u.state}, ${u.why})`)
-    const behind = lagging.find((p) => p.runs === "older" && o.taken)
-    return not(false, `updates ${u.state}: ${u.why}${behind ? ` (${said(behind)} runs ${short(behind.commit)}, before it, and it changes ${behind.file})` : ""}`)
+    if (!o.full) return behind(not(false, `this checkout doesn't have it yet (it fetches ${u.branch} each time its updates look: ${u.state}, ${u.why})`), "server", "itself")
+    const older = lagging.find((p) => p.runs === "older" && o.taken)
+    return behind(not(false, `updates ${u.state}: ${u.why}${older ? ` (${said(older)} runs ${short(older.commit)}, before it, and it changes ${older.file})` : ""}`), partOf(older?.id), "itself")
   }
   return fromApp()
 }
@@ -187,8 +191,8 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
 
 /** The processes this server knows the commits of: itself (the one it started on), and the desktop app it's in or
  *  attached to, with its menu-bar helper on a Mac (the app says its commit; the keepers don't say theirs). */
-const processList = (startedOn: string | null, app: AppUpdates | "unknown" | null) => [{ id: "server", commit: startedOn },
-  ...(app && app !== "unknown" ? [{ id: "desktop", commit: app.commit ?? null }, ...((app.helper ?? process.platform === "darwin") ? [{ id: "helper", commit: app.commit ?? null }] : [])] : [])]
+export const processList = (startedOn: string | null, app: AppUpdates | "unknown" | null) => [{ id: "server", commit: startedOn },
+  ...(app && app !== "unknown" ? [{ id: "desktop", commit: app.commit ?? null }, ...((app.helper ?? process.platform === "darwin") ? [{ id: "helper", commit: app.helperCommit ?? app.commit ?? null }] : [])] : [])]
 
 const worktreeLine = (app: AppUpdates | "unknown" | null) => {
   const w = app && app !== "unknown" ? app.worktree : undefined

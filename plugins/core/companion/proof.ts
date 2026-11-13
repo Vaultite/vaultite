@@ -49,6 +49,17 @@ export function summaryOf(j: Pick<Job, "result" | "last" | "title">, open = "") 
   return [said || `It finished "${title}", but didn't say what changed.`, at].filter(Boolean).join(" ")
 }
 
+export type NotYet = { why: string; how?: string }
+export function notYetSaid(behind?: { part: string; by: string }): NotYet {
+  const app = behind?.part === "desktop" || behind?.part === "helper", where = app ? "the Vaultite app" : "Vaultite here"
+  if (!behind) return { why: "it's merged, but the app on this Mac doesn't run it yet" }
+  if (behind.by === "itself") return app
+    ? { why: `it's merged, but ${where} hasn't picked it up yet`, how: "The app picks it up by itself at its next update. To get it now, open the Vaultite menu at the top left, choose Check for updates, then Relaunch to update if it offers that." }
+    : { why: `it's merged, but ${where} hasn't picked it up yet`, how: "It updates by itself within a few minutes: ask me to show you again then." }
+  if (behind.by === "restart") return { why: `it's merged, and ${where} has it ready, but runs it only once restarted`, how: "To get it now, open the Vaultite menu at the top left and choose Restart to update." }
+  return { why: `it's merged, but ${where} doesn't update by itself`, how: "It gets it once the app is updated." }
+}
+
 export type Choice = "keep" | "broken" | "later"
 export type Asked = "proof" | "offer"
 export function choicesFor(j: Pick<Job, "state" | "where" | "result" | "land"> & Partial<Pick<Job, "log" | "title">>, asked: Asked = "proof"): { say: string; buttons: string[]; hint?: string } {

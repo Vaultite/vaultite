@@ -7,7 +7,7 @@ import { inSummoned } from "./summoned.ts"
 import { commitsIn, type Job, type JobState, jobSpoken, landable, onMain, terminalOf } from "./jobs.ts"
 import { jobTold } from "../../../core/desktop/jobnews.ts"
 import { knockOps } from "./knockops.ts"
-import { readyNow } from "./proof.ts"
+import { notYetSaid, readyNow } from "./proof.ts"
 import { proofOps } from "./proofs.ts"
 import { captureOps } from "./captures.ts"
 import { liveEdits } from "./liveedit.ts"
@@ -107,7 +107,7 @@ async function tagAs(name: string, t: Tag, said: string) {
 walkOps(plugin, jobs)
 export let shown: { t: number; voice: boolean; displays: ScreenRectLike[] } | null = null
 const Display = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
-const Version = z.object({ live: z.object({ live: z.boolean(), why: z.string() }).optional() })
+const Version = z.object({ live: z.object({ live: z.boolean(), behind: z.object({ part: z.string(), by: z.string() }).optional() }).optional() })
 export const proofs = proofOps(plugin, {
   jobs, knocks, tours,
   name: () => ownName(),
@@ -117,10 +117,10 @@ export const proofs = proofOps(plugin, {
   },
   say: (text, o = {}) => plugin.host.call("companion.say", { text, ...(o.ask ? { ask: true } : {}) }, AS_TOOL, { report: "companion job-show" }),
   notHere: async (j, t) => {
-    if (!ownTour(t) || !j.where.repo) return ""
-    if (onMain(j)) return ownCode(j) ? await notLive(j) : ""
-    if (j.where.machine) return `it ran on ${j.where.label || j.where.machine}, not here`
-    return landable(j) && ownCode(j) ? "it's on a branch, not merged into the app you're running" : ""
+    if (!ownTour(t) || !j.where.repo) return null
+    if (onMain(j)) return ownCode(j) ? await notLive(j) : null
+    if (j.where.machine) return { why: `it ran on ${j.where.label || j.where.machine}, not here` }
+    return landable(j) && ownCode(j) ? { why: "it's on a branch, not merged into the app you're running" } : null
   },
   choices: async (_j, c) => {
     if (!screens.size || !displaysOf(ownName()).length) return false
@@ -161,10 +161,10 @@ async function notLive(j: Job) {
   for (const commit of named) {
     const r = await plugin.host.call("app.version", { commit }, AS_TOOL).catch(() => null)
     const v = Version.safeParse(r?.result).data?.live
-    if (v?.live) return ""
-    if (v && named.length === 1) return `it's merged, but the app here doesn't run it yet (${v.why.replace(/^[^:]*: /, "")})`
+    if (v?.live) return null
+    if (v && named.length === 1) return notYetSaid(v.behind)
   }
-  return ""
+  return null
 }
 function ownCode(j: Job) {
   const name = (dir: string) => { try { return String(JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8")).name ?? "") } catch { return "" } }

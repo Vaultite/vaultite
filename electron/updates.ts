@@ -120,7 +120,8 @@ function run(fx: Effect) {
 export function appUpdates(): AppUpdates {
   const store = storeOn() ? storeStatus() : null, o = state.offer
   return { mode: host.mode(), available: updatable(), from: worktree ? "worktree" : RELEASE ? "releases" : BRANCH, ready: o?.commit ?? null,
-    doing: statusOf(state, app.getName())?.text ?? null, commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(), ...(worktree ? { worktree } : {}),
+    doing: statusOf(state, app.getName())?.text ?? null, commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(),
+    ...(worktree ? { worktree } : { helperCommit: host.helperCommit() }),
     ...(store ? { store, how: o?.how === "relaunch" ? "relaunch" : "install" } : {}), ...(started ? { root: started } : {}), ...(o?.behind ? { behind: o.behind } : {}) }
 }
 

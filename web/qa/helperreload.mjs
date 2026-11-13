@@ -75,6 +75,10 @@ try {
   await chord(true)
   check("held, the reloaded helper's companion listens", await until(() => helper((h) => h.scene()?.summon?.state === "listening"), 8000), await helper((h) => h.scene()?.summon))
   check("…its words come from the main process's dictation", await until(() => helper((h) => /paragraph/i.test(h.scene()?.summon?.words ?? "")), 30000, 200), await helper((h) => h.scene()?.summon))
+  const overlays = () => app.windows().filter((p) => p.url().endsWith("/screen.html"))
+  const drawn = () => Promise.all(overlays().map((p) => p.evaluate(() => document.body.textContent).catch(() => "")))
+  check("…and its overlay draws them on the screen", await until(async () => (await drawn()).some((t) => /paragraph/i.test(t)), 15000, 200),
+    { overlays: overlays().length, text: (await drawn()).map((t) => t.slice(0, 200)) })
   await slot((s, r) => s.reload(r.dir, r.commit), roots[0])
   await wait(6000)
   check("…a reload asked meanwhile waits", await slot((s) => s.commit()) === roots[1].commit)

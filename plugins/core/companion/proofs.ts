@@ -3,7 +3,7 @@ import { logger, OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
 import { type Knock, READY_HOLD_MS } from "../../../core/desktop/knocks.ts"
 import type { Moment } from "./types.ts"
-import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, readyLine, readyNow, summaryOf } from "./proof.ts"
+import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, type NotYet, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"
 import type { Screen } from "./tours.ts"
 import { messageOf } from "./errors.ts"
@@ -23,7 +23,7 @@ export type ProofDeps = {
   tours: { proofOf: (id: string) => { path: string; tour: Tour; problems: string[] } | null; show: (name: string, s: Screen, tour: Tour) => Promise<Result> }
   name: () => string
   screen: (name: string, tour: Tour) => Screen | null
-  notHere: (j: Job, t: Tour) => Promise<string>
+  notHere: (j: Job, t: Tour) => Promise<NotYet | null>
   say: (text: string, o?: { ask?: boolean }) => Promise<unknown>
   choices: (job: Job, c: { say: string; buttons: string[]; hint?: string }) => Promise<boolean>
   clear: () => void
@@ -94,8 +94,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       await mainRead
       const away = await d.notHere(j, t)
       if (away) {
-        if (!landable(j)) return await plain(j, mine, `I can't show it on this Mac: ${away}. ${summaryOf(j, proof.tour.open)}`)
-        await d.say(`It isn't in the app on this Mac yet: ${away}.`)
+        if (!landable(j)) return await plain(j, mine, [`I can't show it on this Mac: ${away.why}.`, summaryOf(j, proof.tour.open), away.how].filter(Boolean).join(" "))
+        await d.say([`It isn't in the app on this Mac yet: ${away.why}.`, away.how].filter(Boolean).join(" "))
         return await choose(j, mine, "offer")
       }
       const there = whereOf(j, t)

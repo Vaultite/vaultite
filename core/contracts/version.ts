@@ -50,6 +50,7 @@ export const AppUpdates = z.object({
   commit: Sha.nullable().optional(),
   worktree: z.object({ worktree: z.string(), branch: z.string(), commit: Sha, dirty: z.boolean() }).optional(),
   helper: z.boolean().optional(),
+  helperCommit: Sha.nullable().optional(),
   /** Main's updates through the root store (electron/storehost.ts). */
   store: z.object({ state: z.string(), why: z.string(), running: Sha.optional(), last: z.object({ from: Sha, to: Sha, at: z.number() }).optional() }).optional(),
   how: z.enum(["install", "relaunch"]).optional(),
@@ -79,6 +80,7 @@ export const Verdict = z.object({
   waited: z.number().optional(),
   /** CI failed on this commit (it, or the newest commit with it): it goes live only with a fix. */
   red: Sha.optional(),
+  behind: z.object({ part: z.enum(["server", "web", "desktop", "helper"]), by: z.enum(["itself", "restart", "never"]) }).optional(),
 })
 export type Verdict = z.infer<typeof Verdict>
 

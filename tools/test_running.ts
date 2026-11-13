@@ -8,7 +8,7 @@ import { stampIn, stampOf, stampText } from "../core/buildstamp.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { isHash, runningIn } from "../core/running.ts"
 import type { UpdateStatus } from "../core/contracts/version.ts"
-import { verdict, versionOps, waitFor as waitLive } from "../core/coreops/version.ts"
+import { processList, verdict, versionOps, waitFor as waitLive } from "../core/coreops/version.ts"
 import { Ctx, execute } from "../core/cli.ts"
 import { entryOf } from "../core/ops.ts"
 import http from "node:http"
@@ -162,6 +162,10 @@ check("what it runs itself: live", v({ parts: [part("server", "it", full)], take
   check("a desktop commit beside a service: not yet, the desktop app's updates saying why", !desk.live && !desk.final
     && /isn't live here yet: desktop app runs aaaaaaa, before it, and it changes electron\/main\.ts; the desktop app updates by itself: bbbbbbb ready/.test(desk.why), desk)
   check("… one that offers restarts: it won't be by itself", v({ parts: [part("desktop", "older", "a".repeat(40), "electron/main.ts")], taken: true, app: { ...desktop, mode: "notify" } }).final)
+  const helper = v({ parts: [part("server", "untouched"), part("helper", "older", "a".repeat(40), "electron/helper.ts")], taken: true, app: desktop })
+  check("what's behind and how it catches up, said apart from the words (the companion's plain ones)", helper.behind?.part === "helper" && helper.behind.by === "itself"
+    && desk.behind?.part === "desktop" && v({ parts: [part("desktop", "older", "a".repeat(40), "electron/main.ts")], taken: true, app: { ...desktop, mode: "notify" } }).behind?.by === "restart"
+    && server.behind?.part === "server" && server.behind.by === "itself" && !x.behind, [helper.behind, desk.behind, server.behind])
   check("a commit reaching nothing that runs, not taken yet: not yet, the updates saying why", ((y) => !y.live && /updates waiting: CI is running/.test(y.why))(
     v({ parts: [part("server", "untouched")], taken: false, updates: following("waiting", "CI is running on it") })))
   check("… taken: live", v({ parts: [part("server", "untouched")], taken: true }).live)
@@ -187,9 +191,12 @@ check("CI failed on the newest commit with it, none between ran: it won't be, na
   v({ updates: red([{ commit: tip, ok: false, state: "failed" }, { commit: full, ok: null, state: "none" }]) })))
 check("a newer commit with it still running: on its way", !v({ updates: red([{ commit: tip, ok: null, state: "running" }, { commit: full, ok: false, state: "failed" }]) }).final)
 check("busy: still on its way", !v({ updates: following("waiting", "busy: an agent is at work in the browser") }).final)
-check("no updates here: it won't be", ((x) => x.final && /doesn't update itself/.test(x.why))(v({ updates: off })))
+check("no updates here: it won't be", ((x) => x.final && /doesn't update itself/.test(x.why) && x.behind?.by === "never")(v({ updates: off })))
 const app = { mode: "automatic" as const, available: true, from: "main", ready: null, doing: null }
 check("the desktop app's, automatic: on its way", !v({ updates: off, app }).final)
+check("a menu-bar helper reloaded onto a newer root: its own commit, not the main process's (an older app's: the main process's)",
+  processList(full, { ...app, commit: runs, helper: true, helperCommit: full }).find((p) => p.id === "helper")?.commit === full
+  && processList(full, { ...app, commit: runs, helper: true }).find((p) => p.id === "helper")?.commit === runs)
 check("off, or notify (someone must restart it): it won't be by itself", v({ updates: off, app: { ...app, mode: "off" } }).final && v({ updates: off, app: { ...app, mode: "notify" } }).final)
 
 section("vau version's text")
