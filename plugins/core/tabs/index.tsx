@@ -13,15 +13,10 @@ import { archivedAnswer, ArchivedView, archivedSearch, Archiver, followMove } fr
 import { settings } from "./settings"
 import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPanel, KIND_ICON, LiveDot, openHere, tabItems, useDevices, useLeaving } from "./devices"
 
-// The window's open tabs as a list in the sidebar, so the tab bar can be off (`tabBar`): a split tab one row of its
-// panes side by side (Arc's); under them the other devices' tabs (plugin.ts), to open here.
-
-/** Other devices' tabs on or off, from a right-click on the heading or a device (the setting's sheet has it too). */
 const othersItem = (shown: boolean) => ({
   label: "Other devices' tabs", checked: shown, run: () => { settings.set({ other_devices: !shown }).catch((e) => notifyError(e, "Couldn't change it")) },
 })
 
-/** What other plugins mark a row with (the companion's eye on what it follows): a button each, a click away. */
 function Marks({ id }: { id: string }) {
   const marks = useUiMarks(id)
   return <>{marks.map((m, k) => (
@@ -35,28 +30,19 @@ const isBlankTab = (t: Tab) => { const ps = panesOf(t); return ps.length === 1 &
 type Part = Tab["root"]
 type Split = Extract<Part, { kids: Part[] }>
 const isSplit = (n: Part): n is Split => "kids" in n
-/** A split's parts laid out in it (its floating panes aren't: they're drawn after the map). */
 const tiledKids = (n: Split) => n.kids.flatMap((k, i) => (!isSplit(k) && k.float ? [] : [{ k, size: n.sizes[i] ?? 1 }]))
-/** How many lines a part takes stacked as it is. */
 const linesOf = (n: Part): number => !isSplit(n) ? 1 : n.dir === "col" ? tiledKids(n).reduce((a, { k }) => a + linesOf(k), 0) : Math.max(1, ...tiledKids(n).map(({ k }) => linesOf(k)))
-/** At most this many lines: a column taller than what's left is drawn side by side instead. */
 const MAX_LINES = 3
-/** How many lines a split tab's row takes in the panel. */
 const stacks = (n: Part, room = MAX_LINES): number => !isSplit(n) ? 1
   : n.dir === "col" && linesOf(n) <= room ? linesOf(n) : Math.max(1, ...tiledKids(n).map(({ k }) => stacks(k, room)))
 
-/** A split tab's panes in the shape of its split, a mini-map (a narrow one just its icon; floating ones after it). Click
- *  focuses one, a press drags it (onto another: they swap), X closes it, right-click is its menu, its +2 folds or lists. */
 function SplitMap({ t, active, info, listed }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo
-  /** Its panes' own tabs are listed under it. */
   listed: boolean }) {
   const floats = panesOf(t).filter((p) => p.float)
-  // (the pane a dragged one would swap with)
   const into = useDrag((d) => {
     const h = d?.hit, at = h?.data as TabDrop | undefined
     return h && h.target.startsWith(LIST) && at?.kind === "pane" ? at.pane : null
   })
-  // (its frame and the lines between its cells, one weight: panes in a window)
   const line = active ? "border-foreground/20 ring-foreground/20" : "border-foreground/15 ring-foreground/15"
   const stacked = placesIn(t).length > panesOf(t).length
   const fold = stacked ? [{ label: listed ? "Fold pane tabs" : "List pane tabs", icon: listed ? ListCollapse : ListTree, sep: true, run: () => foldSplitMoving(t.id) }] : []
@@ -64,20 +50,16 @@ function SplitMap({ t, active, info, listed }: { t: Tab; active: boolean; info: 
   const cell = (p: Pane, size: number, icon = false) => {
     const pi = info(p), on = active && p.id === t.focus
     const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
-    // (lit as a dragged pane's swap target, else under the pointer: the pane a press would grab)
     const lit = into === p.id ? "bg-primary/15" : !into && "hover:bg-foreground/[0.06]", more = placesOf(p).length - 1
-    // (its mark, as a tab's row has it: a page playing in it, its speaker a click from muting it)
     const sign = pi.mark && <IconAction action={pi.mark} className={icon ? undefined : "-ml-1 @max-[52px]:ml-0"}><pi.mark.icon className={cn("size-3.5 shrink-0", !pi.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={pi.mark.tint ? { color: pi.mark.tint } : undefined} /></IconAction>
     if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-[5px] px-1 ring-1 ring-inset transition-colors", line, lit)}>{mark}
       {sign}</span>
-    // (too narrow for its name: its icon alone, in the middle; its X over its end, where its name fades)
     return (
       <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} style={{ flex: `${size} 1 0` }} className={cn("group/cell @container relative flex h-5.5 min-w-0 transition-colors", lit)}>
         <span className="flex w-full min-w-0 items-center gap-2 px-1 @max-[52px]:justify-center @max-[52px]:gap-1">
           {mark}
           {sign}
           <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
-          {/* (its count of the pane's other tabs lists or folds them, beside the X's slot: nothing moves under the pointer) */}
           {more > 0 && <button type="button" data-cell-more data-no-drag aria-expanded={listed} aria-label={listed ? "Fold pane tabs" : `List ${pi.label}'s ${more + 1} tabs`}
             data-tip={listed ? "Fold tabs" : "Show tabs"} onClick={(e) => { e.preventDefault(); e.stopPropagation(); foldSplitMoving(t.id) }}
             className={cn("mr-4.5 grid h-4.5 min-w-4.5 shrink-0 cursor-pointer place-items-center rounded-[4px] px-1 text-[11px] font-normal tabular-nums transition-colors",
@@ -107,7 +89,6 @@ function SplitMap({ t, active, info, listed }: { t: Tab; active: boolean; info: 
     )
   }
   return (
-    // (framed as a small window, its icons in line with the other rows')
     <span data-split-map className="-ml-1 flex w-full min-w-0 items-center gap-1">
       <span className={cn("flex min-w-0 flex-1 overflow-hidden rounded-[5px] ring-1 ring-inset", line)}>{draw(t.root, 1, MAX_LINES)}</span>
       {floats.map((p) => cell(p, 0, true))}
@@ -115,44 +96,33 @@ function SplitMap({ t, active, info, listed }: { t: Tab; active: boolean; info: 
   )
 }
 
-/** A split tab's handle past its map (all panes): a click opens the tab's menu under it, a press drags the whole tab.
- *  Where a tab's row has its …, its slot kept so the map never moves; shown on hover, focus, its menu open or dragged. */
 function SplitMore({ label, held }: { label: string; held: boolean }) {
   const showing = useMenuShowing(), [menued, setMenued] = useState(false)
   useEffect(() => { if (!showing) setMenued(false) }, [showing])
   return (
     <HeadingButton icon={Ellipsis} label={`More for ${label}`} tip="More" data-split-more data-on={held || menued || undefined}
       onClick={(e) => { setMenued(true); rightClickBelow(e) }}
-      // (a finger has no hover: always there)
       className={cn("-ml-1 shrink-0 transition-opacity duration-(--motion-fast) focus-visible:opacity-100 data-on:opacity-100 data-on:text-foreground",
         !coarse && "opacity-0 group-hover/row:opacity-100")} />
   )
 }
 
-/** A split's map: no fade at its end (it would cut its frame; nothing is drawn over it, its … has a slot of its own). */
 const MAP_LABEL = "[mask-image:none]"
 
-/** A tab's row. A split tab's shows each pane, side by side: a click on one focuses it, and a pane dragged out of it
- *  becomes a tab of its own where it's let go (or goes into another tab, held on its row a moment: Rex's). */
 function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Tab | Pane) => TabInfo; only: boolean
-  /** The tab group whose line runs down by it (core/tabline.ts): its own, or the one a drag's preview puts it in. */
   line?: string
-  /** Where what's dragged over the list would land (a split's panes' lists make way in theirs). */
   hit: TabDrop | null }) {
   const item = useDrag((d) => d?.item)
   const picked = useSelected(TABS, t.id)
-  // (a dragged pane or tab held on it: lit, about to open)
   const lit = useDrag((d) => !!d && springing() === t.id)
   const box = useRef<HTMLDivElement>(null)
   useGrowIn(box, t)
   useShrinkOut(box, { tab: t.id })
   const active = t.id === l.active, ps = panesOf(t), split = ps.length > 1, i = info(t)
-  // (its row shrinks away once it's closed, after its view says yes if it asks: useShrinkOut)
   const close = () => closeTab(t.id)
   const halfOf = (e: { target: EventTarget }) => (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
   const click = (e: React.MouseEvent) => {
     if (e.button === 1) { if (!t.pinned && !only) close(); return }
-    // ⌥-click: it takes the focused pane's place (what was there goes back to the list as a tab of its own).
     const into: TabDrop = { kind: "pane", pane: activePane().id, zone: "center" }, it: DragItem = { from: "tab", tab: t.id }
     if (e.altKey && !active && canDropTab(it, into)) return dropTab(it, into)
     if (selectClick(e, TABS, t.id, l.active)) return
@@ -163,14 +133,11 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
     const half = split ? halfOf(e) : undefined, p = half ? paneById(half) : undefined
     if (p) startDrag(e, { from: "pane", pane: p.id, to: p.to, label: info(p).label }); else dragTab(e, t)
   }
-  // (a split whose panes have tabs of their own lists them under its row, a list a pane, till the user folds them)
   const lists = split && !t.folded && placesIn(t).length > ps.length
   const map = split ? <SplitMap t={t} active={active} info={info} listed={lists} /> : null
   const buttons = split || item ? [] : tabButtons(ps[0].to)
   const dragging = item?.tab === t.id || (picked && item?.tabs) || (!!t.group && item?.group === t.group)
   return (
-    // Dragged like a tab in the bar: along the list (in or out of a group), onto a pane (its edge splits, its middle
-    // replaces it), or Pinned; selected with others, they all go.
     <div ref={box} data-slide={t.id} data-ui={`tab:${t.id}`} data-spring-tab={t.id} data-in-group={t.group} data-line-of={line} onPointerDown={press}
       className={cn("relative", dragging && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
@@ -191,7 +158,6 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
   )
 }
 
-/** Where pane `id` sits in tree `n`, named as a person would (Left, Top right, Middle); a floating one, Floating. */
 function whereIn(n: Part, id: string) {
   let at: { x: number; y: number; w: number; h: number } | null = null
   const walk = (x: Part, r: { x: number; y: number; w: number; h: number }) => {
@@ -213,7 +179,6 @@ function whereIn(n: Part, id: string) {
   return name[0].toUpperCase() + name.slice(1)
 }
 
-/** The split's shape, tiny, pane `id`'s part lit (the accent while it's focused). */
 function PaneGlyph({ n, id, on }: { n: Part; id: string; on: boolean }) {
   const draw = (x: Part, size: number): React.ReactNode => !isSplit(x)
     ? <span key={x.id} style={{ flex: `${size} 1 0` }} className={cn("min-h-0 min-w-0 rounded-[1px]", x.id === id ? (on ? "bg-primary" : "bg-muted-foreground") : "bg-foreground/15")} />
@@ -221,15 +186,12 @@ function PaneGlyph({ n, id, on }: { n: Part; id: string; on: boolean }) {
   return <span aria-hidden className="flex h-2.5 w-3.5 shrink-0">{draw(n, 1)}</span>
 }
 
-/** A split's panes' lists under its row, growing out of it when a +n lists them (and shrinking into it folded). */
 function PaneLists({ t, active, line, info, hit }: { t: Tab; active: boolean; line: boolean; info: (x: Tab | Pane) => TabInfo; hit: TabDrop | null }) {
   const box = useRef<HTMLDivElement>(null)
   useListsIn(box, t.id)
   return <div ref={box} data-pane-lists={t.id} className={cn("flex flex-col gap-1 pt-px pb-1", line && "ml-3.5")}>{panesOf(t).map((p) => <PaneList key={p.id} t={t} p={p} active={active} info={info} hit={hit} />)}</div>
 }
 
-/** A split's pane's own tabs (Pane.stack), under the split's row: headed by where the pane sits (lit while focused on
- *  screen), its places in their order. Dragged over, they make way for what would land among them. */
 function PaneList({ t, p, active, info, hit }: { t: Tab; p: Pane; active: boolean; info: (x: Tab | Pane) => TabInfo; hit: TabDrop | null }) {
   const item = useDrag((d) => d?.item)
   const box = useRef<HTMLDivElement>(null)
@@ -248,8 +210,6 @@ function PaneList({ t, p, active, info, hit }: { t: Tab; p: Pane; active: boolea
   )
 }
 
-/** One of a pane's own tabs: a click shows it in its pane, its X closes it (the pane's last: the pane), a press drags it
- *  (along its pane's list, into another's, out to the list as a tab of its own, or onto a pane: its edge splits). */
 function PlaceRow({ p, shown, focused, info }: { p: Pane; shown: boolean; focused: boolean; info: (x: Tab | Pane) => TabInfo }) {
   const item = useDrag((d) => d?.item)
   const i = info(p), on = shown && focused
@@ -267,8 +227,6 @@ function PlaceRow({ p, shown, focused, info }: { p: Pane; shown: boolean; focuse
   )
 }
 
-/** A tab group's row: its chip, its line hanging from it (core/tabline.ts). A click folds it, its … or a right-click
- *  opens its editor, dragging moves the whole group; `target`: a tab dragged onto it (folded) would join it. */
 function GroupRow({ g, n, target }: { g: TabGroup; n: number; target: boolean }) {
   const item = useDrag((d) => d?.item)
   const box = useRef<HTMLDivElement>(null)
@@ -281,7 +239,6 @@ function GroupRow({ g, n, target }: { g: TabGroup; n: number; target: boolean })
       <SidebarRow data-group-row={g.id} aria-expanded={!g.collapsed} open tip={null} more onClick={() => foldGroupMoving(g.id)}
         label={<span className="flex"><GroupLabel g={g} n={n} target={target} /></span>}>
         <Marks id={`group:${g.id}`} />
-        {/* (its chevron shows on hover, as a panel heading's does, turning as it folds) */}
         <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[rotate,opacity] duration-200 group-hover/row:opacity-100 group-aria-[expanded=false]/row:-rotate-90" strokeWidth={2.25} />
       </SidebarRow>
     </div>
@@ -289,15 +246,11 @@ function GroupRow({ g, n, target }: { g: TabGroup; n: number; target: boolean })
 }
 
 const LIST = "tabs:list"
-/** Whether (x, y) is just under the last row or on the New tab row, which a drop puts at the list's end, or just over
- *  the first (the panel's heading), which puts it first. */
 function atEnds(root: HTMLElement, x: number, y: number, el: Element | null) {
   const rows = root.querySelectorAll("[data-open-tab], [data-group-row]"), last = rows[rows.length - 1]
   return !!last && (!!el?.closest("[data-new-tab-row]") || pastEnd(root, last, x, y, el) || beforeStart(root, rows[0], x, y, el))
 }
 
-/** The window's tabs, each tab group a row with its tabs under it. Dragged along the list, a tab moves, joining or
- *  leaving a group; a pane let go here (a half of a split's row, or from its bar) becomes a tab of its own. */
 function TabRows({ store }: { store: Store }) {
   const l = useTabList()
   const info = useTabLabels(store)
@@ -309,18 +262,14 @@ function TabRows({ store }: { store: Store }) {
     const root = list.current
     const takes = !!(item.tab || item.group || item.to || item.pane)
     if (!root || !takes) return null
-    // (held near the top or bottom of what scrolls the list, it scrolls: more tabs than the panel shows)
     edge.over(root, x, y)
     if (!(el && root.contains(el)) && !atEnds(root, x, y, el)) return null
-    // Over a split's pane's own tabs: among them, before the row it's above the middle of.
     const among = el?.closest<HTMLElement>("[data-pane-places]")
     if (among && root.contains(among)) {
       const index = [...among.querySelectorAll<HTMLElement>("[data-place]")].filter((r) => { const b = laidOut(r); return (b.top + b.bottom) / 2 < y }).length
       const d: TabDrop = { kind: "places", pane: among.dataset.panePlaces!, index }
       return canDropTab(item, d) ? d : null
     }
-    // A split's pane over its own row: on another of its panes the two swap, on itself it stays (as laid out, not as
-    // a preview slides it: the row holds still meanwhile).
     const own = item.pane ? l.tabs.find((x) => panesOf(x).some((p) => p.id === item.pane)) : undefined
     const cells = own && panesOf(own).length > 1 ? [...root.querySelectorAll<HTMLElement>(`[data-open-tab="${CSS.escape(own.id)}"] [data-pane-half]`)] : []
     const cell = cells.find((c) => { const r = laidOut(c); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom })?.dataset.paneHalf
@@ -328,7 +277,6 @@ function TabRows({ store }: { store: Store }) {
       const d: TabDrop = { kind: "pane", pane: cell, zone: "center" }
       return cell !== item.pane && canDropTab(item, d) ? d : null
     }
-    // (a pane or tab held on a row's middle opens its tab after a moment: that row holds still meanwhile)
     const held = springTabAt(item, x, y)
     const slots = [...root.querySelectorAll<HTMLElement>("[data-open-tab], [data-group-row]")].map((e) => ({ el: e, tab: e.dataset.openTab, group: e.dataset.groupRow }))
     const at = held ? tabSlotBeside(l, item, held) : tabSlot(l, slots, y, "y")
@@ -336,10 +284,8 @@ function TabRows({ store }: { store: Store }) {
   }, (item, d) => dropTab(item, d), { stay: (d) => d.kind === "list" && !!d.home, end: edge.stop })
   const hit = useDropHit<TabDrop>(target)
   const item = useDrag((d) => d?.item)
-  // Dragged over, the rows make way for what's dragged, in the tab group it would join (its line by it).
   const preview = item ? tabPreview(l, item, hit) : null
   useSlide(list, preview && tabPreviewOrder(l, preview), "y")
-  // (after useSlide: a drop's preview is taken off first, so they slide from where it drew them)
   useReflow(list, l)
   useGroupLines(list, "y")
   const shown = preview?.tabs ?? l.tabs
@@ -360,7 +306,6 @@ function TabRows({ store }: { store: Store }) {
         const row = g?.collapsed ? null : <Row key={t.id} t={t} l={l} info={info} only={only(t)} line={lineOf(t.id)} hit={hit} />
         return [head, row].filter(Boolean)
       })}
-      {/* Where something from elsewhere would open. */}
       {incoming && (
         <div aria-hidden data-slide={INCOMING} data-line-of={lineOf(INCOMING)} className={cn("pointer-events-none absolute right-0 top-0 h-7 rounded-[5px] bg-foreground/[0.06]", lineOf(INCOMING) ? "left-3.5" : "left-0")} />
       )}
@@ -368,10 +313,6 @@ function TabRows({ store }: { store: Store }) {
   )
 }
 
-// ---------- other devices ----------
-
-/** Sends this device's tabs soon after the places open change (not which one is in front), and as the page opens. A
- *  view's label goes with it (another device can't tell a terminal's name); a file's is found where it's shown. */
 function Report({ store }: { store: Store }) {
   const l = useTabList()
   const info = useTabLabels(store)
@@ -393,7 +334,6 @@ function Report({ store }: { store: Store }) {
   return null
 }
 
-/** A device's heading: open now (a dot) or when it was used; right-click for its menu, its name as a field to rename. */
 function DeviceHeading({ d }: { d: Device }) {
   const [renaming, setRenaming] = useState(false)
   const Icon = KIND_ICON[d.kind]
@@ -408,8 +348,6 @@ function DeviceHeading({ d }: { d: Device }) {
   )
 }
 
-/** The tabs the other devices have open, a device each (open ones first, then the latest): a click opens one here; on
- *  a device that's open now, a tab can be moved here or closed there. */
 function OtherDevices({ store }: { store: Store }) {
   const info = useTabLabels(store)
   const shown = settings.use().other_devices !== false
@@ -440,8 +378,6 @@ function OtherDevices({ store }: { store: Store }) {
   )
 }
 
-/** The tabs' last row, as a browser's vertical tabs end: a new tab at the list's end, so it takes this row's place (⌘T
- *  opens one beside the active tab). */
 function NewTabRow() {
   return (
     <SidebarRow data-new-tab-row icon={Plus} label="New tab" open className="mt-px text-muted-foreground" onClick={() => openNewTab({ at: "end" })}>
@@ -450,7 +386,6 @@ function NewTabRow() {
   )
 }
 
-/** The panel's foot, as Arc's: the archived tabs, how many, when there are any. */
 function ArchivedRow() {
   const n = useArchivedTabs().length
   if (!n) return null
@@ -465,7 +400,6 @@ function ArchivedRow() {
 function TabsPanel({ store, open }: SidebarCtx) {
   if (!open) return null
   return (
-    // (a right-click anywhere but a tab, a group or a device has the panel's menu: `menu`)
     <div className="flex shrink-0 flex-col" data-tabs-panel>
       <SidebarHeading title="Tabs" open={open} />
       <TabRows store={store} />
@@ -485,8 +419,6 @@ export default definePlugin({
     tabs: {
       title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,
       view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />, emptyDoubleClick: () => openNewTab({ at: "end" }),
-      // (Search tabs and the archived ones; other devices' tabs on or off. Show tabs on top, the way back to the tab
-      // bar, is with Move to right sidebar: where the list is.)
       menu: () => [...commandItems("tab:search"),
         { label: "Show archived tabs", icon: Archive, run: () => openView("archived-tabs", { newTab: true }) },
         { ...othersItem(settings.get().other_devices !== false), sep: true },

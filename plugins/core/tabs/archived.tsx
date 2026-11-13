@@ -1,5 +1,3 @@
-// Archived tabs (core/tabarchive.ts): when they go (the archive_after setting, swept here), their tab (view:archived-tabs),
-// what the quick switcher finds of them, vau tabs archived's answer and following moves.
 import { useEffect, useMemo, useRef } from "react"
 import { ArchiveRestore, Trash2 } from "lucide-react"
 import {
@@ -10,15 +8,11 @@ import {
 import { settings } from "./settings"
 
 const HOUR = 3600_000
-/** The setting's choices, Arc's: how long a tab goes unseen before it's archived. */
 const AFTER: Record<string, number> = { never: 0, "12h": 12 * HOUR, "24h": 24 * HOUR, "7d": 7 * 24 * HOUR, "30d": 30 * 24 * HOUR }
 const WORDS: Record<string, string> = { "12h": "12 hours", "24h": "24 hours", "7d": "7 days", "30d": "30 days" }
 const afterNow = (v: unknown) => AFTER[String(v)] ?? 0
 
-/** Archives what's due while the window is in view: a minute after it opens (once its workspace's tabs are in place),
- *  then every few minutes and on coming back to it. Looking at the window stamps the tabs on screen as seen. */
 export function Archiver({ store }: { store: Store }) {
-  // (null till the setting is read: told only then, or the clock since it's been on would restart)
   const set = settings.use(true), after = set ? afterNow(set.archive_after) : null
   const info = useTabLabels(store)
   const infoRef = useRef(info)
@@ -28,7 +22,7 @@ export function Archiver({ store }: { store: Store }) {
     if (!after) return
     let ready = false
     const sweep = () => {
-      touchTabsSeen() // (hidden: seen until it went out of view)
+      touchTabsSeen()
       if (!ready || document.visibilityState !== "visible") return
       const gone = archiveUnseen((t) => infoRef.current(t).label)
       if (gone.length) notify(`Archived ${plural(gone.length, "tab")} you hadn't looked at in ${WORDS[String(settings.get().archive_after)] ?? "a while"}`,
@@ -42,7 +36,6 @@ export function Archiver({ store }: { store: Store }) {
   return null
 }
 
-/** The quick switcher's archived tabs (files are found as files): ranked after everything open. */
 export const archivedSearch = {
   subscribe: subscribeScoped,
   docs: (): SearchDoc[] => archivedTabs().filter((e) => !e.to.startsWith("file:")).map((e) => {
@@ -52,7 +45,6 @@ export const archivedSearch = {
   }),
 }
 
-/** What Tabs answers its op `vau tabs archived` (the ask "tabs:archived") and does when a file moves. */
 export const archivedAnswer = () => ({ archived: archivedTabs().map(({ id, to, title, archived }) => ({ id, to, title, archived: new Date(archived).toISOString() })) })
 export const followMove = (from: string, to: string | null) => { if (to !== null) retargetArchived(from, to) }
 
@@ -65,7 +57,6 @@ function remove(entries: ArchivedTab[]) {
   })
 }
 
-/** The tab (view:archived-tabs): the archived tabs, the latest first; a click reopens one where it was. */
 export function ArchivedView({ store }: { store: Store }) {
   const all = useArchivedTabs()
   const info = useTabLabels(store)

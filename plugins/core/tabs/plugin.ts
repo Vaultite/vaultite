@@ -1,5 +1,3 @@
-// Tabs: what each device has open, kept and shared (core/kept.ts `device-<id>`: every machine has every device's); which
-// are open now isn't kept: each server knows its own windows (core/live.ts) and asks the other machines for theirs.
 import dns from "node:dns/promises"
 import fs from "node:fs"
 import path from "node:path"
@@ -8,16 +6,13 @@ import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** A device and its tabs (types.ts has them for the app). */
 type DeviceTab = { to: string; label?: string; pinned?: boolean }
 type Device = { id: string; name: string; label?: string; kind: "desktop" | "phone" | "web"; at: string; tabs: DeviceTab[]
   live?: boolean; windows?: number }
-/** A machine as the Machines plugin lists it (the fields used here). */
 type Machine = { id: string; label: string; url: string; online: boolean; self: boolean; via?: string; host?: string; vault?: string }
 
 const ID = /^[a-z0-9]{8,32}$/
 const TERM = "view:terminal/"
-/** A device not heard from in this long is left out (and forgotten a while later). */
 const STALE = 30 * 86400_000
 const LOOPBACK_URL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/
 const loopbackIp = (ip: string) => ip === "::1" || ip.startsWith("127.") || ip === "::ffff:127.0.0.1"
@@ -27,19 +22,15 @@ const record = (id: string) => plugin.kept<Item>(file(id), {})
 const keepRecord = (id: string, d: Item | null) => plugin.keep(file(id), d, { shared: true })
 const idOf = (s: string) => { const id = s.toLowerCase(); if (!ID.test(id)) throw new HTTPError(400, "a device id is 8 to 32 letters and digits"); return id }
 
-/** This machine's id in Machines' list ("" for none). */
 const self = async () => String(await plugin.ask("machines:self", ""))
 const machinesNow = async () => (await plugin.ask<Machine[]>("machines", [])) ?? []
 
-/** The computer a machine entry runs on, by its name: one at a loopback address is a second server on a computer listed
- *  by its network address, so that one names it. */
 function computerOf(m: Machine, all: Machine[]) {
   if (!LOOPBACK_URL.test(m.url)) return m.label
   return all.find((x) => x !== m && !x.via && x.host && x.host === m.host && !LOOPBACK_URL.test(x.url))?.label ?? m.label
 }
 
 const resolved = new Map<string, [number, Promise<string[]>]>()
-/** A machine's addresses (its URL's host looked up: on a tailnet, its 100.x one), kept 10 minutes. */
 function addressesOf(url: string) {
   let host = ""
   try { host = new URL(url).hostname } catch { return Promise.resolve([]) }
@@ -50,8 +41,7 @@ function addressesOf(url: string) {
   return p
 }
 
-/** Which computer a request came from, by name ("" when unknown): this one for a loopback caller, else the listed
- *  machine at its address (behind Tailscale Serve, the address it forwards), else its name on the tailnet. */
+// Tailscale Serve proxies from loopback: the caller's address is in X-Forwarded-For.
 async function computerAsking(req: Request): Promise<string> {
   const remote = String(req.http?.socket?.remoteAddress ?? "")
   const fwd = String(req.http?.headers["x-forwarded-for"] ?? "").split(",")[0].trim()
@@ -64,10 +54,9 @@ async function computerAsking(req: Request): Promise<string> {
   return name.split(".")[0]
 }
 
-/** What a browser calls itself, in words: "Brave on Mac". `brands`: its Sec-CH-UA header, which tells Chromium's
- *  browsers apart (each says "Chrome" in its user agent); one that names no other is Chromium itself. */
+// `brands` is Sec-CH-UA, sent only by Chromium: every Chromium browser says "Chrome" in its user agent.
 export function browserName(ua: string, brands = "") {
-  if (!/Chrome\//.test(ua)) brands = "" // (what the user agent says it is wins: hints come only from Chromium itself)
+  if (!/Chrome\//.test(ua)) brands = ""
   const brand = /"Brave"/.test(brands) ? "Brave" : /"Microsoft Edge"/.test(brands) ? "Edge" : /"Opera"/.test(brands) ? "Opera"
     : /"Vivaldi"/.test(brands) ? "Vivaldi" : /"Google Chrome"/.test(brands) ? "Chrome" : /"Chromium"/.test(brands) ? "Chromium" : ""
   const app = brand || (/Edg\//.test(ua) ? "Edge" : /Firefox\/|FxiOS/.test(ua) ? "Firefox" : /Chrome\/|CriOS/.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "A browser")
@@ -75,8 +64,6 @@ export function browserName(ua: string, brands = "") {
     : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "" }
 }
 
-/** Which device is asking: the iPhone app (its cookie), the desktop app (X-Vaultite-Client: app/desktop) or a browser,
- *  named by the computer it's on when that's known ("Brave on Studio"), else by its system ("Safari on iPhone"). */
 async function whoAsks(req: Request): Promise<Pick<Device, "name" | "kind">> {
   const h = req.http?.headers ?? {}
   if (/(?:^|;\s*)vaultite_client=iphone(?:;|$)/.test(String(h.cookie ?? ""))) return { name: "iPhone app", kind: "phone" }
@@ -92,8 +79,6 @@ async function whoAsks(req: Request): Promise<Pick<Device, "name" | "kind">> {
   return { name: at || os ? `${app} on ${at || os}` : app, kind: /iPhone|Android/.test(ua) ? "phone" : "web" }
 }
 
-/** The tabs a device sent, checked: places another device can open (no blank tabs, no files outside the vault), its
- *  terminals saved with this machine (none without one: another machine couldn't find them). */
 function tabsOf(raw: unknown, machine: string): DeviceTab[] {
   const out: DeviceTab[] = []
   for (const t of Array.isArray(raw) ? raw as Item[] : []) {
@@ -105,13 +90,11 @@ function tabsOf(raw: unknown, machine: string): DeviceTab[] {
   return out
 }
 
-/** The other machines serving this vault that may have windows open: each one's address. */
 async function otherServers() {
   const all = await machinesNow(), me = all.find((m) => m.self)
   return all.filter((m) => !m.self && !m.via && m.online && m.url && (!me?.vault || !m.vault || m.vault === me.vault))
 }
 
-/** Which devices are open now, on this server and the other machines (each asked, briefly): by device, where. */
 async function presence(): Promise<Map<string, Present & { on: string }>> {
   return plugin.memo(5, async function presence() {
     const all = await machinesNow(), me = all.find((m) => m.self)
@@ -127,14 +110,12 @@ async function presence(): Promise<Map<string, Present & { on: string }>> {
       try {
         const r = await fetch(`${m.url}/api/tabs/devices/here`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(2000) })
         if (r.ok) add(((await r.json()) as { devices?: Present[] }).devices ?? [], m.id)
-      } catch { /* offline or older: its devices just don't show as open */ }
+      } catch {}
     }))
     return out
   })
 }
 
-/** Every device's tabs, open ones first, then the latest; this machine's terminals without "@<this machine>". `live`:
- *  say which are open now (asking the other machines); the state leaves that to the app's ask, repeated while shown. */
 async function devices(live = true): Promise<Device[]> {
   const machine = await self()
   const open = live ? await presence() : new Map<string, Present>()
@@ -145,7 +126,6 @@ async function devices(live = true): Promise<Device[]> {
     const d = record(m[1])
     const at = typeof d.at === "string" ? d.at : "", now = open.get(m[1])
     if (!at || (!now && !(Date.now() - Date.parse(at) < STALE))) {
-      // (gone a long while: forgotten, so what's kept doesn't grow with every browser ever used)
       if (!now && at && Date.now() - Date.parse(at) > 2 * STALE) keepRecord(m[1], null)
       continue
     }
@@ -159,23 +139,18 @@ async function devices(live = true): Promise<Device[]> {
 }
 
 plugin.route("GET", "tabs/devices", async () => ({ devices: await devices() }), { lock: false })
-/** GET tabs/devices/here: the devices with windows open on this server (what other machines ask). */
 plugin.route("GET", "tabs/devices/here", () => ({ devices: plugin.host.devices() }), { sync: false })
 
-/** PUT tabs/devices/<id> {tabs: [{to, label?, pinned?}]}: this device's tabs now. */
 plugin.route("PUT", "tabs/devices/*", async (req) => {
   const id = idOf(req.arg(0)), machine = await self()
   const tabs = tabsOf(req.body.tabs, machine)
   const was = record(id)
   const next = { ...await whoAsks(req), ...(typeof was.label === "string" && was.label ? { label: was.label } : {}), at: new Date().toISOString(), tabs }
-  // Nothing new (a reload): kept as it is, unless it's old enough that "last used" would mislead (each change goes to
-  // every machine).
   if (JSON.stringify({ ...was, at: "" }) === JSON.stringify({ ...next, at: "" }) && Date.now() - Date.parse(String(was.at)) < 600_000) return { ok: true }
   keepRecord(id, next)
   return { ok: true }
 })
 
-/** POST tabs/devices/<id>/label {label}: the user's name for a device (empty: its own again). */
 plugin.route("POST", "tabs/devices/*/label", (req) => {
   const id = idOf(req.arg(0)), was = record(id)
   if (!was.at) throw new HTTPError(404, "no such device")
@@ -185,8 +160,6 @@ plugin.route("POST", "tabs/devices/*/label", (req) => {
   return { ok: true }
 })
 
-/** Close tabs on a device that's open now (`tabs`: what they show, as its list has them; left out, all of them), on
- *  whichever machine its windows are: how many windows were told. */
 async function closeOn(id: string, tabs: string[] | undefined, here = false): Promise<{ windows: number }> {
   const msg = { action: "tabs", do: "close", ...(tabs ? { tabs } : {}) }
   const n = plugin.host.tell(id, msg)
@@ -204,22 +177,19 @@ async function closeOn(id: string, tabs: string[] | undefined, here = false): Pr
   return { windows: Number(answer.windows) || 0 }
 }
 
-/** POST tabs/devices/<id>/close {tabs?}: close tabs on that device (`here`: only if it's open on this server). */
 plugin.route("POST", "tabs/devices/*/close", async (req) => {
   const tabs = Array.isArray(req.body.tabs) ? (req.body.tabs as unknown[]).map(String) : undefined
   const done = await closeOn(idOf(req.arg(0)), tabs, req.body.here === true)
-  plugin.forget() // (its new list comes from the device itself in a moment)
+  plugin.forget()
   return done
 }, { lock: false })
 
-/** DELETE tabs/devices/<id>: forget a device (it comes back the next time it's used). */
 plugin.route("DELETE", "tabs/devices/*", (req) => {
   keepRecord(idOf(req.arg(0)), null)
   return { ok: true }
 })
 
-// Devices' files from before (.vaultite/plugins/tabs/device-<id>.json): taken in, the newer winning, then removed;
-// looked for whenever the settings change (an old app elsewhere writes one until it updates).
+// Older apps on other machines still write device-<id>.json until they update.
 let lookedAt = ""
 plugin.onSync((vault) => {
   const key = `${vault.path}:${vault.settingsVersion}`
@@ -232,14 +202,13 @@ plugin.onSync((vault) => {
     const m = /^device-([a-z0-9]{8,32})\.json$/.exec(n)
     if (!m) continue
     let d: Item | null
-    try { d = plugin.readSettings(file(m[1])) } catch { continue } // (iCloud has it only in the cloud for now: next start)
+    try { d = plugin.readSettings(file(m[1])) } catch { continue } // iCloud: not downloaded yet
     const at = Date.parse(String(d?.at ?? "")), had = Date.parse(String(record(m[1]).at ?? ""))
     if (d && Number.isFinite(at) && !(had >= at)) plugin.keep(file(m[1]), d, { shared: true, at })
     plugin.saveSettings(null, file(m[1]))
   }
 })
 
-/** A device named by an agent: its id, or its name (the user's, or its own), without regard to case. */
 async function deviceNamed(q: string) {
   const all = await devices(), low = q.trim().toLowerCase()
   const hit = all.filter((d) => d.id === low || (d.label ?? "").toLowerCase() === low || d.name.toLowerCase() === low)
@@ -291,14 +260,11 @@ running terminal) asks on that device first.
   did: (p) => ({ action: "ui", text: `Closed tabs on ${p.device}` }),
 })
 
-// ---------- the user's window's tabs, their panes and tab groups (vau tabs): asked of the window, which has them ----------
-
 type ReportPane = { id: string; to: string; path?: string; behind?: string; focused?: boolean; floating?: boolean; zoomed?: boolean }
 type ReportTab = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: ReportPane[] }
 type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
 type Report = { tabs: ReportTab[]; groups: ReportGroup[]; window?: string; windows?: { id: string; tabs: ReportTab[] }[] }
 
-/** Ask the window the user was in last (core/live.ts' asks; web/src/core/tabgroups.ts answers, the archive Tabs' `answers`). */
 async function ask(ctx: OpCtx, msg: Record<string, unknown>) {
   try { return await ctx.ui({ action: "tabs", ...msg }) } catch (e) {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)

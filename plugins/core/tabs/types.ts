@@ -1,5 +1,3 @@
-// What each device has open, the latest first (GET tabs/devices, plugin.ts).
 export type DeviceTab = { to: string; label?: string; pinned?: boolean }
-/** `label`: the user's name for it; `live`: open now (in `windows` windows). */
 export type Device = { id: string; name: string; label?: string; kind: "desktop" | "phone" | "web"; at: string; tabs: DeviceTab[]
   live?: boolean; windows?: number }
