@@ -33,5 +33,5 @@ export function urlsIn(body: string): { url: string; line: string }[] {
 }
 
 export function sourcesOf(fm: Record<string, unknown>): string[] {
-  return ["source", "url"].flatMap((k) => (Array.isArray(fm[k]) ? fm[k] as unknown[] : [fm[k]])).filter((v): v is string => typeof v === "string" && /^https?:\/\//i.test(v))
+  return ["source", "url"].flatMap((k) => [fm[k]].flat()).filter((v): v is string => typeof v === "string" && /^https?:\/\//i.test(v))
 }
