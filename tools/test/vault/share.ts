@@ -5,6 +5,7 @@ import { WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
 import { busy, skip } from "../lib.ts"
 import { messageOf } from "../../../core/values.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   // Shared folders (plugins/core/share): a guest's link reaches its folder and the few routes it allows, nothing else.
@@ -12,7 +13,7 @@ export default async ($: VaultTest) => {
   const { LOADED, fromInternet } = await import("../../../core/plugins.ts")
   const { PublicMcp } = await import("../../../plugins/core/mcp/public.ts")
   const you = { client: "app/web", agent: null, label: "You", source: "app" }, claude = { client: "cli", agent: "claude-code", label: "Claude Code", source: "claude-code" }
-  const op = (id: string, params: Any, http?: Any, who: Any = you) => app.callOp(id, params, who, { http }).then((r: Any) => r.result, (e: Error) => ({ error: e.message, status: (e as Any).status }))
+  const op = (id: string, params: Any, http?: Any, who: Any = you) => app.callOp(id, params, who, { http }).then((r: Any) => r.result, (e: Error) => ({ error: e.message, status: "status" in e ? e.status : undefined }))
   const CONFIG = path.join(process.env.VAULTITE_LOCAL!, "config.json")
   const config = () => (fs.existsSync(CONFIG) ? JSON.parse(fs.readFileSync(CONFIG, "utf8")) : {})
 
@@ -40,7 +41,7 @@ export default async ($: VaultTest) => {
   check("share: a guest can't take an agent's name, or the app's words for people", named.every((x) => x.error), named)
   const refused = await Promise.all(["", ".vaultite", "Nowhere", "Elsewhere", "Shared/A.md"].map((folder) => op("share.create", { folder, guest: "Bob" })))
   check("share: never the whole vault, a hidden folder, one not there, a link out of the vault or a file", refused.every((x) => x.error), refused)
-  const remote = { headers: { host: "pub.example" }, socket: { remoteAddress: "203.0.113.9" } } as Any, internet = { headers: { host: "127.0.0.1" }, socket: { remoteAddress: "127.0.0.1" } } as Any
+  const remote = request({ host: "pub.example" }, { remote: "203.0.113.9" }), internet = request({ host: "127.0.0.1" }, { remote: "127.0.0.1" })
   fromInternet(internet)
   const theirs = [await op("share.create", { folder: "Shared", guest: "Mallory" }, remote), await op("share.create", { folder: "Shared", guest: "Mallory" }, internet), await op("share.list", {}, internet)]
   check("share: only this machine's owner shares or lists (not another machine, nor an app on the internet)", theirs.every((x) => x.status === 403), theirs)
@@ -119,7 +120,7 @@ export default async ($: VaultTest) => {
     const sub = await (await get(`${d.at}/api/state`, as(d))).json()
     check("share: a subfolder's guest sees only it", JSON.stringify(sub.state.files.files.map((x: Any) => x.path)) === JSON.stringify(["B.md"]), sub.state.files)
 
-    const file = async (p: string, g = a) => { const res = await get(`${g.at}/api/file?path=${encodeURIComponent(p)}`, as(g)); return [res.status, await res.json()] as [number, Any] }
+    const file = async (p: string, g = a): Promise<[number, Any]> => { const res = await get(`${g.at}/api/file?path=${encodeURIComponent(p)}`, as(g)); return [res.status, await res.json()] }
     const okA = await file("A.md")
     check("share: a note in the folder reads, by its path there", okA[0] === 200 && okA[1].path === "A.md" && okA[1].text.includes("Hello from A"), okA)
     const escapes = await Promise.all(["../Secret/S.md", "..%2FSecret%2FS.md", "Sub/../../Secret/S.md", "/Secret/S.md", "link.md", "linkdir/S.md", ".hidden/H.md",
@@ -164,7 +165,7 @@ export default async ($: VaultTest) => {
     }
     {
       // Dataview's queries (a vault plugin's, when it's on): over the folder's notes alone, its paths the guest's.
-      const fake = mcp as Any, had = fake.services["dataview:within"]
+      const fake = mcp, had = fake.services["dataview:within"]
       let seen: Any = null
       fake.services["dataview:within"] = (scope: string, only: (rel: string) => boolean) => {
         seen = { scope, sees: ["Shared/A.md", "Secret/S.md", "Shared/link.md", "Shared/.hidden/H.md", "Shared2/X.md"].filter(only) }
@@ -302,11 +303,12 @@ export default async ($: VaultTest) => {
       s.on("unexpected-response", (_q, res) => resolve(res.statusCode ?? 0))
       s.on("error", () => resolve(0))
     })
+    const opened = async (g: typeof a, p: string) => { const s = await socket(g, p); if (s instanceof Object) return s; throw new Error(`share: no socket at ${p} (${s})`) }
     const wait = (ms = 300) => new Promise((ok) => setTimeout(ok, ms))
     const evil = await socket(a, "events", "https://evil.example"), noCookie = await socket({ ...a, cookie: "" }, "events")
     check("share: no socket from another site, or without the cookie", evil === 403 && noCookie === 403, [evil, noCookie])
-    const ev = await socket(a, "events") as Exclude<Awaited<ReturnType<typeof socket>>, number>
-    const svc = mcp.service("share:gateway") as () => Any
+    const ev = await opened(a, "events")
+    const svc: () => Any = mcp.service("share:gateway")!
     svc().changed(["Secret/S.md", "Shared/A.md", "Shared/.hidden/H.md"])
     svc().changed(["Secret/S.md"])
     await wait()
@@ -323,11 +325,11 @@ export default async ($: VaultTest) => {
       write("Shared/duel.html", "<html><body>duel</body></html>")
       write("Shared/Sub/duel.html", "<html><body>duel</body></html>")
       await $.vault.sync()
-      type Open = Exclude<Awaited<ReturnType<typeof socket>>, number>
-      const page = (g: typeof a, p: string, origin?: string) => socket(g, `artifact/shared?path=${encodeURIComponent(p)}`, origin)
+      const shared = (p: string) => `artifact/shared?path=${encodeURIComponent(p)}`
+      const page = (g: typeof a, p: string, origin?: string) => socket(g, shared(p), origin)
       const no = await Promise.all([page(a, "../Secret/page.html"), page(a, "A.md"), page(a, "nope.html"), page(a, "link.md"), page(a, "duel.html", "https://evil.example"), page({ ...a, cookie: "" }, "duel.html")])
       check("share: no page's shared state outside the folder, of a note, of no page, from another site or without the cookie", no.every((x) => x === 403), no)
-      const pa = await page(a, "duel.html") as Open, pc = await page(c, "duel.html") as Open
+      const pa = await opened(a, shared("duel.html")), pc = await opened(c, shared("duel.html"))
       await wait()
       check("share: a guest joins a page's shared state as themselves, and sees who's here", pa.got[0]?.t === "hello" && pa.got[0].me?.name === "Alice Park"
         && pa.got.some((m) => m.t === "people" && m.people.some((x: Any) => x.name === "Carol")), pa.got)
@@ -339,7 +341,7 @@ export default async ($: VaultTest) => {
       await op("html.shared-set", { path: "Shared/duel.html", values: { round: 2 } })
       await wait()
       check("share: ...and an agent's set reaches the guests", pa.got.some((m) => m.t === "set" && m.values.round === 2))
-      const pd = await page(d, "duel.html") as Open
+      const pd = await opened(d, shared("duel.html"))
       await wait()
       pd.ws.send(JSON.stringify({ t: "set", n: 1, values: { "a:dan": "G" } }))
       await wait(500)
@@ -376,10 +378,10 @@ export default async ($: VaultTest) => {
         && state.sharedFolders?.["Shared/Sub"]?.[0]?.guest === "Dan" && state.shareLinks === base && !JSON.stringify(state.sharedFolders).includes(config().share.shares[edit.id].token), state.sharedFolders)
 
       // A guest's access changed in place: the same link, their sockets come back with it.
-      const live = await socket(c, "events") as Open
+      const live = await opened(c, "events")
       const bye = new Promise<boolean>((ok) => { live.ws.on("close", () => ok(true)); setTimeout(() => ok(false), 1000) })
       const up = await op("share.update", { id: comment.id, role: "edit", days: 10 })
-      const back = await socket(c, "events") as Open
+      const back = await opened(c, "events")
       await wait()
       check("share: update changes a guest's role and days, the link the same; their sockets come back saying so", up.role === "edit" && Date.parse(up.expires) - Date.now() > 9 * 86_400_000
         && await bye && back.got[0]?.role === "edit" && (await put(c, "A.md", read("Shared/A.md") + "Carol edits now.\n")).status === 200, [up, back.got])
@@ -391,7 +393,7 @@ export default async ($: VaultTest) => {
 
     // Comments (Companion's threads): a guest's are people's, which no agent hears of; agents' threads never reach them.
     await op("companion.comment", { text: "An agent's thought, from ME.md", path: "Shared/A.md", find: "Hello" })
-    const th = await socket(c, "companion/live") as Exclude<Awaited<ReturnType<typeof socket>>, number>
+    const th = await opened(c, "companion/live")
     await wait()
     const first = th.got.find((m) => m.t === "state")
     check("share: a guest's threads hold no agent's (an agent read beyond the folder)", first && !JSON.stringify(first).includes("An agent's thought") && !first.agents.length, first)
@@ -409,7 +411,7 @@ export default async ($: VaultTest) => {
     check("share: not outside it, not in an agent's thread, and nothing they do reaches an agent", !status.notes.some((n: Any) => n.path === "Secret/S.md")
       && !status.notes.find((n: Any) => n.id === agentId)?.replies?.length && !status.moments.some((m: Any) => JSON.stringify(m).includes("ME.md") || JSON.stringify(m).includes("Carol")), status)
     th.ws.close()
-    const ro = await socket(d, "companion/live") as Exclude<Awaited<ReturnType<typeof socket>>, number>
+    const ro = await opened(d, "companion/live")
     ro.ws.send(JSON.stringify({ t: "comment", path: "B.md", line: 1, text: "a reader's comment" }))
     await wait()
     check("share: a guest who reads has no threads and can't comment", !(await op("companion.status", {})).notes.some((n: Any) => n.text === "a reader's comment") && JSON.stringify(ro.got[0]?.notes) === "[]", ro.got)
@@ -418,7 +420,7 @@ export default async ($: VaultTest) => {
       // Caps: a guest's threads in a note, and words in a thread, stop at a hundred.
       let said: ((d: string) => void) | null = null
       const fake = { readyState: 1, OPEN: 1, send: () => {}, on: (ev: string, fn: Any) => { if (ev === "message") said = fn } }
-      ;(mcp.service("companion:guest") as Any)(fake, { id: "cap-test", name: "Zed", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false, holds: () => true })
+      mcp.service("companion:guest")!(fake, { id: "cap-test", name: "Zed", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false, holds: () => true })
       for (let i = 0; i < 105; i++) said!(JSON.stringify({ t: "comment", path: "A.md", line: 1, text: `c${i}` }))
       const zed = (await op("companion.status", {})).notes.filter((n: Any) => n.share === "cap-test")
       for (let i = 0; i < 105; i++) said!(JSON.stringify({ t: "answer", id: zed[0].id, verdict: "reply", text: `r${i}` }))
@@ -433,13 +435,13 @@ export default async ($: VaultTest) => {
       check("share: a guest's long comment is checked at once, as it's kept", ms < 500 && replies.length === 2 && replies.every((x: Any) => x.text.length <= 4000), [ms, replies.length])
       let gone: ((d: string) => void) | null = null, cut = false
       const ended = { readyState: 1, OPEN: 1, send: () => {}, terminate: () => { cut = true }, on: (ev: string, fn: Any) => { if (ev === "message") gone = fn } }
-      ;(mcp.service("companion:guest") as Any)(ended, { id: "gone-test", name: "Yan", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false, holds: () => false })
+      mcp.service("companion:guest")!(ended, { id: "gone-test", name: "Yan", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false, holds: () => false })
       gone!(JSON.stringify({ t: "comment", path: "A.md", line: 1, text: "after the revoke" }))
       check("share: a share revoked since the socket opened says nothing more, and its socket goes", cut && !(await op("companion.status", {})).notes.some((n: Any) => n.share === "gone-test"))
     }
 
     // Ending it: revoked or expired, the link and the cookie stop working at once, and its sockets go.
-    const open = await socket(c, "companion/live") as Exclude<Awaited<ReturnType<typeof socket>>, number>
+    const open = await opened(c, "companion/live")
     const closed = new Promise<boolean>((ok) => { open.ws.on("close", () => ok(true)); setTimeout(() => ok(false), 1000) })
     await op("share.revoke", { id: comment.id })
     check("share: revoked, its guest's sockets go at once", await closed)
@@ -453,7 +455,7 @@ export default async ($: VaultTest) => {
 
     {
       // A new link: the old one and its cookie stop and its pages close; the new one opens the same access.
-      const live = await socket(a, "events") as Exclude<Awaited<ReturnType<typeof socket>>, number>
+      const live = await opened(a, "events")
       const cut = new Promise<boolean>((ok) => { live.ws.on("close", () => ok(true)); setTimeout(() => ok(false), 1000) })
       const fresh = await op("share.new-link", { id: edit.id })
       const old = [await get(`/s/${token(edit)}`), await get(`${a.at}/api/state`, as(a))]

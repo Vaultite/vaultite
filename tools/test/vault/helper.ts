@@ -3,7 +3,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
+import { z } from "zod"
 import { waitFor } from "../lib.ts"
+import { request, socket } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { api, check, tmp } = $
@@ -171,10 +173,11 @@ export default async ($: VaultTest) => {
 
     // Where dictated words land (electron/dictationroam.ts), with what's asked stood in.
     const { land, landedSaid } = await import("../../../electron/dictationroam.ts")
-    const landing = (o: Record<string, unknown> = {}) => {
+    const landing = (o: Partial<Parameters<typeof land>[1]> = {}) => {
       const did: string[] = []
-      return { did, o: { page: async () => null, front: async () => ({}), insert: async (t: string) => { did.push(`insert:${t}`); return { ok: true, how: "ax" } },
-        origin: async (t: string) => { did.push(`origin:${t}`); return { ok: false } }, copy: (t: string) => { did.push(`copy:${t}`) }, capture: async (t: string) => { did.push(`capture:${t}`); return true }, secret: () => false, ...o } as never }
+      const deps: Parameters<typeof land>[1] = { page: async () => null, front: async () => ({}), insert: async (t: string) => { did.push(`insert:${t}`); return { ok: true, how: "ax" } },
+        origin: async (t: string) => { did.push(`origin:${t}`); return { ok: false } }, copy: (t: string) => { did.push(`copy:${t}`) }, capture: async (t: string) => { did.push(`capture:${t}`); return true }, secret: () => false, ...o }
+      return { did, o: deps }
     }
     const inPage = landing({ page: async () => ({ ok: true }) })
     check("dictation lands: a window's own target first", (await land("hi", inPage.o)).to === "page" && !inPage.did.length, inPage.did)
@@ -296,13 +299,13 @@ export default async ($: VaultTest) => {
     // the screen there changes for good, follows its thing when one is known, and lets a never-still area be.
     const mw = await import("../../../electron/markwatch.ts")
     const things = [{ id: "a1", role: "button", label: "Send", frame: { x: 100, y: 100, width: 60, height: 24 } }, { id: "a2", role: "row", label: "Inbox", frame: { x: 0, y: 300, width: 400, height: 30 } }]
-    const layer = { id: "d1", agent: "Claude", tint: "blue", t: 0, places: { "el:a1": { x: 100, y: 100, w: 60, h: 24 } },
+    const layer: Parameters<typeof mw.watchedAreas>[0][number] = { id: "d1", agent: "Claude", tint: "blue", t: 0, places: { "el:a1": { x: 100, y: 100, w: 60, h: 24 } },
       marks: [{ type: "ring", id: "m1", at: { el: "a1" } }, { type: "underline", id: "m2", at: { x: 2, y: 302, w: 396, h: 26 } }, { type: "check", id: "m3", at: { x: 900, y: 900, w: 0, h: 0 } },
-        { type: "sticky", id: "m4", text: "kept" }, { type: "write", id: "m5", text: "till it changes", life: "screen", at: { x: 600, y: 600, w: 80, h: 20 } }] } as never
+        { type: "sticky", id: "m4", text: "kept" }, { type: "write", id: "m5", text: "till it changes", life: "screen", at: { x: 600, y: 600, w: 80, h: 20 } }] }
     const areas = mw.watchedAreas([layer], things)
     check("mark watch: what points is watched (a point's tip as a small box), cards only when told to live till the screen changes; each anchored to the thing it's on",
       areas.map((a) => a.mark).join() === "m1,m2,m3,m5" && areas[0].on?.anchor.label === "Send" && areas[1].on?.anchor.label === "Inbox" && !areas[2].on && areas[2].rect.w === 36 &&
-        mw.watchedAreas([{ ...(layer as object), hidden: true } as never]).length === 0, areas)
+        mw.watchedAreas([{ ...layer, hidden: true }]).length === 0, areas)
     const px = (v: number, n = 64) => ({ w: 8, h: 8, px: new Uint8Array(n).fill(v) })
     const tinted = { w: 8, h: 8, px: new Uint8Array(64).fill(110) }, other = { w: 8, h: 8, px: Uint8Array.from({ length: 64 }, (_, i) => (i % 2 ? 250 : 10)) }
     check("mark watch: a hover's tint or a few pixels isn't a change; something else there is", !mw.differs(px(100), tinted) && !mw.differs(px(100), { w: 8, h: 8, px: Uint8Array.from({ length: 64 }, (_, i) => (i < 5 ? 255 : 100)) }) && mw.differs(px(100), other))
@@ -351,7 +354,7 @@ export default async ($: VaultTest) => {
     pilot.aim({ id: "a1", x: 300, y: 500 }, t)
     check("pilot: the same pointing again doesn't fly it back there", run(50).at(-1)!.mode === "follow")
     // (its pen: two strokes, a gap between them)
-    const s0 = t + 520, script = { id: "d1", strokes: [{ start: s0, dur: 400, pts: [[100, 300], [300, 300]] as [number, number][] }, { start: s0 + 1400, dur: 300, pts: [[100, 400], [100, 600]] as [number, number][] }] }
+    const s0 = t + 520, script: Parameters<typeof pilot.pen>[0] = { id: "d1", strokes: [{ start: s0, dur: 400, pts: [[100, 300], [300, 300]] }, { start: s0 + 1400, dur: 300, pts: [[100, 400], [100, 600]] }] }
     pilot.pen(script, t)
     const before = run(260).at(-1)!
     t = s0 + 200
@@ -663,20 +666,23 @@ export default async ($: VaultTest) => {
       text.includes("its picture: /tmp/x/screens/window-42-1.png") && text.includes("    error: no such file"), text)
     const desk = cIntake.addMoment({ kind: "ask", text: "what is this folder?", app: "com.apple.finder", sx: 812, sy: 440, under: 'Finder: folder "Taxes", in "Desktop"', shot: "/tmp/x/screens/display-812-1.png", shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
     const deskText = desk ? cMoments.momentsText([desk], "quiet", null) : ""
-    const [, deskSt] = await api("POST", "ops/companion.status", {})
+    const Cursor = z.object({ name: z.string(), sx: z.number().optional(), sy: z.number().optional(), app: z.string().optional(), path: z.string().optional(), rests: z.boolean().optional(),
+      frame: z.object({ x: z.number() }).optional() })
+    const statusOf = async () => z.object({ agents: z.array(Cursor), notes: z.array(z.object({ kind: z.string(), t: z.number() })) }).parse((await api("POST", "ops/companion.status", {}))[1])
+    const deskSt = await statusOf()
     check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the display's picture",
       deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer") &&
-      (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
+      deskSt.agents.some((a) => a.sx === 812), [deskText, deskSt])
     const clicked = cIntake.addMoment({ kind: "ask", text: "why is this greyed out?", app: "com.apple.Safari", sx: 820, sy: 40, clicks: [{ sx: 820, sy: 40, under: 'Safari: button "Share"' }, { sx: 5, sy: 6 }] })
     const clickedText = clicked ? cMoments.momentsText([clicked], "quiet", null) : ""
     check("companion: what they clicked with the Talk key held goes with the ask, each click the app's",
       clickedText.includes('they clicked as they spoke (each went to the app as a click; the picture may show what it did): Safari: button "Share" at sx 820, sy 40; something at sx 5, sy 6'), clickedText)
     const bar = cIntake.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
     const barText = bar ? cMoments.momentsText([bar], "quiet", null) : ""
-    const [, barSt] = await api("POST", "ops/companion.status", {})
+    const barSt = await statusOf()
     check("companion: a point where nothing reads (the menu bar) is still a point there, with its picture",
       barText.includes("on screen, at sx 1290, sy 12 (no window there") && barText.includes("its picture: /tmp/x/screens/region-2.png") &&
-      (barSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 1290), [barText, barSt])
+      barSt.agents.some((a) => a.sx === 1290), [barText, barSt])
     // (the summoned companion's ask: the display's picture, what's near the pointer by id, what they drew)
     const held = cScreen.screenMoment({ kind: "ask", text: "what's this button?", app: "com.example.mail", window: 9, title: "Inbox", sx: 812, sy: 440, shot: "/tmp/x/screens/display-812-1.png",
       shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 790, y: 430, width: 60, height: 24 } }],
@@ -685,10 +691,9 @@ export default async ($: VaultTest) => {
     check("companion: a summoned ask says the display's picture and their pointer in it, what they drew and what's near, by id",
       heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer, cropped: what its edges cut is whole on their screen; a pixel a point: its top left is sx 0, sy 0, so its pixel x, y is sx 0 + x, sy 0 + y; their pointer at 812, 440 in it)") &&
       heldText.includes("they drew a ring round sx 770-870, sy 410-470") && heldText.includes('a1 button "Send" at 790,430 60×24'), heldText)
-    const name = (barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name
+    const name = barSt.agents.find((a) => a.sx === 1290)!.name
     const [axSt] = await api("POST", "ops/companion.look", { ax: "a1", as: name })
-    const [, axIs] = await api("POST", "ops/companion.status", {})
-    const pointed = (axIs as { agents: { name: string; sx?: number; sy?: number; frame?: { x: number } }[] }).agents.find((a) => a.name === name)
+    const pointed = (await statusOf()).agents.find((a) => a.name === name)
     check("companion: --ax points at an element of the ask's list, snapped to its frame; an id not listed is a 404",
       axSt === 200 && pointed?.sx === 806 && pointed?.sy === 442 && pointed?.frame?.x === 790 && (await api("POST", "ops/companion.look", { ax: "a9" }))[0] === 404, [axSt, pointed])
     // (a floating panel of another app: asked over, named by its app's name; behind the ask, said as what floats there)
@@ -706,30 +711,28 @@ export default async ($: VaultTest) => {
     check("companion: a summoned ask over Vaultite's window is about the note's line under the pointer, its picture too",
       there?.path === "Notes/A.md" && there.line === 3 && there.selection === "the plan" && there.summoned === true && there.shot === "/tmp/x/screens/display-400-1.png" && !there.app, there)
     cScreen.comeBack(name)
-    const [, homeSt] = await api("POST", "ops/companion.status", {})
-    const home = (homeSt as { agents?: { name: string; sx?: number; app?: string }[] }).agents?.find((a) => a.name === name)
+    const home = (await statusOf()).agents.find((a) => a.name === name)
     check("companion: done there, its cursor leaves the screen", !!home && home.sx === undefined && !home.app, home)
     {
       // (back in the window: by their note only while it's on screen; one in a tab behind sent it to a file's row, far off)
-      const { EventEmitter } = await import("node:events")
       type Got = { t: string; id?: string; agent?: string; note?: { id: string; answers?: object }; said?: { id?: string; text?: string; seen?: boolean }[] }
       const live = c.plugin.sockets.find((x: { pattern: string[] }) => x.pattern.join("/") === "companion/live")!
       const sock = (screen: boolean) => {
         const got: Got[] = []
-        const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got, close() {}, ping() {}, terminate() {}, send(t: string) { got.push(JSON.parse(t)) } })
-        live.fn(ws as never, { headers: {}, socket: { remoteAddress: "127.0.0.1" } } as never, { query: screen ? { screen: "1" } : {}, wild: [] })
+        const ws = Object.assign(socket((t) => got.push(JSON.parse(t))), { got })
+        live.fn(ws, request({}, { remote: "127.0.0.1" }), { query: screen ? { screen: "1" } : {}, wild: [] })
         return ws
       }
       const win = sock(false), where = (shown: string[]) => win.emit("message", Buffer.from(JSON.stringify({ t: "where", open: ["Notes/A.md"], shown, focus: { path: "Notes/A.md", line: 3 }, active: true })))
-      const placed = async () => ((await api("POST", "ops/companion.status", {}))[1] as { agents: { name: string; path?: string }[] }).agents.find((a) => a.name === name)
+      const placed = async () => (await statusOf()).agents.find((a) => a.name === name)
       // (the ask over the window above, its session a stand-in, is answered late: wait for that turn to end first)
-      await waitFor(async () => ((await api("POST", "ops/companion.status", {}))[1] as { notes: { kind: string; t: number }[] }).notes.some((n) => n.kind === "say" && n.t >= (there?.t ?? 0)), 8000, 100)
+      await waitFor(async () => (await statusOf()).notes.some((n) => n.kind === "say" && n.t >= (there?.t ?? 0)), 8000, 100)
       where([]); cScreen.comeBack(name)
       const behind = await placed()
       where(["Notes/A.md"]); cScreen.comeBack(name)
       const shown = await placed()
       check("companion: back from the screen, by their note when it's shown, else home (never a tab behind's file row)", !!behind && !behind.path && shown?.path === "Notes/A.md", [behind, shown])
-      check("companion: …moved there, not acting: its cursor rests at home", (shown as { rests?: boolean } | undefined)?.rests === true, shown)
+      check("companion: …moved there, not acting: its cursor rests at home", shown?.rests === true, shown)
       // (an exchange's answers were said by the pointer or in its box: once it's over, no window shows them again)
       const helper = sock(true)
       helper.emit("message", JSON.stringify({ t: "riding", agent: name }))
@@ -757,13 +760,13 @@ export default async ($: VaultTest) => {
     // with no desktop app attached.
     const front = () => api("POST", "ops/screen.front", {})
     let [, r] = await front()
-    check("screen: nothing in front before the desktop app says", (r as { none?: boolean }).none === true, r)
+    check("screen: nothing in front before the desktop app says", r.none === true, r)
     process.emit("message", { type: "desktop:event", name: "screen:front", data: { bundle: "com.apple.Safari", name: "Safari", title: "Inbox", window: 7 } }, undefined)
     ;[, r] = await front()
-    check("screen: the app in front and its window's title", (r as { title?: string }).title === "Inbox" && (r as { app?: string }).app === "com.apple.Safari", r)
+    check("screen: the app in front and its window's title", r.title === "Inbox" && r.app === "com.apple.Safari", r)
     process.emit("message", { type: "desktop:event", name: "screen:front", data: { bundle: "com.1password.1password", name: "1Password", title: "Bank login", window: 8 } }, undefined)
     ;[, r] = await front()
-    check("screen: a private app in front is only that, no title", (r as { private?: boolean }).private === true && !JSON.stringify(r).includes("Bank"), r)
+    check("screen: a private app in front is only that, no title", r.private === true && !JSON.stringify(r).includes("Bank"), r)
     const [st] = await api("POST", "ops/screen.text", {})
     check("screen: reading a window needs this Mac's desktop app", st === 409, st)
   }
