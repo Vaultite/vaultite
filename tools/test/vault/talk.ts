@@ -1,10 +1,10 @@
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
-import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   // (the companion acting: its own tool call, not any agent's vau)
@@ -32,8 +32,8 @@ export default async ($: VaultTest) => {
     const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "talk-"))
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
     const osc = (s: string) => `printf '\\033]7501;state=${s}\\033\\\\'`

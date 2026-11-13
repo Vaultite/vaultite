@@ -13,6 +13,7 @@ import { MaxArgon2Memory } from "../../../electron/browser/kdbx/key-encryptor-kd
 import { MaxDepth, parseXml, serializeXml } from "../../../electron/browser/kdbx/xml.ts"
 import { check, section, skip } from "../lib.ts"
 import { fixture } from "./mocha.ts"
+import { messageOf } from "../../../core/values.ts"
 
 const cred = (pw: string | null, key?: string) => new k.Credentials(pw === null ? null : k.ProtectedValue.fromString(pw), key ? fixture(key) : null)
 const text = (v: unknown) => (v instanceof k.ProtectedValue ? v.getText() : typeof v === "string" ? v : "")
@@ -267,7 +268,7 @@ await section("kdbx argon2", async () => {
 await section("kdbx decompression", async () => {
   const bomb = gzip(new Uint8Array(20 * 1024 * 1024))
   let code = "ok"
-  try { gunzip(bomb, 1024 * 1024) } catch (e) { code = (e as k.KdbxError).code + " " + (e as Error).message }
+  try { gunzip(bomb, 1024 * 1024) } catch (e) { code = (e as k.KdbxError).code + " " + messageOf(e) }
   check("zip bomb: inflating past the limit stops there (FileCorrupt), never all of it", code.startsWith("FileCorrupt") && code.includes("over"), [bomb.length, code])
   check("zip bomb: under the limit inflates whole", gunzip(bomb).length === 20 * 1024 * 1024)
   try { gunzip(crypto.randomBytes(100)); code = "ok" } catch (e) { code = (e as k.KdbxError).code }

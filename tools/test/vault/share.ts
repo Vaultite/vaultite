@@ -4,6 +4,7 @@ import path from "node:path"
 import { WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
 import { busy, skip } from "../lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   // Shared folders (plugins/core/share): a guest's link reaches its folder and the few routes it allows, nothing else.
@@ -255,7 +256,7 @@ export default async ($: VaultTest) => {
       await put(a, "A.md", "# A\n")
       const { load } = await import("../../../core/yaml.ts")
       let blown = ""
-      const { ms: loading } = await busy(() => { try { load(bomb) } catch (e) { blown = (e as Error).message } })
+      const { ms: loading } = await busy(() => { try { load(bomb) } catch (e) { blown = messageOf(e) } })
       check("share: the vault reads no alias bomb either (it would hold the server), but values reused a few times, yes", /alias/i.test(blown) && loading < 1000
         && JSON.stringify(load("base: &b {x: 1}\none:\n  <<: *b\n  y: 2\ntwo: *b\n")) === '{"base":{"x":1},"one":{"x":1,"y":2},"two":{"x":1}}', blown)
       const around = await put(a, "T.md", "Owner's template: <% tp.date.now() %>\nA guest's line\nNote: see [the lessons](https://example.com/lessons), a < b, [[Sub/B]], **bold** and `code`\n\n[^1]: Source: the lessons\n")

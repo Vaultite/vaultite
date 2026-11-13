@@ -2,6 +2,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { check } from "../lib.ts"
 import { type Any, ROOT, web } from "./lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 // ---------- Obsidian Bases: the expression language, a .base's views, edits that keep the file ----------
 const ex = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "query", "expr.ts")).href)
@@ -35,7 +36,7 @@ let errors = 0
 for (const src of ["foo(1)", "a +", "(a", "'open", "a ? b", "[1, 2", "{a 1}", "1 2"]) { try { ex.parse(src) } catch (e) { if (e instanceof ex.ExprError) errors++ } }
 check("bases: what doesn't parse (or names no function) is an ExprError", errors === 8, errors)
 let runtime = ""
-try { ev("price.nope()") } catch (e) { runtime = (e as Error).message }
+try { ev("price.nope()") } catch (e) { runtime = messageOf(e) }
 check("bases: a function a value doesn't have says so", runtime === "there's no function nope() on a number", runtime)
 const nums = [3, 1, null, 2, 2], mixed = [true, false, true, "2026-09-01", "2026-09-03", null]
 const sums = ["Sum", "average", "Median", "Min", "Max", "Range", "Empty", "Filled", "Unique", "Count"].map((n) => ex.plainOf(ex.summary(n, nums)))

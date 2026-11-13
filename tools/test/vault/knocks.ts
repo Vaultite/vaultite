@@ -1,4 +1,5 @@
 import type { Any, VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { api, check } = $
@@ -39,7 +40,7 @@ export default async ($: VaultTest) => {
     const off = K.actOn(up, "later", T + 3000)
     check("knocks: dismissed (not now), a ready card goes at once", off.state === "later" && K.pick([off], pause({ now: T + 4000 })) === null)
     let long = ""
-    try { K.makeKnock({ id: "q", from: "", who: "", line: "x", hold: 10 * 60_000 }, T) } catch (e) { long = (e as Error).message }
+    try { K.makeKnock({ id: "q", from: "", who: "", line: "x", hold: 10 * 60_000 }, T) } catch (e) { long = messageOf(e) }
     check("knocks: a hold is at most 2 minutes", /hold/.test(long))
     const later = K.actOn(shown, "later", T + 2000)
     check("knocks: not now puts it off: not at once, nor later while they've sat still since, but at their next break",
@@ -55,9 +56,9 @@ export default async ($: VaultTest) => {
     const muted = K.addKnock([], mk("z", "high", T, "claude-2"), (f) => f === "claude-2")
     check("knocks: a muted session's knocks come ignored", muted[0].state === "ignored")
     let bad = ""
-    try { K.makeKnock({ id: "q", from: "", who: "", line: "  ", urgency: "normal" }, T) } catch (e) { bad = (e as Error).message }
+    try { K.makeKnock({ id: "q", from: "", who: "", line: "  ", urgency: "normal" }, T) } catch (e) { bad = messageOf(e) }
     let worse = ""
-    try { K.makeKnock({ id: "q", from: "", who: "", line: "x", urgency: "loud" }, T) } catch (e) { worse = (e as Error).message }
+    try { K.makeKnock({ id: "q", from: "", who: "", line: "x", urgency: "loud" }, T) } catch (e) { worse = messageOf(e) }
     check("knocks: a knock needs its line and a known urgency; its life by urgency; a long line is cut", /line/.test(bad) && /urgency/.test(worse) &&
       K.makeKnock({ id: "q", from: "", who: "", line: "x", urgency: "high" }, T).until === T + K.LIVES.high &&
       K.makeKnock({ id: "q", from: "", who: "", line: "x".repeat(400) }, T).line.length === 140)

@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, run, sentBy, vault, write } = $
@@ -77,7 +78,7 @@ export default async ($: VaultTest) => {
     check("authorship: frontmatter is never marked", A.written(null, "---\norigin: ai\n---\nBody.\n", who, opcodes).map((x) => x.line).join() === "4")
     check("authorship: the tip says who, model, effort and when", A.authorText(who, () => "19:36") === "Opus · Opus 5.5 high · 19:36")
 
-    const agent = (extra: Record<string, string> = {}) => ({ headers: { "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", "x-vaultite-effort": "high", ...extra } }) as unknown as import("node:http").IncomingMessage
+    const agent = (extra: Record<string, string> = {}) => request({ "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", "x-vaultite-effort": "high", ...extra })
     const settle = () => new Promise((r) => setTimeout(r, 80))
     const side = (rel: string) => path.join(VAULT, ".vaultite/plugins/provenance/authorship", `${rel}.json`)
     const spansOf = (rel: string) => (fs.existsSync(side(rel)) ? JSON.parse(fs.readFileSync(side(rel), "utf8")).spans as Any[] : [])

@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, sentBy, sleep, vault, write } = $
@@ -18,7 +19,7 @@ export default async ($: VaultTest) => {
     if (id.startsWith("file.")) app.changed([params.path, params.to].filter((p) => typeof p === "string"))
     return r
   }
-  const fails = async (id: string, params: Any, who = user) => { try { await call(id, params, who); return "" } catch (e) { return (e as Error).message } }
+  const fails = async (id: string, params: Any, who = user) => { try { await call(id, params, who); return "" } catch (e) { return messageOf(e) } }
   /** A request from the app, as server.ts reports it to Activity. */
   async function heard(method: string, p: string, body: Any) {
     await sleep(3)

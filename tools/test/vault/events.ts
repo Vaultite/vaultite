@@ -1,4 +1,5 @@
 import type { Any, VaultTest } from "./harness.ts"
+import { portOf } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { api, app, check, sleep, vault, write } = $
@@ -93,7 +94,7 @@ export default async ($: VaultTest) => {
     const srv = http.createServer((req, res) => stream(bus, req, res, Object.fromEntries(new URL(req.url!, "http://x").searchParams)))
     await new Promise<void>((ok) => srv.listen(0, "127.0.0.1", ok))
     const ac = new AbortController()
-    const res = await fetch(`http://127.0.0.1:${(srv.address() as Any).port}/?types=file.moved&after=${c2}`, { signal: ac.signal })
+    const res = await fetch(`http://127.0.0.1:${portOf(srv)}/?types=file.moved&after=${c2}`, { signal: ac.signal })
     const reader = res.body!.getReader()
     let got = ""
     setTimeout(() => bus.emit("file.moved", { from: "c.md", to: "d.md" }), 30)

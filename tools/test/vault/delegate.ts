@@ -1,10 +1,10 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 import { fakeSdk } from "./claude-chat.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check } = $
@@ -51,9 +51,9 @@ export default async ($: VaultTest) => {
   const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chatwire.ts")
   const { settled } = await import("../../../plugins/core/inbox/plugin.ts")
   // An agent's vau: Claude Code's, from inside session `session` (its variables filled in, as vau does).
-  const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+  const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
   const as = (session: string) => ({ session, from: "claude" })
-  const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+  const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
   const rows = async () => { await settled(); return (await api("GET", "inbox/events"))[1].events as Any[] }
   const sdk = fakeSdk()
   const host = new Host({ query: sdk.query as Any })

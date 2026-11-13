@@ -1,9 +1,9 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { VaultTest } from "./harness.ts"
 import { standIn } from "../lib.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, exists, read, sleep, tmp, write } = $
@@ -42,8 +42,7 @@ export default async ($: VaultTest) => {
     check("audio: only audio, into a note that's there; a file no note embeds needs one named", s2 === 400 && s3 === 404 && s4 === 400 && /no note embeds/.test(e4.error), [s2, s3, s4, e4])
     // A voice note (Record a voice note for your inbox): transcribed, then inbox.voice, the recording kept above its words.
     // (the recording as the body, any size, as the app sends it)
-    const { Readable } = await import("node:stream")
-    const sent = (b: Buffer) => Object.assign(Readable.from([b]), { headers: { "content-type": "audio/webm" } }) as unknown as IncomingMessage
+    const sent = (b: Buffer) => request({ "content-type": "audio/webm" }, { body: [b] })
     const [s6, vj] = await api("POST", "audio-recorder/voice?ext=webm&from=Computer", {}, sent(Buffer.from("not really audio")))
     let v = vj
     for (let i = 0; i < 50 && (v.state === "queued" || v.state === "running"); i++) { await sleep(100); [, v] = await api("GET", `audio-recorder/jobs/${vj.id}`) }

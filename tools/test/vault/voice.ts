@@ -4,6 +4,7 @@ import http from "node:http"
 import path from "node:path"
 import { WebSocketServer, type WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
+import { portOf } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { check, tmp, sleep } = $
@@ -228,7 +229,7 @@ export default async ($: VaultTest) => {
       })
     })
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
-    const url = `ws://127.0.0.1:${(server.address() as Any).port}`
+    const url = `ws://127.0.0.1:${portOf(server)}`
     const c = cloudVoice({ provider: "soniox", url, key: "test-key-1", model: "tts-rt-v2", voice: "Hazel", speed: 1.1 })
     const heard: Any[] = []
     const to = (n: number) => ({ audio: (b: Buffer, t?: Any) => heard.push(["audio", n, b.length, t?.chars.length]), end: () => heard.push(["end", n]), fail: (w: string) => heard.push(["fail", n, w]) })
@@ -274,7 +275,7 @@ export default async ($: VaultTest) => {
       })
     })
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
-    const c = cloudVoice({ provider: "elevenlabs", url: `ws://127.0.0.1:${(server.address() as Any).port}`, key: "eleven-key-1", model: "eleven_flash_v2_5", voice: "nPczCjzI2devNBz1zQrb", speed: 1.1 })
+    const c = cloudVoice({ provider: "elevenlabs", url: `ws://127.0.0.1:${portOf(server)}`, key: "eleven-key-1", model: "eleven_flash_v2_5", voice: "nPczCjzI2devNBz1zQrb", speed: 1.1 })
     const heard: Any[] = []
     let timed: Any = null
     c.make({ n: 1, text: "Hi there.", language: "en" }, { audio: (b: Buffer, t?: Any) => { heard.push(["audio", b.length]); timed = t }, end: () => heard.push(["end"]), fail: (w: string) => heard.push(["fail", w]) })
@@ -315,7 +316,7 @@ export default async ($: VaultTest) => {
       res.end()
     })
     await new Promise<void>((done) => rest.listen(0, "127.0.0.1", done))
-    process.env.VAULTITE_ELEVENLABS_API = `http://127.0.0.1:${(rest.address() as Any).port}`
+    process.env.VAULTITE_ELEVENLABS_API = `http://127.0.0.1:${portOf(rest)}`
     try {
       const keys = async () => (await api("GET", "companion/voice"))[1]
       check("voice key: none, no ElevenLabs voice", !(await keys()).elevenlabs)

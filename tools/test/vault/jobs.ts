@@ -1,11 +1,11 @@
 import { execFileSync, spawn } from "node:child_process"
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
-import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
+import { portOf, request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   // (the companion acting: its own tool call, not any agent's vau)
@@ -441,9 +441,9 @@ export default async ($: VaultTest) => {
     const { matchSocket } = await import("../../../core/plugins.ts")
     const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
     // (the helper's socket, as its upgrade request comes: what its asks' ops run as)
-    const helperReq = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    const helperReq = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
     matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, helperReq, { wild: [], query: { screen: "1" } })
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
     const said: Any[] = []
     const osc = (s: string, more = "") => `printf '\\033]7501;state=${s}${more}\\033\\\\'`
@@ -527,7 +527,7 @@ export default async ($: VaultTest) => {
           const m = JSON.parse(t)
           if (m.t === "things") setImmediate(() => win.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true, window: { x: 0, y: 25, width: 1440, height: 875 }, things: [heading] })))
         } })
-        matchSocket(app.plugins, ["companion", "live"])![1].fn(win as Any, {} as IncomingMessage, { wild: [], query: {} })
+        matchSocket(app.plugins, ["companion", "live"])![1].fn(win as Any, request(), { wild: [], query: {} })
         win.emit("message", JSON.stringify({ t: "where", open: [], shown: [], focus: null, at: Date.now() }))
         heard.length = 0
         ;[pst, pb] = await api("POST", "ops/companion.job-show", { id: card.id, displays: [{ x: 0, y: 0, width: 1440, height: 900 }] })
@@ -661,7 +661,7 @@ export default async ($: VaultTest) => {
       }
       // Not the companion's: another agent's vau (an inbox-resumed session, a job) and a script share its `who`, never its voice or ask.
       {
-        const script = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli" } } as unknown as IncomingMessage
+        const script = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli" }, { remote: "127.0.0.1" })
         // (said since `from`: a count of all would drop as older lines' time on screen ends)
         const says = async (from: number) => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.t >= from).length
         // (a handoff's line is held a moment for the turn's next one: an earlier one's said first, before this ask)
@@ -695,7 +695,7 @@ export default async ($: VaultTest) => {
         }
         {
           // (another session's follow-up to a job, from its own terminal: the job says that one told it, not the companion)
-          const other = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", "x-vaultite-terminal": "claude-watcher1" } } as unknown as IncomingMessage
+          const other = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", "x-vaultite-terminal": "claude-watcher1" }, { remote: "127.0.0.1" })
           const [st] = await api("POST", "ops/companion.handoff", { task: "Also keep the pointer when watched", job: ended[0] }, other)
           const by = "another agent, not the companion: Claude Code in terminal claude-watcher1"
           turn = { text: "Kept it.", files: [], at: Date.now(), final: false, prompt: "Also keep the pointer when watched" }
@@ -712,7 +712,7 @@ export default async ($: VaultTest) => {
         fs.writeFileSync(sess, JSON.stringify({ id: "codex-adatest1", name: "Ada", t: Date.now() }))
         try {
           cScreen.screenMoment({ kind: "ask", agent: "Ada", text: "fix the footer", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
-          const fromIts = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "codex", "x-vaultite-terminal": "codex-adatest1" } } as unknown as IncomingMessage
+          const fromIts = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "codex", "x-vaultite-terminal": "codex-adatest1" }, { remote: "127.0.0.1" })
           const [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the footer", as: "Ada", cwd: repo }, fromIts)
           ended.push(b.id)
           check("handoff from a terminal companion's own session: it says so, and its ask goes with it", st === 200 && /fix the footer/.test(said.at(-1)?.prompt ?? "") &&
@@ -772,7 +772,7 @@ export default async ($: VaultTest) => {
         check("terminal route: a model Claude Code can't run is refused, no terminal started", st === 400 && /isn't a model Claude Code runs/.test(b.error) && said.at(-1)?.model === "claude-haiku-5-5", [st, b])
       }
       // Do it: a task line handed over, in progress; a line that isn't an open task; one that moved; only words.
-      const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+      const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
       const ends: string[] = [], linkEnd = (b: Any) => { const id = String(b.link ?? "").split("/").pop()!; ends.push(id); return id }
       write("Notes/Errands.md", "# Errands\n\n- [ ] Compare the two flights 📅 2026-12-01\n- [x] Book the car\n")
       ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 3, text: "Compare the two flights" }, asApp)
@@ -827,7 +827,7 @@ export default async ($: VaultTest) => {
   // by what it left, read from its session once the terminal's gone; crashed, it failed.
   if (process.platform !== "win32") {
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-plain-")), ids: string[] = [], read: string[] = []
     let then = "sleep 600"
     cc["agent:claude"] = async () => ({ command: `sleep 0.3; printf '\\033]7501;state=working\\033\\\\'; sleep 1.5; ${then}`, cwd: null })
@@ -867,7 +867,7 @@ export default async ($: VaultTest) => {
   if (process.platform !== "win32") {
     const Wk = await import("../../../plugins/core/companion/workers.ts")
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-tidy-")), started: Any[] = []
     let background = 1
     cc["agent:claude"] = async (start: Any) => { started.push(start); return { command: "sleep 0.3; printf '\\033]7501;state=working\\033\\\\'; sleep 0.5; printf '\\033]7501;state=idle\\033\\\\'; sleep 600", cwd: null } }
@@ -918,7 +918,7 @@ export default async ($: VaultTest) => {
       userSaid([typed("drop it"), line({ type: "attachment", attachment: { type: "queued_command", commandMode: "prompt", source_uuid: "u2", prompt: "actually close it", timestamp: "2026-11-07T18:56:00.000Z" } })])?.text === "actually close it" &&
       userSaid([typed("close it", { origin: { kind: "peer" } })]) === null && userSaid([typed("close it", { isSidechain: true })]) === null)
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
-    const by = (h: Record<string, string> = {}) => ({ socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", ...h } }) as unknown as IncomingMessage
+    const by = (h: Record<string, string> = {}) => request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", ...h }, { remote: "127.0.0.1" })
     const agent = by(), plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-word-")), started: Any[] = [], ids: string[] = []
     // (a repo: a job there with changes ends ready for review)
     for (const a of [["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "first"]]) execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd: plain, stdio: "pipe", env: gitEnv() })
@@ -978,8 +978,8 @@ export default async ($: VaultTest) => {
   if (process.platform !== "win32") {
     const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
-    const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
+    const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-trust-")), chosen = path.join(plain, "chosen.txt"), script = path.join(plain, "menus.cjs")
     fs.writeFileSync(script, `const fs = require("fs")
 const menus = [["Accessing workspace:", "Quick safety check: Is this a project you created or one you trust?", "No, exit", "Yes, I trust this folder"],
@@ -1064,7 +1064,7 @@ setTimeout(draw, 300)
       })
     }).listen(0, "127.0.0.1")
     await new Promise((r) => home.once("listening", r))
-    const url = `http://127.0.0.1:${(home.address() as Any).port}`
+    const url = `http://127.0.0.1:${portOf(home)}`
     try {
       const { execute, cliApi } = $.vars, { homeEnv } = await import("../../../core/cli.ts")
       const env = { VAULTITE_HOME: url, VAULTITE_HOME_AS: "box", VAULTITE_TERMINAL: "claude-abc", CLAUDECODE: "1" }
@@ -1139,12 +1139,12 @@ setTimeout(draw, 300)
       })
     }).listen(0, "127.0.0.1")
     await new Promise((r) => server.once("listening", r))
-    const url = `http://127.0.0.1:${(server.address() as Any).port}`
+    const url = `http://127.0.0.1:${portOf(server)}`
     const ms = app.plugins.find((p) => p.id === "machines")!.services, wasM = { ...ms }
     const studio = { id: "studio", label: "Studio", url, online: true, self: false, plugins: ["terminal", "companion"] }
     ms["machines"] = async () => [studio]
     ms["machines:machine"] = async (id: string) => (id === "studio" ? studio : null)
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     let job: Any = null
     try {
       let [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header", machine: "studio", cwd: "~/Projects/site" }, agent))
@@ -1430,8 +1430,8 @@ setTimeout(draw, 300)
   if (process.platform !== "win32") {
     const Wh = await import("../../../plugins/core/companion/where.ts")
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
-    const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
+    const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
     const dir = path.join(roots[0], "cloudy"), bare = path.join(tmp, "cloudy.git"), gh = "https://github.com/lighthouse/cloudy.git"
     const c = (cwd: string, ...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd, stdio: "pipe", env: gitEnv() }).toString()
     fs.mkdirSync(dir, { recursive: true })

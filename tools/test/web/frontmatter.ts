@@ -3,6 +3,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { check } from "../lib.ts"
 import { type Any, fm, ROOT, same, VAULT } from "./lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 // ---------- reading: the same values as the server ----------
 
@@ -91,7 +92,7 @@ const differ = texts.flatMap((t) => {
   const quick = Y.loadPlain(t)
   if (quick === undefined) return []
   let full: unknown
-  try { full = Y.loadYaml(t) } catch (e) { full = `error: ${(e as Error).message}` }
+  try { full = Y.loadYaml(t) } catch (e) { full = `error: ${messageOf(e)}` }
   return same(quick, full) && Object.keys(quick as object).join() === Object.keys(full as object).join() ? [] : [[t, quick, full]]
 })
 check("yaml: frontmatter read by hand reads as the YAML library reads it", !differ.length, differ)

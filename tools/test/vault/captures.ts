@@ -1,11 +1,11 @@
 import { execFileSync, spawn } from "node:child_process"
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
-import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   // (the companion acting: its own tool call, not any agent's vau)
@@ -128,7 +128,7 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(path.join(made, "clip.mp4"), Buffer.from("not really a video"))
     fs.writeFileSync(path.join(made, "frames", "0.0s.png"), Buffer.from("png"))
     fs.writeFileSync(path.join(made, "frames", "1.5s.png"), Buffer.from("png"))
-    const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
     const capture = (more: Any) => ({ kind: "recording", clip: path.join(made, "clip.mp4"), ms: 3000, width: 400, height: 300, box: { x: 10, y: 10, width: 200, height: 150 }, at: new Date(2026, 10, 6, 20, 0, 0).getTime(),
       frames: [{ t: 0, file: path.join(made, "frames", "0.0s.png") }, { t: 1500, file: path.join(made, "frames", "1.5s.png") }, { t: 1530, file: path.join(made, "frames", "1.5s.png") }], narration: [], place: { app: "com.example.browser", title: "Lighthouse" }, ...more })
     let [st, b] = await api("POST", "ops/companion.capture", capture({}), asApp)
@@ -149,8 +149,8 @@ export default async ($: VaultTest) => {
     const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const site = path.join(tmp, "site")
     fs.mkdirSync(site)
     const { gitEnv } = await import("../../../core/gitenv.ts")

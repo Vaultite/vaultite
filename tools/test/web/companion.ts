@@ -3,6 +3,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { check, section } from "../lib.ts"
 import { type Any, ROOT, web } from "./lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 await section("companion reach", async () => {
   const r: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/reach.ts")).href)
@@ -22,7 +23,7 @@ await section("screen drawings", async () => {
   const kept: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/kept.ts")).href)
   const lay: Any = await web("screendraw/layout.ts")
   const dr: Any = await import(pathToFileURL(path.join(ROOT, "electron/drawing.ts")).href)
-  const err = (marks: unknown) => { try { sm.checkMarks(marks); return "" } catch (e) { return (e as Error).message } }
+  const err = (marks: unknown) => { try { sm.checkMarks(marks); return "" } catch (e) { return messageOf(e) } }
   // ---- the vocabulary, checked
   const ok = sm.checkMarks([{ type: "ring", at: [10, 20, 30, 40], label: "Share", beat: 1 }, { type: "point", at: [5, 6] }, { type: "connect", from: { el: "e12" }, to: { x: 1, y: 2, width: 3, height: 4 } },
     { type: "paper", title: "Plan", grid: true, items: [{ type: "chart", kind: "bar", values: [1, 2] }, { type: "arrow", from: [0, 0], to: [100, 50], label: "then" }] },
@@ -156,7 +157,7 @@ await section("screen drawings", async () => {
     edPad.at.area === "top-left" && flow[0].items[2].x === 290, { home, touched: ed.touched })
   check("screen drawings: erasing a shape erases what's bound to it, its pen run backward, then it's gone for good",
     edPad.items.find((i: Any) => i.id === "in").gone === tE && edPad.items[3].gone === tE && !edPad.items[4].gone && sm.pruned(ed.marks, tE + sm.ERASE_MS + 1)[0].items.every((i: Any) => !i.gone), edPad.items.map((i: Any) => [i.id, i.gone]))
-  const edErr = (a: unknown) => { try { sm.editMarks(flow, a); return "" } catch (e) { return (e as Error).message } }
+  const edErr = (a: unknown) => { try { sm.editMarks(flow, a); return "" } catch (e) { return messageOf(e) } }
   check("screen drawings: a change says which action and why: an id not up, an op, nothing to change",
     edErr([{ op: "move", id: "zz", dx: 1 }]).startsWith("actions[0] (move): no \"zz\"") && edErr([{ op: "spin", id: "in" }]).includes("add, move, change or delete") && edErr([{ op: "change", id: "in" }]).includes("what changes"))
   const upText = sm.drawingText({ id: "d", agent: "Claude", tint: "orange", t: 0, marks: [...flow, ...sm.checkMarks([{ type: "image", id: "pic", src: "x.png", at: "centre" }])] })

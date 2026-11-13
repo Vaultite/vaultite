@@ -4,6 +4,8 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
 import { gitEnv } from "../../../core/gitenv.ts"
+import { portOf } from "../fakes.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, write, TOOLS } = $
@@ -99,7 +101,7 @@ export default async ($: VaultTest) => {
         res.writeHead(200, { "content-type": "application/zip" }); res.end(z)
       })
       await new Promise<void>((r) => server.listen(0, "127.0.0.1", r))
-      const base = `http://127.0.0.1:${(server.address() as Any).port}`
+      const base = `http://127.0.0.1:${portOf(server)}`
       const sha = (p: string) => crypto.createHash("sha256").update(zips[p]).digest("hex")
       let [zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/mooring.zip?t=one-time-secret#sha256=${sha("/mooring.zip")}` })
       check("install from a zip: downloaded, its hash checked, its one folder unpacked, off", zc === 200 && zo.id === "mooring" && zo.version === "0.3.0" &&
@@ -206,10 +208,10 @@ export default async ($: VaultTest) => {
       check("several in one: owner/name/folder, its @tag in the folder", parseSource("fleet/plugins/dinghy@v1.0.0").tag === "dinghy/v1.0.0" &&
         parseSource("fleet/plugins/dinghy").repo === "fleet/plugins" && parseSource("fleet/plugins/dinghy").dir === "dinghy")
       let bad = ""
-      try { parseSource("fleet/plugins/../x") } catch (e) { bad = (e as Error).message }
+      try { parseSource("fleet/plugins/../x") } catch (e) { bad = messageOf(e) }
       check("several in one: a folder can't climb out", bad.includes("isn't a plugin's source"), bad)
       let dash = ""
-      try { parseSource("-u@evil:x") } catch (e) { dash = (e as Error).message }
+      try { parseSource("-u@evil:x") } catch (e) { dash = messageOf(e) }
       check("a source can't be read as git's option", dash.includes("starts with a dash"), dash)
       const dinghy = (version: string) => JSON.stringify({ id: "dinghy", name: "Dinghy", description: "A made-up plugin, one of several in a repository.", version,
         author: "Alice Park", repo: "fleet/plugins", apiVersion: 1, disclosures: {} })
@@ -232,7 +234,7 @@ export default async ($: VaultTest) => {
       const path0 = process.env.PATH
       let nogit = ""
       process.env.PATH = path.join(tmp, "repos")
-      try { await tagsOf(FLEET) } catch (e) { nogit = (e as Error).message } finally { process.env.PATH = path0 }
+      try { await tagsOf(FLEET) } catch (e) { nogit = messageOf(e) } finally { process.env.PATH = path0 }
       check("install: without git on this machine, the error says to install it", nogit.includes("git, which isn't on this machine"), nogit)
       const { removeTree } = await import("../../../core/vault.ts")
       const ro = path.join(tmp, "read-only", "objects")

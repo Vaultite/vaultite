@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
+import { portOf, request } from "../fakes.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, read, sleep, tmp, TOOLS } = $
@@ -144,7 +145,7 @@ export default async ($: VaultTest) => {
     const m = JSON.parse(t)
     w2.got.push(m)
     const fn = answers[`${m.action}:${m.what ?? ""}`]
-    if (m.rid && fn) setTimeout(() => { try { w2.say({ type: "ui-done", rid: m.rid, ran: true, result: fn(m) }) } catch (e) { w2.say({ type: "ui-done", rid: m.rid, ran: false, error: (e as Error).message }) } }, 1)
+    if (m.rid && fn) setTimeout(() => { try { w2.say({ type: "ui-done", rid: m.rid, ran: true, result: fn(m) }) } catch (e) { w2.say({ type: "ui-done", rid: m.rid, ran: false, error: messageOf(e) }) } }, 1)
   }
   w2.say({ type: "active" })
   cr = await vau("dev", "console")
@@ -200,7 +201,7 @@ export default async ($: VaultTest) => {
   check("POST /api/ui: no dev asks (only the owner's ops)", uiLive.handle("POST", { action: "dev", what: "eval", code: "1" })[1] === 400)
   const devOps = app.catalog().filter((e) => e.id.startsWith("dev."))
   check("dev ops: four, the owner's only, no MCP tool of their own", devOps.length === 4 && devOps.every((e) => e.owner && !e.mcp), devOps.map((e) => [e.id, e.owner, e.mcp]))
-  const stranger = { headers: { host: "127.0.0.1:8793", "x-forwarded-for": "100.64.0.9" }, socket: { remoteAddress: "127.0.0.1" } } as unknown as IncomingMessage
+  const stranger = request({ host: "127.0.0.1:8793", "x-forwarded-for": "100.64.0.9" }, { remote: "127.0.0.1" })
   const devRefused = await app.callOp("dev.eval", { code: "1" }, undefined, { http: stranger }).then(() => null, (e: Any) => e)
   check("dev ops: refused to anyone but this machine's owner", devRefused?.status === 403, devRefused?.message)
   // The prompt (core/repl.ts): lines split like a shell, Tab from the catalog.
@@ -240,7 +241,7 @@ export default async ($: VaultTest) => {
       })
     })
     await new Promise<void>((ok) => stub.listen(0, "127.0.0.1", ok))
-    const url = `http://127.0.0.1:${(stub.address() as Any).port}`
+    const url = `http://127.0.0.1:${portOf(stub)}`
     const bin = path.join(TOOLS, "..", "bin", "vau")
     const run = (args: string[], o: { stdin?: "pipe" | "ignore"; input?: string; stopAfter?: number; env?: Record<string, string> } = {}) => new Promise<{ code: number | null; out: string; err: string; ms: number }>((resolve) => {
       const t = Date.now()

@@ -1,5 +1,6 @@
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   // Pages' shared state (plugins/core/html/shared.ts): one JSON map per page, the same in every view, kept beside it.
@@ -42,7 +43,7 @@ export default async ($: VaultTest) => {
   await app.callOp("html.shared-set", { path: "Games/Duel.html", values: { round: 3 } })
   check("shared pages: html.shared-set reaches every view", mac.last("set")?.values.round === 3 && phone.last("set")?.values.round === 3)
   let refused = ""
-  try { await app.callOp("html.shared", { path: "Games/../.vaultite/x.html" }) } catch (e) { refused = (e as Error).message }
+  try { await app.callOp("html.shared", { path: "Games/../.vaultite/x.html" }) } catch (e) { refused = messageOf(e) }
   check("shared pages: only a page in the vault", /not an artifact/.test(refused), refused)
 
   // Everyone gone: written at once, and read back by the next one.

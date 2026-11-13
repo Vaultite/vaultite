@@ -4,6 +4,7 @@ import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { check, sleep, standIn, stopTerminals, tempDir, type Any } from "../lib.ts"
 import { forgetMachines } from "../isolate.ts"
+import { request } from "../fakes.ts"
 
 export type { Any }
 export type VaultTest = Awaited<ReturnType<typeof vaultHarness>>
@@ -118,7 +119,7 @@ process.exitCode = 1
   }
   /** A request from a client over HTTP that says who it is (X-Vaultite-Client, X-Vaultite-Agent). */
   const sentBy = (client: string | null, agent: string | null = null) =>
-    ({ headers: { ...(client ? { "x-vaultite-client": client } : {}), ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+    request({ ...(client ? { "x-vaultite-client": client } : {}), ...(agent ? { "x-vaultite-agent": agent } : {}) })
   const read = (rel: string) => fs.readFileSync(path.join(VAULT, rel), "utf8")
   const exists = (rel: string) => fs.existsSync(path.join(VAULT, rel))
   function write(rel: string, text: string) {

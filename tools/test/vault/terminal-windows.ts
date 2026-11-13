@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { skip, standIn, waitFor } from "../lib.ts"
+import { portOf } from "../fakes.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "../../..")
 
@@ -85,7 +86,7 @@ process.exit(0)`
   })
   await new Promise<void>((ok) => listener.listen(0, "127.0.0.1", ok))
   const portWas = process.env.PORT
-  process.env.PORT = String((listener.address() as { port: number }).port)
+  process.env.PORT = String(portOf(listener))
   const screenOf = async (id: string) => { const [, r] = await api("GET", `terminals/${id}/capture?lines=60`); return String(r?.text ?? "") }
   const run = async (id: string, shell: string, text: string, want: RegExp) => {
     term.patchSettings({ shell })

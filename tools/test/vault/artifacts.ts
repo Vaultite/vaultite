@@ -1,8 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
 import { standIn } from "../lib.ts"
+import { request } from "../fakes.ts"
 
 const desktopAllows = (paths: string[]) => process.emit("message", { type: "allow", paths }, undefined)
 
@@ -184,7 +184,7 @@ export default async ($: VaultTest) => {
     check("upload: a stream of 40 MB lands whole", code === 201 && fs.statSync(path.join(VAULT, "Inbox/Big.bin")).size === 40 << 20 &&
       !fs.readdirSync(path.join(VAULT, "Inbox")).some((f) => f.includes(".upload-")), code)
     // An op that takes bytes gets them as the raw body, its parameters in the query (file.upload, any size).
-    const raw = Object.assign(Readable.from([piece, piece]), { headers: { "content-type": "application/octet-stream" } }) as unknown as IncomingMessage
+    const raw = request({ "content-type": "application/octet-stream" }, { body: [piece, piece] })
     const [c2, r2] = await api("POST", "ops/file.upload?name=Raw.bin&folder=Inbox", {}, raw)
     check("file.upload: the raw body is the file", c2 === 200 && r2.path === "Inbox/Raw.bin" && fs.statSync(path.join(VAULT, "Inbox/Raw.bin")).size === 2 << 20, [c2, r2])
     for (const f of ["Big.bin", "Raw.bin"]) fs.rmSync(path.join(VAULT, "Inbox", f))

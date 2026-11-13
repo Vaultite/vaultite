@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, vault, write } = $
@@ -196,7 +197,7 @@ export default async ($: VaultTest) => {
     check("read: offset goes on from there, every line once, to the end", joined === longText && /\(lines \d+-3000 of 3000; to change it/.test(pages.at(-1)!), [pages.length, pages.at(-1)!.slice(-200)])
     const few = (await app.runOp("file.read", { path: "Notes/Long read.md", offset: 10, limit: 2 })).result as Any
     check("read: offset and limit give exactly those lines (the API too)", few.text === `Line 10 ${"x".repeat(60)}\nLine 11 ${"x".repeat(60)}\n` && few.lines === 3000 && few.to === 11, few)
-    const opErr = async (id: string, params: Any, who = whoOf("mcp", "claude-code")) => { try { await app.runOp(id, params, { who }); return "" } catch (e) { return (e as Error).message } }
+    const opErr = async (id: string, params: Any, who = whoOf("mcp", "claude-code")) => { try { await app.runOp(id, params, { who }); return "" } catch (e) { return messageOf(e) } }
     const pageBody = p1.slice(p1.indexOf("\n\n") + 2)
     check("write_file: a page as read is refused (it would drop the rest)", /drop the rest/.test(await opErr("file.write", { path: "Notes/Long read.md", text: pageBody })) && read("Notes/Long read.md") === longText)
     check("write_file: a file longer than one read needs base over MCP", /longer than one read/.test(await opErr("file.write", { path: "Notes/Long read.md", text: "short\n" })) && read("Notes/Long read.md") === longText)

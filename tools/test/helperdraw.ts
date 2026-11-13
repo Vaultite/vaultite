@@ -7,6 +7,7 @@ import path from "node:path"
 import { mock } from "node:test"
 import { pathToFileURL } from "node:url"
 import { WebSocketServer, type WebSocket } from "ws"
+import { portOf } from "./fakes.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "../..")
 const at = (f: string) => pathToFileURL(path.join(ROOT, "electron", f)).href
@@ -72,7 +73,7 @@ const srv = http.createServer((q, res) => {
 const wss = new WebSocketServer({ noServer: true })
 srv.on("upgrade", (req, s, h) => wss.handleUpgrade(req, s, h, (ws) => { sock = ws; ws.send(JSON.stringify({ t: "state", mode: "pair", name: "Claude", agents: [agent], notes: [] })) }))
 await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r))
-const port = (srv.address() as { port: number }).port
+const port = portOf(srv)
 const setAgent = (a: Record<string, unknown>) => {
   agent = Object.fromEntries(Object.entries({ ...agent, ...a }).filter(([, v]) => v !== undefined))
   sock!.send(JSON.stringify({ t: "agent", agent }))

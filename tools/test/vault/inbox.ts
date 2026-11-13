@@ -1,16 +1,17 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
 import type { Turn } from "../../../plugins/core/inbox/needs.ts"
 import { waitFor } from "../lib.ts"
+import { portOf, request } from "../fakes.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, write } = $
   const { vau } = $.vars
   let cr: Any
   /** A request from the app on this machine: only the user's surfaces approve or deny what waits on them. */
-  const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+  const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
     const { asThreads, byThread, categoryOf, findEvent, previewOf, prune, settled } = await import("../../../plugins/core/inbox/plugin.ts")
@@ -26,7 +27,7 @@ export default async ($: VaultTest) => {
       const o = specOf({ question: "Which account for tonight's deploy?", options: ["Work: the team sees it", { label: "Personal", does: "only you see it" }], default: "personal", blocking: true, why: "The Lighthouse deploy job asks." })
       const bad = ["Ship? | Yes: a | No: b", "Ship it now? | Yes: a* | No: b*", "Ship the docs? | Yes* | No: b | why: c", "Ship the docs? | Yes: a* | No: b",
         { question: "Ship?", options: ["Yes: a"], default: "Yes", why: "c" }, { question: "", options: ["A: a", "B: b"], default: "A", why: "c" }]
-        .map((x) => { try { specOf(x); return "" } catch (e) { return (e as Error).message } })
+        .map((x) => { try { specOf(x); return "" } catch (e) { return messageOf(e) } })
       check("decision specs: text with its default starred and its why, an object; what's wrong said", t.options.join() === "Yes,Not yet" && t.effects.join() === "the phone gets it today,desktop only" &&
         t.default === "Not yet" && t.why === "The sidebar job is live on desktop." && !t.blocking && t.title === "Ship the sidebar to the phone too" && !t.warn &&
         o.default === "Personal" && o.effects[1] === "only you see it" && o.blocking && bad.every(Boolean) && /what it causes/.test(bad[2]) && /say why/.test(bad[3]), [t, o, bad])
@@ -391,8 +392,7 @@ export default async ($: VaultTest) => {
         r[0].preview === "How should it sign builds? Local cert (Recommended) or Not now" && categoryOf(r[0]) === "reply", r)
       check("choice: a number, a name (Recommended or not, any case), else typed; a multi-select's by commas", JSON.stringify([choiceOf(qs[0], "2"),
         choiceOf(qs[0], "local cert"), choiceOf(qs[0], "Use the M4's"), choiceOf({ ...qs[0], multi: true }, "1, not now")]) === '[[2],[1],"Use the M4\'s",[1,2]]')
-      const as = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
-        headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+      const as = (client: string, agent: string | null = null) => request({ host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) }, { remote: "127.0.0.1" })
       const [byAgent] = await api("POST", "ops/inbox.answer", { id: r[0].id, answer: "pick", picks: ["1"] }, as("cli", "claude-code"))
       ;[st, b] = await api("POST", "ops/inbox.answer", { id: r[0].id, answer: "pick", picks: ["1"] }, as("app/desktop"))
       check("pick: the user's alone (an agent's refused), and only while its terminal shows the question", byAgent === 403 && st === 409 && /doesn't show/.test(b.error), [byAgent, st, b])
@@ -922,7 +922,7 @@ export default async ($: VaultTest) => {
       const socks: Any[] = []
       wss.on("connection", (ws, req) => { seen.push(`WS ${req.url}`); socks.push(ws); ws.send(JSON.stringify({ t: "events", events: theirs })) })
       await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
-      const port = (peer.address() as { port: number }).port
+      const port = portOf(peer)
       write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "box", label: "Box", url: `http://127.0.0.1:${port}` }] }))
       await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Here, not there" })
       await followMachines()
@@ -972,7 +972,7 @@ export default async ($: VaultTest) => {
         const watcher = (local: boolean) => {
           const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as string[], send(m: string) { ws.got.push(m) }, close() {},
             ping() { ws.emit("pong") }, terminate() {} }) // (the inbox pings its sockets every 15 s: a slow run reaches it)
-          matchSocket(app.plugins, ["inbox", "live"])![1].fn(ws as Any, {} as IncomingMessage, { wild: [], query: local ? { local: "1" } : {} })
+          matchSocket(app.plugins, ["inbox", "live"])![1].fn(ws as Any, request(), { wild: [], query: local ? { local: "1" } : {} })
           return ws
         }
         const there = watcher(true), here = watcher(false)
@@ -1036,8 +1036,7 @@ export default async ($: VaultTest) => {
     const ask = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask") as (b: Any) => Promise<string>
     const answerOf = app.plugins.find((p) => p.id === "inbox")!.service("inbox:answer") as (id: string, ms?: number) => Promise<string>
     // (each from this machine, as its owner: what tells them apart is who they say they are)
-    const from = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
-      headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+    const from = (client: string, agent: string | null = null) => request({ host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) }, { remote: "127.0.0.1" })
     const gate = await ask({ source: "mcp", key: "gate-agents", title: "Grok Bot asks to run file.delete", body: "file.delete {}" })
     const tries = [
       await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("mcp")),

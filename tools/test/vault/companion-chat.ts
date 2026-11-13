@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process"
 import crypto from "node:crypto"
 import { EventEmitter } from "node:events"
-import type { IncomingMessage } from "node:http"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -10,6 +9,7 @@ import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 import { onItsOwn } from "../../../core/writegate.ts"
+import { request } from "../fakes.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..")
 const CHATD = path.join(ROOT, "plugins/core/claude-code/chatd.ts")
@@ -61,7 +61,7 @@ async function window(path: string, how: { hidden?: boolean; closes?: boolean } 
     else if (m.t === "stream-end") reply({ t: "done", rid: m.rid, ok: true, text: m.text })
   }
   return { ws, got, typed, open: (plugins: Any[]) => {
-    matchSocket(plugins, ["companion", "live"])![1].fn(ws as Any, {} as IncomingMessage, { wild: [], query: {} })
+    matchSocket(plugins, ["companion", "live"])![1].fn(ws as Any, request(), { wild: [], query: {} })
     ws.emit("message", Buffer.from(JSON.stringify({ t: "where", open: [path], shown: [path], focus: { path, line: 3 }, active: true })))
   }, close: () => ws.emit("close") }
 }
@@ -417,7 +417,7 @@ export default async ($: VaultTest) => {
       // (the helper's socket: marks are drawn only where it is)
       const { matchSocket: socketOf } = await import("../../../core/plugins.ts")
       const screen1: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { screen1.got.push(JSON.parse(t)) }, close() {}, ping() {}, terminate() {} })
-      socketOf($.app.plugins, ["companion", "live"])![1].fn(screen1, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+      socketOf($.app.plugins, ["companion", "live"])![1].fn(screen1, request(), { wild: [], query: { screen: "1" } })
       cScreen.screenMoment({ kind: "ask", agent: "Claude", text: 'words Here [frame 10,20,30,40 "Tabs"], not [ring "Nowhere at all"].', app: "com.example.mail", window: 9, sx: 150, sy: 90,
         shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 }, ink: [{ shape: "ring", box: { x: 400, y: 300, width: 50, height: 40 }, points: [[400, 300], [450, 340]] }] })
       await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^Here/.test(n.text ?? "")), 15_000, 50)
@@ -538,7 +538,7 @@ export default async ($: VaultTest) => {
         const { matchSocket } = await import("../../../core/plugins.ts")
         let onHelper: (m: Any) => void = () => {}
         const helper: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { const m = JSON.parse(t); helper.got.push(m); onHelper(m) }, close() {}, ping() {}, terminate() {} })
-        matchSocket($.app.plugins, ["companion", "live"])![1].fn(helper, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+        matchSocket($.app.plugins, ["companion", "live"])![1].fn(helper, request(), { wild: [], query: { screen: "1" } })
         const tell = (m: object) => helper.emit("message", Buffer.from(JSON.stringify(m)))
         tell({ t: "moment", kind: "none" })
         const offers = () => helper.got.filter((m: Any) => m.t === "confirm"), up: string[] = []
@@ -615,7 +615,7 @@ export default async ($: VaultTest) => {
       await api("POST", "ops/claude-code.chat-stop", { id: quick })
       const { matchSocket } = await import("../../../core/plugins.ts")
       const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
-      matchSocket($.app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+      matchSocket($.app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
       sc.emit("message", Buffer.from(JSON.stringify({ t: "summoning" })))
       const warmed = await waitFor(() => { try { const x = JSON.parse(fs.readFileSync(laneFile, "utf8")).id; return x !== quick ? x : null } catch { return null } }, 5000, 50)
       check("summoned: its Talk key pressed with no process up, a fresh one starts while they speak", !!warmed && (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.some((s: Any) => s.id === warmed), warmed)

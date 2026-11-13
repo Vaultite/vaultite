@@ -1,4 +1,5 @@
 import { check, section } from "../lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 // ---------- Browser: where agents from outside this machine may go (core/web.ts localUrl, electron/browser/agent.ts) ----------
 await section("agents' local addresses", async () => {
@@ -41,7 +42,7 @@ await section("login approvals", async () => {
     const signature = crypto.sign("sha256", Buffer.concat([ad, sha(cd)]), { key: o.key ?? d.privateKey, dsaEncoding: "der" })
     return { id: b64u(d.id), clientDataJSON: b64u(cd), authenticatorData: b64u(ad), signature: b64u(signature) }
   }
-  const fails = (fn: () => unknown) => { try { fn(); return "" } catch (e) { return (e as Error).message || "failed" } }
+  const fails = (fn: () => unknown) => { try { fn(); return "" } catch (e) { return messageOf(e) || "failed" } }
 
   const phone = device(), c1 = crypto.randomBytes(32)
   const pk = pr.register(created(phone, c1), c1, "iPhone")

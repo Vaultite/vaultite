@@ -4,6 +4,7 @@ import http from "node:http"
 import path from "node:path"
 import { WebSocketServer, type WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
+import { portOf } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { check, sleep } = $
@@ -60,7 +61,7 @@ export default async ($: VaultTest) => {
     })
   })
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
-  const url = `ws://127.0.0.1:${(server.address() as Any).port}/v1/realtime`
+  const url = `ws://127.0.0.1:${portOf(server)}/v1/realtime`
 
   const { realtimeFront } = await import("../../../electron/realtimefront.ts")
   type Owner = { id: number }
@@ -230,7 +231,7 @@ export default async ($: VaultTest) => {
     // (a key restricted to Realtime lists no models: it's checked by a client secret asked for, free)
     const rest = http.createServer((req, res) => { res.statusCode = req.url !== "/v1/realtime/client_secrets" || req.method !== "POST" ? 403 : req.headers.authorization === "Bearer sk-good-openai-key-1234567" ? 200 : 401; res.end("{}") })
     await new Promise<void>((done) => rest.listen(0, "127.0.0.1", done))
-    process.env.VAULTITE_OPENAI_API = `http://127.0.0.1:${(rest.address() as Any).port}`
+    process.env.VAULTITE_OPENAI_API = `http://127.0.0.1:${portOf(rest)}`
     try {
       const keys = async () => (await api("GET", "companion/realtime"))[1]
       check("realtime key: none, no realtime voice", !(await keys()).key)

@@ -3,6 +3,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 const desktopAllows = (paths: string[]) => process.emit("message", { type: "allow", paths }, undefined)
 
@@ -47,7 +48,7 @@ export default async ($: VaultTest) => {
     check("SheetJS: the release PROVENANCE.md names, but for the lines marked as ours",
       fs.readFileSync(path.join(XD, "PROVENANCE.md"), "utf8").includes(released) && lib.split("// vaultite: ").length - 1 === 6, released)
     const X = createRequire(import.meta.url)(path.join(XD, "xlsx.mjs")) as typeof import("../../../plugins/core/spreadsheets/xlsx/xlsx.mjs")
-    const fails = (file: Buffer) => { try { return `read: ${workbookMarkdown(file).slice(0, 80)}` } catch (e) { return String((e as Error).message ?? e) } }
+    const fails = (file: Buffer) => { try { return `read: ${workbookMarkdown(file).slice(0, 80)}` } catch (e) { return String(messageOf(e) ?? e) } }
     check("a broken workbook fails, never reads as something", /Corrupt|Unsupported|Bad /.test(fails(fx.xlsx().subarray(0, 300))) &&
       /Corrupt|Unsupported/.test(fails(Buffer.from(`PK\x03\x04${"\x07".repeat(200)}`, "latin1"))), [fails(fx.xlsx().subarray(0, 300))])
     const cut = fx.brokenXlsx()

@@ -1,10 +1,10 @@
 import { execFileSync, spawn } from "node:child_process"
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
-import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check } = $
@@ -76,8 +76,8 @@ export default async ($: VaultTest) => {
     for (const a of [["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "first"]]) execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd: site, stdio: "pipe", env: gitEnv() })
     const server = spawn(process.execPath, ["-e", "const s=require('http').createServer(()=>{}).listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { cwd: site, stdio: ["ignore", "pipe", "ignore"] })
     const port = await new Promise<string>((ok) => server.stdout!.once("data", (d) => ok(String(d).trim())))
-    const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
-    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
+    const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
     const started: Any[] = []
     cc["agent:claude"] = async (s: Any) => { started.push(s); return { command: "sleep 600", cwd: null } }
@@ -85,7 +85,7 @@ export default async ($: VaultTest) => {
     await import("../../../plugins/core/companion/plugin.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
     const at = new Date(2026, 10, 6, 22, 0, 0).getTime()
     const item = (said: string, place: Any, more: Any = {}) => ({ said, from: at, to: at + 2000, at: { x: 100, y: 100 }, place, ...more })
     const items = [

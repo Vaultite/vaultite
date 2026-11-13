@@ -1,4 +1,5 @@
 import { check, section } from "../lib.ts"
+import { portOf } from "../fakes.ts"
 
 // ---------- Browser: passkeys from a phone (electron/browser/hybrid.ts, webauthn.ts) ----------
 // Chromium's and a real phone's vectors (via kanidm's webauthn-authenticator-rs), then sign-up and sign-in with a fake phone.
@@ -45,7 +46,7 @@ await section("passkeys", async () => {
   // A phone: a tunnel server on 127.0.0.1 that's also the phone at its far end, holding one P-256 passkey.
   const server = new WebSocketServer({ port: 0, host: "127.0.0.1", handleProtocols: (p) => (p.has("fido.cable") ? "fido.cable" : false) })
   await new Promise((ok) => server.once("listening", ok))
-  const port = (server.address() as { port: number }).port
+  const port = portOf(server)
   const cred = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }), credId = crypto.randomBytes(16)
   const jwk = cred.publicKey.export({ format: "jwk" }) as { x: string; y: string }
   const cose = encode(new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(jwk.x, "base64url")], [-3, Buffer.from(jwk.y, "base64url")]]) as never)

@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { portOf } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, write } = $
@@ -150,7 +151,7 @@ export default async ($: VaultTest) => {
     })
     await new Promise<void>((r) => box.listen(0, "127.0.0.1", r))
     const machines = app.plugins.find((p: Any) => p.id === "machines")!, was = { ...machines.services }
-    const online = { id: "box", label: "Box", url: `http://127.0.0.1:${(box.address() as Any).port}`, online: true, self: false }
+    const online = { id: "box", label: "Box", url: `http://127.0.0.1:${portOf(box)}`, online: true, self: false }
     Object.assign(machines.services, { "machines:ids": () => ["box", "here"], "machines:self": async () => "here", "machines:machine": async (id: string) => (id === "box" ? online : null) })
     const today = `Recaps/${localDay()}.md`
     if (exists(today)) fs.rmSync(path.join(VAULT, today))

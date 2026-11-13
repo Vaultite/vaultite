@@ -1,4 +1,5 @@
 import { check, section } from "../lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 // ---------- Browser: agents' logins from a KeePass file (electron/browser/keepass.ts, loginform.ts, pagesecrets.ts) ----------
 // A made-up agents.kdbx written here; never a real one.
@@ -37,10 +38,10 @@ await section("agent logins", async () => {
   const got = opened.secrets(light.id)
   check("agent logins: an entry's secrets, read for the fill", got?.password === SECRET && got.username === "alice" && got.otp !== "steam" && got.otp?.digits === 6, got && { ...got, password: "(hidden)" })
   let wrong = ""
-  try { await kp.openDatabase(file, "not it") } catch (e) { wrong = (e as Error).message }
+  try { await kp.openDatabase(file, "not it") } catch (e) { wrong = messageOf(e) }
   check("agent logins: a wrong password says so, plainly", /password/i.test(wrong) && !wrong.includes("not it"), wrong)
   let junk = ""
-  try { await kp.openDatabase(new TextEncoder().encode("not a database"), PASSWORD) } catch (e) { junk = (e as Error).message }
+  try { await kp.openDatabase(new TextEncoder().encode("not a database"), PASSWORD) } catch (e) { junk = messageOf(e) }
   check("agent logins: a file that isn't KeePass's says so", /KeePass/.test(junk) && !junk.includes(PASSWORD), junk)
 
   // Strict matching, as a password manager's: never a lookalike, subdomains only when the entry says so.

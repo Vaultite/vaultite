@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
+import { request } from "../fakes.ts"
 
 // How a shell's life ends, on real shells: what's told, once, and whether its tabs close when put back.
 export default async ($: VaultTest) => {
@@ -25,7 +25,7 @@ export default async ($: VaultTest) => {
     const sent: Any[] = []
     let code = 0
     const ws = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (m: unknown) => sent.push(typeof m === "string" ? JSON.parse(m) : String(m)), close: (c: number) => { code = c; ws.readyState = 3 }, on: () => {}, terminate: () => {} }
-    const req = { headers: { host: "127.0.0.1" }, socket: { remoteAddress: "127.0.0.1" } } as unknown as IncomingMessage
+    const req = request({ host: "127.0.0.1" }, { remote: "127.0.0.1" })
     await socket.fn(ws as never, req, { wild: [id], query: { attach: "1" } } as never)
     return { sent, code }
   }

@@ -1,14 +1,14 @@
 import fs from "node:fs"
-import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { request } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check } = $
   // Teach by showing on the server (companion.teach): a lesson the desktop app sends made a draft tour or skill, a
   // name taken getting the next, a preview writing nothing, and a skill's SKILL.md played as a tour (companion.tour).
   await import("../../../plugins/core/companion/plugin.ts")
-  const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+  const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
   const t0 = new Date(2026, 10, 6, 23, 0, 0).getTime(), win = { x: 0, y: 0, width: 1000, height: 800 }
   const el = (role: string, label: string, x: number, y: number) => ({ role, label, frame: { x, y, width: 80, height: 24 }, inside: [{ role: "group", label: "Toolbar" }] })
   const acts = [

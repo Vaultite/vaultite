@@ -2,6 +2,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { check } from "../lib.ts"
 import { type Any, type Props, same, WEB, web } from "./lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 // ---------- tabs: tabs hold panes (core/layout.ts; web/src/core/workspace.ts, splits.ts, tabgroups.ts, drop.ts) ----------
 
@@ -690,7 +691,7 @@ check("events: unsubscribed, nothing heard", said() === "")
 // A pane named as the user says it (vau open --in), and something opened there as a new tab of its own.
 put([S("tx", row("s0", [col("s1", [a, b]), c]), "c"), T("d")], "tx")
 gr.setPaneLabeler((p: Any) => (p.to === "file:c.md" ? "Squad: a team of agents" : p.to))
-const nm = (q: string) => { try { return gr.paneNamed(q).id } catch (e) { return (e as Error).message } }
+const nm = (q: string) => { try { return gr.paneNamed(q).id } catch (e) { return messageOf(e) } }
 check("vau open --in: a pane by where it is, by this, by what it shows (another tab's too), by its title's words, by id",
   nm("top left") === "a" && nm("the bottom-left one") === "b" && nm("the right side panel") === "c" && nm("this") === "c" && nm("b.md") === "b"
   && nm("the one showing d") === "d" && nm("the one showing squad") === "c" && nm("a") === "a",
@@ -707,7 +708,7 @@ ws.openInPane("d", "file:z.md")
 check("vau open --in: a tab of one pane gets a tab after it", tabs() === "[[view:web/https://x.test//b]|c],d,z*", tabs())
 
 // ---- what agents ask (vau tabs) ----
-const ask = (m: Props) => { try { return g.__answerUi.tabs(m) } catch (e) { return { error: (e as Error).message } } }
+const ask = (m: Props) => { try { return g.__answerUi.tabs(m) } catch (e) { return { error: messageOf(e) } } }
 put([S("tx", row("s0", [a, b]), "b"), T("c")], "tx")
 check("vau tabs list: each tab with its panes (path, focused), the one on screen; the groups",
   same(ask({ do: "list" }), { tabs: [{ id: "tx", active: true, panes: [{ id: "a", to: "file:a.md", path: "a.md" }, { id: "b", to: "file:b.md", path: "b.md", focused: true }] },

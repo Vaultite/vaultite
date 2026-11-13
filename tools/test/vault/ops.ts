@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { modesEnforced } from "../lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, vault, write } = $
@@ -25,7 +26,7 @@ export default async ($: VaultTest) => {
         const r = hit.op.kind === "read" || hit.op.lock === false ? await vault.synced().then(go) : await app.hold(go)
         return { error: false, text: r.op.text ? r.op.text(r.result, r.params) : JSON.stringify(r.result), result: r.result as Any }
       } catch (e) {
-        return { error: true, text: (e as Error).message, result: null }
+        return { error: true, text: messageOf(e), result: null }
       }
     }
     await api("GET", "state") // (the plugins turned back on above)

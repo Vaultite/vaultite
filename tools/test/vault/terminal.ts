@@ -5,6 +5,7 @@ import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import type { Any, VaultTest } from "./harness.ts"
 import { freePort } from "../lib.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, tmp, vault } = $
@@ -491,7 +492,7 @@ export default async ($: VaultTest) => {
     check("terminal server: keys by name go as their bytes", typeof keyed === "string" && /003\s+033\s+\[\s+A\s+033\s+033\s+x\s+\\t/.test(keyed), keyed)
     let bad = ""
     await b.create("keys2", { ...spec, run: { command: "sleep 5" } })
-    try { await b.send("keys2", { keys: ["Hyper-Q"] }) } catch (e) { bad = (e as Error).message }
+    try { await b.send("keys2", { keys: ["Hyper-Q"] }) } catch (e) { bad = messageOf(e) }
     await b.kill("keys2")
     check("terminal server: a key it doesn't know is refused, saying which", bad.includes("'Hyper-Q' isn't a key"), bad)
     // An end while nobody listened (the app's server away): told to the next to subscribe, once.

@@ -1,10 +1,12 @@
 import crypto from "node:crypto"
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
-import http, { type IncomingMessage } from "node:http"
+import http from "node:http"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
+import { portOf } from "../fakes.ts"
+import { request } from "../fakes.ts"
 
 /** A stand-in for the Agent SDK's query: it answers each message by what it says ("permission", "question", "plan", "slow",
  *  "hold": wait for `go()`), takes each the moment it's sent (as the SDK does) and runs them in turn; Stop takes back the rest. */
@@ -117,8 +119,7 @@ export default async ($: VaultTest) => {
   const { IMAGES } = await import("../../../plugins/core/claude-code/chatpictures.ts")
   const { merge } = await import("../../../plugins/core/claude-code/chatentries.ts")
   const { matchSocket } = await import("../../../core/plugins.ts")
-  const as = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
-    headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+  const as = (client: string, agent: string | null = null) => request({ host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) }, { remote: "127.0.0.1" })
   const asApp = as("app/desktop")
   const rows = async () => { await settled(); return (await api("GET", "inbox/events"))[1].events as Any[] }
 
@@ -498,7 +499,7 @@ export default async ($: VaultTest) => {
         else res.writeHead(404).end("{}")
       }).listen(0, "127.0.0.1")
       await new Promise((r) => server.once("listening", r))
-      const studio = { id: "studio", label: "Studio", url: `http://127.0.0.1:${(server.address() as Any).port}`, online: false, self: false, plugins: ["claude-code"] }
+      const studio = { id: "studio", label: "Studio", url: `http://127.0.0.1:${portOf(server)}`, online: false, self: false, plugins: ["claude-code"] }
       ms["machines:machine"] = async (mid: string) => (mid === "studio" ? studio : null)
       try {
         const off = tab()

@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, read, write } = $
@@ -135,7 +136,7 @@ export default async ($: VaultTest) => {
     check("board: a column's value is what its files have (a link stays a link)", linked.groups[0].name === "Bob Lee" && linked.groups[0].value === "[[Bob Lee]]"
       && linked.groups[1].name === null && linked.groups[1].rows.length === 2, linked.groups)
     let why = ""
-    try { run({ view: "board" }, recs) } catch (e) { why = (e as Error).message }
+    try { run({ view: "board" }, recs) } catch (e) { why = messageOf(e) }
     check("board: needs a group", /needs a group/.test(why), why)
     // Calendars: a month, by a date key (default `date`, else `created`), a group per day.
     const cal = run({ view: "calendar", date: "met", month: "2026-09" }, recs)
@@ -148,7 +149,7 @@ export default async ($: VaultTest) => {
     check("calendar: default key date, this month, in order, times kept", days.date === "date" && days.month === "2026-09"
       && JSON.stringify(days.groups.map((x: Any) => [x.name, x.rows.map((r: Any) => r.title)])) === '[["2026-09-03",["Gym"]],["2026-09-27",["Climb"]]]', days.groups)
     why = ""
-    try { run({ view: "calendar", month: "2026-13" }, recs) } catch (e) { why = (e as Error).message }
+    try { run({ view: "calendar", month: "2026-13" }, recs) } catch (e) { why = messageOf(e) }
     check("calendar: a bad month says so", /month is YYYY-MM/.test(why), why)
 
     // As text, and a card moved: the app writes that one key (PUT /api/file with its base) and the board follows.

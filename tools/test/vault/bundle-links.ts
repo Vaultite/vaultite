@@ -2,6 +2,7 @@ import { parseRepo, repoText, webLink } from "../../../core/bundlelinks.ts"
 import { fromGitHub } from "../../../web/demo/github.ts"
 import { fitForDemo } from "../../../web/demo/machine.ts"
 import type { Any, VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { api, check } = $
@@ -55,7 +56,7 @@ export default async ($: VaultTest) => {
     const one = { "README.md": "hi", "desk.bundle.json": JSON.stringify({ vaultite: "bundle", format: 1, id: "desk", files: { "bundle.json": { name: "Desk" } } }) }
     const single = await fromGitHub("alice/one", gh(one, []))
     check("demo import: or one .bundle.json", single.id === "desk" && JSON.parse(single.files["bundle.json"] as string).name === "Desk", single)
-    const fails = async (given: string, f: Any, want: RegExp) => { try { await fromGitHub(given, f); return "imported" } catch (e) { return want.test((e as Error).message) ? "" : (e as Error).message } }
+    const fails = async (given: string, f: Any, want: RegExp) => { try { await fromGitHub(given, f); return "imported" } catch (e) { return want.test(messageOf(e)) ? "" : messageOf(e) } }
     const errors = [
       await fails("alice/gone", gh({}, null), /no public repository alice\/gone/),
       await fails("alice/plain", gh({ "README.md": "hi" }, []), /has no bundle/),

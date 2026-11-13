@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { portOf } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, clearWs, read, readWs, write } = $
@@ -24,7 +25,7 @@ export default async ($: VaultTest) => {
       json(404, { error: "no such thing" })
     })
     await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
-    const port = (peer.address() as { port: number }).port
+    const port = portOf(peer)
     write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [
       { id: "box", label: "Box", url: `http://127.0.0.1:${port}/` }, { id: "gone", url: "http://127.0.0.1:9" }, { id: "Not ok!", url: "x" }, { id: "box", url: "http://other" },
     ] }))
@@ -113,7 +114,7 @@ export default async ($: VaultTest) => {
       if (slow) setTimeout(send, 3800); else send()
     })
     await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
-    const url = `http://127.0.0.1:${(peer.address() as { port: number }).port}`
+    const url = `http://127.0.0.1:${portOf(peer)}`
     const list = (label: string, more: Any[] = []) => write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "busy", label, url }, ...more] }))
     list("Busy")
     let [, ms] = await api("GET", "machines")
@@ -257,7 +258,7 @@ export default async ($: VaultTest) => {
       json(404, { error: "no such thing" })
     })
     await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
-    write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "box", label: "Box", url: `http://127.0.0.1:${(peer.address() as { port: number }).port}/` },
+    write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "box", label: "Box", url: `http://127.0.0.1:${portOf(peer)}/` },
       { id: "gone", url: "http://127.0.0.1:9" }] }))
     await api("GET", "machines")
     write("Notes/Qa there.md", "Over there.\n")
@@ -321,7 +322,7 @@ export default async ($: VaultTest) => {
       json(404, { error: "no such thing" })
     })
     await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
-    write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "studio", label: "Studio", url: `http://127.0.0.1:${(peer.address() as { port: number }).port}/` }] }))
+    write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "studio", label: "Studio", url: `http://127.0.0.1:${portOf(peer)}/` }] }))
     await api("GET", "machines")
     try {
       const [c, body] = await api("POST", "ops/web-viewer.wait", { tab: 3, helped: true, timeout: 600 })

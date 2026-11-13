@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { check, tmp } = $
@@ -38,14 +39,14 @@ export default async ($: VaultTest) => {
     check("macpermissions: with no room below, inside the window's bottom; never off the screen",
       low.y === 40 && (edge.x as number) + (edge.width as number) <= 1512 - 10, [low, edge])
     let threw = ""
-    try { mac.call({ cmd: "nope" }) } catch (e) { threw = (e as Error).message }
+    try { mac.call({ cmd: "nope" }) } catch (e) { threw = messageOf(e) }
     check("macpermissions: an unknown command says so", threw.includes("no command"), threw)
     // The gestures addon (electron/gestures.m): which windows' pinches go to the page under them, by window number.
     const gestures = loadMacAddon(await buildMacAddon("gestures", path.join(tmp, "gestures")))
     const passing = [gestures.call({ cmd: "pass", window: 41, on: true }), gestures.call({ cmd: "pass", window: 42, on: true }), gestures.call({ cmd: "pass", window: 41, on: false })]
     check("gestures: windows passing pinches on, then off", passing.map((r) => r.passing).join() === "1,2,1", passing)
     let bare = ""
-    try { gestures.call({ cmd: "pass", on: true }) } catch (e) { bare = (e as Error).message }
+    try { gestures.call({ cmd: "pass", on: true }) } catch (e) { bare = messageOf(e) }
     check("gestures: a pass names its window", bare.includes("window"), bare)
     // The menus addon (electron/menus.m): the menu bar menu's section headers drawn bold, on from then on.
     const menus = loadMacAddon(await buildMacAddon("menus", path.join(tmp, "menus")))

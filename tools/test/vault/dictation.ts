@@ -5,6 +5,8 @@ import path from "node:path"
 import { WebSocketServer } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
 import { sharedTmp } from "../../../core/testrun.ts"
+import { portOf } from "../fakes.ts"
+import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, tmp, vault } = $
@@ -24,7 +26,7 @@ export default async ($: VaultTest) => {
   // (Soniox's REST API stood in: a key it knows, one it refuses)
   const rest = http.createServer((req, res) => { res.statusCode = req.headers.authorization === "Bearer good-key-123" ? 200 : 401; res.end("{}") })
   await new Promise<void>((done) => rest.listen(0, "127.0.0.1", done))
-  process.env.VAULTITE_SONIOX_API = `http://127.0.0.1:${(rest.address() as Any).port}`
+  process.env.VAULTITE_SONIOX_API = `http://127.0.0.1:${portOf(rest)}`
   process.env.VAULTITE_SONIOX_URL = "ws://127.0.0.1:1/stand-in"
   try {
     fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
@@ -126,7 +128,7 @@ async function helper($: VaultTest, tmp: string) {
   if (process.platform !== "darwin") return
   const { dictationSwift } = await import("../../../electron/dictation-build.ts")
   let bin: string
-  try { bin = await dictationSwift.build(path.join(sharedTmp(), "vaultite-natives", "dictation-test")) } catch (e) { console.log(`  (skipped the helper: ${(e as Error).message})`); return }
+  try { bin = await dictationSwift.build(path.join(sharedTmp(), "vaultite-natives", "dictation-test")) } catch (e) { console.log(`  (skipped the helper: ${messageOf(e)})`); return }
   const audio = path.join(tmp, "two.aiff")
   // (`say -o` writes a file, nothing is played)
   execFileSync("say", ["-o", audio, "Remember to buy milk and bread. [[slnc 1500]] Then call Alice Park about the lighthouse project."])
@@ -172,7 +174,7 @@ async function helper($: VaultTest, tmp: string) {
     })
   })
   await new Promise<void>((done) => srv.listen(0, "127.0.0.1", done))
-  const port = (srv.address() as Any).port
+  const port = portOf(srv)
   const run = (mode: string, key = "test-key", more: string[] = [], file = audio) => new Promise<Any[]>((done) => {
     const c = spawn(bin, ["--file", file, "--fast", ...more, "--engine", "apple", "--language", "en-US", "--words", "Alice Park,at Claude",
       "--cloud", JSON.stringify({ url: `ws://127.0.0.1:${port}/${mode}`, key, languages: ["en", "pt"] })], { stdio: ["ignore", "pipe", "ignore"] })
