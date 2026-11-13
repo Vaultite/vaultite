@@ -15,7 +15,7 @@ type View = { up: Shown[]; gone: Shown[] }
 let view: View = { up: [], gone: [] }
 const listeners = new Set<() => void>()
 const set = (v: View) => { view = v; for (const l of listeners) l() }
-const bridge = (window as unknown as { vaultiteScreen?: { draw?: DrawBridge } }).vaultiteScreen?.draw
+const bridge = window.vaultiteScreen?.draw
 bridge?.on((x) => {
   const up = Array.isArray(x) ? x : x ? [x] : [], ids = new Set(up.map((d) => d.id))
   const left = view.up.filter((d) => !ids.has(d.id))

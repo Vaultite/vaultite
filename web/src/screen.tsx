@@ -42,7 +42,7 @@ type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean
   hint?: string
   play?: "play" | "stop"
   quiet?: string }
-type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void
+export type ScreenBridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void
   holds?: (m: { boxes: Box[]; pressing: boolean }) => void; near?: () => void
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   pen?: (s: PenScript | null) => void; onPen?: (fn: (s: PenScript | null) => void) => () => void
@@ -50,7 +50,7 @@ type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) =
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   region?: (r: Rect) => void; regionAct?: (what: string) => void
   panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; play?: () => void; stop?: () => void; notCall?: () => void; more: (x: number, y: number) => void } }
-const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
+const api = window.vaultiteScreen
 
 followSystemTheme()
 
@@ -362,7 +362,7 @@ function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: bo
         <Hold onPointerDown={(e) => { if (e.button === 0) open(a.name, key) }} onHover={setHover} data-bubble
           className={cn(WORDS, "pointer-events-auto cursor-pointer", a.say.question ? "bg-[color-mix(in_srgb,var(--c)_9%,var(--background))]" : "bg-background")}
           style={{ "--c": tint,
-            boxShadow: `0 0 0 ${a.say.question ? 2 : 1.5}px color-mix(in srgb, ${tint} ${a.say.question ? 70 : 45}%, transparent), 0 8px 24px rgba(0,0,0,.12)` } as React.CSSProperties}>
+            boxShadow: `0 0 0 ${a.say.question ? 2 : 1.5}px color-mix(in srgb, ${tint} ${a.say.question ? 70 : 45}%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
           <span data-bubble-text className="line-clamp-[12]">{snippet(a.say.text)}</span>
         </Hold>
       )}
@@ -376,7 +376,7 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
   const ref = c.follow ? (el: HTMLElement | null) => { flying.el = el; if (el && flying.pilot) flyPose(clock()) } : attach("summon", paintCursor)
   return (
     <div ref={ref} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} data-follow={c.follow || undefined} data-speaking={speaking || undefined}
-      className={cn(FADES, "pointer-events-none")} style={{ "--c": tint } as React.CSSProperties}>
+      className={cn(FADES, "pointer-events-none")} style={{ "--c": tint }}>
       <span aria-hidden className="companion-glow" />
       <div className="pilot-arrow relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob", c.state === "missed" && "companion-miss")}><Arrow tint={tint} /></div></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
@@ -420,7 +420,7 @@ function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
         <img src={b.img} alt="" draggable={false} className="absolute top-0 h-full max-w-none rounded-[8.5px] shadow-[0_0_0_0.5px_rgba(0,0,0,.18),0_1px_4px_rgba(0,0,0,.14)]"
           style={{ left: (THUMB_W - w) / 2, width: w }} />
         <div ref={arrow} className={cn("absolute top-0 left-0 transition-opacity duration-200", !b.cursor && "opacity-0")}>
-          {!b.end && <span key={b.caption} aria-hidden className="behind-tap" style={{ "--c": tint } as React.CSSProperties} />}
+          {!b.end && <span key={b.caption} aria-hidden className="behind-tap" style={{ "--c": tint }} />}
           <Arrow tint={tint} />
         </div>
       </div>
@@ -519,14 +519,14 @@ function Panel() {
           {d.play && (
             <button type="button" aria-label={d.play === "stop" ? "Stop speaking" : "Say it aloud"} aria-pressed={d.play === "stop"} data-tip={d.play === "stop" ? "Stop" : "Say it aloud"}
               className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground aria-pressed:text-white aria-pressed:hover:bg-[var(--c)]"
-              style={{ "--c": tint, ...(d.play === "stop" ? { background: tint } : {}) } as React.CSSProperties}
+              style={{ "--c": tint, ...(d.play === "stop" ? { background: tint } : {}) }}
               onClick={() => (d.play === "stop" ? api?.panel.stop?.() : api?.panel.play?.())}>
               {d.play === "stop" ? <Square className="size-3 fill-current" /> : <Play className="size-4 translate-x-px" />}
             </button>
           )}
           <button type="button" aria-label={listening ? "Stop dictating" : "Dictate"} aria-pressed={listening} data-tip={listening ? "Stop" : "Dictate"}
             className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground aria-pressed:text-white aria-pressed:hover:bg-[var(--c)]"
-            style={{ "--c": tint, ...(listening ? { background: tint } : {}) } as React.CSSProperties} onClick={() => api?.panel.mic()}>
+            style={{ "--c": tint, ...(listening ? { background: tint } : {}) }} onClick={() => api?.panel.mic()}>
             {listening ? <span className="companion-wave" aria-hidden><i /><i /><i /></span> : <Mic className="size-4" />}
           </button>
         </>} />

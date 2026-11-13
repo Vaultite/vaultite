@@ -368,7 +368,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
       onClick={(e) => { if (!onClick) return; e.preventDefault(); onClick(e) }} onContextMenu={onContextMenu}
       // Middle-click on an <a> opens the browser's own new tab unless prevented.
       onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); onClick?.(e) }}
-      style={hovers ? { "--row-actions": `calc(var(--spacing) * ${5.5 * hovers + 0.5})` } as CSSProperties : undefined}
+      style={hovers ? { "--row-actions": `calc(var(--spacing) * ${5.5 * hovers + 0.5})` } : undefined}
       className={cn(
         ROW,
         active ? "bg-foreground/[0.08] font-medium" : "hover:bg-foreground/[0.04]", className,

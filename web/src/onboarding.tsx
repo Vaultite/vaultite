@@ -1,13 +1,13 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
-import { Onboarding, type SetupApi } from "@/components/Onboarding"
+import { Onboarding } from "@/components/Onboarding"
 import { Tooltips } from "@/components/Tooltip"
 import { followSystemTheme } from "@/lib/utils"
 
 followSystemTheme()
 
-const setup = (window as { vaultite?: { onboarding?: SetupApi } }).vaultite?.onboarding
+const setup = window.vaultite?.onboarding
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

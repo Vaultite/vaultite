@@ -1,7 +1,7 @@
 const MAX: Record<string, number> = { editor: 2000 }
 export type TraceEvent = { t: number; at: string; [k: string]: unknown }
 const topics: Record<string, TraceEvent[]> = {}
-;(globalThis as { __vauTrace?: typeof topics }).__vauTrace = topics
+globalThis.__vauTrace = topics
 const subs = new Set<(topic: string, e: TraceEvent) => void>()
 
 /** Something the app did, under `topic`: plain values only, never a file's text. */

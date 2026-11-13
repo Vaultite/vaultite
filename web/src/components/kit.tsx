@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
+import { createContext, useContext, useEffect, useId, useRef, useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ink } from "@/lib/ink"
@@ -9,6 +9,7 @@ import { copyText } from "@/core/richmd"
 import { useDraft } from "@/core/statefor"
 import { trackSoon } from "@/core/unsaved"
 import { Described, usePreview, type Preview } from "@/components/SettingPreview"
+import { elementOf } from "@/core/dom"
 
 /** The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the
  *  same frame (a view transition's picture takes it at once); one more render if it isn't in the page yet. */
@@ -98,7 +99,7 @@ export const DenseRows = createContext(false)
 export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon: LucideIcon | typeof Logo; tint: string; className?: string; iconClassName?: string }) {
   if (Icon === Logo) return <Logo className={cn("size-5 shrink-0", className)} />
   return (
-    <span aria-hidden data-icon-tile style={{ "--tint": tint } as CSSProperties}
+    <span aria-hidden data-icon-tile style={{ "--tint": tint }}
       className={cn("on-tint grid size-5 shrink-0 place-items-center rounded-[5px] bg-[var(--tint)] bg-linear-to-b from-white/20 to-transparent shadow-[inset_0_0_0_0.5px_rgb(0_0_0/0.12)]", className)}>
       <Icon className={cn("size-[13px]", iconClassName)} strokeWidth={2.25} />
     </span>
@@ -458,7 +459,7 @@ export function Slider({ value, min = 0, max = 100, step = 1, label, onInput, on
   return (
     <input ref={el} type="range" min={min} max={max} step={step} value={v} aria-label={label} aria-describedby={useContext(Described)}
       onChange={(e) => { const n = Number(e.currentTarget.value); setHeld(n); onInput?.(n) }}
-      style={{ ["--pct" as string]: `${max > min ? ((v - min) / (max - min)) * 100 : 0}%` }}
+      style={{ "--pct": `${max > min ? ((v - min) / (max - min)) * 100 : 0}%` }}
       className={cn("slider h-6 cursor-pointer", className)} />
   )
 }
@@ -503,7 +504,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   const change = `Change ${placeholder.replace(/^Add /, "")}`
   // Links can't sit inside a button: the keyboard's way in is a button of its own.
   if (value && children) return (
-    <span data-no-edit data-tip={change} onClick={(e) => { if (!(e.target as Element).closest("a, button")) setEditing(true) }} className={look}>
+    <span data-no-edit data-tip={change} onClick={(e) => { if (!elementOf(e.target)?.closest("a, button")) setEditing(true) }} className={look}>
       {children}
       <button type="button" aria-label={change} onClick={() => setEditing(true)}
         className="sr-only focus-visible:not-sr-only focus-visible:ml-1 focus-visible:rounded-[4px] focus-visible:px-1 focus-visible:text-[12px] focus-visible:text-muted-foreground">Change</button>
@@ -511,7 +512,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   )
   return (
     <span role="button" tabIndex={0} data-no-edit data-tip={value ? change : undefined}
-      onClick={(e) => { if (!(e.target as Element).closest("a")) setEditing(true) }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
+      onClick={(e) => { if (!elementOf(e.target)?.closest("a")) setEditing(true) }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
       className={look}>
       {value || placeholder}
     </span>

@@ -80,7 +80,7 @@ export type DictationTarget = {
   path?: string
 }
 
-const source = (): DictationSource | null => (globalThis as { vaultite?: { dictation?: DictationSource } }).vaultite?.dictation ?? null
+const source = (): DictationSource | null => globalThis.window?.vaultite?.dictation ?? null
 /** The source of dictation here, or null: a browser, a phone, an app build from before it. */
 export const dictationSource = source()
 

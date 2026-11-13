@@ -5,14 +5,14 @@ export function api<T>(method: string, path: string, body?: unknown): Promise<T>
   return method === "GET" ? p : tracked(p)
 }
 /** Which app this is, as the server hears it (X-Vaultite-Client: app/<device>, for Activity). */
-export const appDevice = (window as { vaultite?: unknown }).vaultite ? "desktop" : matchMedia("(pointer: coarse) and (max-width: 820px)").matches ? "phone" : "web"
+export const appDevice = window.vaultite ? "desktop" : matchMedia("(pointer: coarse) and (max-width: 820px)").matches ? "phone" : "web"
 const CLIENT = `app/${appDevice}`
 const headers = (body: unknown): HeadersInit => ({ "X-Vaultite-Client": CLIENT, ...(body ? { "Content-Type": "application/json" } : {}) })
 // A browser cancels requests made as the page goes away unless they're `keepalive`.
 let unloading = false
 if (typeof addEventListener === "function") addEventListener("pagehide", () => { unloading = true })
 const READ_WAIT = 60_000
-const early = (window as { __vauEarly?: Record<string, Promise<Response>> }).__vauEarly ?? {}
+const early = window.__vauEarly ?? {}
 const takeEarly = (path: string) => { const p = early[path]; delete early[path]; return p?.then((r) => (r.ok ? r : null), () => null) }
 export async function send<T>(method: string, path: string, body?: unknown, cache?: RequestCache): Promise<T> {
   const text = body ? JSON.stringify(body) : undefined

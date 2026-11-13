@@ -60,15 +60,14 @@ function commonFonts(): Font[] {
   return common
 }
 
-type LocalFontData = { family: string }
-const query = () => (window as unknown as { queryLocalFonts?: () => Promise<LocalFontData[]> }).queryLocalFonts
+const query = () => window.queryLocalFonts
 
 export const canListAll = () => typeof query() === "function"
 
 export async function listAllowed() {
   if (!canListAll()) return false
   if (local) return true
-  if ((window as unknown as { vaultite?: unknown }).vaultite) return true
+  if (window.vaultite) return true
   try {
     const p = await navigator.permissions.query({ name: "local-fonts" as PermissionName })
     return p.state === "granted"

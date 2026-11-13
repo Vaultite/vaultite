@@ -40,13 +40,13 @@ export type PhoneHealth = { available: boolean; asked: boolean; on: boolean; syn
 /** A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile. */
 export type PhoneDownload = { path: string; title: string; server: string; size: number; got: number; done: boolean; file?: string; error?: string }
 
-type CapacitorGlobal = {
+export type CapacitorGlobal = {
   isNativePlatform?: () => boolean
   isPluginAvailable?: (name: string) => boolean
   PluginHeaders?: { name: string; methods: { name: string }[] }[]
   nativePromise: (plugin: string, method: string, options?: object) => Promise<unknown>
 }
-const cap = (globalThis as { Capacitor?: CapacitorGlobal }).Capacitor
+const cap = globalThis.Capacitor
 const call = (method: string) => (options?: object) => cap!.nativePromise("Shell", method, options ?? {}) as Promise<never>
 export const phoneApp: ShellPlugin | null = cap?.isNativePlatform?.() && cap.isPluginAvailable?.("Shell")
   ? { servers: call("servers"), setServers: call("setServers"), probe: call("probe"), open: call("open"), launcher: call("launcher"), snapshot: call("snapshot"), haptic: call("haptic"), pending: call("pending"),

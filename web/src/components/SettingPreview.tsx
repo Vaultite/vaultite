@@ -1,4 +1,4 @@
-import { createContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react"
+import { createContext, useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { Check, Info } from "lucide-react"
 import { haptic } from "@/core/haptics"
@@ -221,7 +221,7 @@ function InlineButton({ on, toggle }: { on: boolean; toggle: () => void }) {
 function Inline({ preview, said }: { preview: Preview; said?: boolean }) {
   return (
     <div data-preview-inline className="basis-full pb-1.5">
-      <div role="radiogroup" aria-label={preview.text} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${preview.options.length}, minmax(0, 1fr))` } as CSSProperties}>
+      <div role="radiogroup" aria-label={preview.text} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${preview.options.length}, minmax(0, 1fr))` }}>
         {preview.options.map((o) => {
           const on = o.value === preview.value
           return (

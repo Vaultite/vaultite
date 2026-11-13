@@ -18,8 +18,7 @@ prefetchShown()
 watchOpeningSoon()
 startDesktop()
 
-const boot = window as Window & { __vauStarted?: boolean; showBootError?: (error: unknown, title?: string, opts?: { fresh?: boolean; again?: boolean }) => void }
-boot.__vauStarted = true
+window.__vauStarted = true
 document.getElementById("vau-boot-error")?.remove()
 startAppErrors()
 const STOPS = "vaultite.stops"
@@ -34,7 +33,7 @@ const stoppedEarly = () => {
 const stopped = (error: unknown, info?: { componentStack?: string }) => {
   console.error(error)
   noteAppError("stopped", error, { component: info?.componentStack, fatal: true })
-  void recoverFromStaleBuild(error).then((reloading) => { if (!reloading) boot.showBootError?.(error, "Vaultite stopped", { fresh: true, again: stoppedEarly() }) })
+  void recoverFromStaleBuild(error).then((reloading) => { if (!reloading) window.showBootError?.(error, "Vaultite stopped", { fresh: true, again: stoppedEarly() }) })
 }
 // React stops logging caught errors once given onCaughtError: log them as it would.
 const caught = (error: unknown, info: { componentStack?: string }) => { console.error(error); noteAppError("boundary", error, { component: info.componentStack }) }

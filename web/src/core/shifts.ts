@@ -32,7 +32,7 @@ function keep() {
   } catch { /* private mode, or full */ }
 }
 
-;(globalThis as { __vauLoadShifts?: () => unknown }).__vauLoadShifts = () => {
+globalThis.__vauLoadShifts = () => {
   let loads: Load[] = []
   try { loads = JSON.parse(localStorage.getItem(KEPT) ?? "[]") } catch { /* none kept */ }
   const moved = loads.filter((l) => Object.keys(l.moved).length).length

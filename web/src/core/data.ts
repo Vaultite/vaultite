@@ -308,7 +308,7 @@ async function fromChunks(): Promise<Answer | null> {
   try {
     const m = await get<Manifest | Answer>("state/manifest")
     if (!("tree" in m)) return m
-    await (window as { __vauEarlyChunks?: Promise<void> }).__vauEarlyChunks
+    await window.__vauEarlyChunks
     const names = [...new Set(chunksOf(m.tree))]
     const values = new Map(await Promise.all(names.map(async (c) => [c, await get<unknown>(`state/chunk/${c}`)] as const)))
     return { v: m.v, state: assemble(m.tree, (c) => values.get(c)) as State, live: m.live as LiveMark | undefined, here: m.here as "connect" | undefined }

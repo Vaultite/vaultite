@@ -16,6 +16,7 @@ import { rawUrl } from "@/components/FileViewers"
 import { noteFor } from "@/components/NoteEmbed"
 import type { EmbedEdit } from "@/editor/livePreview"
 import { splitAnchor } from "../../../core/sections.ts"
+import { elementOf } from "@/core/dom"
 
 export function assetPath(store: Store, name: string, from?: string): string | null {
   let t = name.trim()
@@ -65,7 +66,7 @@ export function EmbedMenu({ store, target, from, edit, children }: { store: Stor
   return (
     <div className="contents" data-embed-menu
       onContextMenu={(e) => {
-        if (e.defaultPrevented || (e.target as Element).closest(".note-embed-body, [data-embed-menu]")?.matches(".note-embed-body")) return
+        if (e.defaultPrevented || elementOf(e.target)?.closest(".note-embed-body, [data-embed-menu]")?.matches(".note-embed-body")) return
         e.preventDefault(); e.stopPropagation()
         openEmbedMenu(store, target, { x: e.clientX, y: e.clientY }, edit?.(), from)
       }}>

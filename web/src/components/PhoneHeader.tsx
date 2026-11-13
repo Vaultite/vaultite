@@ -13,7 +13,7 @@ import { phoneApp } from "@/core/phoneapp"
 import { cn } from "@/lib/utils"
 
 const edgesOurs = typeof navigator !== "undefined" && (!!phoneApp
-  || (/iPhone|iPad|iPod/.test(navigator.userAgent) && (matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true)))
+  || (/iPhone|iPad|iPod/.test(navigator.userAgent) && (matchMedia("(display-mode: standalone)").matches || navigator.standalone === true)))
 
 const button = "grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50"
 

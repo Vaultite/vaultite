@@ -210,7 +210,7 @@ function GroupChip({ g, n, target }: { g: Group; n: number
   useGroupIn(el, g.id)
   useShrinkOut(el, { group: g.id })
   return (
-    <button type="button" ref={el} tabIndex={-1} data-group-chip={g.id} data-ui={`group:${g.id}`} data-slide={`group:${g.id}`} data-line-head={g.id} style={{ ["--line" as string]: c }} aria-expanded={!g.collapsed}
+    <button type="button" ref={el} tabIndex={-1} data-group-chip={g.id} data-ui={`group:${g.id}`} data-slide={`group:${g.id}`} data-line-head={g.id} style={{ "--line": c }} aria-expanded={!g.collapsed}
       onContextMenu={menuFor(() => groupMenu(g.id, "bar"))}
       onPointerDown={(e) => startDrag(e, { from: "group", group: g.id, label: groupName(g) })}
       onClick={() => foldGroupMoving(g.id)}
@@ -237,7 +237,7 @@ export function GroupLabel({ g, n, target, className }: { g: Group; n?: number; 
     <span data-group-name data-bare={g.name ? undefined : ""} {...(g.name ? {} : { role: "img", "aria-label": name })}
       className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-(--motion)",
         g.name && "h-5 rounded-control px-1.5", className)}
-      style={{ ["--tint" as string]: c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
+      style={{ "--tint": c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
       {g.name && <span className="min-w-0 truncate">{g.name}</span>}
       {n !== undefined && <span data-group-count aria-hidden={!g.collapsed || undefined}><span><span className={cn("block font-medium tabular-nums opacity-80", g.name && "pl-1")}>{n}</span></span></span>}
     </span>
@@ -599,7 +599,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-control transition-colors",
         split ? "max-w-[320px]" : "max-w-[220px]", active ? ON_TAB : lit ? "bg-foreground/[0.08] ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
         dragging && (hole ? "bg-foreground/[0.06] shadow-none ring-[0.5px] ring-border [&>button]:invisible" : away ? "[&>[data-tab-close]]:invisible [&>[data-tab-pin]]:invisible [&>[role=tab]]:opacity-40" : "opacity-40"))}
-      style={{ ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : {}), ...(buttons.length ? { "--tab-buttons": `${buttons.length * 22}px` } : {}) } as React.CSSProperties}>
+      style={{ ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : {}), ...(buttons.length ? { "--tab-buttons": `${buttons.length * 22}px` } : {}) }}>
       <button type="button" role="tab" aria-selected={active} aria-label={split ? tip : undefined}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
         data-tip={item ? undefined : tip} data-tip-trunc className={cn("flex h-full min-w-0 flex-1 cursor-pointer items-center rounded-[inherit] pr-6 pl-2 text-left text-[13px]", own.color && !split && "[&_[data-container-line]]:hidden")}>

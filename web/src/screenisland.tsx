@@ -8,9 +8,9 @@ import { countText, type WalkScene } from "../../core/desktop/walks"
 
 type Spot = { x: number; y: number; bar: number; align: "left" | "centre"; attached: boolean; room?: number }
 export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }
-type Bridge = { on: (fn: (d: IslandData) => void) => () => void; act: (act: string, id: string, mute?: boolean) => void
+export type IslandBridge = { on: (fn: (d: IslandData) => void) => () => void; act: (act: string, id: string, mute?: boolean) => void
   faces?: (list: { id: string; x: number; y: number; width: number; height: number }[]) => void }
-const api = (window as unknown as { vaultiteScreen?: { island?: Bridge } }).vaultiteScreen?.island
+const api = window.vaultiteScreen?.island
 
 const TUCK = 14
 const FOOT = 14

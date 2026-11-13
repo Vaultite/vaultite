@@ -144,7 +144,7 @@ let linked = "", applied = ""
 
 declare const __DEMO_OFFICIAL__: unknown
 const demoGlass: DesktopApi["translucent"] = typeof __DEMO_OFFICIAL__ === "undefined" ? undefined : { set: async (on) => ({ on }), on: () => {} }
-const native = (window as { vaultite?: DesktopApi }).vaultite?.translucent ?? demoGlass
+const native = window.vaultite?.translucent ?? demoGlass
 const reduced = matchMedia("(prefers-reduced-transparency: reduce)")
 let translucency: Translucency = { on: document.documentElement.hasAttribute("data-translucent") }
 let asked: boolean | null = null

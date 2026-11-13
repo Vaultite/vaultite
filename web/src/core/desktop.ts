@@ -1,4 +1,5 @@
 import type { DictationSource } from "@/core/dictation"
+import type { SetupApi } from "@/components/Onboarding"
 import { notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
 
@@ -41,6 +42,7 @@ export type DesktopApi = {
   web?: WebPages
   apps?: AppWindows
   dictation?: DictationSource
+  onboarding?: SetupApi
   lookUp?: () => Promise<unknown>
   learnWord?: (word: string) => Promise<unknown>
   capture?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<{ png: string; width: number; height: number }>
@@ -299,7 +301,7 @@ export type AppEvent = { type: "gone"; wid: number } | { type: "title"; wid: num
   /** The window stopped letting the pointer through (it left the holes, or none has an app behind it). */
   | { type: "through"; on: false }
 
-export const desktop: DesktopApi | null = (window as unknown as { vaultite?: DesktopApi }).vaultite ?? null
+export const desktop: DesktopApi | null = window.vaultite ?? null
 /** The desktop app's web pages, or null (a browser, an app build from before the Browser). */
 export const webPages: WebPages | null = desktop?.web ?? null
 /** The desktop app's other apps' windows, or null (a browser, an app build from before App windows). */

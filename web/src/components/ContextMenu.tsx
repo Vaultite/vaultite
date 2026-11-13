@@ -587,7 +587,7 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
           onClick={() => choose(c)}
           className="group/swatch grid size-11 cursor-pointer place-items-center rounded-full outline-none md:size-6">
           <span className="on-tint grid size-7 place-items-center rounded-full transition-transform duration-150 group-hover/swatch:scale-110 group-active/swatch:scale-95 group-focus-visible/swatch:outline-2 group-focus-visible/swatch:outline-offset-2 group-focus-visible/swatch:outline-primary/60 md:size-[18px]"
-            style={{ ["--tint" as string]: colorVar(c), background: colorVar(c), ...(c === value ? { boxShadow: `0 0 0 2px var(--popover), 0 0 0 3.5px ${colorVar(c)}` } : {}) }}>
+            style={{ "--tint": colorVar(c), background: colorVar(c), ...(c === value ? { boxShadow: `0 0 0 2px var(--popover), 0 0 0 3.5px ${colorVar(c)}` } : {}) }}>
             {c === value && <Check className="size-4 md:size-3" strokeWidth={3} />}
           </span>
         </button>

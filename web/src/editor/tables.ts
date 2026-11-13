@@ -9,6 +9,7 @@ import { menuShowing, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { addDropTarget, edgeScroller, startDrag } from "@/core/drag"
 import { isMac } from "@/core/platform"
 import { blockLines, markdownDrawn } from "@/core/richmd"
+import { elementOf } from "@/core/dom"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
 import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, fillDown, insertColumn, insertRow, moveColumn, moveRow,
@@ -459,8 +460,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   el.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || e.ctrlKey && isMac) return
     const at = cellOf(e.target)
-    const inField = !!(e.target as Element).closest(".cm-cell-input")
-    if (!at || !env.canEdit() || (!inField && (e.target as Element).closest("a, [data-wiki], [data-tag]"))) return
+    const inField = !!elementOf(e.target)?.closest(".cm-cell-input")
+    if (!at || !env.canEdit() || (!inField && elementOf(e.target)?.closest("a, [data-wiki], [data-tag]"))) return
     const from = e.shiftKey && (sel || editing) ? sel?.a ?? { r: editing!.r, c: editing!.c } : { r: at.r, c: at.c }
     if (!inField) {
       e.preventDefault()

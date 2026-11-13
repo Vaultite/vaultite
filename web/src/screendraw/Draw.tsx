@@ -104,7 +104,7 @@ export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: 
       dismiss: () => { setHidden((h) => new Set([...h, ...ids])); for (const mark of ids) act({ kind: "dismiss", id: d.id, mark }) } }
   }
   return (
-    <div ref={root} data-screendraw={d.id} data-beat={beat} data-agent={d.agent} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : d.hidden ? "sd-hidden" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
+    <div ref={root} data-screendraw={d.id} data-beat={beat} data-agent={d.agent} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : d.hidden ? "sd-hidden" : ""}`} style={{ "--tint": `var(--${d.tint})` }}>
       {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Spotlight r={p.box!} W={W} H={H} delay={order.get(p.i)!} /></div>)}
       {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <div key={p.i} className={`sd-move ${pastOf(p) ?? ""}`} style={glide(p)}><Focus p={geometry(p)} delay={order.get(p.i)!} /></div>)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
@@ -164,7 +164,7 @@ function Ink({ id, lines, size = 4.5, delay }: { id: string; lines: Line[]; size
     return (
       <g key={j}>
         <mask id={mid} maskUnits="userSpaceOnUse" x={b.x} y={b.y} width={b.w} height={b.h}>
-          <path d={linePath(l)} pathLength={1} className="sd-pen" fill="none" stroke="#fff" strokeWidth={size * 3.4} strokeLinecap="round" strokeLinejoin="round" style={{ "--delay": ms(start), "--dur": ms(dur) } as React.CSSProperties} />
+          <path d={linePath(l)} pathLength={1} className="sd-pen" fill="none" stroke="#fff" strokeWidth={size * 3.4} strokeLinecap="round" strokeLinejoin="round" style={{ "--delay": ms(start), "--dur": ms(dur) }} />
         </mask>
         <path d={inkPath(l, size)} mask={`url(#${mid})`} className="sd-ink" />
       </g>
@@ -173,8 +173,8 @@ function Ink({ id, lines, size = 4.5, delay }: { id: string; lines: Line[]; size
 }
 function Sketch({ paths, delay, dur = 520, hatch = false }: { paths: Sketched[]; delay: number; dur?: number; hatch?: boolean }) {
   return paths.map((p, j) => (p.fill
-    ? <path key={j} d={p.d} className="sd-fill sd-fade" style={{ "--delay": ms(delay + dur * 0.55) } as React.CSSProperties} />
-    : <path key={j} d={p.d} pathLength={1} className={`sd-pen sd-line ${p.hatch || hatch ? "sd-hatch" : ""}`} style={{ "--delay": ms(delay + (p.hatch ? dur * 0.6 : j * 60)), "--dur": ms(dur) } as React.CSSProperties} />))
+    ? <path key={j} d={p.d} className="sd-fill sd-fade" style={{ "--delay": ms(delay + dur * 0.55) }} />
+    : <path key={j} d={p.d} pathLength={1} className={`sd-pen sd-line ${p.hatch || hatch ? "sd-hatch" : ""}`} style={{ "--delay": ms(delay + (p.hatch ? dur * 0.6 : j * 60)), "--dur": ms(dur) }} />))
 }
 
 function Strokes({ p, id, seed, delay }: { p: Placed; id: string; seed: number; delay: number }) {
@@ -189,18 +189,18 @@ const pt = (p: [number, number]): Pt => ({ x: p[0], y: p[1] })
 
 function Focus({ p, delay }: { p: Placed; delay: number }) {
   const r = p.ink ?? inflate(p.box!, 6)
-  return <div data-mark-i={p.i} data-focus className="sd-focus absolute" style={{ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(10, r.w / 2, r.h / 2), "--delay": ms(delay), "--dur": ms(FRAME_MS) } as React.CSSProperties} />
+  return <div data-mark-i={p.i} data-focus className="sd-focus absolute" style={{ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(10, r.w / 2, r.h / 2), "--delay": ms(delay), "--dur": ms(FRAME_MS) }} />
 }
 
 function Spotlight({ r, W, H, delay }: { r: Rect; W: number; H: number; delay: number }) {
   const h = inflate(r, 8), rr = 10
   const hole = `M${h.x + rr},${h.y}H${h.x + h.w - rr}Q${h.x + h.w},${h.y} ${h.x + h.w},${h.y + rr}V${h.y + h.h - rr}Q${h.x + h.w},${h.y + h.h} ${h.x + h.w - rr},${h.y + h.h}H${h.x + rr}Q${h.x},${h.y + h.h} ${h.x},${h.y + h.h - rr}V${h.y + rr}Q${h.x},${h.y} ${h.x + rr},${h.y}Z`
-  return <svg className="absolute inset-0" width={W} height={H}><path fillRule="evenodd" className="sd-dim sd-fade" style={{ d: `path("M0,0H${W}V${H}H0Z${hole}")`, "--delay": ms(delay) } as React.CSSProperties} /></svg>
+  return <svg className="absolute inset-0" width={W} height={H}><path fillRule="evenodd" className="sd-dim sd-fade" style={{ d: `path("M0,0H${W}V${H}H0Z${hole}")`, "--delay": ms(delay) }} /></svg>
 }
 
 function Parts({ p, delay, act, card, seed, id }: { p: Placed; delay: number; act: (a: Act) => void; card?: CardCtx; seed: number; id: string }) {
   const m = p.mark, label = labelOf(m)
-  const pop = (d: number) => ({ "--delay": ms(delay + d) }) as React.CSSProperties
+  const pop = (d: number) => ({ "--delay": ms(delay + d) })
   if (m.type === "num" && p.box) {
     const r = p.box, at = r.w || r.h ? { x: r.x - 11, y: r.y - 11 } : { x: r.x - 13, y: r.y - 13 }
     return <div data-mark="num" className="sd-badge sd-pop absolute" style={{ left: at.x, top: at.y, ...pop(0) }}>{m.n}</div>
@@ -212,7 +212,7 @@ function Parts({ p, delay, act, card, seed, id }: { p: Placed; delay: number; ac
   const from = l.x >= t.x + t.w - 1 ? { o: "left center", dx: -10, dy: 0 } : l.x + l.w <= t.x + 1 ? { o: "right center", dx: 10, dy: 0 } : l.y >= t.y + t.h - 1 ? { o: "center top", dx: 0, dy: -6 } : { o: "center bottom", dx: 0, dy: 6 }
   return (
     <div data-mark-label={m.type} aria-label={label} className={`${m.type === "frame" ? "sd-pill sd-frame-tag" : "sd-pill"} sd-tag absolute`}
-      style={{ left: l.x, top: l.y, width: l.w, transformOrigin: from.o, "--dx": `${from.dx}px`, "--dy": `${from.dy}px`, ...pop(after) } as React.CSSProperties}>
+      style={{ left: l.x, top: l.y, width: l.w, transformOrigin: from.o, "--dx": `${from.dx}px`, "--dy": `${from.dy}px`, ...pop(after) }}>
       <Typed text={label} delay={delay + after + 60} />
     </div>
   )
@@ -275,7 +275,7 @@ function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.
 
 function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act: (a: Act) => void; ctx: CardCtx; seed: number; id: string }) {
   const m = p.mark, c = p.card!, [done, setDone] = useState(false)
-  const box = { width: c.w, "--delay": ms(delay) } as React.CSSProperties
+  const box = { width: c.w, "--delay": ms(delay) }
   if (m.type === "write") return <div data-mark="write" className={`sd-write sd-fade sd-${m.size ?? "m"}`} style={box}>{m.text}</div>
   if (m.type === "sticky") return (
     <div data-mark="sticky" className="sd-card sd-sticky sd-pop" style={{ ...box, minHeight: c.h }}>
@@ -287,7 +287,7 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
     <div data-mark="list" className="sd-card sd-pop" style={box}>
       {m.title && <div className="sd-title">{m.title}</div>}
       <ol className="flex flex-col gap-1">
-        {m.items.map((x, i) => <li key={i} className="sd-fade flex gap-2" style={{ "--delay": ms(delay + 200 + i * 140) } as React.CSSProperties}><span className="sd-bullet">{m.numbered ? i + 1 : "•"}</span><span>{x}</span></li>)}
+        {m.items.map((x, i) => <li key={i} className="sd-fade flex gap-2" style={{ "--delay": ms(delay + 200 + i * 140) }}><span className="sd-bullet">{m.numbered ? i + 1 : "•"}</span><span>{x}</span></li>)}
       </ol>
     </div>
   )
@@ -303,7 +303,7 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
   const text = m.type === "copy" ? (done ? "Copied" : m.label ?? "Copy") : m.type === "open" ? m.label ?? "Open" : m.type === "button" ? m.label : ""
   const Icon = m.type === "copy" ? (done ? Check : Copy) : m.type === "open" ? ExternalLink : m.type === "button" && "copy" in m.do ? Copy : m.type === "button" && "open" in m.do ? ExternalLink : ArrowRight
   return (
-    <Press className="sd-chip sd-pop" style={{ "--delay": ms(delay), maxWidth: c.w } as React.CSSProperties} onClick={run}>
+    <Press className="sd-chip sd-pop" style={{ "--delay": ms(delay), maxWidth: c.w }} onClick={run}>
       <Icon className="size-3.5 shrink-0" strokeWidth={2.2} /><span className="truncate">{text}</span>
     </Press>
   )
@@ -350,7 +350,7 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
   const togglePlay = () => { const e = v.current; if (!e) return; if (e.paused) { play(e); ctx.media({ paused: false }) } else { e.pause(); ctx.media({ paused: true }) } }
   return (
     <div data-mark={m.type} data-state={failed ? "failed" : state} data-over={m.over ? "" : undefined} data-sound={m.type === "video" ? (muted ? "off" : "on") : undefined} data-playing={m.type === "video" ? (playing ? "" : undefined) : undefined}
-      className={`sd-card sd-media ${m.over ? "sd-over" : "sd-pop"}`} style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
+      className={`sd-card sd-media ${m.over ? "sd-over" : "sd-pop"}`} style={{ width: c.w, padding: 0, "--delay": ms(delay) }}>
       <div className="sd-media-box relative" style={{ height: h }}>
         {failed ? <div role="alert" className="sd-media-failed"><ImageOff className="size-5" strokeWidth={1.8} /><span>Couldn't load {name}</span></div>
           : m.type === "image"
@@ -382,7 +382,7 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
 function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { type: "button" }>[]; c: Rect; delay: number; ctx: CardCtx; act: (a: Act) => void }) {
   const [picked, setPicked] = useState<number | null>(null)
   return (
-    <div data-choices role="group" aria-label={ctx.question ?? "Choose one"} className="sd-card sd-choices sd-pop" style={{ width: c.w, "--delay": ms(delay) } as React.CSSProperties}>
+    <div data-choices role="group" aria-label={ctx.question ?? "Choose one"} className="sd-card sd-choices sd-pop" style={{ width: c.w, "--delay": ms(delay) }}>
       <div className="sd-choices-who">{ctx.question ? `${ctx.agent} asks` : ctx.agent}</div>
       {ctx.question ? <div className="sd-choices-q">{ctx.question}</div> : <div className="h-1" />}
       <div className="flex flex-col gap-1">
@@ -390,7 +390,7 @@ function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { typ
           const ask = "ask" in a.do ? a.do.ask : a.label
           return (
             <button key={a.id ?? i} type="button" data-nodrag data-answer={a.id} disabled={picked !== null} data-picked={picked === i ? "" : undefined}
-              className="sd-answer sd-fade" style={{ "--delay": ms(delay + 120 + i * 90) } as React.CSSProperties}
+              className="sd-answer sd-fade" style={{ "--delay": ms(delay + 120 + i * 90) }}
               onClick={() => { setPicked(i); act({ kind: "ask", text: ask }) }}>
               {picked === i ? <Check className="size-3.5 shrink-0" strokeWidth={2.6} /> : <ArrowRight className="size-3.5 shrink-0" strokeWidth={2.4} />}
               <span className="min-w-0 flex-1"><span className="block truncate">{a.label}</span>{ask !== a.label && <span className="sd-answer-sub">{ask}</span>}</span>
@@ -398,7 +398,7 @@ function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { typ
           )
         })}
       </div>
-      {ctx.hint && <div className="sd-choices-hint sd-fade" style={{ "--delay": ms(delay + 120 + answers.length * 90) } as React.CSSProperties}>{ctx.hint}</div>}
+      {ctx.hint && <div className="sd-choices-hint sd-fade" style={{ "--delay": ms(delay + 120 + answers.length * 90) }}>{ctx.hint}</div>}
     </div>
   )
 }
@@ -430,11 +430,11 @@ function Paper({ m, c, delay, seed, id }: { m: Extract<Mark, { type: "paper" }>;
     return later.current.get(key)!
   })
   return (
-    <div data-mark="paper" className="sd-card sd-paper sd-pop" style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
+    <div data-mark="paper" className="sd-card sd-paper sd-pop" style={{ width: c.w, padding: 0, "--delay": ms(delay) }}>
       {m.title && <div className="sd-title px-3 pt-2.5">{m.title}</div>}
       <div className={`relative ${m.grid ? "sd-grid" : ""}`} style={{ width: W, height: H }}>
         <svg className="absolute inset-0 overflow-visible" width={W} height={H}>
-          {m.items.map((it, i) => <g key={keyOf(it, i)} data-item={it.id} className={it.gone ? "sd-erase" : undefined} style={{ "--ink": inkCss(it.color), "--fill": fillCss(it.fill) } as React.CSSProperties}>
+          {m.items.map((it, i) => <g key={keyOf(it, i)} data-item={it.id} className={it.gone ? "sd-erase" : undefined} style={{ "--ink": inkCss(it.color), "--fill": fillCss(it.fill) }}>
             <Item it={it} items={m.items} id={`${id}-p${keyOf(it, i)}`} seed={seed + hash(keyOf(it, i))} delay={delays[i]} /></g>)}
         </svg>
         {m.items.map((it, i) => <div key={keyOf(it, i)} className={it.gone ? "sd-erase" : undefined}><ItemText it={it} items={m.items} delay={delays[i]} /></div>)}
@@ -442,7 +442,7 @@ function Paper({ m, c, delay, seed, id }: { m: Extract<Mark, { type: "paper" }>;
     </div>
   )
 }
-const at = (x: number, y: number) => ({ transform: `translate(${x}px, ${y}px)` }) as React.CSSProperties
+const at = (x: number, y: number) => ({ transform: `translate(${x}px, ${y}px)` })
 function Item({ it, items, id, seed, delay }: { it: PaperItem; items: PaperItem[]; id: string; seed: number; delay: number }) {
   const ink = (lines: Line[], size = 3.4) => <Ink id={id} lines={lines} size={size} delay={delay} />
   const shape = (paths: Sketched[]) => <Sketch paths={paths} delay={delay} />
@@ -468,16 +468,16 @@ function Item({ it, items, id, seed, delay }: { it: PaperItem; items: PaperItem[
     })}</g>
   )
   const pts = it.values.map((v, i): [number, number] => [x + i * step + step / 2, yOf(v)])
-  return <g>{base}{ink([pts], 3.2)}{pts.map(([px, py], i) => <circle key={i} cx={px} cy={py} r={3.2} className="sd-dot sd-fade" style={{ "--delay": ms(delay + 300 + i * 60) } as React.CSSProperties} />)}</g>
+  return <g>{base}{ink([pts], 3.2)}{pts.map(([px, py], i) => <circle key={i} cx={px} cy={py} r={3.2} className="sd-dot sd-fade" style={{ "--delay": ms(delay + 300 + i * 60) }} />)}</g>
 }
 function Svg({ it, seed, delay }: { it: Extract<PaperItem, { type: "svg" }>; seed: number; delay: number }) {
   const fit = useMemo(() => svgFit(it), [it]), n = it.paths.length, step = Math.min(420, 3200 / n), dur = Math.min(900, Math.max(320, step * 1.6))
-  const style = (j: number, extra: React.CSSProperties = {}) => ({ "--delay": ms(delay + j * step), "--dur": ms(dur), ...extra }) as React.CSSProperties
+  const style = (j: number, extra: React.CSSProperties = {}) => ({ "--delay": ms(delay + j * step), "--dur": ms(dur), ...extra })
   if (it.style === "sketch") {
     const toBox = ([x, y]: [number, number]): [number, number] => [it.x + fit.ox + (x - fit.vx) * fit.k, it.y + fit.oy + (y - fit.vy) * fit.k]
     return <g>{it.paths.map((sp, j) => {
       const fill = sp.fill ?? it.fill, stroke = sp.color === "none" ? fill : sp.color ?? it.color
-      return <g key={j} style={{ "--ink": inkCss(stroke), "--fill": fillCss(fill) } as React.CSSProperties}>
+      return <g key={j} style={{ "--ink": inkCss(stroke), "--fill": fillCss(fill) }}>
         {flatten(sp.d).map((sub, k) => <Sketch key={k} paths={sketch(sub.closed ? "poly" : "open", sub.pts.map(toBox), seed + j * 31 + k, { solid: sub.closed && !!fill && fill !== "none", roughness: 0.9 })} delay={delay + j * step} dur={dur} />)}
       </g>
     })}</g>
@@ -488,7 +488,7 @@ function Svg({ it, seed, delay }: { it: Extract<PaperItem, { type: "svg" }>; see
       {it.paths.map((sp, j) => {
         const fill = sp.fill ?? it.fill, stroke = sp.color === "none" ? (fill && fill !== "none" ? fill : undefined) : sp.color ?? it.color
         return <g key={j}>
-          {fill && fill !== "none" && <path d={sp.d} className="sd-svg-fill" style={style(j, { fill: fillCss(fill) === "none" ? undefined : fillCss(fill), "--delay": ms(delay + j * step + dur * 0.7) } as React.CSSProperties)} />}
+          {fill && fill !== "none" && <path d={sp.d} className="sd-svg-fill" style={style(j, { fill: fillCss(fill) === "none" ? undefined : fillCss(fill), "--delay": ms(delay + j * step + dur * 0.7) })} />}
           {stroke !== undefined || !fill || fill === "none" ? <path d={sp.d} pathLength={1} className="sd-pen sd-svg" style={style(j, { stroke: inkCss(stroke), strokeWidth: (sp.width ?? 2.4) / fit.k })} /> : null}
         </g>
       })}
@@ -496,7 +496,7 @@ function Svg({ it, seed, delay }: { it: Extract<PaperItem, { type: "svg" }>; see
   )
 }
 function ItemText({ it, items, delay }: { it: PaperItem; items: PaperItem[]; delay: number }) {
-  const pos = (x: number, y: number, extra: React.CSSProperties = {}) => ({ left: x, top: y, "--delay": ms(delay + 200), ...extra }) as React.CSSProperties
+  const pos = (x: number, y: number, extra: React.CSSProperties = {}) => ({ left: x, top: y, "--delay": ms(delay + 200), ...extra })
   const color = it.color ? { color: inkCss(it.color) } : {}
   if (it.type === "text") return <div className={`sd-ptext sd-fade sd-move-xy absolute sd-${it.size ?? "m"}`} style={pos(it.x, it.y, color)}>{it.text}</div>
   if ((it.type === "rect" || it.type === "ellipse" || it.type === "diamond") && it.label) return <div className="sd-plabel sd-fade sd-move-xy absolute grid place-items-center text-center" style={pos(it.x, it.y, { width: it.w, height: it.h, padding: it.type === "diamond" ? `0 ${it.w * 0.18}px` : "0 6px", whiteSpace: "normal", color: onFill(it.fill) })}>{it.label}</div>
@@ -513,7 +513,7 @@ function ItemText({ it, items, delay }: { it: PaperItem; items: PaperItem[]; del
 
 function Toolbar({ kept, keepable, keep, clear, slot, who }: { kept?: string; keepable: boolean; keep: () => void; clear: () => void; slot: number; who?: string }) {
   return (
-    <div className="sd-tools sd-pop absolute left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ bottom: TOOLS.bottom + slot * TOOLS.row, "--delay": "500ms" } as React.CSSProperties}>
+    <div className="sd-tools sd-pop absolute left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ bottom: TOOLS.bottom + slot * TOOLS.row, "--delay": "500ms" }}>
       {who && <span className="sd-tool sd-who">{who}</span>}
       {keepable && (kept
         ? <span data-kept className="sd-tool"><Check className="size-3.5" strokeWidth={2.4} /><span className="max-w-[260px] truncate">Kept in {kept.replace(/\.excalidraw$/, "")}</span></span>
