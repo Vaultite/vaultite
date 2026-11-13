@@ -493,6 +493,8 @@ export default async ($: VaultTest) => {
       (await entry(r.bundle.id))?.applied, r)
     await api("DELETE", `bundles/${r.bundle.id}`)
     check("bundles: deleted, its tweaks go too", !tweaksOf(r.bundle.id))
+    const [blank, blankR] = await api("POST", "bundles", { name: "  " }), [odd, oddR] = await api("POST", "bundles", { name: "Odd", look: "yes" })
+    check("bundles: saved with a blank name, or a part that isn't true or false, nothing is saved and it says why", blank === 400 && /needs a name/.test(blankR.error) && odd === 400 && /look/.test(oddR.error), [blankR, oddR])
 
     // Back to Standard: the way back from a layout that hides everything, with its tweaks; from Standard itself, clean.
     await apply("standard")
