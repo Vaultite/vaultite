@@ -32,6 +32,11 @@ export async function slot(label = path.basename(process.argv[1] ?? "qa")): Prom
 export const front = (label: string) => take(path.join(sharedTmp(), "vaultite-qa-front"), 1, label, "the front window (another QA script brings its own forward)")
 
 async function take(dir: string, count: number, label: string, what: string): Promise<() => void> {
+  return (await within(dir, count, label, what, Infinity))!
+}
+
+/** A free one of `count` slots in `dir`, waited for till `deadline` (then null). */
+async function within(dir: string, count: number, label: string, what: string, deadline: number): Promise<(() => void) | null> {
   fs.mkdirSync(dir, { recursive: true })
   let said = false
   const asked = Date.now()
@@ -44,26 +49,32 @@ async function take(dir: string, count: number, label: string, what: string): Pr
         continue
       }
       mine.add(f)
-      // (how long, so a slow run shows the time it spent queued behind other agents' runs)
       if (said) console.error(`${label}: got ${what.replace(/ \(.*$/, "")} after waiting ${((Date.now() - asked) / 1000).toFixed(0)} s`)
       return () => { mine.delete(f); if (owner(f) === process.pid) fs.rmSync(f, { force: true }) }
     }
+    if (Date.now() >= deadline) return null
     if (!said) { console.error(`${label}: waiting for ${what}`); said = true }
     await new Promise((r) => setTimeout(r, 2000))
   }
 }
 
-/** Every QA slot on this machine, then a calm machine (the minute's load under half its cores, `wait` at most): what
+/** Every QA slot on this machine, then a calm machine (the minute's load under half its cores), `wait` at most: what
  *  measures time can't share it, and other agents' builds and tests load it without a slot. `busy` says why not. */
-export async function alone(label: string, wait = 180_000): Promise<{ release: () => void; busy?: string }> {
-  const lock = await take(path.join(sharedTmp(), "vaultite-qa-alone"), 1, label, "the machine (another script that measures time has it)")
-  const all: (() => void)[] = []
-  for (let i = 0; i < SLOTS; i++) all.push(await take(DIR, SLOTS, label, `every QA slot (to run alone)`))
-  const release = () => { for (const r of all) r(); lock() }
-  const cores = os.cpus().length, end = Date.now() + wait
+export async function alone(label: string, wait = 600_000): Promise<{ release: () => void; busy?: string }> {
+  const end = Date.now() + wait, held: (() => void)[] = []
+  const release = () => { for (const r of held) r() }
+  const lock = await within(path.join(sharedTmp(), "vaultite-qa-alone"), 1, label, "the machine (another script that measures time has it)", end)
+  if (!lock) return { release, busy: `another script that measures time held the machine for ${wait / 60_000} min` }
+  held.push(lock)
+  for (let i = 0; i < SLOTS; i++) {
+    const slot = await within(DIR, SLOTS, label, "every QA slot (to run alone)", end)
+    if (!slot) return { release, busy: `other runs held QA slots for ${wait / 60_000} min` }
+    held.push(slot)
+  }
+  const cores = os.cpus().length
   while (os.loadavg()[0] >= cores / 2 && Date.now() < end) await new Promise((r) => setTimeout(r, 2000))
   const load = os.loadavg()[0]
-  return { release, busy: load >= cores / 2 ? `the machine never calmed to measure on: load ${load.toFixed(1)} on ${cores} cores for ${wait / 60_000} min` : undefined }
+  return { release, busy: load >= cores / 2 ? `the machine never calmed to measure on: load ${load.toFixed(1)} on ${cores} cores` : undefined }
 }
 
 let held: Promise<() => void> | undefined
