@@ -5,6 +5,19 @@ import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { check } = $
+  {
+    const { atExit } = await import("../../../core/exit.ts")
+    const { gitEnv } = await import("../../../core/gitenv.ts")
+    const listeners = process.listenerCount("exit"), ran: number[] = []
+    const offs = Array.from({ length: 20 }, (_, i) => atExit(() => ran.push(i)))
+    const grew = process.listenerCount("exit") - listeners
+    for (const off of offs) off()
+    check("exit hooks: any number share the process's one exit listener", grew === 0, grew)
+    const ROOT = path.resolve(import.meta.dirname, "../../..")
+    const own = spawnSync("git", ["grep", "-nE", "process\\.(on|once)\\??\\.?\\(\\s*[\"']exit", "--", "core", "plugins", "electron", "server.ts", "bin"], { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout
+      .split("\n").filter((l) => l && !l.startsWith("core/exit.ts:") && !l.startsWith("electron/shell/"))
+    check("exit hooks: the app's code goes through core/exit.ts (Node warns past 10 listeners)", !own.length, own)
+  }
   // A shell kept running (core/keptshell.ts), how Windows' process table is read: one PowerShell answering each read,
   // as starting one per read took 20 s on an Arm machine. Here the platform's own shell stands in.
   const { keptShell } = await import("../../../core/keptshell.ts")

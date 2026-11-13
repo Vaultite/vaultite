@@ -4,6 +4,7 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
+import { atExit } from "../exit.ts"
 
 const exec = promisify(execFile)
 export type Lease = { pid: number; started: string; what: string }
@@ -42,8 +43,8 @@ export async function holdRoot(self: string, what: string) {
   if (!at) return () => {}
   try {
     const release = await leaseIn(at.store, at.sha, { pid: process.pid, what })
-    process.once("exit", release)
-    return release
+    const off = atExit(release)
+    return () => { off(); release() }
   } catch { return () => {} }
 }
 

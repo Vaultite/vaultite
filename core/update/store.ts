@@ -10,6 +10,7 @@ import { gitEnv } from "../gitenv.ts"
 import { fixSpawnHelper } from "./npm.ts"
 import { leaseIn, processStart, type Lease } from "./lease.ts"
 import { fingerprint } from "../../electron/shell/print.mjs"
+import { atExit } from "../exit.ts"
 
 const exec = promisify(execFile)
 const MINUTE = 60_000
@@ -28,7 +29,7 @@ export function stopRuns(signal: NodeJS.Signals = "SIGTERM") {
   for (const c of running) c.kill(signal)
   return running.size
 }
-process.once("exit", () => stopRuns("SIGKILL"))
+atExit(() => stopRuns("SIGKILL"))
 
 export const execIn: Exec = async (cmd, args, o) => {
   try {

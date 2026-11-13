@@ -45,6 +45,7 @@ import { notHereYet, onItsOwn, runHook } from "./writegate.ts"
  *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
 export { WriteRefused } from "./writegate.ts"
 import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, type Item, Kind, type MoveHook, readText, requestWriter, type SaveHook, type Vault, type WriteHook, writeAtomic } from "./vault.ts"
+import { atExit } from "./exit.ts"
 
 /** What kind of file a name is (core/filetypes.ts), for plugins that treat text files differently, and the type it is served with. */
 export { contentType, isTextKind, kindOf } from "./filetypes.ts"
@@ -475,6 +476,9 @@ export class Plugin {
   onUnload(fn: () => void) {
     this.cleanups.push(fn)
     return fn
+  }
+  onExit(fn: () => void) {
+    this.onUnload(atExit(fn))
   }
 
   /** Unload it: off the vault, and its onUnload functions run. */

@@ -463,7 +463,7 @@ export default async ($: VaultTest) => {
     const { diskTree, graphOf } = await import("../../../core/update/closure.ts")
     const root = path.resolve(import.meta.dirname, "../../..")
     const loads = [...graphOf(diskTree(root)).reach("termd").files.keys()].filter((f) => !f.startsWith("node_modules/") && !/^package(-lock)?\.json$/.test(f)).sort()
-    const own = ["core/update/lease.ts", "plugins/core/terminal/claude-pictures/decode/cells.ts", "plugins/core/terminal/keys.ts", "plugins/core/terminal/lines.ts",
+    const own = ["core/exit.ts", "core/update/lease.ts", "plugins/core/terminal/claude-pictures/decode/cells.ts", "plugins/core/terminal/keys.ts", "plugins/core/terminal/lines.ts",
       "plugins/core/terminal/osc7501.ts", ...["adopt", "host", "kitty", "png", "protocol", "screen", "screenworker", "spawnhelper", "termd"].map((f) => `plugins/core/terminal/termd/${f}.ts`),
       "plugins/core/terminal/vt/ghostty-vt.wasm", "plugins/core/terminal/vt/load.ts", "plugins/core/terminal/vt/vt.ts"]
     check("terminal server: loads only its own files (one more is code a running one never updates: keep it compatible, then list it here)",

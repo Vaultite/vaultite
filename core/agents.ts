@@ -21,6 +21,7 @@ export { agentSession, serversOwn } from "./sessionenv.ts"
 export { trustClaudeProject } from "./claudeconfig.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
 import { type Item, sortBy, writeAtomic } from "./vault.ts"
+import { atExit } from "./exit.ts"
 
 /** This machine's home folder, where agents keep their files. */
 export const HOME = os.homedir()
@@ -661,6 +662,7 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
   private pruned = 0
   private reach = scanDays()
   private keep: (() => string) | null
+  close = () => {}
   private loaded = false
   private running = false
   private saved = { version: 0, at: 0 }
@@ -669,7 +671,7 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
   constructor(dirs: () => string[], keep?: () => string) {
     this.dirs = dirs
     this.keep = keep ?? null
-    if (keep) process.on("exit", () => { if (!this.running) this.save() })
+    if (keep) this.close = atExit(() => { if (!this.running) this.save() })
   }
 
   protected fresh(_file: string): F { return { offset: 0 } as F }

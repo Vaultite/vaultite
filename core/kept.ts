@@ -8,6 +8,7 @@ import { z } from "zod"
 import { readJson } from "./jsonfile.ts"
 import { LOCAL, vaultHere } from "./plugins.ts"
 import { writeAtomic } from "./vault.ts"
+import { atExit } from "./exit.ts"
 
 /** An entry as kept: its JSON (`null`: removed, kept a while so a removal travels too), when it last changed (this or
  *  another machine's clock, ms), whether other machines get it, and the change number it got here. */
@@ -201,4 +202,4 @@ export function keptOf(vaultPath: string): Kept {
 export function flushKept() {
   for (const k of stores.values()) k.flush()
 }
-process.on?.("exit", flushKept)
+atExit(flushKept)

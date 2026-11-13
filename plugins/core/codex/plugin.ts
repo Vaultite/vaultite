@@ -154,6 +154,7 @@ class Scan extends JsonlScan<Resp, FileState> {
 }
 
 const scan = new Scan(() => [path.join(CODEX, "sessions"), path.join(CODEX, "archived_sessions")], () => path.join(plugin.localDir(), "scan.json"))
+plugin.onUnload(() => scan.close())
 
 function cost(r: Resp) {
   const p = price(r.model)

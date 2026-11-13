@@ -5,6 +5,7 @@ import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
 import { runtimeDir } from "./runtime.ts"
+import { atExit } from "./exit.ts"
 
 /** Who serves a vault here: `key` is what an attaching desktop app shows it may (core/desktopapp.ts). */
 export type Serving = { pid: number; port: number; key: string; vault: string; app: boolean
@@ -81,4 +82,4 @@ function release() {
   try { if ((JSON.parse(fs.readFileSync(mine.file, "utf8")) as Serving).pid === process.pid) fs.unlinkSync(mine.file) } catch { /* gone */ }
   mine = null
 }
-process.on("exit", release)
+atExit(release)

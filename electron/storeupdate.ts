@@ -14,6 +14,7 @@ import { mainLog } from "./mainlog.ts"
 import { readJson, SHA, type StoreHost, userData } from "./storehost.ts"
 import { policyFor, SHELL_EVERY, storeDir } from "./storepolicy.ts"
 import { messageOf } from "./browser/errors.ts"
+import { atExit } from "../core/exit.ts"
 
 const exec = promisify(execFile)
 const ROOT = path.dirname(import.meta.dirname)
@@ -51,7 +52,7 @@ export async function look(h: StoreHost) {
 let follows = ""
 /** Its servers restarted onto the current root once nothing a restart cuts short runs, once however many updates ask. */
 let restartWaits: Promise<void> | null = null, preparing = 0
-process.once("exit", () => { const left = stopRuns("SIGKILL"); if (left) mainLog(`quit: ${left} process(es) a prepare still ran stopped`) })
+atExit(() => { const left = stopRuns("SIGKILL"); if (left) mainLog(`quit: ${left} process(es) a prepare still ran stopped`) })
 function restartWhenIdle(h: StoreHost) {
   if (restartWaits) return h.log("store: its servers restart once idle, as already asked")
   const why = async () => (preparing ? "a commit is being prepared" : h.busy())

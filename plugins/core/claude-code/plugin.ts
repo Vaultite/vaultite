@@ -676,7 +676,7 @@ function watchSessions() {
 const sessionsLook = setInterval(watchSessions, 30_000)
 sessionsLook.unref?.()
 setTimeout(watchSessions, 0).unref?.()
-plugin.onUnload(() => { clearInterval(sessionsLook); if (waitsTimer) clearTimeout(waitsTimer); for (const w of watched.values()) w.close() })
+plugin.onUnload(() => { clearInterval(sessionsLook); if (waitsTimer) clearTimeout(waitsTimer); for (const w of watched.values()) w.close(); for (const s of scans.values()) s.close() })
 
 function tail(file: string) {
   try {

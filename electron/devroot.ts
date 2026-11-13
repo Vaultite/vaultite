@@ -8,6 +8,7 @@ import type { Instance } from "./devinstance.ts"
 import type { ParseCache } from "../core/update/closure.ts"
 import { reach } from "./devreach.ts"
 import { fingerprint } from "./shell/print.mjs"
+import { atExit } from "../core/exit.ts"
 
 export type Worktree = { worktree: string; branch: string; commit: string; dirty: boolean }
 /** What the instance needs of the app (vaultwindow.ts startWorktree). */
@@ -47,7 +48,7 @@ export async function startDev(h: DevHost) {
   const me: Instance = { pid: process.pid, root: h.root, worktree: state.worktree, headless: h.headless, debugPort: h.debugPort, started: Date.now() }
   fs.mkdirSync(h.userData, { recursive: true })
   fs.writeFileSync(file, JSON.stringify(me, null, 2) + "\n")
-  process.on("exit", () => { try { if (JSON.parse(fs.readFileSync(file, "utf8")).pid === process.pid) fs.rmSync(file) } catch { /* gone */ } })
+  atExit(() => { try { if (JSON.parse(fs.readFileSync(file, "utf8")).pid === process.pid) fs.rmSync(file) } catch { /* gone */ } })
 
   const parses: ParseCache = new Map()
   let pending = new Set<string>(), timer: NodeJS.Timeout | undefined, building: ChildProcess | null = null, again = false, toldShell = false
