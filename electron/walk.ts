@@ -8,6 +8,9 @@ import { countText, dwellAt, type Point, sentences, thingAt, walkCommand, type W
 import { captureDir } from "./recorder.ts"
 import { happened, queryTimeline, timelineFilmed } from "./timeline.ts"
 import { messageOf } from "./browser/errors.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("walk")
 
 /** What helper.ts lends it. */
 export type WalkHost = {
@@ -181,7 +184,7 @@ function addItem(said: string, from: number, to: number) {
   w.last = Date.now()
   happened({ t: from, kind: "said", text: said })
   const it = { n: w.items.length + 1, said, from, to, at: screen.getCursorScreenPoint(), place: {} } as Item
-  it.ready = fill(it, w.clips).catch((e) => console.error("vaultite: a QA walk's item:", e))
+  it.ready = fill(it, w.clips).catch((e) => log.error("a QA walk's item failed", e))
   w.items.push(it)
   say(`Noted: ${short(said)}`)
 }

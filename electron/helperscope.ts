@@ -1,3 +1,7 @@
+import { logger } from "../core/log.ts"
+
+const log = logger("helper")
+
 // What the menu-bar helper's code holds of the process beyond its own windows (listeners on Electron's emitters, set
 // once by a module), freed as one by stopHelper: a reload onto another code root leaves the old copy nothing live.
 type Fn = (...a: any[]) => void
@@ -18,5 +22,5 @@ export function onFree(fn: () => void) { undo.add(fn) }
 export function freeAll() {
   const all = [...undo]
   undo.clear()
-  for (const f of all) try { f() } catch (e) { console.error("vaultite: the helper didn't free one of its hooks:", e) }
+  for (const f of all) try { f() } catch (e) { log.error("the helper didn't free one of its hooks", e) }
 }

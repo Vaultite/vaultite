@@ -5,6 +5,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { hostOfUrl, siteOf } from "./webwire.ts"
 import { MAC, type Page, pageOf } from "./webbase.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("browser")
 
 export const FREE = new Set(["clipboard-sanitized-write", "notifications", "fullscreen", "pointerLock", "keyboardLock", "speaker-selection",
   "storage-access", "top-level-storage-access"])
@@ -75,5 +78,5 @@ export async function otherApp(p: Page, to: string) {
   if (scheme === "mailto") return void shell.openExternal(to)
   const wc = p.view.webContents
   if (wc.isDestroyed()) return
-  if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
+  if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch((e) => log.error("couldn't open a link in another app", e))
 }

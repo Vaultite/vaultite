@@ -11,6 +11,9 @@ import { endWalk, startWalk, walkOn, walkScene } from "./walk.ts"
 import { asked, QUIET } from "./helperask.ts"
 import { host, op, prefs } from "./helperbase.ts"
 import { live } from "./helperlive.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("helper")
 
 let up: { refresh: () => Promise<void>; openChat: (name: string, at: Point) => void }
 export const menuHost = (h: typeof up) => { up = h }
@@ -160,7 +163,7 @@ export function showTray(file: string) {
   tray.setToolTip(app.getName())
   // (its section headers, Companion and Jobs, read as bold titles: menus.m)
   void macAddon("menus", path.join(app.getPath("userData"), "bin")).then((m) => m.call({ cmd: "boldHeaders" }))
-    .catch((e) => console.warn(`vaultite: the menu's headers stay AppKit's (${(e as Error).message})`))
+    .catch((e) => log.warn(`the menu's headers stay AppKit's (${(e as Error).message})`))
   tray.on("click", () => tray?.popUpContextMenu(Menu.buildFromTemplate(menuItems())))
 }
 export function hideTray() {

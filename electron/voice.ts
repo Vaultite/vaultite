@@ -8,6 +8,9 @@ import { voice, type Voice } from "./voicelogic.ts"
 import type { Heard } from "../core/desktop/screenmarks.ts"
 import { voiceSwift } from "./swiftbuild.ts"
 import { messageOf } from "./browser/errors.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("voice")
 
 /** Its helper goes after this long unused (its process, and the audio device with it). */
 const IDLE_MS = 10 * 60_000
@@ -78,7 +81,7 @@ export function companionVoice(o: {
         }
       })
       c.stdin!.on("error", () => {})
-      c.on("error", (e) => console.warn(`voice: its player didn't run (${e.message})`))
+      c.on("error", (e) => log.warn(`its player didn't run (${e.message})`))
       c.once("exit", (code, signal) => {
         if (child !== c) return
         // (gone mid-answer: what it had is lost, and the user is told; the next answer starts another)
@@ -87,7 +90,7 @@ export function companionVoice(o: {
       })
       child = c
       return c
-    }, (e) => { console.warn(`voice: its helper isn't here (${messageOf(e)})`); return null }).finally(() => { starting = null })
+    }, (e) => { log.warn(`its helper isn't here (${messageOf(e)})`); return null }).finally(() => { starting = null })
     return starting
   }
   function heard(m: { type?: string; n?: number; v?: number; at?: number; s?: number; why?: string; again?: number; name?: string; transport?: string; rate?: number }) {

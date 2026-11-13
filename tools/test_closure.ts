@@ -162,7 +162,8 @@ await section("the menu-bar helper shares no state with the main process", () =>
     "core/dictationtext.ts": "pure functions", "electron/miclogic.ts": "pure functions", "electron/presslog.ts": "a factory: each log its own",
     "electron/swiftbuild.ts": "a factory; builds are atomic renames", "electron/linehelper.ts": "a factory: each child its owner's",
     "electron/macaddons.ts": "loads an addon (Node-API: loading it again is allowed)", "electron/menu.ts": "the helper uses icon(), a cache of files' images",
-    "electron/quiet.ts": "QUIET and quiet(); its count lives on globalThis", "electron/stack.ts": "pure functions", "electron/browser/errors.ts": "pure functions",
+    "electron/quiet.ts": "QUIET and quiet(); its count lives on globalThis", "core/log.ts": "pure functions over console",
+    "electron/stack.ts": "pure functions", "electron/browser/errors.ts": "pure functions",
   }
   const stateful = STATEFUL.filter((f) => own.files.has(f))
   check("it imports none of the main process's stateful modules", !stateful.length, stateful.map((f) => g.chainOf(own, f).join(" > ")))

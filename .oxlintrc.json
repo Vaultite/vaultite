@@ -57,6 +57,10 @@
       "rules": { "no-console": "warn" }
     },
     {
+      "files": ["electron/install.ts", "electron/dev.ts"],
+      "rules": { "no-console": "off" }
+    },
+    {
       "files": ["web/src/**/*.tsx", "plugins/**/*.tsx"],
       "rules": { "vaultite/no-title-attr": "warn" }
     },

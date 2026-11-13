@@ -3,7 +3,7 @@ import { app, powerMonitor, type WebContents } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage, logger } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { clipboardKey, keyEvent } from "./keypress.ts"
 import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
@@ -16,7 +16,7 @@ export const THUMB_WIDTH = 320
 type Access = "none" | "read" | "act"
 let access = new Map<string, Access>()
 let home = ""
-const paused = new Set<number>()
+const paused = new Set<number>(), log = logger("agents")
 const owners = new Map<number, By>()
 const asks = new Map<number, { by: string; reason: string }>()
 const taken = new Set<number>()
@@ -486,7 +486,7 @@ export async function record(p: EnginePage, asked: By, step: Record<string, unkn
     }
     fs.appendFileSync(path.join(dir, "steps.jsonl"), scrub(JSON.stringify({ t, tab: p.id, by: by.name ?? "", ...(by.task ? { task: by.task } : {}),
       ...(by.summary ? { summary: by.summary } : {}), url: p.wc.getURL(), title: p.wc.getTitle(), ...(ms !== undefined ? { ms } : {}), ...step, ...(shot ? { shot } : {}) })) + "\n")
-  } catch (e) { console.error("vaultite: an agent's step wasn't kept:", e) }
+  } catch (e) { log.error("an agent's step wasn't kept", e) }
 }
 setTimeout(() => {
   try {

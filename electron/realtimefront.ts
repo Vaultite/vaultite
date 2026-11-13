@@ -2,6 +2,7 @@
  *  answers alone; for the screen two words, the summoned answer (asked at once, as the pipeline asks) said after them. */
 import { realtimeSession, type RealtimeSession } from "./realtime.ts"
 import { costOf, instructions, LOOK_TOOL, msOf, resampler, type Usage } from "./realtimelogic.ts"
+import { logger } from "../core/log.ts"
 
 export type FrontConfig = { url: string; key: string; model: string; voice: string }
 /** Where its audio plays (voice.ts' companionVoice): a stream per response, in order; `yield`, an answer said after it
@@ -21,7 +22,7 @@ type Turn<O> = { owner: O; pressed: number; released?: number; speech: boolean; 
   stream?: ReturnType<Player["stream"]>; cost: number; usage: Usage[]; waiting?: ReturnType<typeof setTimeout> }
 
 /** How much of its few words may still play once the answer after them is ready, before they're cut at a pause (s). */
-const GRACE = 0.25
+const GRACE = 0.25, log = logger("realtime")
 
 export function realtimeFront<O>(o: {
   /** The session's key and settings; null: the pipeline answers (no key, or voice_front is pipeline). */
@@ -190,7 +191,7 @@ export function realtimeFront<O>(o: {
     // (what it began saying ends where it is: an open stream would hold up what plays after it)
     t.stream?.end()
     rest()
-    console.warn(`realtime: ${why}${t.routed ? "" : "; the pipeline answers"}`)
+    log.warn(`${why}${t.routed ? "" : "; the pipeline answers"}`)
     o.log?.(t.owner, { kind: t.routed === "look" ? "look" : "talk", cost: t.cost, model: cfg?.model ?? "", usage: t.usage, failed: why })
     routeTo(t, { to: "pipeline", why })
   }

@@ -3,7 +3,9 @@
 import { safeStorage, type Cookie, type Session } from "electron"
 import fs from "node:fs"
 import path from "node:path"
-import { eachSession, onFlush } from "./engine.ts"
+import { eachSession, onFlush, logger } from "./engine.ts"
+
+const log = logger("cookies")
 
 const FILE = "Session Cookies.vaultite"
 /** Written this long after the last change: a burst of a page's cookies is one write. */
@@ -55,7 +57,7 @@ eachSession((s) => {
     // (given up on, its pages open: what they set isn't put back over)
     for (const k of kept) if (restoring) await s.cookies.set(setOf(k)).catch(() => {})
     return true
-  })().catch((e) => { console.error("vaultite: couldn't set the session cookies again:", e); return false })
+  })().catch((e) => { log.error("couldn't set the session cookies again", e); return false })
   return Promise.race([restore, new Promise<boolean>((done) => setTimeout(() => done(false), RESTORE_MS))]).then((done) => {
     restoring = false
     // (the file is what the session has from now on; one that couldn't be read is left till the session changes)
@@ -92,7 +94,7 @@ async function write(jar: Jar): Promise<void> {
     const tmp = `${jar.file}.${process.pid}.tmp`
     await fs.promises.writeFile(tmp, data, { mode: 0o600 })
     await fs.promises.rename(tmp, jar.file)
-  })().catch((e) => console.error("vaultite: couldn't keep the session cookies:", e)).finally(() => { jar.writing = null })
+  })().catch((e) => log.error("couldn't keep the session cookies", e)).finally(() => { jar.writing = null })
   await jar.writing
 }
 

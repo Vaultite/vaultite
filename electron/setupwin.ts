@@ -14,6 +14,9 @@ import { booting, serverFor, wins } from "./servers.ts"
 import { guard } from "./guard.ts"
 import { openVault, sandbox, send, showManager } from "./vaultwindow.ts"
 import { folderName, str } from "./handle.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("setup")
 
 type SetupState = { done?: string }
 const SETUP = () => path.join(app.getPath("userData"), "setup.json")
@@ -110,7 +113,7 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
   const port = (await servedHere(p))?.port ?? (await serverFor(remember(p)))[1]
   const call = async (opId: string, body: object, what: string) => {
     const r = await fetch(`http://127.0.0.1:${port}/api/ops/${opId}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify(body) })
-    if (!r.ok) console.error(`${what}:`, r.status, await r.text())
+    if (!r.ok) log.error(`${what}: ${r.status} ${await r.text()}`)
   }
   if (fresh) await call("ai.set", { on: "off" }, "AI off until asked")
   if (c.kind === "new" && c.starter) await call("vault.starter", {}, "starter content")

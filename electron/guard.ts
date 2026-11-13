@@ -12,6 +12,9 @@ import { applyLights, background, chrome } from "./titlebar.ts"
 import { nameOf, zoom } from "./vaultlist.ts"
 import { popouts, type Win, wins } from "./servers.ts"
 import { crashedFor, hangs } from "./errors.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("links")
 
 // What macOS runs rather than shows when opened (an app, a script, a link to one).
 function openVaultFile(abs: string) {
@@ -31,7 +34,7 @@ async function openLink(url: string) {
     const { response } = await dialog.showMessageBox({ type: "question", buttons: ["Open", "Cancel"], defaultId: 1, cancelId: 1, message: "Open this link in another app?", detail: url })
     if (response !== 0) return
   }
-  shell.openExternal(url).catch((e) => console.error(`couldn't open ${url.split(":")[0]}: link`, e))
+  shell.openExternal(url).catch((e) => log.error(`couldn't open ${url.split(":")[0]}: link`, e))
 }
 
 export function guard(win: AppWindow, origin: string) {

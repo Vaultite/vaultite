@@ -9,6 +9,9 @@ import type { ParseCache } from "../core/update/closure.ts"
 import { reach } from "./devreach.ts"
 import { fingerprint } from "./shell/print.mjs"
 import { atExit } from "../core/exit.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("dev")
 
 export type Worktree = { worktree: string; branch: string; commit: string; dirty: boolean }
 /** What the instance needs of the app (vaultwindow.ts startWorktree). */
@@ -52,19 +55,19 @@ export async function startDev(h: DevHost) {
 
   const parses: ParseCache = new Map()
   let pending = new Set<string>(), timer: NodeJS.Timeout | undefined, building: ChildProcess | null = null, again = false, toldShell = false
-  const log = path.join(h.userData, "logs", "dev-build.log")
+  const buildLog = path.join(h.userData, "logs", "dev-build.log")
   // A new web/dist (Vite only: a type error is the agent's to fix, not a reason to keep the old pages); its server tells
   // the pages, which reload (core/webbuild.ts).
   const buildWeb = () => {
     if (building) return void (again = true)
-    fs.mkdirSync(path.dirname(log), { recursive: true })
-    const out = fs.openSync(log, "a")
+    fs.mkdirSync(path.dirname(buildLog), { recursive: true })
+    const out = fs.openSync(buildLog, "a")
     building = spawn(process.execPath, [path.join(h.root, "node_modules", "vite", "bin", "vite.js"), "build"],
       { cwd: h.root, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", out, out] })
     fs.closeSync(out)
     building.on("exit", (code) => {
       building = null
-      if (code) h.say(`The web app didn't build (${log})`)
+      if (code) h.say(`The web app didn't build (${buildLog})`)
       if (again) { again = false; buildWeb() }
     })
   }
@@ -93,5 +96,5 @@ export async function startDev(h: DevHost) {
       clearTimeout(timer)
       timer = setTimeout(() => void settle(), 400)
     })
-  } catch (e) { console.error("vaultite dev: can't watch the worktree:", e) }
+  } catch (e) { log.error("can't watch the worktree", e) }
 }

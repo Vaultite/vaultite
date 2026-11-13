@@ -1,7 +1,7 @@
 // Chrome extensions in web pages: each installed one (extstore.ts) loaded into every web session, the APIs Electron
 // lacks from extapi.ts, popups over the page. The app asks `ext:*`; it's told engine:ext:changed, :open, :show, :close.
 import { app, dialog, session, WebContentsView, type Session } from "electron"
-import { allPages, eachPage, eachSession, handle, opens, partitionOf, tell, tellAll, type EnginePage, type EngineWindow } from "./engine.ts"
+import { allPages, eachPage, eachSession, handle, opens, partitionOf, tell, tellAll, type EnginePage, type EngineWindow, logger } from "./engine.ts"
 import { actionsChanged, buttonOf, closeNatives, closeOffscreen, emit, expect, forgetActions, popupOf, popups, setFront, tabMade, unlisten, setSessions, watchCookies, watchPage, watchWindow,
   watchWorkers } from "./extapi.ts"
 import * as store from "./extstore.ts"
@@ -12,6 +12,8 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { messageOf } from "./errors.ts"
+
+const log = logger("extensions")
 
 const PRELOAD = path.join(path.dirname(fileURLToPath(import.meta.url)), "extensions.preload.cjs")
 const sessions = new Map<Session, string>()
@@ -36,7 +38,7 @@ async function loadInto(s: Session, x: store.Installed) {
     failed.delete(x.id)
   } catch (e) {
     failed.set(x.id, messageOf(e))
-    console.error(`vaultite: couldn't load the extension ${x.name}:`, e)
+    log.error(`couldn't load the extension ${x.name}`, e)
   }
 }
 function unloadFrom(s: Session, id: string) {
@@ -106,7 +108,7 @@ async function turn(x: store.Installed, on: boolean) {
  *  run starts at once: its folders are installed before the sessions load. */
 function enforce() {
   const go = async () => { for (const x of await applyPolicy()) await turn(x, true); changed() }
-  policy = (policy ? policy.then(go) : go()).catch((e) => console.error("vaultite: couldn't apply the managed extensions:", e))
+  policy = (policy ? policy.then(go) : go()).catch((e) => log.error("couldn't apply the managed extensions", e))
   return policy
 }
 function firstPolicy() {
@@ -192,13 +194,13 @@ handle("ext:import", async (_win, id) => {
   if (!found) throw new Error("that browser doesn't have it any more")
   let x: store.Installed
   try { x = await store.fromStore(found.id) } catch (e) {
-    if (!(e instanceof store.NotOffered)) console.error("vaultite: the Web Store didn't give an extension, copied instead:", e)
+    if (!(e instanceof store.NotOffered)) log.error("the Web Store didn't give an extension, copied instead", e)
     x = store.fromFolder(found.dir)
   }
   const from = store.sources(x.id).find((s) => found.dir.startsWith(s.dir + path.sep))
   let settings = false
   if (from) {
-    try { await bringSettings(x, from); settings = true } catch (e) { console.error(`vaultite: couldn't bring ${x.name}'s settings from ${found.browser}:`, e) }
+    try { await bringSettings(x, from); settings = true } catch (e) { log.error(`couldn't bring ${x.name}'s settings from ${found.browser}`, e) }
   }
   return { ...await added(x), settings }
 })
@@ -345,7 +347,7 @@ async function updateNow() {
   try {
     const done = await store.update()
     for (const x of done) await added(x)
-  } catch (e) { console.error("vaultite: couldn't look for extensions' updates:", e) }
+  } catch (e) { log.error("couldn't look for extensions' updates", e) }
 }
 void app.whenReady().then(() => {
   const tick = () => { if (Date.now() - store.load().checked > DAY - 3600_000) void updateNow() }

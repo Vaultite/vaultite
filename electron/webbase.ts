@@ -1,5 +1,6 @@
 import { app, BaseWindow, type Session, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
+import { logger } from "../core/log.ts"
 import { AppWindow } from "./appwindow.ts"
 import { engineOpens, setEngineHost } from "./browser/engine.ts"
 import type { Spot } from "./pagespot.ts"
@@ -8,7 +9,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { WebRect } from "./webwire.ts"
 
-setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl })
+setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl, logger })
 
 /** `radius`: its corners' (CSS px), where it meets its pane's rounded card's (one radius: Electron rounds all four). */
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean

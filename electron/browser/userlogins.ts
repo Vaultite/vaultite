@@ -4,12 +4,14 @@ import { ipcMain, type IpcMainEvent, type WebContents } from "electron"
 import crypto from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { agentState } from "./agent.ts"
-import { allPages, eachPage, eachSession, handle, openedByAgent, tell, webSessionMade, type EnginePage, type EngineWindow } from "./engine.ts"
+import { allPages, eachPage, eachSession, handle, openedByAgent, tell, webSessionMade, type EnginePage, type EngineWindow, logger } from "./engine.ts"
 import { filledLately, fillLogin } from "./fill.ts"
 import { saveOffer } from "./loginform.ts"
 import { ranNear, siteOf } from "./pagesecrets.ts"
 import { configured, entriesForUrl, samePassword, saveLogin, secretsOf } from "./passwords.ts"
 import { messageOf } from "./errors.ts"
+
+const log = logger("logins")
 
 const PRELOAD = fileURLToPath(new URL("./userlogins-preload.cjs", import.meta.url))
 eachSession((s) => { s.registerPreloadScript({ type: "frame", filePath: PRELOAD }) })
@@ -129,7 +131,7 @@ function weigh(p: EnginePage) {
     if (Date.now() > h.until) { waiting.delete(p.wc); return }
     if (p.wc.isLoading() || shows(p, "password")) { h.timer = setTimeout(() => weigh(p), 2000); return }
     waiting.delete(p.wc)
-    void offer(p, h).catch((e) => console.error("vaultite: a sign-in wasn't offered to save:", messageOf(e)))
+    void offer(p, h).catch((e) => log.error(`a sign-in wasn't offered to save: ${messageOf(e)}`))
   }, 1200)
 }
 

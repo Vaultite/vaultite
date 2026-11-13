@@ -23,6 +23,10 @@ import { offerHere, offerSaid, stopTakeover, takeoverClick, takeoverDriving, tak
 import { type Needs, offerHeard, offerHost, offerScene, offerTimeline, OFFER_UP_MS } from "./timelineoffer.ts"
 import { asked, LIVE, QUIET, screenAsk, screenAsked, stubs, switched } from "./helperask.ts"
 import { type Agent, based, basedAt, BUSY, defaults, dictating, drawWith, front, frontHappened, frontIs, hidden, hint, host, hostIs, type Note, notice, op, prefs, prefsAre, stopFor, type HelperHost } from "./helperbase.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("helper")
+
 export type { Dictation, HelperHost, HelperPrefs, Home } from "./helperbase.ts"
 import { live, liveHooks, type Message } from "./helperlive.ts"
 import { axThings, clicked, excluded, findIn, inputHeard, nearAt, nearPoint, lastNear, openedUntil, openOn, places, placeTold, pointedAt, teachThings, walkPlace } from "./helperat.ts"
@@ -121,7 +125,7 @@ export async function startHelper(h: HelperHost) {
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu, play: playQuiet, stop: stopFromBox, notCall,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
     closed: (_name, why) => { if (session?.into === "panel") stopFor(session.sink, true); if (why === "esc") endExchange(); else moveOn(); draw() } })
-  if (!QUIET) await startScreen().catch((e) => console.error("vaultite: the screen helper didn't start:", e))
+  if (!QUIET) await startScreen().catch((e) => log.error("the screen helper didn't start", e))
   // (a copy a script drives (web/qa/helper.mjs) shows nothing in the menu bar and never hears the user's fn)
   if (!QUIET) {
     void listen()

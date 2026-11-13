@@ -7,10 +7,12 @@ import fs from "node:fs"
 import path from "node:path"
 import readline from "node:readline"
 import { fileURLToPath } from "node:url"
-import { eachPage, eachSession, handle, tell, type EnginePage } from "./engine.ts"
+import { eachPage, eachSession, handle, tell, type EnginePage, logger } from "./engine.ts"
 import { newKey, publicOf, qrText, run, type Progress } from "./hybrid.ts"
 import { prepareCreate, prepareGet, readCreate, readGet, WebAuthnError, type Prepared } from "./webauthn.ts"
 import { messageOf } from "./errors.ts"
+
+const log = logger("passkeys")
 
 const PRELOAD = fileURLToPath(new URL("./passkeys-preload.cjs", import.meta.url))
 const SWIFT = fileURLToPath(new URL("./ble.swift", import.meta.url))
@@ -49,7 +51,7 @@ ipcMain.handle("vaultite:passkey", async (e, kind: unknown, json: unknown) => {
     return JSON.stringify({ ok: await request(e, kind, json) })
   } catch (err) {
     const w = err instanceof WebAuthnError ? err : new WebAuthnError("NotAllowedError", "The operation either timed out or was not allowed.")
-    if (!(err instanceof WebAuthnError)) console.error("vaultite: a passkey request failed:", err)
+    if (!(err instanceof WebAuthnError)) log.error("a passkey request failed", err)
     return JSON.stringify({ error: { name: w.name, message: w.message } })
   }
 })
@@ -113,7 +115,7 @@ function listen(advert: Listener["advert"], state: Listener["state"]) {
 async function start() {
   let bin: string
   try { bin = await binary() } catch (e) {
-    console.error("vaultite:", messageOf(e))
+    log.error(messageOf(e))
     for (const l of listeners) l.state("unavailable")
     return
   }

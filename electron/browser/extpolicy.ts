@@ -6,6 +6,9 @@ import fs from "node:fs"
 import path from "node:path"
 import * as store from "./extstore.ts"
 import { ID, MANIFEST } from "./extwire.ts"
+import { logger } from "./engine.ts"
+
+const log = logger("extensions")
 
 /** Where the policy is read, both at once: the machine's, for every Vaultite app (made as an administrator, so changing
  *  it takes one too), and this app's own in its userData. `{ "extensions": ["<an unpacked extension's folder>", "<a Web Store id>"] }` */
@@ -80,7 +83,7 @@ export async function applyPolicy(): Promise<store.Installed[]> {
       if (had) mark(had, had.managed)
       const why = !fs.existsSync(dir) ? "the folder isn't there" : !fs.existsSync(path.join(dir, "manifest.json")) ? "the folder has no manifest.json" : "its files couldn't be read"
       said.push(`${dir}: ${why}${had ? " (the copy from before stays on)" : ""}`)
-      console.error(`vaultite: couldn't add the managed extension ${dir}:`, e)
+      log.error(`couldn't add the managed extension ${dir}`, e)
     }
   }
   for (const id of wants.filter((w) => ID.test(w))) {
@@ -90,7 +93,7 @@ export async function applyPolicy(): Promise<store.Installed[]> {
       mark(x, { source: "store" })
     } catch (e) {
       said.push(`${id}: ${e instanceof store.NotOffered ? e.message : "the Chrome Web Store couldn't be reached"}`)
-      console.error(`vaultite: couldn't add the managed extension ${id}:`, e)
+      log.error(`couldn't add the managed extension ${id}`, e)
     }
   }
   for (const x of store.installed()) if (x.managed && !keep.has(x.id)) delete x.managed

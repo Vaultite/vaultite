@@ -34,6 +34,7 @@ import { firstRun, pathDirs, setupWin, showSetup } from "./setupwin.ts"
 import { appLink, argFiles, argLinks, openFiles } from "./fromoutside.ts"
 import { applyDockIcon, DOCK_ICON } from "./appmenu.ts"
 import "./handlers.ts"
+import { logger } from "../core/log.ts"
 
 openMainLog(app.getPath("logs"))
 mainLog(`started: ${CODE?.commit.slice(0, 7) ?? "no build stamp"} from ${ROOT}`)
@@ -50,7 +51,7 @@ if (QUIET) {
   app.focus = () => {}
   void app.whenReady().then(() => { fakePointer(); app.dock?.hide() })
 }
-const driven = !!process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port")
+const driven = !!process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port"), log = logger("desktop")
 if (driven && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")
 // A keychain password prompt nobody's there to answer hangs the run.
 if (driven) { app.commandLine.appendSwitch("use-mock-keychain"); app.commandLine.appendSwitch("password-store", "basic") }
@@ -170,7 +171,7 @@ else {
   }
   for (const p of reopening()) {
     if (p !== sandboxPath()) { start(p); continue }
-    refreshed = refreshSandbox(p).then((made) => { const v = find(p); if (made && v) delete v.port }, (e) => console.error(e)).then(() => start(p))
+    refreshed = refreshSandbox(p).then((made) => { const v = find(p); if (made && v) delete v.port }, (e) => log.error("the sandbox wasn't refreshed", e)).then(() => start(p))
   }
 }
 app.on("second-instance", (_e, argv, cwd) => {
@@ -260,7 +261,7 @@ function ejectImages() {
       }
     }
   } catch (e) {
-    console.error("eject:", e)
+    log.error("eject failed", e)
   }
 }
 
@@ -334,9 +335,9 @@ app.whenReady().then(async () => {
   started = true
   const go = !a || await madeIfAsked(a)
   await refreshed
-  await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => console.error(e))))
+  await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => log.error("a vault didn't open again", e, { path: p }))))
   if (!asked()) for (const r of remotes.filter((x) => x.open)) openRemote(r.url)
-  if (firstRun() && !asked() && DEV) await sandbox().catch((e) => console.error(e))
+  if (firstRun() && !asked() && DEV) await sandbox().catch((e) => log.error("the sandbox didn't open", e))
   else if (firstRun() && !asked()) showSetup()
   else if (!wins.size && !remoteWins.size && !early.length && !(await helperHome())) showManager()
   if (early.length) await openFiles(early.splice(0), null)

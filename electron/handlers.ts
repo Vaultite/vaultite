@@ -24,6 +24,9 @@ import { folderName, handle, str, who } from "./handle.ts"
 import { pathDirs, serverUrl, showSetup, where } from "./setupwin.ts"
 import { copyIn, openFiles, pickOutside } from "./fromoutside.ts"
 import { applyDockIcon, DOCK_ICON, IMAGE_TYPES, zoomBy } from "./appmenu.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("desktop")
 
 handle("vaults:list", (w) => ({
   current: w?.vault.path ?? null, home: app.getPath("home"),
@@ -263,7 +266,7 @@ handle("apps:reopen", (w) => {
   const p = w.vault.path, server = w.server
   w.ending = true
   const gone = new Promise<void>((ok) => { if (!server || server.exitCode !== null || server.signalCode) ok(); else server.once("exit", () => ok()) })
-  w.win.once("closed", () => void gone.then(() => openVault(p)).catch((e) => console.error(e)))
+  w.win.once("closed", () => void gone.then(() => openVault(p)).catch((e) => log.error("the vault didn't open again", e, { path: p })))
   w.win.close()
 })
 for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers, ...(MAC ? dictationHandlers : {}) })) {

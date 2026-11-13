@@ -4,10 +4,12 @@ import { app, clipboard, dialog, powerMonitor, safeStorage, systemPreferences } 
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, handle, tellAll } from "./engine.ts"
+import { allPages, handle, tellAll, logger } from "./engine.ts"
 import type { Change, Full, Row } from "./kdbxedit.ts"
 import type { Otp } from "./keepass.ts"
 import { messageOf } from "./errors.ts"
+
+const log = logger("passwords")
 
 // (kdbx/ loads at the first use: a Mac that never opens the page never loads it)
 const kdbx = () => Promise.all([import("./keepass.ts"), import("./kdbxedit.ts")]).then(([k, e]) => ({ ...k, ...e }))
@@ -96,7 +98,7 @@ function write<T>(edit: (db: Awaited<ReturnType<typeof load>>["db"], k: Awaited<
       writeAtomic(c.file, saved)
       for (const s of k.sharesOf(db, c.file)) {
         if (!fs.existsSync(path.dirname(s.path))) continue
-        try { writeAtomic(s.path, new Uint8Array(await k.exportOf(db, s))) } catch (e) { console.error("vaultite: a KeeShare export wasn't written:", messageOf(e)) }
+        try { writeAtomic(s.path, new Uint8Array(await k.exportOf(db, s))) } catch (e) { log.error(`a KeeShare export wasn't written: ${messageOf(e)}`) }
       }
       changed()
       return out

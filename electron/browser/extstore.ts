@@ -9,6 +9,7 @@ import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { ID, MANIFEST, MESSAGES, NATIVE_HOST, PROFILE_NAMES, prepared, RAW_MANIFEST, STATE, type Manifest } from "./extwire.ts"
+import { logger } from "./engine.ts"
 
 /** A file written whole or not at all (a crash mid-write leaves the old one). */
 function writeAtomic(p: string, text: string) {
@@ -60,11 +61,9 @@ export const installed = () => load().list
 export const get = (id: string) => load().list.find((x) => x.id === id)
 export const dirOf = (x: Installed) => path.join(root(), x.id, x.dir)
 
-// ---------- reading an extension's files ----------
-
 const parsed = (text: string) => { try { return JSON.parse(text.replace(/^\uFEFF/, "")) } catch { return null } }
 const rawManifest = (dir: string) => RAW_MANIFEST.parse(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8").replace(/^\uFEFF/, "")))
-const manifests = new Map<string, Manifest>()
+const manifests = new Map<string, Manifest>(), log = logger("extensions")
 export function manifestOf(dir: string): Manifest {
   let m = manifests.get(dir)
   if (!m) {
@@ -110,8 +109,6 @@ export function imageOf(dir: string, icon: unknown, want = 32): string {
     return mime ? `data:${mime};base64,${buf.toString("base64")}` : ""
   } catch { return "" }
 }
-
-// ---------- installing ----------
 
 const shim = () => (createRequire(import.meta.url)("./extensions.preload.cjs") as { storageShim: () => void }).storageShim
 const SHIM = "vaultite/content.js"
@@ -254,12 +251,10 @@ export async function update(): Promise<Installed[]> {
     try {
       const crx = await download(x.id, attr("codebase").replace(/&amp;/g, "&"))
       if (crx) out.push(fromCrx(crx, x.id, "store"))
-    } catch (e) { console.error(`vaultite: couldn't update the extension ${x.name}:`, e) }
+    } catch (e) { log.error(`couldn't update the extension ${x.name}`, e) }
   }
   return out
 }
-
-// ---------- other browsers' extensions on this Mac ----------
 
 export type Found = { browser: string; id: string; name: string; version: string; icon: string; dir: string }
 const HOME = os.homedir()

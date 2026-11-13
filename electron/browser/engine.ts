@@ -1,13 +1,16 @@
 // The browser engine: each feature adds itself here for every web session and page as they are made.
 import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
 import { messageOf } from "./errors.ts"
+import { logger, logTo, unlogged, type Logger } from "./enginelog.ts"
+export { logger }
 
 export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
 /** What the engine needs of the app (main.ts hands it once, before any page opens). `localUrl`: whether an address is
  *  this machine's or its network's (core/web.ts). */
-export type EngineHost = { windows: () => EngineWindow[]; localUrl: (url: string) => boolean }
-let host: EngineHost = { windows: () => [], localUrl: () => true }
-export const setEngineHost = (h: EngineHost) => { host = h }
+export type EngineHost = { windows: () => EngineWindow[]; localUrl: (url: string) => boolean; logger: (area: string) => Logger }
+let host: EngineHost = { windows: () => [], localUrl: () => true, logger: unlogged }
+export const setEngineHost = (h: EngineHost) => { host = h; logTo(h.logger) }
+const log = logger("browser")
 export const localUrl = (url: string) => host.localUrl(url)
 export const appWindows = () => host.windows().filter((w) => !w.isDestroyed())
 export const focusedWindow = () => appWindows().find((w) => w.isFocused()) ?? null
@@ -44,8 +47,8 @@ const made = new Map<string, Session>()
 const pages = new Map<number, EnginePage>()
 
 const run = (fn: () => void | Promise<void>): Promise<void> => {
-  try { return Promise.resolve(fn()).catch((e) => console.error("vaultite: a browser feature's setup failed:", e)) }
-  catch (e) { console.error("vaultite: a browser feature's setup failed:", e); return Promise.resolve() }
+  try { return Promise.resolve(fn()).catch((e) => log.error("a browser feature's setup failed", e)) }
+  catch (e) { log.error("a browser feature's setup failed", e); return Promise.resolve() }
 }
 
 /** `fn` runs for each web session, the ones made already included. What it returns, the session's pages wait for
@@ -74,7 +77,7 @@ export const onFlush = (fn: () => Promise<unknown>) => { flushers.push(fn) }
  *  in batches) and what features keep. */
 export function engineFlush(ms = 2000): Promise<void> {
   const all = [...[...made.values()].map((s) => s.cookies.flushStore()), ...flushers.map((fn) => fn())]
-  return Promise.race([Promise.all(all.map((p) => p.catch((e) => console.error("vaultite: the browser couldn't save:", e)))).then(() => {}),
+  return Promise.race([Promise.all(all.map((p) => p.catch((e) => log.error("the browser couldn't save", e)))).then(() => {}),
     new Promise<void>((done) => setTimeout(done, ms))])
 }
 /** A profile's session is set up: what features do as it's made (its session cookies set again) is done, so its pages'
@@ -126,7 +129,7 @@ function wire(s: Session) {
     const filter = { urls: want?.urls ? want.urls.split(" ") : ["<all_urls>"], ...(want?.types ? { types: want.types.split(" ") } : {}) }
     if (!now.has(ev)) wr[ev](null)
     else if (ANSWERED.has(ev)) wr[ev](filter, (d: RequestDetails, done: (r: RequestAnswer) => void) => answer(wired.get(s)?.get(ev) ?? [], d, s, done))
-    else wr[ev](filter, (d: RequestDetails) => { for (const h of wired.get(s)?.get(ev) ?? []) if (wants(h, d)) try { void h.fn(d, s) } catch (e) { console.error("vaultite: a browser feature's request hook failed:", e) } })
+    else wr[ev](filter, (d: RequestDetails) => { for (const h of wired.get(s)?.get(ev) ?? []) if (wants(h, d)) try { void h.fn(d, s) } catch (e) { log.error("a browser feature's request hook failed", e) } })
   }
 }
 const wants = (h: RequestHook, d: RequestDetails) => !h.types || h.types.includes(d.resourceType as ResourceType)
@@ -147,9 +150,9 @@ function answer(all: RequestHook[], d: RequestDetails, s: Session, done: (r: Req
   const next = (): void => {
     while (i < list.length) {
       let r: ReturnType<RequestHook["fn"]>
-      try { r = list[i++].fn(d, s) } catch (e) { console.error("vaultite: a browser feature's request hook failed:", e); continue }
+      try { r = list[i++].fn(d, s) } catch (e) { log.error("a browser feature's request hook failed", e); continue }
       if (r instanceof Promise) {
-        r.then((v) => { if (!take(v)) next() }, (e) => { console.error("vaultite: a browser feature's request hook failed:", e); next() })
+        r.then((v) => { if (!take(v)) next() }, (e) => { log.error("a browser feature's request hook failed", e); next() })
         return
       }
       if (take(r)) return
@@ -174,7 +177,7 @@ export async function answerLogin(wc: WebContents, details: AuthenticationRespon
       const c = await h.fn(wc, details, info)
       if (c === "cancel") return null
       if (c) return c
-    } catch (err) { console.error("vaultite: a browser feature's sign-in failed:", err) }
+    } catch (err) { log.error("a browser feature's sign-in failed", err) }
   }
   return null
 }
@@ -186,7 +189,7 @@ let loading: Promise<unknown> | null = null
  *  lists) costs nothing to whoever never opens a web page. */
 export function later(load: () => Promise<unknown>) { loaders.push(load) }
 export const engineLoaded = () => (loading ??= Promise.all(loaders.map((load) =>
-  load().catch((e) => console.error("vaultite: a browser feature couldn't load:", e)))))
+  load().catch((e) => log.error("a browser feature couldn't load", e)))))
 
 export function pageMade(p: EnginePage) {
   pages.set(p.id, p)
@@ -269,7 +272,7 @@ export const busyWhen = (fn: (of: "app" | "server") => string | null, appOnly = 
 export function engineBusy(of: "app" | "server" = "app"): string | null {
   for (const h of holds) {
     if (of === "server" && h.appOnly) continue
-    try { const why = h.fn(of); if (why) return why } catch (e) { console.error("vaultite: a browser feature couldn't say if it's busy:", e) }
+    try { const why = h.fn(of); if (why) return why } catch (e) { log.error("a browser feature couldn't say if it's busy", e) }
   }
   return null
 }

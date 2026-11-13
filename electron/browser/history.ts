@@ -2,11 +2,13 @@
 import { app } from "electron"
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import path from "node:path"
-import { eachPage, handle, tellAll } from "./engine.ts"
+import { eachPage, handle, tellAll, logger } from "./engine.ts"
 import { literal } from "./mask.ts"
 import { hasSecret, scrub } from "./pagesecrets.ts"
 import { COUNTS, GONE, HOST_LAST, ID_ROW, ID_ROWS, LIST_ASK, RANKED, RECENT, REMOVE_ASK, RESTORED, SUGGESTIONS, TABLES, URL_ROWS, VISITS,
   type How, type Removed, type Suggestion } from "./historyrows.ts"
+
+const log = logger("history")
 
 let db: DatabaseSync | null = null
 const q = new Map<string, StatementSync>()
@@ -78,7 +80,7 @@ function record(url: string, title: string, profile: string, how: How) {
   try {
     tx(() => { const v = addVisit(url, scrub(title), Date.now(), profile, how); if (v.added) rescore(v.id) })
     changed()
-  } catch (e) { console.error("vaultite: a visit wasn't kept in the history:", e) }
+  } catch (e) { log.error("a visit wasn't kept in the history", e) }
 }
 
 function retitle(url: string, title: string) {

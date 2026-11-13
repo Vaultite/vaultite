@@ -5,6 +5,9 @@ import { WebSocket } from "ws"
 import { DESKTOP_PROTOCOL } from "../core/desktopapp.ts"
 import { serviceVault } from "../core/service.ts"
 import { servingOf, type Serving } from "../core/serving.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("host")
 
 export type Call = { type?: string; rid?: number; name?: unknown; args?: unknown }
 export type Link = { port: number; send: (m: object) => void; stop: () => void }
@@ -52,7 +55,7 @@ export async function attach(vault: string, s: Serving, answer: (m: Call) => Pro
     sock.on("close", (code, why) => {
       if (ws === sock) ws = null
       if (stopped) return
-      if (code === 4000 || code === 4001) console.error(`vaultite: ${vault}'s server let its browser go: ${String(why) || code}`)
+      if (code === 4000 || code === 4001) log.error(`${vault}'s server let its browser go: ${String(why) || code}`)
       if (code === 4001) return
       if (code === 4000 && refused) return refused()
       setTimeout(connect, wait)

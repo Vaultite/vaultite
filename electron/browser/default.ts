@@ -4,7 +4,9 @@ import { app, shell } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { handle } from "./engine.ts"
+import { handle, logger } from "./engine.ts"
+
+const log = logger("browser")
 
 const isDefault = () => app.isDefaultProtocolClient("https") && app.isDefaultProtocolClient("http")
 const keptFile = () => path.join(app.getPath("userData"), "other-browser.json")
@@ -15,9 +17,9 @@ const otherBrowser = (): string | null => {
 /** An http(s) address in the user's other browser: the system's default, or while that's Vaultite, the one before it
  *  (Safari if none was kept). */
 export function openElsewhere(url: string) {
-  if (process.platform !== "darwin" || !isDefault()) return void shell.openExternal(url).catch(console.error)
+  if (process.platform !== "darwin" || !isDefault()) return void shell.openExternal(url).catch((e) => log.error("couldn't open a link in the default browser", e))
   const other = otherBrowser()
-  execFile("/usr/bin/open", other ? ["-a", other, url] : ["-b", "com.apple.Safari", url], (e) => { if (e) console.error("vaultite: couldn't open another browser:", e.message) })
+  execFile("/usr/bin/open", other ? ["-a", other, url] : ["-b", "com.apple.Safari", url], (e) => { if (e) log.error(`couldn't open another browser: ${e.message}`) })
 }
 
 handle("browser:default", () => isDefault())

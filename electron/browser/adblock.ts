@@ -6,7 +6,9 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { Worker } from "node:worker_threads"
-import { eachPage, eachSession, engineLoaded, handle, later, onRequest, tell, type EnginePage, type EngineWindow } from "./engine.ts"
+import { eachPage, eachSession, engineLoaded, handle, later, onRequest, tell, type EnginePage, type EngineWindow, logger } from "./engine.ts"
+
+const log = logger("shields")
 
 const PRELOAD = fileURLToPath(new URL("./adblock-preload.cjs", import.meta.url))
 const DAY = 24 * 3600_000
@@ -216,9 +218,9 @@ function build() {
     try {
       engine = lib!.ElectronBlocker.deserialize(bytes)
       if (!LOCAL_LISTS) keep(bytes)
-    } catch (e) { console.error("vaultite: Shields couldn't load the new lists:", e) }
+    } catch (e) { log.error("Shields couldn't load the new lists", e) }
   })
-  w.once("error", (e) => console.error("vaultite: Shields couldn't update their lists:", e))
+  w.once("error", (e) => log.error("Shields couldn't update their lists", e))
   w.once("exit", () => {
     building = false
     if (!ok) setTimeout(build, 3600_000).unref()
@@ -229,7 +231,7 @@ function keep(bytes: Uint8Array) {
   const to = file(), tmp = `${to}.tmp`
   fs.promises.mkdir(path.dirname(to), { recursive: true })
     .then(() => fs.promises.writeFile(tmp, bytes)).then(() => fs.promises.rename(tmp, to))
-    .catch((e) => console.error("vaultite: Shields couldn't keep their lists:", e))
+    .catch((e) => log.error("Shields couldn't keep their lists", e))
 }
 
 async function start() {

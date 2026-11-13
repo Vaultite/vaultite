@@ -5,6 +5,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { mayOpen, mayPicture } from "./browser/engine.ts"
 import { writeAtomic } from "./setup.ts"
+import { logger } from "../core/log.ts"
+
+const log = logger("browser")
 
 // ---------- each tab's page history ----------
 
@@ -22,7 +25,7 @@ export function savePasts() {
   const old = Date.now() - 30 * 86400_000
   const list = [...pastsOf()].filter(([, v]) => v.at > old).sort((a, b) => b[1].at - a[1].at).slice(0, 500)
   pasts = new Map(list)
-  try { writeAtomic(pastFile(), JSON.stringify(Object.fromEntries(list))) } catch (e) { console.error("vaultite: tabs' page history wasn't kept:", e) }
+  try { writeAtomic(pastFile(), JSON.stringify(Object.fromEntries(list))) } catch (e) { log.error("tabs' page history wasn't kept", e) }
 }
 /** Tab `tab`'s page's history as it is now (`all`, at `at`), kept: its own addresses only (`shows`: no spare's
  *  about:blank), 50 around where it is. `settle`: written even if only a page's state moved (its scroll), as it ends. */
