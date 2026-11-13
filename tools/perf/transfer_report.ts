@@ -2,6 +2,7 @@
 // node tools/perf/transfer_report.ts <transfer.json> [--ceilings f] [--out report.md] [--check] [--ratchet] [--ci <status>] [--repo o/n]
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 
 export const FLOWS: Record<string, string> = {
   "cold": "Cold load (computer)", "warm": "Reload", "open": "Open a note", "switch": "Switch notes", "search": "Search",
@@ -9,51 +10,47 @@ export const FLOWS: Record<string, string> = {
   "phone-cold": "Phone: cold start", "phone-resume": "Phone: back from the background", "phone-reopen": "Phone: opened after a change",
   "update": "Phone: start after a deploy",
 }
+const Metric = z.enum(["wire", "requests", "serial"])
+type Metric = z.infer<typeof Metric>
 /** Metrics with a ceiling, and the room a ceiling leaves over what it was set from (--ratchet). */
-const METRICS = {
+const METRICS: Record<Metric, { name: string; room: (v: number, flow: string) => number }> = {
   wire: { name: "Wire", room: (v: number, flow: string) => Math.ceil((v * (flow === "idle" || flow === "phone-resume" ? 1.5 : 1.08) + 2048) / 1024) * 1024 },
   requests: { name: "Requests", room: (v: number) => v + 3 },
   serial: { name: "Round trips in a row", room: (v: number) => v + 1 },
-} as const
-type Metric = keyof typeof METRICS
+}
 /** Which flows' requests and round trips are worth a row (the rest are a request or two). */
 const LATENCY_FLOWS = new Set(["cold", "warm", "open", "today", "phone-cold", "phone-resume", "phone-reopen", "update"])
-const KINDS = ["js", "css", "api", "html", "media", "other", "socket"] as const
-type Measure = { wire: number; down: number; up: number; requests: number; api: number; serial: number; socketMsgs: number; ms: number
-  sent: Record<(typeof KINDS)[number], number>; decoded: Record<(typeof KINDS)[number], number> }
-type Side = { commit: string; flows: Record<string, Measure> }
-export type Ceilings = { profile: string; flows: Record<string, Partial<Record<Metric, number>>> }
+const Ceilings = z.object({ profile: z.string(), flows: z.record(z.string(), z.partialRecord(Metric, z.number())) })
+export type Ceilings = z.infer<typeof Ceilings>
 
 // ---- reading the result, as untrusted data
 
+const Count = z.number().nonnegative().lt(1e11)
+const Kinds = z.object({ js: Count, css: Count, api: Count, html: Count, media: Count, other: Count, socket: Count })
+type Kind = keyof z.infer<typeof Kinds>
+const Measure = z.object({ wire: Count, down: Count, up: Count, requests: Count, api: Count, serial: Count, socketMsgs: Count, ms: Count, sent: Kinds, decoded: Kinds })
+type Measure = z.infer<typeof Measure>
+const Result = (profile: string) => z.object({
+  version: z.literal(1),
+  profiles: z.object({ [profile]: z.object({ rttMs: Count, downKbps: Count, upKbps: Count }) }),
+  results: z.array(z.object({
+    commit: z.string().regex(/^[0-9a-f]{7,40}$/),
+    profiles: z.object({ [profile]: z.record(z.string(), z.unknown()) }),
+  })).min(1).max(2),
+  runs: Count, idleS: Count,
+})
 const fail = (why: string): never => { throw new Error(`transfer result: ${why}`) }
-const num = (x: unknown, at: string) => (typeof x === "number" && Number.isFinite(x) && x >= 0 && x < 1e11 ? x : fail(`${at} isn't a count`))
-function measureOf(x: unknown, at: string): Measure {
-  if (!x || typeof x !== "object") fail(`${at} isn't an object`)
-  const o = x as Record<string, unknown>
-  const kinds = (k: unknown, a: string) => {
-    if (!k || typeof k !== "object") fail(`${a} isn't an object`)
-    return Object.fromEntries(KINDS.map((n) => [n, num((k as Record<string, unknown>)[n], `${a}.${n}`)])) as Measure["sent"]
-  }
-  return { wire: num(o.wire, `${at}.wire`), down: num(o.down, `${at}.down`), up: num(o.up, `${at}.up`), requests: num(o.requests, `${at}.requests`),
-    api: num(o.api, `${at}.api`), serial: num(o.serial, `${at}.serial`), socketMsgs: num(o.socketMsgs, `${at}.socketMsgs`), ms: num(o.ms, `${at}.ms`),
-    sent: kinds(o.sent, `${at}.sent`), decoded: kinds(o.decoded, `${at}.decoded`) }
-}
+const parsed = <T>(schema: z.ZodType<T>, x: unknown): T => { const r = schema.safeParse(x); return r.success ? r.data : fail(z.prettifyError(r.error)) }
 export function read(text: string, profile: string) {
   if (text.length > 1 << 20) fail("too big")
-  const r = JSON.parse(text) as Record<string, unknown>
-  if (r?.version !== 1) fail("not version 1")
-  const p = (r.profiles as Record<string, Record<string, unknown>> | undefined)?.[profile] ?? fail(`no ${profile} profile`)
-  const prof = { rttMs: num(p.rttMs, "rttMs"), downKbps: num(p.downKbps, "downKbps"), upKbps: num(p.upKbps, "upKbps") }
-  const results = Array.isArray(r.results) && r.results.length >= 1 && r.results.length <= 2 ? r.results as Record<string, unknown>[] : fail("results aren't one or two")
-  const side = (x: Record<string, unknown>, i: number): Side => {
-    const commit = typeof x?.commit === "string" && /^[0-9a-f]{7,40}$/.test(x.commit) ? x.commit : fail(`results[${i}].commit isn't a commit`)
-    const flows = (x.profiles as Record<string, Record<string, unknown>> | undefined)?.[profile] ?? fail(`results[${i}] has no ${profile}`)
-    const out: Record<string, Measure> = {}
-    for (const [f, m] of Object.entries(flows)) if (f in FLOWS) out[f] = measureOf(m, `results[${i}].${f}`)
-    return { commit, flows: out }
+  const r = parsed(Result(profile), JSON.parse(text))
+  const side = (x: (typeof r.results)[number]) => {
+    const flows: Record<string, Measure> = {}
+    for (const [f, m] of Object.entries(x.profiles[profile])) if (f in FLOWS) flows[f] = parsed(Measure, m)
+    return { commit: x.commit, flows }
   }
-  return { runs: num(r.runs, "runs"), idleS: num(r.idleS, "idleS"), prof, base: results.length === 2 ? side(results[0], 0) : null, head: side(results.at(-1)!, results.length - 1) }
+  const [first, second] = r.results
+  return { runs: r.runs, idleS: r.idleS, prof: r.profiles[profile], base: second ? side(first) : null, head: side(second ?? first) }
 }
 
 // ---- the Markdown
@@ -73,7 +70,7 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
   for (const [flow, label] of Object.entries(FLOWS)) {
     const h = head.flows[flow]
     if (!h) continue
-    for (const m of Object.keys(METRICS) as Metric[]) {
+    for (const m of Metric.options) {
       if (m !== "wire" && !LATENCY_FLOWS.has(flow)) continue
       // (main's own "deploy" is a reload into the same build: no baseline for it)
       const b = flow === "update" ? undefined : base?.flows[flow]?.[m], v = h[m], cap = ceilings?.flows[flow]?.[m]
@@ -88,7 +85,7 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
     return `| ${label} | ${b === undefined ? "–" : `${b} ms`} | ${v} ms | ${b === undefined ? "–" : `${v - b > 0 ? "+" : v - b < 0 ? "−" : ""}${Math.abs(v - b)} ms`} |`
   })
   const kinds = ["cold", "phone-cold", "update"].filter((f) => head.flows[f]).map((f) => {
-    const cell = (k: (typeof KINDS)[number]) => `${base?.flows[f] && f !== "update" ? `${kib(base.flows[f].sent[k])} → ` : ""}${kib(head.flows[f].sent[k])}`
+    const cell = (k: Kind) => `${base?.flows[f] && f !== "update" ? `${kib(base.flows[f].sent[k])} → ` : ""}${kib(head.flows[f].sent[k])}`
     return `| ${FLOWS[f]} | ${cell("js")} | ${cell("css")} | ${cell("api")} | ${cell("socket")} | ${kib(Object.values(head.flows[f].decoded).reduce((a, x) => a + x, 0))} |`
   })
   return [
@@ -126,7 +123,7 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
 export function ratchet(data: ReturnType<typeof read>, was: Ceilings | null, profile: string): Ceilings {
   const flows: Ceilings["flows"] = {}
   for (const [flow, h] of Object.entries(data.head.flows)) {
-    for (const m of Object.keys(METRICS) as Metric[]) {
+    for (const m of Metric.options) {
       if (m !== "wire" && !LATENCY_FLOWS.has(flow)) continue
       const now = METRICS[m].room(h[m], flow), before = was?.flows[flow]?.[m]
       // (a deploy's is set by hand, about half the app's start: what one commit changes varies, a cascade doesn't)
@@ -142,7 +139,7 @@ if (import.meta.main) {
   const input = args.find((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--") && !["--check", "--ratchet"].includes(args[i - 1])))
   if (!input) { console.error("usage: node tools/perf/transfer_report.ts <transfer.json> [--ceilings f] [--out f] [--check] [--ratchet]"); process.exit(2) }
   const ceilingsAt = arg("ceilings") ?? path.join(import.meta.dirname, "transfer.json")
-  let ceilings = fs.existsSync(ceilingsAt) ? JSON.parse(fs.readFileSync(ceilingsAt, "utf8")) as Ceilings : null
+  let ceilings = fs.existsSync(ceilingsAt) ? Ceilings.parse(JSON.parse(fs.readFileSync(ceilingsAt, "utf8"))) : null
   const profile = ceilings?.profile ?? "cellular"
   const data = read(fs.readFileSync(input, "utf8"), profile)
   if (args.includes("--ratchet")) {
