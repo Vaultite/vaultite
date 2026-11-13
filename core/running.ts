@@ -32,18 +32,19 @@ export type Running = {
 export type PartRuns = { id: string; label: string; commit: string | null; runs: "it" | "untouched" | "older" | "unknown"; file?: string; why?: string }
 
 export function runningIn(root: string, web: () => WebBuild) {
-  const git = (...args: string[]) => exec("git", ["-C", root, ...args], { timeout: 5000, env: gitEnv() }).then((r) => r.stdout.trim(), () => null)
+  const gitIn = (timeout: number, ...args: string[]) => exec("git", ["-C", root, ...args], { timeout, env: gitEnv() }).then((r) => r.stdout.trim(), () => null)
+  const git = (...args: string[]) => gitIn(5000, ...args)
   const label = (id: string) => ENTRIES.find((e) => e.id === id)?.label ?? id
   const look = async () => {
-    const commit = await git("rev-parse", "HEAD")
+    const commit = await gitIn(60_000, "rev-parse", "HEAD")
     if (commit) {
-      const [at, ...subject] = (await git("log", "-1", "--format=%ct%n%s", commit) ?? "").split("\n")
-      return { commit, branch: await git("symbolic-ref", "--short", "-q", "HEAD") || null, at: Number(at) * 1000 || undefined, subject: subject.join(" ") || undefined }
+      const [at, ...subject] = (await gitIn(60_000, "log", "-1", "--format=%ct%n%s", commit) ?? "").split("\n")
+      return { commit, branch: await gitIn(60_000, "symbolic-ref", "--short", "-q", "HEAD") || null, at: Number(at) * 1000 || undefined, subject: subject.join(" ") || undefined }
     }
     try { return { commit: String(JSON.parse(fs.readFileSync(path.join(root, "electron", "build.json"), "utf8")).commit ?? "") || null, branch: null } }
     catch { return { commit: null, branch: null } }
   }
-  let start = look()
+  const start = look()
   let parses: ParseCache | undefined
   const graphNow = async (): Promise<{ graph: Graph } | { why: string }> => {
     const mod = graphModule()
@@ -65,8 +66,7 @@ export function runningIn(root: string, web: () => WebBuild) {
   }
 
   async function running(): Promise<Running> {
-    let s = await start
-    if (!s.commit) s = await (start = look())
+    const s = await start
     const b = web(), w = b.stamp
     const base: Running = { commit: s.commit, ...(s.subject ? { subject: s.subject } : {}), ...(s.at ? { at: s.at } : {}), branch: s.branch,
       startedOn: s.commit, web: { entry: b.entry, commit: w?.commit ?? null } }
