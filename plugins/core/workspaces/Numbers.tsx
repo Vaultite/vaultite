@@ -63,14 +63,14 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
     const r = btn.current.getBoundingClientRect(), w = box.current?.offsetWidth ?? 208
     setAt(rail ? { left: r.right + 8, top: r.top - 4 } : { left: Math.max(8, Math.min(r.left, innerWidth - 8 - w)), top: r.bottom + 4 })
   }, [open, rail])
-  useDismiss(open, shut, { inside: "[data-workspace-list], [role=menu], [aria-label='Close menu']", anchor: btn, escape: (e) => !(e.target as Element | null)?.closest?.("input") })
+  useDismiss(open, shut, { inside: "[data-workspace-list], [role=menu], [aria-label='Close menu']", anchor: btn, escape: (e) => !(e.target instanceof Element && e.target.closest("input")) })
   useEffect(() => {
     if (open && !sprung.current && !getRenaming()) box.current?.querySelector<HTMLElement>("[aria-pressed=true]")?.focus({ preventScroll: true })
   }, [open])
   const arrows = (e: React.KeyboardEvent) => {
-    if ((e.target as Element).closest("input")) return
+    if (e.target instanceof Element && e.target.closest("input")) return
     const rows = [...(box.current?.querySelectorAll<HTMLElement>("[data-workspace]") ?? [])]
-    const i = rows.indexOf(document.activeElement as HTMLElement)
+    const i = document.activeElement instanceof HTMLElement ? rows.indexOf(document.activeElement) : -1
     const to = e.key === "ArrowDown" ? (i + 1) % rows.length : e.key === "ArrowUp" ? (i - 1 + rows.length) % rows.length
       : e.key === "Home" ? 0 : e.key === "End" ? rows.length - 1 : -1
     if (to < 0) return

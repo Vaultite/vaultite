@@ -68,6 +68,8 @@ const dial = dialIn(plugin, listed, selfId)
 
 const said = <T extends z.ZodType>(t: T) => t.optional().catch(undefined)
 const SIZE = z.number().nonnegative()
+const DesktopAnswer = z.object({ error: z.unknown(), value: z.unknown() }).partial().catch({})
+
 const SELF = z.object({
   instance: z.unknown().optional(), host: said(z.string()), platform: said(z.string()), version: said(z.string()), commit: said(z.string()),
   plugins: z.array(z.string()).catch([]), vault: said(z.string()), desktop: z.boolean().catch(false), standalone: z.boolean().catch(false),
@@ -189,7 +191,7 @@ async function desktopThere(name: string, args: unknown[], waits = 0) {
     r = await fetch(`${m.url}/api/machines/desktop`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
       body: JSON.stringify({ name, args, waits }), signal: AbortSignal.timeout(replyWithin(waits) + 10_000) })
   } catch { throw new Error(`${m.label}'s desktop app doesn't answer`) }
-  const answer = await r.json().catch(() => ({})) as Item
+  const answer = DesktopAnswer.parse(await r.json().catch(() => ({})))
   if (!r.ok) throw new Error(`${String(answer.error || `${m.label} answered ${r.status}`)} (on ${m.label})`)
   return answer.value
 }

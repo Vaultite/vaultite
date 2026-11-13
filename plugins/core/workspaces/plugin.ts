@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item } from "../../../core/vault.ts"
-import { allPanes, blankList, clean, mapPlaces, newPaneId, newTabId, panesOf, placesIn, placesOf, tabWith, tabWithout, withoutPanes, withoutTabs, type Group, type Pane, type Tab, type TabList, type Workspace } from "../../../core/layout.ts"
+import { allPanes, blankList, clean, mapPlaces, newPaneId, newTabId, panesOf, placesIn, placesOf, tabWith, tabWithout, withoutPanes, withoutTabs, type Pane, type Tab, type TabList, type Workspace } from "../../../core/layout.ts"
 import { blankLayout, isBlank } from "./blank.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -150,7 +150,7 @@ function putSlot(i: number, body: unknown) {
   return shown()[i] ?? null
 }
 
-const ownPins = (d: Item | null) => (Array.isArray(d?.pinned) ? (d.pinned as unknown[]).filter((x): x is string => typeof x === "string" && !!x) : null)
+const ownPins = (d: Item | null) => (Array.isArray(d?.pinned) ? d.pinned.filter((x): x is string => typeof x === "string" && !!x) : null)
 const vaultPins = () => { const p = plugin.vault.config("pages").pinned; return Array.isArray(p) ? p.filter((x): x is string => typeof x === "string" && !!x) : [] }
 
 plugin.route("POST", "workspaces/*/pins", (req) => pinIn(slot(req.arg(0)), obj(req.body)))
@@ -260,7 +260,7 @@ const targetOf = (p: string) => { const x = p.replace(/^\/+/, ""); return x.star
 type Found = { tab: Tab; pane?: Pane }
 
 plugin.route("POST", "workspaces/move", (req) => {
-  const body = (req.body ?? {}) as Item
+  const body = req.body
   const to = slot(String(body.to ?? ""))
   const id = str(body.tab), pid = str(body.pane), file = str(body.path)
   const open = (Array.isArray(body.open) ? body.open : [body.open]).filter((x): x is string => typeof x === "string" && !!x)
@@ -332,7 +332,7 @@ plugin.route("POST", "workspaces/move", (req) => {
 const local = (t: Tab): Tab => ({ ...t, root: mapPlaces(t.root, (p) => ({ ...p, to: localPlace(p.to) })) })
 
 plugin.route("POST", "workspaces/close", async (req) => {
-  const body = (req.body ?? {}) as Item
+  const body = req.body
   const id = str(body.tab), file = str(body.path)
   if ([id, file].filter(Boolean).length !== 1) throw new HTTPError(400, "say what, one of: `tab` (a tab's or pane's id) or `path` (what its panes show: a file, or view:terminal/<id>)")
   const self = await selfId()
@@ -355,7 +355,7 @@ plugin.route("POST", "workspaces/close", async (req) => {
 })
 
 const nameOf = (w: Item | null | undefined, n: number) => (w && typeof w.name === "string" ? w.name : `Workspace ${n}`)
-const pinsOf = (w: Item | null | undefined) => (w && Array.isArray(w.pinned) ? (w.pinned as unknown[]).filter((x): x is string => typeof x === "string") : null)
+const pinsOf = (w: Item | null | undefined) => (w && Array.isArray(w.pinned) ? w.pinned.filter((x): x is string => typeof x === "string") : null)
 
 /** Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one. */
 plugin.provide("sidebars:of", (n: number) => {
@@ -384,7 +384,7 @@ function workspaceTabs(w: Item, n: number) {
   const tabs: TabRow[] = (l?.tabs ?? []).map((t) => ({ id: t.id, ...(t.pinned ? { pinned: true } : {}), ...(t.name ? { name: t.name } : {}), ...(t.group ? { group: t.group } : {}),
     panes: panesOf(t).flatMap((x) => placesOf(x).map((p) => ({ id: p.id, to: p.to, ...(p.to.startsWith("file:") ? { path: p.to.slice(5) } : {}),
       ...(p.id !== x.id ? { behind: x.id } : {}), ...(p.id === t.focus && panesOf(t).length > 1 ? { focused: true } : {}) }))) }))
-  return { workspace: n, name: nameOf(w, n), tabs, groups: (l?.groups ?? []) as Group[], windows: (l?.windows ?? []).length }
+  return { workspace: n, name: nameOf(w, n), tabs, groups: l?.groups ?? [], windows: (l?.windows ?? []).length }
 }
 const allTabs = () => shown().flatMap((w, i) => (w ? [workspaceTabs(w, i + 1)] : []))
 const allPanesIn = () => allTabs().flatMap((w) => w.tabs.flatMap((t) => t.panes.map((p) => ({ ...p, tab: t.id, alone: t.panes.length === 1, workspace: w.workspace }))))
@@ -457,7 +457,7 @@ function listText(r: { workspaces: (Item | null)[]; window: number | null }) {
   const rows = r.workspaces.map((w, i) => {
     const here = i + 1 === r.window ? " (the user's window)" : ""
     if (!w) return `${i + 1}. (unused)${here}`
-    const sb = w.sidebars as { left?: unknown; right?: unknown } | undefined
+    const sb: { left?: unknown; right?: unknown } | undefined = w.sidebars
     const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
     const panels = sb ? `left ${strs(sb.left).join(", ") || "(none)"}; right ${strs(sb.right).join(", ") || "(none)"}` : "sidebars.json's sidebars"
     const count = workspaceTabs(w, i + 1).tabs.length
