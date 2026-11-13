@@ -26,6 +26,7 @@ export function prepared(raw: RawManifest, shim: string, key?: string): RawManif
 }
 
 export const MESSAGES = z.record(z.string(), z.object({ message: WORDS }).catch({})).catch({})
+export const POLICY = z.object({ extensions: z.array(z.unknown()) })
 export const NATIVE_HOST = z.object({ path: z.string(), allowed_origins: z.array(z.unknown()) })
 export const PROFILE_NAMES = z.object({ profile: z.object({ info_cache: z.record(z.string(), z.object({ name: WORDS }).catch({})) }) })
   .transform((s) => s.profile.info_cache).catch({})

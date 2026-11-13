@@ -5,9 +5,10 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { allPages, handle, tellAll, logger } from "./engine.ts"
-import type { Change, Full, Row } from "./kdbxedit.ts"
+import type { Full, Row } from "./kdbxedit.ts"
 import type { Otp } from "./keepass.ts"
 import { messageOf } from "./messageof.ts"
+import { CHANGE, configOf, type Config } from "./passwordswire.ts"
 
 const log = logger("passwords")
 
@@ -16,15 +17,11 @@ const kdbx = () => Promise.all([import("./keepass.ts"), import("./kdbxedit.ts")]
 
 const CONFIG = () => path.join(app.getPath("userData"), "passwords.json")
 const BACKUPS = () => path.join(app.getPath("userData"), "passwords-backups")
-type Config = { file: string; key: string | null }
 /** With no keyring (a Linux without a Secret Service), the password is held only till the app quits. */
 let held: { file: string; password: string } | null = null
 const keyring = () => safeStorage.isEncryptionAvailable()
 function config(): Config | null {
-  try {
-    const c = JSON.parse(fs.readFileSync(CONFIG(), "utf8")) as Partial<Config>
-    return typeof c.file === "string" ? { file: c.file, key: typeof c.key === "string" ? c.key : null } : null
-  } catch { return null }
+  try { return configOf(fs.readFileSync(CONFIG(), "utf8")) } catch { return null }
 }
 function passwordOf(c: Config): string | null {
   if (c.key === null) return held?.file === c.file ? held.password : null
@@ -261,8 +258,9 @@ handle("passwords:get", async (_win, id): Promise<Full> => {
 })
 handle("passwords:save", async (_win, change) => {
   need()
-  if (!change || typeof change !== "object") throw new Error("nothing to save")
-  return { id: await write((db, k) => k.applyChange(db, change as Change)) }
+  const c = CHANGE.safeParse(change)
+  if (!c.success) throw new Error("nothing to save")
+  return { id: await write((db, k) => k.applyChange(db, c.data)) }
 })
 handle("passwords:delete", async (_win, id) => {
   need()

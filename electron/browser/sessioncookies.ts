@@ -4,6 +4,7 @@ import { safeStorage, type Cookie, type Session } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { eachSession, onFlush, logger } from "./engine.ts"
+import { parseKept, VERSION, type Kept } from "./cookieswire.ts"
 
 const log = logger("cookies")
 
@@ -12,12 +13,7 @@ const FILE = "Session Cookies.vaultite"
 const WRITE_MS = 1000
 /** Pages wait for the restore at most this long (the Keychain slow to answer): then they open without. */
 const RESTORE_MS = 3000
-const VERSION = 1
 
-/** What a session cookie is set again from. */
-export type Kept = { name: string; value: string; domain: string; hostOnly: boolean; path: string; secure: boolean; httpOnly: boolean
-  sameSite: Cookie["sameSite"] }
-const SAME_SITE = new Set(["unspecified", "no_restriction", "lax", "strict"])
 const keyOf = (c: { name: string; domain?: string; path?: string }) => `${c.name}\t${c.domain ?? ""}\t${c.path ?? "/"}`
 export const keptOf = (c: Cookie): Kept => ({ name: c.name, value: c.value, domain: c.domain ?? "", hostOnly: !!c.hostOnly, path: c.path || "/",
   secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite })
@@ -26,16 +22,6 @@ export function setOf(k: Kept): Electron.CookiesSetDetails {
   const host = k.domain.replace(/^\./, "")
   return { url: `${k.secure ? "https" : "http"}://${host}${k.path}`, name: k.name, value: k.value, path: k.path, secure: k.secure,
     httpOnly: k.httpOnly, sameSite: k.sameSite, ...(k.hostOnly ? {} : { domain: k.domain }) }
-}
-/** The kept cookies a file's text holds (anything malformed left out). */
-export function parseKept(text: string): Kept[] {
-  const j = JSON.parse(text) as { v?: number; cookies?: unknown }
-  if (j?.v !== VERSION || !Array.isArray(j.cookies)) return []
-  return (j.cookies as Partial<Record<keyof Kept, unknown>>[]).filter((c) => !!c && typeof c === "object" && typeof c.name === "string"
-    && typeof c.value === "string" && typeof c.domain === "string" && /^\.?[\w.:[\]-]+$/.test(c.domain) && typeof c.path === "string"
-    && c.path.startsWith("/") && SAME_SITE.has(c.sameSite as string))
-    .map((c) => ({ name: c.name as string, value: c.value as string, domain: c.domain as string, hostOnly: !!c.hostOnly, path: c.path as string,
-      secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite as Kept["sameSite"] }))
 }
 
 type Jar = { s: Session; file: string; cookies: Map<string, Kept>; timer: NodeJS.Timeout | null; writing: Promise<void> | null; dirty: boolean }

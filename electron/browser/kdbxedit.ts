@@ -3,12 +3,12 @@
 import path from "node:path"
 import { Credentials, Kdbx, KdbxUuid, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
 import { FREE_TAG, fieldsOf, otpOf, totp, urlsOf } from "./keepass.ts"
+import type { Change } from "./passwordswire.ts"
 
 export type Group = { id: string; name: string; parent: string | null; share: string | null; bin: boolean }
 export type Row = { id: string; group: string; title: string; username: string; urls: string[]; tags: string[]; free: boolean
   shared: boolean; expired: boolean; otp: boolean; modified: number }
 export type Full = Row & { password: string; notes: string; otpUri: string; code: string | null }
-export type Change = { id?: string; group?: string; title: string; username: string; password: string; urls: string[]; tags: string[]; notes: string; otp?: string }
 /** A group KeePassXC exports with KeeShare: where to, with which password, and whether its subgroups go too. */
 export type Share = { group: string; path: string; password: string; keepGroups: boolean }
 
@@ -74,7 +74,7 @@ export function fullOf(db: Kdbx, file: string, id: string): Full | null {
   return { ...row, password: f.Password ?? "", notes: f.Notes ?? "", otpUri: f.otp ?? "", code: otp && otp !== "steam" ? totp(otp) : null }
 }
 
-const clean = (s: unknown, n = 4000) => (typeof s === "string" ? s : "").slice(0, n)
+const clean = (s: string, n = 4000) => s.slice(0, n)
 
 /** Apply an edit (a new entry without `id`): the old values go to the entry's history, as KeePassXC keeps them. */
 export function applyChange(db: Kdbx, c: Change): string {
@@ -91,15 +91,15 @@ export function applyChange(db: Kdbx, c: Change): string {
   e.fields.set("UserName", clean(c.username, 500))
   e.fields.set("Password", ProtectedValue.fromString(clean(c.password, 4000)))
   e.fields.set("Notes", clean(c.notes, 100_000))
-  const urls = (Array.isArray(c.urls) ? c.urls : []).map((u) => clean(u, 2000).trim()).filter(Boolean)
+  const urls = c.urls.map((u) => clean(u, 2000).trim()).filter(Boolean)
   for (const k of [...e.fields.keys()]) if (/^KP2A_URL(_\d+)?$/.test(k)) e.fields.delete(k)
   e.fields.set("URL", urls[0] ?? "")
   urls.slice(1).forEach((u, i) => e.fields.set(i ? `KP2A_URL_${i}` : "KP2A_URL", u))
-  if (typeof c.otp === "string") {
+  if (c.otp !== undefined) {
     if (c.otp.trim()) e.fields.set("otp", ProtectedValue.fromString(c.otp.trim()))
     else e.fields.delete("otp")
   }
-  e.tags = [...new Set((Array.isArray(c.tags) ? c.tags : []).map((t) => clean(t, 100).trim()).filter(Boolean))]
+  e.tags = [...new Set(c.tags.map((t) => clean(t, 100).trim()).filter(Boolean))]
   e.times.update()
   if (c.id && group && e.parentGroup !== group) db.move(e, group)
   return e.uuid.id

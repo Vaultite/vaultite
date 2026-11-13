@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import * as store from "./extstore.ts"
-import { ID, MANIFEST } from "./extwire.ts"
+import { ID, MANIFEST, POLICY } from "./extwire.ts"
 import { logger } from "./engine.ts"
 
 const log = logger("extensions")
@@ -27,12 +27,12 @@ function wanted(said: string[]) {
   for (const f of policyFiles()) {
     let j: unknown
     try { j = JSON.parse(fs.readFileSync(f, "utf8")) } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") said.push(`${f} isn't readable JSON`)
+      if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) said.push(`${f} isn't readable JSON`)
       continue
     }
-    const list = (j as { extensions?: unknown })?.extensions
-    if (!Array.isArray(list)) { said.push(`${f} has no "extensions" list`); continue }
-    for (const x of list) {
+    const policy = POLICY.safeParse(j)
+    if (!policy.success) { said.push(`${f} has no "extensions" list`); continue }
+    for (const x of policy.data.extensions) {
       if (typeof x === "string" && (ID.test(x) || path.isAbsolute(x))) out.push(ID.test(x) ? x : path.resolve(x))
       else said.push(`${f}: ${JSON.stringify(x)} is neither an extension's folder (a full path) nor a Web Store id`)
     }

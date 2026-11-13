@@ -6,14 +6,17 @@ export const AUTO_BG = 18 / 255
 const W = [0.2126, 0.7152, 0.0722]
 const SAT = 0.9 // (accents a little toward the theme's own muted ones)
 type V = [number, number, number]
-type M = V[]
+type M = [V, V, V]
+/** brightness(k0) sepia(p) hue-rotate(h) saturate(s) brightness(k) contrast(c): its parameters in that order. */
+type Chain = [number, number, number, number, number, number]
+const map3 = (f: (i: 0 | 1 | 2) => number): V => [f(0), f(1), f(2)]
+const map6 = (f: (i: number) => number): Chain => [f(0), f(1), f(2), f(3), f(4), f(5)]
 
-const rgb = (hex: string): V => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as V
+const rgb = (hex: string): V => map3((i) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16) / 255)
 const clamp = (v: number) => Math.min(1, Math.max(0, v))
-const apply = (m: M, x: V, o = 0): V => m.map((r) => clamp(r[0] * x[0] + r[1] * x[1] + r[2] * x[2] + o)) as V
+const apply = (m: M, x: V, o = 0): V => map3((i) => clamp(m[i][0] * x[0] + m[i][1] * x[1] + m[i][2] * x[2] + o))
 const lum = (v: V) => W[0] * v[0] + W[1] * v[1] + W[2] * v[2]
-const I: M = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-const scale = (k: number): M => I.map((r) => r.map((v) => v * k) as V)
+const scale = (k: number): M => [[k, 0, 0], [0, k, 0], [0, 0, k]]
 // (the Filter Effects spec's matrices, which Chromium applies one after another, clamping each)
 const sepia = (p: number): M => { const q = 1 - p; return [[0.393 + 0.607 * q, 0.769 - 0.769 * q, 0.189 - 0.189 * q], [0.349 - 0.349 * q, 0.686 + 0.314 * q, 0.168 - 0.168 * q], [0.272 - 0.272 * q, 0.534 - 0.534 * q, 0.131 + 0.869 * q]] }
 const hue = (deg: number): M => {
@@ -24,8 +27,6 @@ const hue = (deg: number): M => {
 }
 const saturate = (s: number): M => [[0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s], [0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s], [0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s]]
 
-/** brightness(k0) sepia(p) hue-rotate(h) saturate(s) brightness(k) contrast(c): its parameters in that order. */
-type Chain = [number, number, number, number, number, number]
 const BOUNDS: [number, number][] = [[0.2, 1], [0, 1], [-180, 180], [0, 3], [0, 4], [0, 2]]
 function run([k0, p, h, s, k, c]: Chain, x: V) {
   x = apply(scale(k0), x); x = apply(sepia(p), x); x = apply(hue(h), x); x = apply(saturate(s), x); x = apply(scale(k), x)
@@ -37,7 +38,7 @@ const css = ([k0, p, h, s, k, c]: Chain) =>
 /** The exact map: auto dark's ramp onto the theme's, accents at SAT. */
 function exact(bg: V, fg: V, x: V): V {
   const l = lum(x)
-  return [0, 1, 2].map((i) => clamp(bg[i] + (l + SAT * (x[i] - l) - AUTO_BG) / (1 - AUTO_BG) * (fg[i] - bg[i]))) as V
+  return map3((i) => clamp(bg[i] + (l + SAT * (x[i] - l) - AUTO_BG) / (1 - AUTO_BG) * (fg[i] - bg[i])))
 }
 // (greys weigh most: they're most of a page)
 const SAMPLES: V[] = [[AUTO_BG, AUTO_BG, AUTO_BG], [0.25, 0.25, 0.25], [0.5, 0.5, 0.5], [0.75, 0.75, 0.75], [1, 1, 1],
@@ -58,17 +59,17 @@ function worst(c: Chain, bg: V, fg: V) {
 /** Nelder-Mead from `start`. */
 function refine(f: (c: Chain) => number, start: Chain): Chain {
   const n = start.length, steps = [0.1, 0.1, 10, 0.2, 0.2, 0.1]
-  let pts = [start, ...start.map((_, i) => start.map((v, j) => v + (i === j ? steps[i] : 0)) as Chain)].map((p) => ({ p, e: f(p) }))
+  let pts = [start, ...start.map((_, i) => map6((j) => start[j] + (i === j ? steps[i] : 0)))].map((p) => ({ p, e: f(p) }))
   for (let it = 0; it < 400; it++) {
     pts.sort((a, b) => a.e - b.e)
-    const mid = start.map((_, j) => pts.slice(0, n).reduce((s, x) => s + x.p[j], 0) / n) as Chain
-    const at = (t: number) => { const p = mid.map((v, j) => v + t * (v - pts[n].p[j])) as Chain; return { p, e: f(p) } }
+    const mid = map6((j) => pts.slice(0, n).reduce((s, x) => s + x.p[j], 0) / n)
+    const at = (t: number) => { const p = map6((j) => mid[j] + t * (mid[j] - pts[n].p[j])); return { p, e: f(p) } }
     const r = at(1)
     if (r.e < pts[0].e) { const x = at(2); pts[n] = x.e < r.e ? x : r } else if (r.e < pts[n - 1].e) pts[n] = r
     else {
       const k = at(-0.5)
       if (k.e < pts[n].e) pts[n] = k
-      else pts = pts.map((x, i) => { if (!i) return x; const p = x.p.map((v, j) => pts[0].p[j] + 0.5 * (v - pts[0].p[j])) as Chain; return { p, e: f(p) } })
+      else pts = pts.map((x, i) => { if (!i) return x; const p = map6((j) => pts[0].p[j] + 0.5 * (x.p[j] - pts[0].p[j])); return { p, e: f(p) } })
     }
   }
   pts.sort((a, b) => a.e - b.e)
@@ -80,7 +81,7 @@ function refine(f: (c: Chain) => number, start: Chain): Chain {
 function fitted(bg: V, fg: V): Chain {
   const k0 = 0.5, off = (bg[0] + bg[1] + bg[2]) / 3 - AUTO_BG * (lum(fg) - lum(bg)) / (1 - AUTO_BG)
   const d = Math.min(0.45, Math.max(0, off)), c = 1 - 2 * d
-  const delta = fg.map((x, i) => x - bg[i]) as V, ld = Math.max(lum(delta), 0.05)
+  const delta = map3((i) => fg[i] - bg[i]), ld = Math.max(lum(delta), 0.05)
   let best: { c: Chain; e: number } | null = null
   for (let p = 0; p <= 1.0001; p += 0.05) {
     const lambda = (1 + 0.215 * p) / ld

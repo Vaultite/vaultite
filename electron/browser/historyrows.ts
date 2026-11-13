@@ -37,3 +37,21 @@ export const RESTORED = z.array(z.unknown()).catch([]).transform((a) => a.flatMa
 export const LIST_ASK = z.object({ before: z.unknown().optional(), text: z.unknown().optional(), limit: z.unknown().optional() }).catch({})
 export const REMOVE_ASK = z.object({ visits: z.array(z.unknown()).catch([]).transform((a) => a.map(Number)), urls: z.array(z.unknown()).catch([]).transform((a) => a.map(String)) })
   .catch({ visits: [], urls: [] })
+
+// Chrome's page transitions (ui/base/page_transition_types.h): the core type in the low byte, then qualifiers.
+const CORE: Record<number, How | null> = { 0: "link", 1: "typed", 2: "bookmark", 3: null, 4: null, 5: "typed", 6: "other", 7: "form", 8: null, 9: "typed", 10: "typed" }
+const CHAIN_START = 0x10000000, CHAIN_END = 0x20000000
+/** Chrome's time, in milliseconds since 1601. */
+const fromChrome = (ms: number) => Math.round(ms - 11_644_473_600_000)
+const NUMBER = z.coerce.number().catch(NaN)
+export const CHROME_ROWS = z.array(z.object({ at: NUMBER, t: NUMBER, url: z.string().catch(""), title: z.string().nullable().catch(null) }))
+export function chromeVisits(rows: z.infer<typeof CHROME_ROWS>, profile: string, source: string) {
+  const visits: Removed[] = []
+  for (const r of rows) {
+    if (!/^https?:\/\//i.test(r.url)) continue
+    const how = CORE[r.t & 0xff]
+    if (!how || ((r.t & CHAIN_START) && !(r.t & CHAIN_END))) continue
+    visits.push({ url: r.url, title: r.title ?? "", at: fromChrome(r.at), profile, how, source })
+  }
+  return visits
+}

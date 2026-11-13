@@ -5,6 +5,7 @@ import { THUMB_WIDTH } from "./agent.ts"
 import fs from "node:fs"
 import path from "node:path"
 import { handle } from "./engine.ts"
+import { fresh, scanLine, SHOT, stepOf, type Scan } from "./runwire.ts"
 
 const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 /** How many runs the list has, newest first. */
@@ -12,15 +13,7 @@ const LISTED = 200
 /** The activity strip's buckets, over a run's time. */
 const BUCKETS = 48
 
-/** What a run's file has said so far: read up to `size`, a step per line starting at `starts[i]`. */
-type Scan = {
-  size: number; mtime: number; starts: number[]; times: number[]; fails: number[]; shots: string[]; hosts: Map<string, number>
-  by: string; task: string; summary: string; title: string; url: string
-}
 const scans = new Map<string, Scan>()
-const fresh = (): Scan => ({ size: 0, mtime: 0, starts: [], times: [], fails: [], shots: [], hosts: new Map(), by: "", task: "", summary: "", title: "", url: "" })
-const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return "" } }
-const SHOT = /^\d+\.jpg$/
 
 /** A run's folder by its name, which can't leave the runs' folder. */
 function dirOf(run: unknown) {
@@ -58,19 +51,7 @@ async function scan(run: string): Promise<Scan | null> {
       const line = buf.subarray(at, nl).toString("utf8")
       const start = s.size + at
       at = nl + 1
-      let x: Record<string, unknown>
-      try { x = JSON.parse(line) as Record<string, unknown> } catch { continue }
-      const t = Number(x.t) || 0
-      s.starts.push(start)
-      s.times.push(t)
-      if (typeof x.failed === "string") s.fails.push(t)
-      if (typeof x.shot === "string" && SHOT.test(x.shot)) s.shots.push(x.shot)
-      const url = typeof x.url === "string" ? x.url : ""
-      const host = hostOf(url)
-      if (host) s.hosts.set(host, (s.hosts.get(host) ?? 0) + 1)
-      if (!s.by && typeof x.by === "string") s.by = x.by
-      for (const k of ["task", "summary", "title"] as const) if (typeof x[k] === "string" && x[k]) s[k] = x[k] as string
-      if (url) s.url = url
+      scanLine(s, line, start)
     }
     s.size += at
     s.mtime = st.mtimeMs
@@ -90,7 +71,7 @@ function activity(times: number[], start: number, end: number) {
 const sample = <T>(list: T[], n: number) => list.length <= n ? list : Array.from({ length: n }, (_, i) => list[Math.round(((i + 1) / n) * (list.length - 1))])
 
 handle("agents:runs", async () => {
-  const names = await fs.promises.readdir(RUNS()).catch(() => [] as string[])
+  const names = await fs.promises.readdir(RUNS()).catch(() => Array<string>())
   const listed = names.filter((d) => /^[\w.-]+$/.test(d)).sort().reverse().slice(0, LISTED)
   for (const k of scans.keys()) if (!listed.includes(k)) scans.delete(k)
   const all = await Promise.all(listed.map((d) => scanned(d).catch(() => null)))
@@ -117,13 +98,7 @@ handle("agents:run", async (_win, run, from) => {
   try {
     const buf = Buffer.alloc(s.size - s.starts[first])
     await fh.read(buf, 0, buf.length, s.starts[first])
-    return buf.toString("utf8").split("\n").flatMap((l) => {
-      if (!l) return []
-      try {
-        const x = JSON.parse(l) as Record<string, unknown>
-        return [{ ...x, shot: typeof x.shot === "string" && SHOT.test(x.shot) ? x.shot : null }]
-      } catch { return [] }
-    })
+    return buf.toString("utf8").split("\n").flatMap((l) => (l ? stepOf(l) : []))
   } finally { await fh.close() }
 })
 

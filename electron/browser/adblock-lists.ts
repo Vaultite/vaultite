@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { ElectronBlocker } from "@ghostery/adblocker-electron"
+import { z } from "zod"
 
 const UBO = "https://ublockorigin.github.io/uAssetsCDN"
 const UBO_ALT = "https://ublockorigin.pages.dev"
@@ -15,7 +16,7 @@ const LISTS = [
 ].map(([p]) => [`${UBO}/${p}`, `${UBO_ALT}/${p}`])
   .concat([["https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext"]])
 /** The scriptlets (code run in pages) at the engine's own release, not a moving branch. */
-const TAG = `v${(createRequire(import.meta.url)("@ghostery/adblocker-electron/package.json") as { version: string }).version}`
+const TAG = `v${z.object({ version: z.string() }).parse(createRequire(import.meta.url)("@ghostery/adblocker-electron/package.json")).version}`
 const RESOURCES = [`https://raw.githubusercontent.com/ghostery/adblocker/${TAG}/packages/adblocker/assets/ublock-origin/resources.json`,
   `https://cdn.jsdelivr.net/gh/ghostery/adblocker@${TAG}/packages/adblocker/assets/ublock-origin/resources.json`]
 /** What uBlock's `!#if` lines ask, as uBlock in Chromium answers. */
@@ -37,7 +38,7 @@ async function get(urls: string[]) {
   throw last
 }
 
-const { local } = workerData as { local: string }
+const { local } = z.object({ local: z.string() }).parse(workerData)
 const [lists, resources] = local
   ? [[fs.readFileSync(path.join(local, "filters.txt"), "utf8")], fs.existsSync(path.join(local, "resources.json")) ? fs.readFileSync(path.join(local, "resources.json"), "utf8") : ""]
   : await Promise.all([Promise.all(LISTS.map(get)), get(RESOURCES)])
@@ -45,4 +46,4 @@ const engine = ElectronBlocker.parse(lists.join("\n"), { loadPreprocessors: true
 engine.updateEnv(new Map(ENV))
 if (resources) engine.updateResources(resources, `${resources.length}`)
 const bytes = engine.serialize()
-parentPort!.postMessage(bytes, [bytes.buffer as ArrayBuffer])
+parentPort!.postMessage(bytes, bytes.buffer instanceof ArrayBuffer ? [bytes.buffer] : [])
