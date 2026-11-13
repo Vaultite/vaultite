@@ -13,13 +13,13 @@ export async function readPage(html: string, url: string, fetchMore = false): Pr
   const [{ parseHTML }, { Defuddle }] = await Promise.all([import("linkedom"), import("defuddle/node")])
   const { document } = parseHTML(html)
   // Defuddle asks for these, which linkedom's DOM lacks (as defuddle's own linkedom-compat adds).
-  const doc = document as unknown as Item
+  const doc: { styleSheets?: unknown; defaultView?: { getComputedStyle?: unknown } | null; URL?: string } = document
   doc.styleSheets ??= []
   if (doc.defaultView && !doc.defaultView.getComputedStyle) doc.defaultView.getComputedStyle = () => ({ display: "" })
   try { doc.URL = url } catch {}
   const post = xPost(url)
-  const video = post ? videoOnPage(document as unknown as Document, post.id) : null
-  const r = await Defuddle(document as unknown as Document, url, { markdown: true, useAsync: fetchMore })
+  const video = post ? videoOnPage(document, post.id) : null
+  const r = await Defuddle(document, url, { markdown: true, useAsync: fetchMore })
   return {
     title: str(r.title).trim(), markdown: str(r.content).trim(), author: str(r.author).trim(), published: str(r.published).trim(),
     description: str(r.description).replace(/\s+/g, " ").trim(), site: str(r.site).trim(), words: Number(r.wordCount) || 0, video,
@@ -165,7 +165,7 @@ async function clip(b: Item, saveVideo: (url: string) => Promise<unknown>): Prom
     try {
       page = await fetchPublic(ok, { max: Infinity, timeout: TIMEOUT, types: /html|xml/ })
     } catch (e) {
-      throw new HTTPError(502, `couldn't fetch ${url}: ${(e as Error).message}`)
+      throw new HTTPError(502, `couldn't fetch ${url}: ${e instanceof Error ? e.message : String(e)}`)
     }
     if (page.status < 200 || page.status >= 300) throw new HTTPError(502, `${url} answered ${page.status}`)
     if (!page.body.length) throw new HTTPError(415, `${url} isn't a web page (${page.type || "no type"})`)
@@ -176,7 +176,7 @@ async function clip(b: Item, saveVideo: (url: string) => Promise<unknown>): Prom
   try {
     c = await readPage(html, url, typeof b.html !== "string")
   } catch (e) {
-    throw new HTTPError(422, `couldn't read the page: ${(e as Error).message}`)
+    throw new HTTPError(422, `couldn't read the page: ${e instanceof Error ? e.message : String(e)}`)
   }
   if (!c.markdown) throw new HTTPError(422, `found no text to clip on ${url}`)
   const title = c.title || new URL(url).hostname
@@ -211,7 +211,7 @@ async function clip(b: Item, saveVideo: (url: string) => Promise<unknown>): Prom
     return { ...r, video: true }
   } catch (e) {
     awaiting(source, null)
-    return { ...r, videoError: (e as Error).message }
+    return { ...r, videoError: e instanceof Error ? e.message : String(e) }
   }
 }
 
@@ -240,7 +240,7 @@ plugin.around("inbox.add", async (call, next) => {
 
 plugin.route("POST", "clip", async (req) => {
   if (plugin.isOff()) throw new HTTPError(404, "the Web clipper plugin is off (Plugins)")
-  const r = await clip((req.body ?? {}) as Item, (url) => plugin.runOp("video.save", { url }, undefined, req.http))
+  const r = await clip(req.body ?? {}, (url) => plugin.runOp("video.save", { url }, undefined, req.http))
   return r.existing ? r : reply(201, r)
 }, { lock: false })
 
