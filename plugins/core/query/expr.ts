@@ -54,11 +54,12 @@ export function parseDate(s: string): BDate | null {
 const asDate = (v: V): BDate | null => (v instanceof BDate ? v : typeof v === "string" ? parseDate(v) : null)
 
 const UNITS: Record<string, [number, number]> = {}
-for (const [names, ms, months] of [
+const UNIT_NAMES: [string[], number, number][] = [
   [["y", "year", "years"], 0, 12], [["M", "month", "months"], 0, 1], [["w", "week", "weeks"], 7 * 864e5, 0],
   [["d", "day", "days"], 864e5, 0], [["h", "hour", "hours"], 36e5, 0], [["m", "minute", "minutes"], 6e4, 0],
   [["s", "second", "seconds"], 1e3, 0],
-] as [string[], number, number][]) for (const n of names) UNITS[n] = [ms, months]
+]
+for (const [names, ms, months] of UNIT_NAMES) for (const n of names) UNITS[n] = [ms, months]
 
 export function parseDuration(s: string): BDuration | null {
   const t = s.trim()
@@ -96,9 +97,10 @@ function relative(d: BDate, now: number) {
   return "now"
 }
 
+const SPANS: [number, string][] = [[864e5, "day"], [36e5, "hour"], [6e4, "minute"], [1e3, "second"]]
 export function durationText(ms: number) {
   const abs = Math.abs(ms)
-  for (const [n, unit] of [[864e5, "day"], [36e5, "hour"], [6e4, "minute"], [1e3, "second"]] as [number, string][]) {
+  for (const [n, unit] of SPANS) {
     if (abs >= n) { const k = Math.round((ms / n) * 10) / 10; return `${k} ${unit}${Math.abs(k) === 1 ? "" : "s"}` }
   }
   return `${ms} ms`
@@ -110,7 +112,7 @@ export type Node =
   | { k: "id"; name: string }
   | { k: "member"; obj: Node; name: string }
   | { k: "index"; obj: Node; idx: Node }
-  | { k: "call"; fn: Node; args: Node[] }
+  | { k: "call"; fn: { k: "id"; name: string } | { k: "member"; obj: Node; name: string }; args: Node[] }
   | { k: "un"; op: string; a: Node }
   | { k: "bin"; op: string; a: Node; b: Node }
   | { k: "list"; items: Node[] }
@@ -132,7 +134,7 @@ function lex(src: string): Tok[] {
     if (c === "'" || c === '"') {
       let j = i + 1, s = ""
       for (; j < src.length && src[j] !== c; j++) {
-        if (src[j] === "\\" && j + 1 < src.length) { j++; s += ({ n: "\n", t: "\t" } as Record<string, string>)[src[j]] ?? src[j] } else s += src[j]
+        if (src[j] === "\\" && j + 1 < src.length) { j++; s += ESCAPES.get(src[j]) ?? src[j] } else s += src[j]
       }
       if (j >= src.length) throw new ExprError(`a quote isn't closed: ${src.slice(i)}`)
       out.push({ t: "str", v: s, at: i }); i = j + 1; continue
@@ -148,7 +150,7 @@ function lex(src: string): Tok[] {
       if (j >= src.length) throw new ExprError(`a regular expression isn't closed: ${src.slice(i)}`)
       const flags = /^[gimsuy]*/.exec(src.slice(j + 1))![0]
       let re: RegExp
-      try { re = new RegExp(src.slice(i + 1, j), flags) } catch (e) { throw new ExprError(`bad regular expression: ${(e as Error).message}`) }
+      try { re = new RegExp(src.slice(i + 1, j), flags) } catch (e) { throw new ExprError(`bad regular expression: ${(e instanceof Error ? e.message : String(e))}`) }
       out.push({ t: "re", v: src.slice(i, j + 1 + flags.length), at: i, re }); i = j + 1 + flags.length; continue
     }
     if (/\d/.test(c)) {
@@ -267,6 +269,10 @@ export function parse(src: string): Node {
   if (i < toks.length) throw new ExprError(`unexpected '${toks[i].v}'`)
   return e
 }
+
+const ESCAPES = new Map([["n", "\n"], ["t", "\t"]])
+const HTML_ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]])
+const flatAll = (xs: V[]): V[] => xs.flatMap((x) => (Array.isArray(x) ? flatAll(x) : [x]))
 
 const WIKI = /^\[\[([^[\]|#]+)(#[^[\]|]*)?(?:\|([^[\]]*))?\]\]$/
 export function wrap(v: unknown): V {
@@ -544,7 +550,7 @@ function ev(n: Node, s: Scope): V {
     case "loose": return loose(n, s)
     case "call": {
       if (n.fn.k === "id") return global(n.fn.name, n.args, s)
-      const fn = n.fn as { k: "member"; obj: Node; name: string }
+      const fn = n.fn
       return method(ev(fn.obj, s), fn.name, n.args, s)
     }
   }
@@ -582,7 +588,7 @@ function global(name: string, args: Node[], s: Scope): V {
     case "image": return a[0] instanceof BLink || a[0] instanceof BFile ? a[0] : a[0] === null ? null : show(a[0])
     case "icon": return a[0] === null ? null : show(a[0])
     case "html": return show(a[0])
-    case "escapeHTML": return show(a[0]).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[c])
+    case "escapeHTML": return show(a[0]).replace(/[&<>"']/g, (c) => HTML_ESCAPES.get(c) ?? c)
   }
   throw new ExprError(`there's no function ${name}()`)
 }
@@ -697,7 +703,7 @@ function method(obj: V, name: string, args: Node[], s: Scope): V {
       case "containsAll": return a.every(has)
       case "containsAny": return a.some(has)
       case "join": return obj.map(show).join(a[0] === undefined ? "," : show(a[0]))
-      case "flat": return obj.flat(Infinity as 1) as V[]
+      case "flat": return flatAll(obj)
       case "reverse": return [...obj].reverse()
       case "slice": return obj.slice(num(a[0]) ?? 0, a[1] === undefined ? undefined : num(a[1]) ?? undefined)
       case "sort": return [...obj].sort((x, y) => order(x, y) ?? show(x).localeCompare(show(y)))

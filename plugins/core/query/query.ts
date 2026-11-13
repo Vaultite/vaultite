@@ -3,6 +3,7 @@ import { linkIndex } from "../../../core/links.ts"
 import {
   blank, byText, compare, evaluate, type Env, ExprError, type Node as Expr, parse as parseExpr, plainOf, same, summary, SUMMARIES, truthy, unlink, type V, wrap,
 } from "./expr.ts"
+import { obj } from "./bases.ts"
 
 export type Opts = Record<string, unknown>
 export type Rec = { path: string; fm: Record<string, unknown>; mtime: number; created?: () => number; tags?: string[]; type?: string | null; archived?: boolean
@@ -197,8 +198,8 @@ export const propKey = (k: string): string | null =>
 export function sortOf(v: unknown): SortKey[] {
   const items = Array.isArray(v) ? v : v === undefined || v === null ? [] : typeof v === "string" ? v.split(",") : [v]
   return items.flatMap((s): SortKey[] => {
-    if (s && typeof s === "object" && !Array.isArray(s)) {
-      const o = s as Record<string, unknown>
+    const o = obj(s)
+    if (o) {
       const key = typeof o.property === "string" ? o.property : typeof o.key === "string" ? o.key : ""
       return key.trim() ? [{ key: keyOf(key), desc: String(o.direction ?? "").toUpperCase() === "DESC" }] : []
     }
@@ -214,18 +215,19 @@ export function compile(o: Opts) {
   const types = list(o.type).map((t) => t.toLowerCase())
   const tags = list(o.tags).map((t) => t.replace(/^#/, "").toLowerCase())
   let where: Expr | null = null
+  const whereMap = obj(o.where)
   if (typeof o.where === "string") {
     const n = parseWhere(o.where)
     if (n) where = exprOf(n)
-  } else if (o.where && typeof o.where === "object" && !Array.isArray(o.where)) where = mapExpr(o.where as Record<string, unknown>)
+  } else if (whereMap) where = mapExpr(whereMap)
   else if (o.where !== undefined && o.where !== null) throw new QueryError("where is an expression (relation = friend) or a map ({relation: friend})")
   const sort = sortOf(o.sort)
-  const view = (o.view === undefined ? "table" : String(o.view)) as View
-  if (!VIEWS.includes(view)) throw new QueryError(`view is table, cards, list, board, calendar or map, not '${view}'`)
+  const asked = o.view === undefined ? "table" : String(o.view), view = VIEWS.find((v) => v === asked)
+  if (!view) throw new QueryError(`view is table, cards, list, board, calendar or map, not '${asked}'`)
   const n = Number(o.limit), at = Number(o.offset)
   const limit = o.limit === undefined || o.limit === null || o.limit === "" || !Number.isFinite(n) ? Infinity : Math.max(Math.trunc(n), 1)
   const offset = Number.isFinite(at) ? Math.max(Math.trunc(at), 0) : 0
-  const g = o.group && typeof o.group === "object" && !Array.isArray(o.group) ? o.group as Record<string, unknown> : null
+  const g = obj(o.group)
   const groupKey = g ? (typeof g.property === "string" ? g.property : "") : typeof o.group === "string" ? o.group : ""
   const group = groupKey.trim() ? keyOf(groupKey) : null
   const groupDesc = !!g && String(g.direction ?? "").toUpperCase() === "DESC"
@@ -260,11 +262,13 @@ export function compile(o: Opts) {
   }
 }
 
+const FITS = ["contain", "cover"] as const
+
 function cardLook(o: Opts): { size?: number; fit?: "cover" | "contain"; ratio?: number } | undefined {
-  const size = Number(o.cardSize), ratio = Number(o.imageAspectRatio)
+  const size = Number(o.cardSize), ratio = Number(o.imageAspectRatio), fit = FITS.find((f) => f === o.imageFit)
   const out = {
     ...(size >= 80 && size <= 800 ? { size: Math.round(size) } : {}),
-    ...(o.imageFit === "contain" || o.imageFit === "cover" ? { fit: o.imageFit as "contain" | "cover" } : {}),
+    ...(fit ? { fit } : {}),
     ...(ratio >= 0.1 && ratio <= 4 ? { ratio } : {}),
   }
   return Object.keys(out).length ? out : undefined
@@ -309,7 +313,7 @@ function coordsOf(v: unknown): [number, number] | null {
   let lat: unknown, lon: unknown
   if (Array.isArray(v) && v.length >= 2) [lat, lon] = v
   else if (typeof v === "string") [lat, lon] = v.replace(/^\[|\]$/g, "").split(",").map((x) => x.trim())
-  else if (v && typeof v === "object") { const o = v as Record<string, unknown>; lat = o.lat ?? o.latitude; lon = o.lon ?? o.lng ?? o.longitude }
+  else if (obj(v)) { const o = obj(v) ?? {}; lat = o.lat ?? o.latitude; lon = o.lon ?? o.lng ?? o.longitude }
   const a = Number(lat), b = Number(lon)
   if (lat === "" || lon === "" || lat === null || lon === null || !Number.isFinite(a) || !Number.isFinite(b) || Math.abs(a) > 90 || Math.abs(b) > 180) return null
   return [a, b]
@@ -355,9 +359,9 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     return back.get(r.path) ?? []
   }
   const formulas = new Map<string, ReturnType<typeof parseExpr> | string>()
-  const fo = o.formulas && typeof o.formulas === "object" && !Array.isArray(o.formulas) ? o.formulas as Record<string, unknown> : {}
+  const fo = obj(o.formulas) ?? {}
   for (const [name, src] of Object.entries(fo)) {
-    try { formulas.set(name, parseExpr(String(src ?? ""))) } catch (e) { formulas.set(name, (e as Error).message) }
+    try { formulas.set(name, parseExpr(String(src ?? ""))) } catch (e) { formulas.set(name, (e instanceof Error ? e.message : String(e))) }
   }
   const cache = new Map<Rec, Map<string, V>>()
   const busy = new Set<string>()
@@ -495,8 +499,8 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   } else groups.push({ name: null, rows })
 
   let summaries: Summary[] | undefined
-  const so = o.summaries && typeof o.summaries === "object" && !Array.isArray(o.summaries) ? o.summaries as Record<string, unknown> : {}
-  const custom = o.summaryFormulas && typeof o.summaryFormulas === "object" ? o.summaryFormulas as Record<string, unknown> : {}
+  const so = obj(o.summaries) ?? {}
+  const custom = obj(o.summaryFormulas) ?? {}
   const wanted = Object.entries(so).map(([k, name]) => ({ key: keyOf(k), name: String(name ?? "").trim() })).filter((s) => s.name)
   if (wanted.length) {
     const fns = new Map<string, ((vals: V[]) => V) | null>()
@@ -507,10 +511,10 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
       const src = Object.hasOwn(custom, s.name) ? String(custom[s.name] ?? "") : s.name
       try {
         const n = parseExpr(src)
-        fns.set(s.name, (vals) => { try { return evaluate(n, null, env, { values: vals }) } catch (e) { note(`Summary ${s.name}: ${(e as Error).message}`); return null } })
+        fns.set(s.name, (vals) => { try { return evaluate(n, null, env, { values: vals }) } catch (e) { note(`Summary ${s.name}: ${(e instanceof Error ? e.message : String(e))}`); return null } })
       } catch (e) {
         fns.set(s.name, null)
-        note(`Summary ${s.name} isn't worked out: ${(e as Error).message}`)
+        note(`Summary ${s.name} isn't worked out: ${(e instanceof Error ? e.message : String(e))}`)
       }
     }
     const sum = (rs: Row[]) => Object.fromEntries(wanted.map((s) => {
@@ -522,10 +526,10 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     if (groups.length > 1) for (const g of groups) g.summaries = sum(g.rows)
   }
 
-  const props = o.properties && typeof o.properties === "object" && !Array.isArray(o.properties) ? o.properties as Record<string, unknown> : {}
+  const props = obj(o.properties) ?? {}
   const labels = new Map<string, string>()
   for (const [k, v] of Object.entries(props)) {
-    const d = v && typeof v === "object" ? (v as Record<string, unknown>).displayName : undefined
+    const d = obj(v)?.displayName
     if (typeof d === "string" && d.trim()) labels.set(keyOf(k), d.trim())
   }
   let allKeys: string[] | undefined
@@ -547,7 +551,7 @@ function filterOf(f: unknown, env: Env, note: (s: string) => void, depth = 0): (
   if (typeof f === "string" || typeof f === "number" || typeof f === "boolean") {
     const src = String(f)
     let n: ReturnType<typeof parseExpr>
-    try { n = parseExpr(src) } catch (e) { note(`Filter ${src} is left out: ${(e as Error).message}`); return null }
+    try { n = parseExpr(src) } catch (e) { note(`Filter ${src} is left out: ${(e instanceof Error ? e.message : String(e))}`); return null }
     return (r) => {
       try { return truthy(evaluate(n, r, env)) } catch (e) {
         if (!(e instanceof ExprError)) throw e
@@ -556,12 +560,12 @@ function filterOf(f: unknown, env: Env, note: (s: string) => void, depth = 0): (
       }
     }
   }
-  if (f && typeof f === "object" && !Array.isArray(f)) {
-    const o = f as Record<string, unknown>
+  const o = obj(f)
+  if (o) {
     const kind = ["and", "or", "not"].find((k) => k in o)
     if (!kind) { note(`A filter group is and, or or not, not ${Object.keys(o).join(", ") || "empty"}`); return null }
-    const items = Array.isArray(o[kind]) ? o[kind] as unknown[] : o[kind] === undefined || o[kind] === null ? [] : [o[kind]]
-    const tests = items.map((x) => filterOf(x, env, note, depth + 1)).filter((x): x is (r: Rec) => boolean => !!x)
+    const given = o[kind], items: unknown[] = Array.isArray(given) ? given : given === undefined || given === null ? [] : [given]
+    const tests = items.flatMap((x) => { const t = filterOf(x, env, note, depth + 1); return t ? [t] : [] })
     if (!tests.length) return null
     if (kind === "and") return (r) => tests.every((t) => t(r))
     if (kind === "or") return (r) => tests.some((t) => t(r))

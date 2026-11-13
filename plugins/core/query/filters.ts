@@ -11,6 +11,8 @@ export type Op = typeof OPS[number]
 export const FILE_OPS: Op[] = ["hasTag", "!hasTag", "inFolder", "!inFolder", "hasLink", "!hasLink", "hasProperty", "!hasProperty"]
 export const NO_VALUE: Op[] = ["isEmpty", "!isEmpty"]
 
+const KINDS: Group["kind"][] = ["and", "or", "not"]
+const opOf = (s: string): Op | undefined => OPS.find((o) => o === s)
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 export function treeOf(f: unknown): Group {
@@ -24,10 +26,10 @@ function itemOf(f: unknown, depth = 0): Item | null {
     return condOf(src) ?? { t: "raw", src }
   }
   if (Array.isArray(f)) return depth > 32 ? { t: "other", value: f } : { t: "group", kind: "and", items: f.map((x) => itemOf(x, depth + 1)).filter((x): x is Item => !!x) }
-  if (obj(f) && Object.keys(f).length === 1 && ["and", "or", "not"].includes(Object.keys(f)[0]) && depth <= 32) {
-    const kind = Object.keys(f)[0] as Group["kind"]
-    const list = Array.isArray(f[kind]) ? f[kind] as unknown[] : f[kind] === null || f[kind] === undefined ? [] : [f[kind]]
-    return { t: "group", kind, items: list.map((x) => itemOf(x, depth + 1)).filter((x): x is Item => !!x) }
+  const kind = obj(f) && Object.keys(f).length === 1 && depth <= 32 ? KINDS.find((k) => k === Object.keys(f)[0]) : undefined
+  if (kind && obj(f)) {
+    const given = f[kind], list: unknown[] = Array.isArray(given) ? given : given === null || given === undefined ? [] : [given]
+    return { t: "group", kind, items: list.flatMap((x) => { const i = itemOf(x, depth + 1); return i ? [i] : [] }) }
   }
   return { t: "other", value: f }
 }
@@ -54,7 +56,7 @@ const TEXT_FN = new RegExp(String.raw`^(!?)\s*(${NAME})\.(contains|startsWith|en
 const EMPTY = new RegExp(String.raw`^(!?)\s*(${NAME})\.isEmpty\(\)$`)
 
 const unquote = (s: string) => {
-  if (s.startsWith('"')) { try { return JSON.parse(s) as string } catch { return s.slice(1, -1) } }
+  if (s.startsWith('"')) { try { return String(JSON.parse(s)) } catch { return s.slice(1, -1) } }
   return s.slice(1, -1).replace(/\\(.)/g, "$1")
 }
 const shown = (v: string) => (/^date\(/.test(v) ? unquote(v.replace(/^date\(\s*|\s*\)$/g, "")) : /^["']/.test(v) ? unquote(v) : v)
@@ -63,13 +65,14 @@ const nameOf = (n: string) => n.replace(/^note\[(["'])(.*)\1\]$/, "note.$2")
 export function condOf(src: string): Cond | null {
   const s = src.trim()
   let m = CMP.exec(s)
-  if (m) return { t: "cond", prop: nameOf(m[1]), op: m[2] as Op, value: shown(m[3]), src }
-  if ((m = FILE_FN.exec(s))) return { t: "cond", prop: "file", op: `${m[1]}${m[2]}` as Op, value: unquote(m[3]), src }
+  const cond = (prop: string, op: string, value: string): Cond | null => { const o = opOf(op); return o ? { t: "cond", prop, op: o, value, src } : null }
+  if (m) return cond(nameOf(m[1]), m[2], shown(m[3]))
+  if ((m = FILE_FN.exec(s))) return cond("file", `${m[1]}${m[2]}`, unquote(m[3]))
   if ((m = TEXT_FN.exec(s))) {
     if (m[1] && m[3] !== "contains") return null
-    return { t: "cond", prop: nameOf(m[2]), op: `${m[1]}${m[3]}` as Op, value: shown(m[4]), src }
+    return cond(nameOf(m[2]), `${m[1]}${m[3]}`, shown(m[4]))
   }
-  if ((m = EMPTY.exec(s))) return { t: "cond", prop: nameOf(m[2]), op: `${m[1]}isEmpty` as Op, value: "", src }
+  if ((m = EMPTY.exec(s))) return cond(nameOf(m[2]), `${m[1]}isEmpty`, "")
   return null
 }
 

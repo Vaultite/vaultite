@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { ArrowUpDown, Code, Copy, Eye, EyeOff, PencilLine, Sigma, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
-import { choose, cn, copyText, FilterField, folderOf, menuBelow, notify, notifyError, openFile, post, SortableList, useDismiss, type MenuItem } from "@vaultite"
+import { choose, cn, copyText, FilterField, folderOf, menuBelow, notify, notifyError, openFile, post, SortableList, useDismiss } from "@vaultite"
 import { csvText, groupName, keyOf, label, markdownRows, rowsOf, sortOf, type Result } from "./query"
 import { parse as parseExpr, same } from "./expr"
 import { countText } from "./QueryView"
@@ -147,7 +147,7 @@ const stored = (r: { value: unknown; name: string | null }) =>
 export function GroupMenu({ e }: { e: BaseEdit }) {
   const v = viewsOf(e.cfg)[e.at] ?? {}
   const g = groupOf(v)
-  const order = g && Array.isArray(v.groupOrder) ? v.groupOrder as unknown[] : null
+  const order: unknown[] | null = g && Array.isArray(v.groupOrder) ? v.groupOrder : null
   const [removed, setRemoved] = useState<unknown[] | null>(null)
   const [adding, setAdding] = useState(false)
   const set = (next: typeof g) => e.edit((t) => setGroupBy(t, e.at, next))
@@ -366,7 +366,7 @@ function FormulaForm({ e, name, done }: { e: BaseEdit; name: string; done: () =>
   const key = editing ? name : keyName(title)
   const [tried, setTried] = useState(editing)
   let error = ""
-  try { if (src.trim()) parseExpr(src) } catch (err) { error = (err as Error).message }
+  try { if (src.trim()) parseExpr(src) } catch (err) { error = (err instanceof Error ? err.message : String(err)) }
   const taken = !editing && key in formulas
   const ready = !!key && !!src.trim() && !error && !taken
   const save = () => {
@@ -488,7 +488,7 @@ function CondRow({ c, set, ctx }: { c: Cond; set: (c: Cond | Item | null) => voi
   const more = (ev: React.MouseEvent) => menuBelow(ev, [
     { label: "Edit as expression", icon: Code, run: () => set({ t: "raw", src: c.src ?? exprOf(c) }) },
     { label: "Delete", icon: Trash2, danger: true, run: () => set(null) },
-  ] as MenuItem[])
+  ])
   return (
     <div className="flex flex-wrap items-center gap-1" data-base-cond={c.src ?? exprOf(c)}>
       <button type="button" className={cn(pill, "max-w-[40%]")} data-base-cond-prop={c.prop}

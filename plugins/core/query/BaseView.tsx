@@ -135,7 +135,7 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
           ] },
           { label: "Hide property", icon: EyeOff, sep: true, disabled: columns.length < 2,
             run: () => edit((t) => setOrder(t, at, columns.filter((k) => k !== c.key)), `Hid ${c.label}`) },
-        ] as MenuItem[]
+        ]
       },
       move: (key, before) => {
         const rest = columns.filter((k) => k !== key), i = before ? rest.indexOf(before) : rest.length

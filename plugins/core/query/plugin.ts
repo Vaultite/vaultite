@@ -1,7 +1,7 @@
 import { HTTPError, Plugin, frontmatterTargets, noteLinks, source, type PropTypes, typedValue, typeOf } from "../../../core/plugins.ts"
 import { type Entry, type Item, loadFm, readText, type Vault } from "../../../core/vault.ts"
-import { baseOptions } from "./bases.ts"
-import { markdown, type Opts, QueryError, type Rec, type Result, run, type RunCtx } from "./query.ts"
+import { baseOptions, obj } from "./bases.ts"
+import { markdown, type Opts, QueryError, type Rec, type Result, type Row, run, type RunCtx } from "./query.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -61,7 +61,8 @@ function thisRec(vault: Vault, path?: string): Rec | null {
 }
 
 function optionsOf(q: unknown): Opts {
-  if (q && typeof q === "object" && !Array.isArray(q)) return q as Opts
+  const given = obj(q)
+  if (given) return given
   const s = String(q ?? "").trim()
   if (!s) return {}
   try {
@@ -70,16 +71,17 @@ function optionsOf(q: unknown): Opts {
     try {
       return loadFm(s)
     } catch (e) {
-      throw new HTTPError(400, `the query isn't JSON or YAML: ${(e as Error).message.split("\n")[0]}`)
+      throw new HTTPError(400, `the query isn't JSON or YAML: ${(e instanceof Error ? e.message : String(e)).split("\n")[0]}`)
     }
   }
 }
 
 function baseConfig(src: unknown): Record<string, unknown> {
-  if (src && typeof src === "object" && !Array.isArray(src)) return src as Record<string, unknown>
+  const given = obj(src)
+  if (given) return given
   const text = String(src ?? "")
   if (!text.trim()) return {}
-  try { return loadFm(text) } catch (e) { throw new QueryError(`the base isn't valid YAML: ${(e as Error).message.split("\n")[0]}`) }
+  try { return loadFm(text) } catch (e) { throw new QueryError(`the base isn't valid YAML: ${(e instanceof Error ? e.message : String(e)).split("\n")[0]}`) }
 }
 
 const typesCtx = (types: PropTypes): RunCtx["types"] => ({ of: (k) => typeOf(types, k), value: typedValue })
@@ -88,7 +90,7 @@ function runOpts(vault: Vault, o: Opts, self?: string, thisPath?: string, now = 
   const ctx: RunCtx = { self: thisRec(vault, thisPath ?? self), types: typesCtx(types) }
   if (o.base === undefined) return run(o, records(vault, o, self), now, ctx)
   let b: ReturnType<typeof baseOptions>
-  try { b = baseOptions(baseConfig(o.base), typeof o.show === "string" ? o.show : null) } catch (e) { throw new QueryError((e as Error).message) }
+  try { b = baseOptions(baseConfig(o.base), typeof o.show === "string" ? o.show : null) } catch (e) { throw new QueryError((e instanceof Error ? e.message : String(e))) }
   if (typeof o.month === "string" && b.opts.view === "calendar") b.opts.month = o.month
   const res = run(b.opts, records(vault, b.opts, self, true), now, ctx)
   const notes = [...b.notes, ...(res.notes ?? [])]
@@ -128,14 +130,14 @@ plugin.route("GET", "query", (req) => {
   }
   return query(plugin.vault, optionsOf(req.query.q), selfOf(req.query.self), selfOf(req.query.this))
 })
-plugin.route("POST", "query", (req) => query(plugin.vault, optionsOf((req.body as Item)?.options ?? req.body)))
+plugin.route("POST", "query", (req) => query(plugin.vault, optionsOf(req.body?.options ?? req.body)))
 
 function baseMarkdown(vault: Vault, text: string, at: { path?: string; view?: string; this?: string; level?: number } = {}) {
   let cfg: Record<string, unknown>, names: string[]
   try {
     cfg = baseConfig(text)
     names = at.view ? [at.view] : baseOptions(cfg).views.map((v) => v.name)
-  } catch (e) { return `_(base: ${(e as Error).message})_` }
+  } catch (e) { return `_(base: ${(e instanceof Error ? e.message : String(e))})_` }
   return names.map((name) => {
     try {
       const res = runOpts(vault, { base: cfg, show: name }, at.path, at.this ?? at.path)
@@ -194,21 +196,21 @@ whole; as text it's a Markdown table (one per group), a long cell cut with "…"
     for (const k of ["from", "type", "tags", "where", "columns", "sort", "group", "limit", "offset", "archived"] as const) if (p[k] !== undefined && p[k] !== "") options[k] = p[k]
     const here = typeof p.this === "string" && p.this ? plugin.vault.relocated(p.this) : undefined
     if (here && !plugin.vault.entries.has(here) && !plugin.vault.others.has(here)) throw new HTTPError(404, `this: no file '${p.this}'`)
-    return query(plugin.vault, options as Opts, here, here)
+    return query(plugin.vault, options, here, here)
   },
   text: (r) => {
     const cut = { n: 0 }
-    const cols = ((r.columns ?? []) as Item[]).map((c) => (typeof c === "string" ? { key: c, label: c } : { key: c.key ?? c.id ?? c.name, label: c.label ?? c.name ?? c.key }))
-    const table = (rows: Item[]) => {
+    const cols = r.columns
+    const table = (rows: readonly Row[]) => {
       if (!rows.length) return "_None._"
       const head = `| ${cols.map((c) => cell(c.label)).join(" | ")} |\n|${cols.map(() => " --- ").join("|")}|`
-      return [head, ...rows.map((row) => `| ${cols.map((c, i) => cell(Array.isArray(row.values) ? row.values[i] : row.values?.[c.key] ?? (c.key === "file" ? row.title : ""), cut)).join(" | ")} |`)].join("\n")
+      return [head, ...rows.map((row) => `| ${cols.map((c) => cell(row.values[c.key] ?? (c.key === "file" ? row.title : ""), cut)).join(" | ")} |`)].join("\n")
     }
-    const groups = (r.groups ?? []) as Item[]
-    const body = groups.length === 1 && (groups[0].name === null || groups[0].name === undefined || groups[0].name === "")
-      ? table(groups[0].rows ?? [])
-      : groups.map((g) => `### ${g.name ?? "No value"} (${(g.rows ?? []).length})\n\n${table(g.rows ?? [])}`).join("\n\n")
-    const notes = ((r.notes ?? []) as string[]).map((n) => `_${n}_`)
+    const groups = r.groups
+    const body = groups.length === 1 && !groups[0].name
+      ? table(groups[0].rows)
+      : groups.map((g) => `### ${g.name ?? "No value"} (${g.rows.length})\n\n${table(g.rows)}`).join("\n\n")
+    const notes = (r.notes ?? []).map((n) => `_${n}_`)
     if (cut.n) notes.push(`_A cell ending in … is cut at ${CELL} characters: read its file (or ask for JSON) for the whole value._`)
     const from = r.offset ?? 0, end = from + (r.shown ?? 0)
     const count = r.shown === r.total ? `${r.total} files.` : `Rows ${r.shown ? `${from + 1}-${end}` : "none"} of ${r.total} files${end < r.total ? `; more: offset ${end}` : ""}.`

@@ -154,8 +154,8 @@ export type TableCtl = {
 }
 
 const rowMenu = (e: React.MouseEvent) => {
-  const row = (e.target as Element).closest<HTMLElement>("[data-query-row]")
-  if (!row || e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return
+  const at = e.target instanceof Element ? e.target : null, row = at?.closest<HTMLElement>("[data-query-row]")
+  if (!at || !row || e.defaultPrevented || at.closest("input, textarea, [contenteditable]")) return
   menuFor(() => rowFileMenu(row.dataset.queryRow!))(e)
 }
 
@@ -282,8 +282,9 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
   const keys = (e: React.KeyboardEvent) => {
     if (e.target !== e.currentTarget || e.nativeEvent.isComposing || !flat.length || e.altKey) return
     const mod = isMac ? e.metaKey : e.ctrlKey, i = Math.max(0, row), last = flat.length - 1, end = res.columns.length - 1
-    const to = ({ ArrowUp: [mod ? 0 : i - 1, col], ArrowDown: [mod ? last : i + 1, col], ArrowLeft: [i, mod ? 0 : col - 1],
-      ArrowRight: [i, mod ? end : col + 1], Home: [mod ? 0 : i, 0], End: [mod ? last : i, end] } as Record<string, number[]>)[e.key]
+    const steps = new Map<string, [number, number]>([["ArrowUp", [mod ? 0 : i - 1, col]], ["ArrowDown", [mod ? last : i + 1, col]], ["ArrowLeft", [i, mod ? 0 : col - 1]],
+      ["ArrowRight", [i, mod ? end : col + 1]], ["Home", [mod ? 0 : i, 0]], ["End", [mod ? last : i, end]]])
+    const to = steps.get(e.key)
     if (to && !e.shiftKey) { e.preventDefault(); go(to[0], to[1]); return }
     const r = flat[i], key = res.columns[col].key, can = editable(key, r.values[key])
     if ((e.key === "Enter" || e.key === "F2") && !e.shiftKey) {
@@ -351,7 +352,7 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
             <tr><td colSpan={res.columns.length} className={cn("pb-0.5", gi ? "pt-4" : "pt-2")}><GroupHead g={g} fold={fold} /></td></tr>
           )}
           {g.rows.slice(0, drawn - upTo[gi]).map((r, ri) => (
-            <tr key={r.path} data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, !!(e.target as HTMLElement).closest("[data-editable]")) }}
+            <tr key={r.path} data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, e.target instanceof Element && !!e.target.closest("[data-editable]")) }}
               className="cursor-pointer border-b-[0.5px] border-border hover:bg-foreground/[0.03] [tbody:last-child>&:last-child]:border-0">
               {res.columns.map((c, ci) => {
                 const v = r.values[c.key]

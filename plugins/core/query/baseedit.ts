@@ -1,33 +1,36 @@
 // Obsidian reads these files too: edits keep their comments, order and unknown keys, in Obsidian's style.
-import { isMap, isScalar, isSeq, parseDocument, type Document, type Node, type YAMLMap } from "yaml"
+import { isMap, isNode, isScalar, isSeq, parseDocument, type Document, type Node, type YAMLMap, type YAMLSeq } from "yaml"
 import { keyOf } from "./query.ts"
 
-function doc(text: string): Document {
+type Obj = Record<string, unknown>
+
+function doc(text: string): { d: Document; root: YAMLMap } {
   // Obsidian has written a key twice (columnSize): the last one counts.
-  const d = parseDocument(text || "{}", { uniqueKeys: false })
+  const d: Document = parseDocument(text || "{}", { uniqueKeys: false })
   if (d.errors.length) throw new Error(d.errors[0].message.split("\n")[0])
-  if (d.contents === null || !isMap(d.contents)) d.contents = d.createNode({}) as unknown as typeof d.contents
-  return d
+  if (isMap(d.contents)) return { d, root: d.contents }
+  const root = d.createNode<Obj>({})
+  d.contents = root
+  return { d, root }
 }
 const out = (d: Document) => d.toString({ indent: 2, indentSeq: true, lineWidth: 0, flowCollectionPadding: false })
 
-function views(d: Document) {
-  let vs = d.get("views")
-  if (!isSeq(vs) || !vs.items.length) {
-    d.set("views", d.createNode([{ type: "table", name: "Table" }]))
-    vs = d.get("views")
-  }
-  return vs as import("yaml").YAMLSeq
+function views(d: Document): YAMLSeq {
+  const vs = d.get("views")
+  if (isSeq(vs) && vs.items.length) return vs
+  const made = d.createNode([{ type: "table", name: "Table" }])
+  d.set("views", made)
+  return made
 }
 
-const viewAt = (d: Document, i: number) => { const v = views(d).items[i]; return isMap(v) ? v as YAMLMap : null }
+const viewAt = (d: Document, i: number) => { const v = views(d).items[i]; return isMap(v) ? v : null }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-const js = (n: unknown) => (n && typeof n === "object" && "toJSON" in n ? (n as { toJSON: () => unknown }).toJSON() : n)
-const plainObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
+const js = (n: unknown): unknown => (isNode(n) ? n.toJSON() : n)
+const plainObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v)
 
 function merge(d: Document, node: unknown, value: unknown): Node {
-  if (node && same(js(node), value)) return node as Node
+  if (isNode(node) && same(js(node), value)) return node
   if (isSeq(node) && Array.isArray(value)) {
     const olds = [...node.items]
     const used = new Set<number>()
@@ -45,7 +48,7 @@ function merge(d: Document, node: unknown, value: unknown): Node {
     return node
   }
   if (isScalar(node) && typeof node.value === typeof value && value !== null && typeof value !== "object") { node.value = value; return node }
-  return d.createNode(value) as Node
+  return d.createNode(value)
 }
 
 function put(d: Document, m: YAMLMap, key: string, value: unknown) {
@@ -68,7 +71,7 @@ export function propId(key: string, written: string[]): string {
   return key.startsWith("formula.") || key.startsWith("file.") ? key : `note.${key}`
 }
 function written(d: Document): string[] {
-  const cfg = d.toJSON() as Record<string, unknown> | null
+  const cfg: Obj | null = d.toJSON()
   const out: string[] = []
   const add = (v: unknown) => { if (typeof v === "string") out.push(v) }
   if (plainObj(cfg?.properties)) Object.keys(cfg.properties).forEach(add)
@@ -76,14 +79,14 @@ function written(d: Document): string[] {
     if (!plainObj(v)) continue
     if (Array.isArray(v.order)) v.order.forEach(add)
     if (Array.isArray(v.sort)) for (const s of v.sort) if (plainObj(s)) add(s.property)
-    for (const k of ["columnSize", "summaries"]) if (plainObj(v[k])) Object.keys(v[k] as object).forEach(add)
+    for (const k of ["columnSize", "summaries"]) { const o = v[k]; if (plainObj(o)) Object.keys(o).forEach(add) }
     if (plainObj(v.groupBy)) add(v.groupBy.property)
   }
   return out
 }
 
 export function setSort(text: string, i: number, sort: { key: string; desc: boolean }[]): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
   const w = written(d)
@@ -92,7 +95,7 @@ export function setSort(text: string, i: number, sort: { key: string; desc: bool
 }
 
 export function setOrder(text: string, i: number, keys: string[]): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
   const w = written(d)
@@ -101,11 +104,11 @@ export function setOrder(text: string, i: number, keys: string[]): string {
 }
 
 export function setColumnSize(text: string, i: number, key: string, px: number | null): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
-  const now = plainObj(v.toJSON().columnSize) ? v.toJSON().columnSize as Record<string, unknown> : {}
-  const next: Record<string, unknown> = {}
+  const was = v.toJSON<Obj>().columnSize, now = plainObj(was) ? was : {}
+  const next: Obj = {}
   for (const [k, n] of Object.entries(now)) if (keyOf(k) !== key) next[k] = n
   if (px !== null) next[propId(key, [...Object.keys(now), ...written(d)])] = Math.round(px)
   const cs = v.get("columnSize", true)
@@ -116,26 +119,26 @@ export function setColumnSize(text: string, i: number, key: string, px: number |
 }
 
 export function setDisplayName(text: string, key: string, name: string): string {
-  const d = doc(text)
-  const props = plainObj(d.toJSON()?.properties) ? d.toJSON().properties as Record<string, unknown> : {}
+  const { d, root } = doc(text)
+  const cfg: Obj | null = d.toJSON(), props = plainObj(cfg?.properties) ? cfg.properties : {}
   const id = propId(key, written(d))
   const next = { ...props }
   const had = Object.keys(next).find((k) => keyOf(k) === key) ?? id
-  const own = plainObj(next[had]) ? { ...next[had] as Record<string, unknown> } : {}
+  const was = next[had], own: Obj = plainObj(was) ? { ...was } : {}
   if (name.trim()) own.displayName = name.trim()
   else delete own.displayName
   if (Object.keys(own).length) next[had] = own
   else delete next[had]
-  put(d, d.contents as YAMLMap, "properties", Object.keys(next).length ? next : undefined)
+  put(d, root, "properties", Object.keys(next).length ? next : undefined)
   return out(d)
 }
 
 export function setSummary(text: string, i: number, key: string, name: string | null): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
-  const now = plainObj(v.toJSON().summaries) ? v.toJSON().summaries as Record<string, unknown> : {}
-  const next: Record<string, unknown> = {}
+  const was = v.toJSON<Obj>().summaries, now = plainObj(was) ? was : {}
+  const next: Obj = {}
   for (const [k, n] of Object.entries(now)) if (keyOf(k) !== key) next[k] = n
   if (name) next[Object.keys(now).find((k) => keyOf(k) === key) ?? propId(key, written(d))] = name
   put(d, v, "summaries", Object.keys(next).length ? next : undefined)
@@ -143,15 +146,15 @@ export function setSummary(text: string, i: number, key: string, name: string | 
 }
 
 export function setFilters(text: string, i: number | null, filters: unknown): string {
-  const d = doc(text)
-  const m = i === null ? d.contents as YAMLMap : viewAt(d, i)
+  const { d, root } = doc(text)
+  const m = i === null ? root : viewAt(d, i)
   if (!m) return text
   put(d, m, "filters", filters)
   return out(d)
 }
 
 export function setGroupBy(text: string, i: number, group: { key: string; desc: boolean } | null): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
   put(d, v, "groupBy", group ? { property: propId(group.key, written(d)), direction: group.desc ? "DESC" : "ASC" } : undefined)
@@ -160,7 +163,7 @@ export function setGroupBy(text: string, i: number, group: { key: string; desc: 
 }
 
 export function setGroupOrder(text: string, i: number, order: unknown[] | null): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
   put(d, v, "groupOrder", order ? order.map((x) => x ?? null) : undefined)
@@ -168,7 +171,7 @@ export function setGroupOrder(text: string, i: number, order: unknown[] | null):
 }
 
 export function setLimit(text: string, i: number, limit: number | null): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
   put(d, v, "limit", limit && limit > 0 ? Math.trunc(limit) : undefined)
@@ -176,20 +179,20 @@ export function setLimit(text: string, i: number, limit: number | null): string 
 }
 
 export function setFormula(text: string, name: string, expr: string | null): string {
-  const d = doc(text)
-  const now = plainObj(d.toJSON()?.formulas) ? d.toJSON().formulas as Record<string, unknown> : {}
-  const next: Record<string, unknown> = { ...now }
+  const { d, root } = doc(text)
+  const cfg: Obj | null = d.toJSON(), now = plainObj(cfg?.formulas) ? cfg.formulas : {}
+  const next: Obj = { ...now }
   if (expr === null) delete next[name]
   else next[name] = expr
-  put(d, d.contents as YAMLMap, "formulas", Object.keys(next).length ? next : undefined)
+  put(d, root, "formulas", Object.keys(next).length ? next : undefined)
   return out(d)
 }
 
 export function removeProperty(text: string, key: string): string {
-  const d = doc(text)
-  const cfg = d.toJSON() as Record<string, unknown>
+  const { d, root } = doc(text)
+  const cfg: Obj | null = d.toJSON()
   const named = (k: unknown) => typeof k === "string" && keyOf(k) === key
-  const views = Array.isArray(cfg?.views) ? cfg.views as unknown[] : []
+  const views: unknown[] = Array.isArray(cfg?.views) ? cfg.views : []
   views.forEach((v, i) => {
     const m = plainObj(v) ? viewAt(d, i) : null
     if (!m || !plainObj(v)) return
@@ -208,13 +211,13 @@ export function removeProperty(text: string, key: string): string {
   })
   if (plainObj(cfg?.properties) && Object.keys(cfg.properties).some(named)) {
     const rest = Object.fromEntries(Object.entries(cfg.properties).filter(([x]) => !named(x)))
-    put(d, d.contents as YAMLMap, "properties", Object.keys(rest).length ? rest : undefined)
+    put(d, root, "properties", Object.keys(rest).length ? rest : undefined)
   }
   return out(d)
 }
 
 export function setViewType(text: string, i: number, type: string): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const v = views(d).items[i]
   if (!isMap(v)) return text
   v.set("type", type)
@@ -222,17 +225,17 @@ export function setViewType(text: string, i: number, type: string): string {
 }
 
 export function addView(text: string, type: string, name: string, from?: number): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const vs = views(d)
-  const src = from !== undefined && isMap(vs.items[from]) ? (vs.items[from] as import("yaml").YAMLMap).toJSON() as Record<string, unknown> : {}
-  const copy: Record<string, unknown> = { type, name }
+  const at = from === undefined ? undefined : vs.items[from], src = isMap(at) ? at.toJSON<Obj>() : {}
+  const copy: Obj = { type, name }
   for (const k of ["filters", "order", "sort", "groupBy", "groupOrder", "summaries", "limit", "coordinates", "markerColor", "markerIcon"]) if (src[k] !== undefined) copy[k] = src[k]
   vs.add(d.createNode(copy))
   return out(d)
 }
 
 export function removeView(text: string, i: number): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const vs = views(d)
   if (vs.items.length < 2 || i < 0 || i >= vs.items.length) return text
   vs.items.splice(i, 1)
@@ -240,7 +243,7 @@ export function removeView(text: string, i: number): string {
 }
 
 export function firstView(text: string, i: number): string {
-  const d = doc(text)
+  const { d } = doc(text)
   const vs = views(d)
   if (i <= 0 || i >= vs.items.length) return text
   const [v] = vs.items.splice(i, 1)
