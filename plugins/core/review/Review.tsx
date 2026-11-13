@@ -1,5 +1,3 @@
-// Review: the files AIs changed that the user hasn't looked at (plugin.ts), each a card that unfolds to its diff with
-// Keep and Revert, like a pull request's files; the count in the status bar and the line in a changed file's header.
 import { useEffect, useState } from "react"
 import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, GitCompareArrows, RotateCcw } from "lucide-react"
 import {
@@ -12,10 +10,8 @@ import { names, whoDid } from "./Chip"
 type Detail = (Pending & { pending: true; base: { t: number; text: string } | null; exact: boolean; yours: boolean }) | { path: string; pending: false }
 type Undo = { was: Record<string, number | null>; relabeled?: { path: string; was: string }[] }
 
-/** Files kept or reverted from here: their cards go at once, back if it fails or on Undo. */
 const reviewed = removals()
 
-/** What undoes a keep: the marks as they were, and the labels put back. */
 async function unkeep(u: Undo, paths: string[]) {
   reviewed.back(paths)
   await post("review/marks", { was: u.was })
@@ -49,7 +45,6 @@ async function revertFile(path: string) {
   notify(`${f.archived ? "Archived" : "Reverted"} ${stem(path)}`, { action: { label: "Undo", run: () => void undo().catch((e) => notifyError(e, "Couldn't undo it")) } })
 }
 
-/** One file's change: before the AI's first unreviewed change against now, a few lines around each change. */
 function FileDiff({ path }: { path: string }) {
   const { data: d } = useLive<Detail>(`review/file?path=${encodeURIComponent(path)}`, undefined, (p) => p === path)
   const [now, setNow] = useState<string | null>(null)
@@ -104,14 +99,12 @@ function FileDiff({ path }: { path: string }) {
   )
 }
 
-/** The lines a change added and removed, coloured; or what it is when they can't be counted. */
 function Size({ f }: { f: Pending }) {
   if (f.created) return <span>new file</span>
   if (f.added === undefined) return <span>no earlier version</span>
   return <span className="tabular-nums"><span className={f.added ? "text-ink-(--green)" : undefined}>+{f.added}</span> <span className={f.removed ? "text-ink-(--red)" : undefined}>−{f.removed}</span></span>
 }
 
-/** A file to review: its name and who changed it, unfolding to its diff. */
 function FileCard({ f, open, toggle, leaving }: { f: Pending; open: boolean; toggle: () => void; leaving?: "" }) {
   const folder = folderOf(f.path)
   const Chevron = open ? ChevronDown : ChevronRight
@@ -132,12 +125,10 @@ function FileCard({ f, open, toggle, leaving }: { f: Pending; open: boolean; tog
   )
 }
 
-/** view:review (every writer's) and view:review/<writer>: the files to review, newest first. */
 export function ReviewView({ arg }: { arg: string }) {
   const by = arg ? argOf(arg) : undefined
   const { data, error } = useLive<{ files: Pending[] }>(`review${by ? `?by=${encodeURIComponent(by)}` : ""}`, undefined, true, 60_000)
   const { list: files, leaving } = reviewed.use(data?.files, (f) => f.path)
-  // The first one unfolded, as a PR's first file is in sight.
   const [open, setOpen] = useState<Set<string> | null>(null)
   if (open === null && files?.length) setOpen(new Set([files[0].path]))
   const toggle = (p: string) => setOpen((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n })
@@ -169,7 +160,6 @@ export function ReviewView({ arg }: { arg: string }) {
   )
 }
 
-/** view:review-file/<path>: one file's changes, from its header. */
 export function ReviewFileView({ path }: { path: string }) {
   const { data } = useReview()
   const f = data?.files.find((x) => x.path === path)

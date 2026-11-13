@@ -1,50 +1,31 @@
-// Review: the files AI apps and coding agents changed that the user hasn't looked at yet. Who changed what is Activity's
-// (asked as a service), the text before is File history's; what's reviewed is a mark per file (kept by the server).
 import { byUser, diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { isHiddenPath, type Item, parseText, readText, setPropertyText, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** An Activity event, as much of it as the review reads. */
 type Change = { t: number; last?: number; actor: { kind: string; name: string }; action: string; paths?: string[]; method?: string }
-/** A file to review, as review.list answers it. */
 export type Pending = { path: string; by: string[]; first: number; last: number; added?: number; removed?: number; created?: boolean }
-/** And what the app's diff needs: the text before (null: not kept), whether it's the text just before (`exact`), and
- *  whether the user changed it too since (`yours`). */
 type Found = Pending & { start: number; base: { t: number; text: string; shown: string } | null; exact: boolean; yours: boolean }
 
 const DAY = 86_400_000
-/** A hook's event (no request: Claude Code's own edit) is told after the write: the text before is older than this. */
+/** Claude Code tells its hook of an edit after the write. */
 const HOOK_LAG = 3000
-/** And a change on disk is noticed up to this long after it was written. */
+/** A file watcher sees a change up to this long after the write. */
 const NOTICE_LAG = 10_000
-/** A version is dated by its file's mtime, which Linux takes from a coarse clock: up to a tick (1 to 10 ms) before the
- *  write, so before the request that made it began. */
+/** Linux dates an mtime from a coarse clock: up to a tick (1 to 10 ms) before the write. */
 const MTIME_LAG = 20
-/** So an AI's own write can be dated just before its request began (Activity ties it to that request, as its BEFORE):
- *  that version is its text, not the text before. */
 const OWN_LAG = 5
 
-/** An AI app or a coding agent: what Activity calls an agent (an MCP app, the CLI or the API under a coding agent, a
- *  coding agent's own edits). Not the user, vau typed by hand, scripts or changes on disk. */
 const byAi = (e: Change) => e.actor?.kind === "agent"
-/** A writer's name as one key: "Claude" and "claude", "Grok Bot" and "grok-bot" are the same (slugged, lowercase). */
 const keyOf = (name: string) => whoOf(null, name).agent ?? name.trim().toLowerCase()
-/** A writer as the user reads it: Activity named MCP apps by their slug before it kept their names ("grok-bot"). */
 function readable(name: string) {
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return name
   const known = whoOf(null, name).label
   return known !== name ? known : name.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ")
 }
-/** An AI app or a coding agent calling: an MCP client, or a client that names its agent. */
 const isAi = (w: Who) => w.client === "mcp" || !!w.agent
-/** Not the user's files: settings, the app's own pages, the trash, archives (a path with a part starting with a dot). */
 const hidden = (p: string) => isHiddenPath(p) || p.split("/").some((x) => x.startsWith("."))
 
-// ---------- what's been reviewed: { "<path>": <reviewed up to, ms> }, kept by the server (shared with the other
-// machines), not the vault: it changes on every keep, and it isn't a setting
-
-/** The marks a vault kept in its data.json before (`files`), taken in once a start: the later mark per file wins. */
 let takenIn = false
 function takeIn() {
   if (takenIn) return
@@ -58,7 +39,6 @@ function takeIn() {
   plugin.saveSettings(Object.keys(rest).length ? rest : null)
 }
 const marks = (): Record<string, number> => { takeIn(); return plugin.kept<Record<string, number>>("marks", {}) }
-/** Change the marks; old ones dropped. */
 function remark(change: (m: Record<string, number | null>) => void) {
   const next: Record<string, number | null> = { ...marks() }
   change(next)
@@ -66,13 +46,11 @@ function remark(change: (m: Record<string, number | null>) => void) {
   const kept = Object.entries(next).filter(([, t]) => typeof t === "number" && t > old).sort(([a], [b]) => a.localeCompare(b))
   plugin.keep("marks", kept.length ? Object.fromEntries(kept) : null, { shared: true })
 }
-/** Folders whose changes don't wait for review (its `skip` setting). */
 const skipped = (): string[] => {
   const s = plugin.settings({}).skip
   return Array.isArray(s) ? s.filter((x): x is string => typeof x === "string").map((x) => x.replace(/^\/+|\/+$/g, "")).filter(Boolean) : []
 }
 const inSkipped = (p: string, folders: string[]) => folders.some((f) => p === f || p.startsWith(`${f}/`))
-// Marks follow their files (moved by the app or vau move).
 plugin.onMove((from, to) => {
   const m = marks()
   if (!Object.keys(m).some((k) => k === from || k.startsWith(`${from}/`))) return
@@ -83,7 +61,6 @@ plugin.onMove((from, to) => {
 
 const there = (vault: Vault, rel: string) => vault.entries.has(rel) || vault.others.has(rel)
 
-/** The diff's size, kept per file version (each list asks again after every change in the vault). */
 const sizes = new Map<string, { added: number; removed: number }>()
 function size(key: string, before: string, now: string) {
   let s = sizes.get(key)
@@ -98,8 +75,6 @@ function size(key: string, before: string, now: string) {
   return s
 }
 
-/** `before` with the times the app keeps in the file (its kind's stamps, Note dates') as they are `now`: any edit moves
- *  them, so they aren't the AI's change to show or count. */
 async function asNow(vault: Vault, rel: string, before: string, now: string) {
   let fm: Item, had: Item
   try { fm = parseText(now)[0]; had = parseText(before)[0] } catch { return before }
@@ -109,8 +84,6 @@ async function asNow(vault: Vault, rel: string, before: string, now: string) {
   return out
 }
 
-/** Every file an AI changed since it was last reviewed, newest first; `only` keeps those one writer changed; `path`
- *  just that file. With the text before when `texts`. */
 async function find(vault: Vault, opts: { by?: string; path?: string; texts?: boolean } = {}): Promise<Found[]> {
   const m = marks(), now = Date.now(), skip = skipped()
   const changes = await plugin.ask<Change[]>("activity:changes", [], now - 15 * DAY)
@@ -120,7 +93,6 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
     const end = e.last ?? e.t
     for (const p of e.paths ?? []) {
       if ((opts.path && p !== opts.path) || hidden(p) || inSkipped(p, skip) || end <= (m[p] ?? 0)) continue
-      // (a run of writes that went on past the last review: its last one is after it)
       const t0 = e.t > (m[p] ?? 0) ? e.t : end
       const f = files.get(p) ?? { by: [], first: t0, last: end, start: e.method || t0 > e.t ? t0 - OWN_LAG : t0 - HOOK_LAG, created: false, own: new Set<Change>() }
       f.own.add(e)
@@ -135,12 +107,10 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
   const out: Found[] = []
   for (const [p, f] of files) {
     if (want && !f.by.some((b) => keyOf(b) === want)) continue
-    if (!there(vault, p)) continue // deleted or moved since
+    if (!there(vault, p)) continue
     const { versions } = await plugin.ask<{ versions: { t: number }[] }>("history:versions", { versions: [] }, p)
     const before = versions.filter((v) => v.t < f.start).at(-1) ?? null
     const created = (f.created || (made()[p] ?? 0) >= f.first) && !before
-    // Anyone's change between the version kept and the AI's: that version isn't the text just before (it was written
-    // within File history's interval). An event is a run of writes (t to last): one whose start or end is in between.
     const here = changes.filter((e) => e.paths?.includes(p) && !f.own.has(e) && !(e.actor.kind === "script" && e.actor.name === "Vaultite"))
     const inside = (e: Change, x: number) => x > before!.t + (e.method ? MTIME_LAG : NOTICE_LAG) && x < f.first
     const exact = created || (!!before && !here.some((e) => inside(e, e.t) || inside(e, e.last ?? e.t)))
@@ -154,7 +124,7 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
         const st = (vault.entries.get(p)?.stat ?? vault.others.get(p))?.ns
         const shown = created ? text : await asNow(vault, p, text, cur)
         ;({ added, removed } = size(`${p}\0${created ? "new" : before!.t}\0${st}`, shown, cur))
-        if (!added && !removed && !created) continue // (back as it was: nothing to review)
+        if (!added && !removed && !created) continue
         base = { t: created ? f.first : before!.t, text: opts.texts ? text : "", shown: opts.texts ? shown : "" }
       }
     }
@@ -167,7 +137,6 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
 const listed = (r: Found): Pending => ({ path: r.path, by: r.by, first: r.first, last: r.last,
   ...(r.added !== undefined ? { added: r.added, removed: r.removed } : {}), ...(r.created ? { created: true } : {}) })
 
-/** Which files a keep or a revert is about: one, every one, or one writer's. */
 async function targets(vault: Vault, p: { path?: string; all?: boolean; by?: string }) {
   if (p.path) {
     const rel = String(p.path)
@@ -179,13 +148,10 @@ async function targets(vault: Vault, p: { path?: string; all?: boolean; by?: str
   return await find(vault, { by: p.by, texts: true })
 }
 
-/** The user's to do, in the app or with vau typed by hand: an AI marking its own changes reviewed would defeat it. */
 const usersOnly = (who: Who, what: string) => {
   if (!byUser(who)) throw new OpError(`${what} is the user's to do, in the app or with vau typed by hand`, 403)
 }
 
-/** Mark files reviewed (up to now), and label those an AI wrote (Provenance's origin ai) reviewed: what that value
- *  means. `relabeled`: what each was, for the app's Undo. */
 async function keep(ctx: OpCtx, files: Found[]) {
   const now = Date.now(), was: Record<string, number | null> = {}, m = marks(), relabeled: { path: string; was: string }[] = []
   const ai = (await plugin.ask<string>("provenance:agent", "")) || "ai"
@@ -271,7 +237,6 @@ vau review revert "People/Alice Park.md"`,
       }
       const now = readText(ctx.vault.abs(f.path))
       await ctx.api("PUT", "file", { path: f.path, text: f.base.text, base: now })
-      // (both texts, for the app's Undo)
       reverted.push({ path: f.path, text: f.base.text, was: now })
     }
     if (p.path && skipped.length) throw new OpError(`${skipped[0].path}: ${skipped[0].why}; keep it, or open its version history`, 409)
@@ -287,14 +252,12 @@ vau review revert "People/Alice Park.md"`,
   did: (p) => ({ action: "edit", text: p.path ? `Reverted the AI changes to ${p.path}` : `Reverted every AI change${p.by ? ` by ${p.by}` : ""}`, paths: p.path ? [p.path] : [] }),
 })
 
-// The app's: one file with its text before, for the diff; and the marks put back (Undo).
 plugin.route("GET", "review", async (req) => ({ files: (await find(plugin.vault, { by: req.query.by || undefined })).map(listed) }))
 plugin.route("GET", "review/file", async (req) => {
   const rel = String(req.query.path ?? "")
   if (!rel) throw new HTTPError(400, "which file? ?path=")
   const f = (await find(plugin.vault, { path: rel, texts: true }))[0]
   if (!f) return { path: rel, pending: false }
-  // (the diff's base as shown: the app's own times as they are now)
   return { ...listed(f), pending: true, base: f.base && { t: f.base.t, text: f.base.shown }, exact: f.exact, yours: f.yours }
 })
 plugin.route("POST", "review/marks", (req) => {
@@ -310,16 +273,12 @@ plugin.route("POST", "review/marks", (req) => {
   return { ok: true }
 })
 
-/** Files an AI made through an op that names no kind of change (file.write): path -> when, in its cache (a restart
- *  keeps them). */
 const made = (): Record<string, number> => (plugin.readCache()?.made ?? {}) as Record<string, number>
 function madeByAi(rel: string) {
   const old = Date.now() - 15 * DAY
   plugin.writeCache({ made: Object.fromEntries([...Object.entries(made()).filter(([, t]) => t > old), [rel, Date.now()]]) })
 }
 
-/** Before an AI's write (not one that only shows something: did ui), the file's text is kept as a version: the review's
- *  diff starts from it. A file that wasn't there and is after is one it made. */
 plugin.around("*", async (call, next) => {
   if (call.kind === "read" || !isAi(call.who) || plugin.host.did(call.op, call.params)?.action === "ui") return next()
   const fresh: string[] = []
