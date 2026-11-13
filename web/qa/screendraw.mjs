@@ -8,8 +8,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, SHOTS, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 
-const { browser, check, watch, done } = await qa(import.meta.url)
+const { browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const DIST = path.join(ROOT, "web/dist"), W = 1280, H = 800
 fs.mkdirSync(SHOTS, { recursive: true })
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".webm": "video/webm" }
@@ -31,8 +32,13 @@ const ELEMENTS = Object.fromEntries(Object.entries(SCREEN).filter(([, r]) => r.t
 const R = (k) => ({ x: SCREEN[k].x, y: SCREEN[k].y, w: SCREEN[k].w, h: SCREEN[k].h })
 const B = (x, y, w = 0, h = 0) => ({ x, y, w, h })
 
+const uis = new WeakMap()
+const idle = (page) => uis.get(page).idle()
+const clockAt = (page, when) => page.waitForTimeout(Math.max(0, when - Date.now()))
+const marksUp = (page, sel, n) => until(() => page.evaluate(([sel, n]) => document.querySelectorAll(sel).length >= n, [sel, n]), 5000)
 async function open(dark = false) {
   const page = watch(await browser.newPage({ viewport: { width: W, height: H }, colorScheme: dark ? "dark" : "light" }))
+  uis.set(page, app(page))
   await page.route("http://screen.test/**", (r) => {
     const at = new URL(r.request().url()).pathname, f = at.startsWith("/qa-media/") ? path.join(MEDIA, path.basename(at)) : path.join(DIST, at)
     if (!fs.existsSync(f)) return r.fulfill({ status: 404 })
@@ -97,7 +103,7 @@ const first = await light.evaluate(() => ({ beat: document.querySelector("[data-
 check("at first only the first sentence's marks: the ring (its label, the button's own word, left out) and its step", first.beat === "0" && first.labels.join() === "" && first.cards === 1, first)
 const later = await until(() => light.evaluate(() => document.querySelector("[data-screendraw]")?.getAttribute("data-beat") === "2"), 9000)
 check("the next beats come as the words are read, one after another", !!later)
-await light.waitForTimeout(1800)
+await idle(light)
 const labels = await rects(light, "[data-mark-label]")
 check("every label is drawn, in a pill", labels.map((l) => l.text).sort().join() === ["then pick who", "Your folders", "Sent", "Scroll"].sort().join(), labels.map((l) => l.text))
 const named = { "Your folders": { x: 16, y: 104, w: 216, h: 126 }, Sent: SCREEN.sent }
@@ -140,7 +146,7 @@ await light.click("text=Keep")
 const keep = await light.evaluate(() => window.__acts.find((a) => a.kind === "keep"))
 check("Keep sends the drawing with the places it found", keep?.id === "d1" && !!keep.places?.["el:share"], keep)
 await show(light, { ...MARKS, kept: "Drawings/Share it.excalidraw" })
-await light.waitForTimeout(100)
+await idle(light)
 const kept = await light.evaluate(() => ({ text: document.querySelector("[data-kept]")?.textContent, beat: document.querySelector("[data-screendraw]").getAttribute("data-beat"), labels: document.querySelectorAll("[data-mark-label]").length }))
 check("kept, it says where, and nothing is drawn again", kept.text === "Kept in Drawings/Share it" && kept.beat === "2" && kept.labels === 4, kept)
 await light.click("text=Clear")
@@ -148,18 +154,17 @@ check("Clear asks for it to go", await light.evaluate(() => window.__acts.some((
 
 // ---- another display: its own part, in its own points; the cards stay on the home display
 await show(light, MARKS, { origin: { x: -W, y: 0 }, home: false })
-await light.waitForTimeout(3500)
+await until(() => light.evaluate(() => document.querySelector("[data-screendraw]")?.getAttribute("data-beat") === "2"), 9000)
+await idle(light)
 const other = await light.evaluate(() => ({ labels: document.querySelectorAll("[data-mark-label]").length, cards: document.querySelectorAll("[data-mark]").length, tools: document.querySelectorAll(".sd-tools").length }))
 check("a display the marks aren't on draws none of them, nor the cards", other.labels === 0 && other.cards === 0 && other.tools === 0, other)
 
 // ---- gone: it fades, then it's taken away
 await show(light, MARKS)
-await light.waitForTimeout(200)
+await idle(light)
 await show(light, null)
-await light.waitForTimeout(40)
-const fading = await light.evaluate(() => !!document.querySelector(".sd-root.sd-leave"))
-await light.waitForTimeout(400)
-check("taken down, it fades out, then it's gone", fading && await light.evaluate(() => !document.querySelector("[data-screendraw]")))
+const fading = !!(await until(() => light.evaluate(() => !!document.querySelector(".sd-root.sd-leave")), 1000, 10))
+check("taken down, it fades out, then it's gone", fading && !!(await until(() => light.evaluate(() => !document.querySelector("[data-screendraw]")), 2000)))
 
 // ---- a scratch pad, a sticky, a list; a spotlight; in the dark
 const PAD = {
@@ -179,7 +184,7 @@ const PAD = {
 for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   await show(page, PAD)
   await page.waitForSelector("[data-mark=paper]")
-  await page.waitForTimeout(2600)
+  await idle(page)
   const parts = await rects(page, "[data-mark=paper], [data-mark=sticky], [data-mark=list]")
   const overlap = parts.flatMap((a, i) => parts.slice(i + 1).filter((b) => hit(a, b)).map((b) => [a.kind, b.kind]))
   const covered = parts.filter((p) => Object.values(ELEMENTS).some((e) => hit(p, e)))
@@ -204,9 +209,8 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   await page.waitForSelector("[data-screendraw=dp]")
   const beat = () => page.evaluate(() => document.querySelector("[data-screendraw=dp]")?.getAttribute("data-beat"))
   // (its second sentence turns out to be heard later than the first's end: at 4.5 s)
-  await page.waitForTimeout(300)
   await show(page, { ...PACED, spoken: [{ at: t, dur: 2500 }, { at: t + 4500, dur: 1600 }] })
-  await page.waitForTimeout(2900)
+  await clockAt(page, t + 3200)
   const waited = await beat()
   const came = await until(async () => (await beat()) === "1", 5000)
   const delays = await page.evaluate(() => [...document.querySelectorAll("[data-mark-i] .sd-pen")].map((e) => parseFloat(getComputedStyle(e).animationDelay) * 1000))
@@ -222,17 +226,18 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
     marks: [{ type: "frame", at: B(16, 104, 216, 126), label: "Folders" }, { type: "point", at: R("sent") }, { type: "ring", at: { el: "share" }, beat: 1 }] }
   await show(page, TOUR)
   await page.waitForSelector("[data-screendraw=dw]")
-  await page.waitForTimeout(600)
-  const before = await page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
+  await idle(page)
+  const shownMarks = () => page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
+  const before = await shownMarks()
   const t1 = await page.evaluate(() => Date.now())
   await show(page, { ...TOUR, spoken: [{ at: t1 + 900, dur: 1200 }, null] })
-  await page.waitForTimeout(500)
-  const early = await page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
-  await page.waitForTimeout(700)
-  const heard = await page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
+  await clockAt(page, t1 + 500)
+  const early = await shownMarks()
+  const heard = await until(async () => { const n = await shownMarks(); return n >= 2 && n }, 3000) || await shownMarks()
   check("walkthrough: while its words are being said, no mark shows before its sentence is heard", before === 0 && early === 0 && heard >= 2, { before, early, heard })
   await show(page, { ...TOUR, spoken: [{ at: t1 + 900, dur: 1200 }, { at: t1 + 2200, dur: 1000 }] })
-  await page.waitForTimeout(1600)
+  await until(() => page.evaluate(() => document.querySelector("[data-screendraw=dw]")?.getAttribute("data-beat") === "1"), 5000)
+  await idle(page)
   const past = await page.evaluate(() => ({ frame: [...document.querySelector("[data-focus]")?.parentElement?.classList ?? []].filter((c) => c !== "sd-move").join(" "), point: [...document.querySelectorAll("svg .sd-gone")].length, ring: document.querySelector("[data-screendraw=dw]")?.getAttribute("data-beat") }))
   check("walkthrough: as the next thing is named, the one before steps back and what pointed at it goes", past.frame === "sd-past" && past.point === 1 && past.ring === "1", past)
   await page.screenshot({ path: path.join(SHOTS, "screendraw-walkthrough.png") })
@@ -244,8 +249,8 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   const page = await open()
   const rows = ["inbox", "sent", "drafts"]
   await show(page, { id: "df", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, marks: rows.map((k, i) => ({ type: "frame", at: { el: k }, label: ["Mail in", "Mail out", "Unsent"][i] })) })
-  await page.waitForSelector("[data-screendraw=df]")
-  await page.waitForTimeout(1800)
+  await marksUp(page, "[data-screendraw=df] [data-mark-i]", 3)
+  await idle(page)
   const boxes = await rects(page, "[data-focus]"), tags = await rects(page, "[data-mark-label]")
   const apart = boxes.every((a, i) => boxes.slice(i + 1).every((b) => !hit(a, b)))
   const gap = (l, f) => Math.hypot(Math.max(0, f.x - (l.x + l.w), l.x - (f.x + f.w)), Math.max(0, f.y - (l.y + l.h), l.y - (f.y + f.h)))
@@ -268,7 +273,7 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
     { type: "paper", id: "logo", title: "The logo", w: 200, h: 200, items: [{ type: "svg", id: "mark", x: 12, y: 12, w: 176, h: 176, viewBox: [0, 0, 100, 100], paths: LOGO }] }] })
   await page.waitForSelector("[data-mark=paper]")
   const early = await page.evaluate(() => [...document.querySelectorAll("[data-item=rex] .sd-pen")].some((p) => parseFloat(getComputedStyle(p).strokeDashoffset) > 0.05))
-  await page.waitForTimeout(4200)
+  await idle(page)
   const svg = await page.evaluate(() => ({
     rex: [...document.querySelectorAll("[data-item=rex] path")].length, fills: document.querySelectorAll("[data-item=rex] .sd-fill").length,
     rexBox: (() => { const r = document.querySelector("[data-item=rex]").getBoundingClientRect(), p = document.querySelector("[data-card=dino] .sd-paper > div:last-child").getBoundingClientRect(); return { w: r.width, h: r.height, inside: r.left >= p.left - 4 && r.right <= p.right + 4 && r.top >= p.top - 4 && r.bottom <= p.bottom + 4 } })(),
@@ -291,7 +296,7 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
     { id: "a2", type: "arrow", from: "ok", to: "home", label: "yes" }] }] }
   await show(page, FLOW)
   await page.waitForSelector("[data-mark=paper]")
-  await page.waitForTimeout(2600)
+  await idle(page)
   const box = (sel) => page.evaluate((sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return r && { x: r.x, y: r.y, w: r.width, h: r.height } }, sel)
   const [inB, okB, a1] = [await box("[data-item=in]"), await box("[data-item=ok]"), await box("[data-item=a1]")]
   const labels = await page.evaluate(() => [...document.querySelectorAll("[data-card=flow] .sd-plabel")].map((e) => e.textContent))
@@ -305,10 +310,10 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   await show(page, { ...FLOW, past: false, marks: [{ ...FLOW.marks[0], items: [
     { ...items[0], gone: t1 }, items[1], { ...items[2], y: 120, fill: "blue" }, { ...items[3], gone: t1 }, items[4],
     { id: "err", type: "rect", x: 180, y: 4, w: 90, h: 30, label: "Retry", color: "red" }, { id: "a3", type: "arrow", from: "ok", to: "err", label: "no" }] }] })
-  await page.waitForTimeout(80)
+  await until(() => page.evaluate(() => !!document.querySelector("[data-item=err] .sd-pen")), 2000, 10)
   const mid = await page.evaluate(() => ({ erase: [...document.querySelectorAll("[data-item=in] .sd-pen")].map((p) => getComputedStyle(p).animationName), added: !!document.querySelector("[data-item=err] .sd-pen"),
     moving: getComputedStyle(document.querySelector("[data-item=home] .sd-move")).transitionProperty }))
-  await page.waitForTimeout(1600)
+  await idle(page)
   const after = await page.evaluate(() => ({ home: document.querySelector("[data-item=home] .sd-move").style.transform, gone: [...document.querySelectorAll("[data-item=in] .sd-pen")].every((p) => parseFloat(getComputedStyle(p).strokeDashoffset) > 0.95),
     err: [...document.querySelectorAll("[data-item=err] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01), labels: [...document.querySelectorAll("[data-card=flow] .sd-plabel")].map((e) => e.textContent) }))
   const blueFill = await fillOf(), cardNow = await box("[data-card=flow]")
@@ -329,7 +334,7 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   await show(page, D, { pointer: { x: 640, y: 500 } })
   await page.waitForSelector("[data-mark=image][data-state=ok]")
   await page.waitForSelector("[data-mark=video][data-state=ok]", { timeout: 8000 })
-  await page.waitForTimeout(900)
+  await idle(page)
   const shot = await rects(page, "[data-card=shot]"), clip = await rects(page, "[data-card=clip]")
   const v = await page.evaluate(() => { const e = document.querySelector("[data-mark=video] video"); return { muted: e.muted, loop: e.loop, playing: !e.paused } })
   const lost = await page.evaluate(() => document.querySelector("[data-card=lost] [role=alert]")?.textContent)
@@ -373,12 +378,12 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   const big = await rects(page, "[data-lightbox] img")
   check("picture: pressed, it opens full size over the screen; pressed again, it goes", big[0]?.w > shot[0].w * 1.8, big)
   await page.click("[data-lightbox]")
-  await page.waitForTimeout(100)
+  await idle(page)
   check("…closed", await page.evaluate(() => !document.querySelector("[data-lightbox]")))
   // (dragged by the picture: it moves with the pointer, and the drag isn't a press)
   const s0 = (await rects(page, "[data-card=shot]"))[0]
   await page.mouse.move(s0.x + 60, s0.y + 60); await page.mouse.down(); await page.mouse.move(s0.x - 140, s0.y + 160, { steps: 8 }); await page.mouse.up()
-  await page.waitForTimeout(100)
+  await idle(page)
   const s1 = (await rects(page, "[data-card=shot]"))[0]
   check("a card drags anywhere on the screen, and dragging isn't pressing", Math.abs(s1.x - (s0.x - 200)) < 3 && Math.abs(s1.y - (s0.y + 100)) < 3 && await page.evaluate(() => !document.querySelector("[data-lightbox]")), { s0, s1 })
   await page.hover("[data-card=lost]")
@@ -398,7 +403,7 @@ for (const dark of [false, true]) {
     { type: "button", id: "a2", label: "Companion watcher", do: { ask: "Companion watcher" } }] }
   await show(page, Q, { pointer: { x: 900, y: 420 } })
   await page.waitForSelector("[data-choices]")
-  await page.waitForTimeout(700)
+  await idle(page)
   const card = (await rects(page, "[data-choices]"))[0], rows = await page.evaluate(() => [...document.querySelectorAll("[data-answer]")].map((b) => ({ id: b.dataset.answer, text: b.textContent })))
   const q = await page.evaluate(() => document.querySelector(".sd-choices-q")?.textContent)
   check(`choice (${dark ? "dark" : "light"}): one card, its question atop its answers, each saying what it sends when that says more`, (await page.$$("[data-card]")).length === 1 && q === "Which job should get the card polish?" && rows.length === 2 &&
@@ -426,18 +431,19 @@ for (const dark of [false, true]) {
   const here = { width: W, height: H, origin: { x: 0, y: 0 }, home: true, top: 25 }
   const both = (a, b) => page.evaluate((ls) => window.__draw(ls), [a, b].filter(Boolean).map((d) => ({ ...d, here })))
   await both(mine, theirs)
-  await page.waitForTimeout(1500)
+  await marksUp(page, "[data-mark=sticky]", 2)
+  await idle(page)
   const two = await page.evaluate(() => ({ roots: [...document.querySelectorAll("[data-screendraw]")].map((e) => e.getAttribute("data-agent")), tools: [...document.querySelectorAll(".sd-tools")].map((e) => e.textContent), stickies: [...document.querySelectorAll("[data-mark=sticky]")].map((e) => e.textContent) }))
   check("layers: two sessions' drawings are both up, each in its own colour, each with its own Keep and Clear, named", two.roots.join() === "Claude,Ada" && two.stickies.sort().join() === "Ada's,Mine" && two.tools.length === 2 && two.tools.some((t) => t.startsWith("Ada")), two)
   await both(mine, { ...theirs, hidden: true })
-  await page.waitForTimeout(400)
+  await idle(page)
   const hid = await page.evaluate(() => ({ ada: getComputedStyle(document.querySelector("[data-agent=Ada]")).opacity, mine: getComputedStyle(document.querySelector("[data-agent=Claude]")).opacity, tools: document.querySelectorAll(".sd-tools").length }))
   await both(mine, theirs)
-  await page.waitForTimeout(400)
+  await idle(page)
   const back = await page.evaluate(() => ({ ada: getComputedStyle(document.querySelector("[data-agent=Ada]")).opacity, pens: [...document.querySelectorAll("[data-agent=Ada] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01) }))
   check("layers: one hidden is out of sight, the other untouched; shown again it's back as it was, nothing drawn again", hid.ada === "0" && hid.mine === "1" && hid.tools === 1 && back.ada === "1" && back.pens, { hid, back })
   await both(mine, null)
-  await page.waitForTimeout(400)
+  await idle(page)
   check("layers: one taken down leaves the other", await page.evaluate(() => [...document.querySelectorAll("[data-screendraw]")].map((e) => e.getAttribute("data-agent")).join()) === "Claude")
   await page.close()
 }
@@ -452,7 +458,7 @@ for (const dark of [false, true]) {
   const both = (a, b) => page.evaluate((ls) => window.__draw(ls), [a, b].filter(Boolean).map((d) => ({ ...d, here })))
   await both(ring, before)
   await page.waitForSelector("[data-mark=image][data-state=ok]")
-  await page.waitForTimeout(500)
+  await idle(page)
   const card = (await rects(page, "[data-card=b]"))[0], img = (await rects(page, "[data-card=b] img"))[0]
   const look = await page.evaluate(() => ({ tab: document.querySelector("[data-card=b] .sd-over-tab")?.textContent, below: !!document.querySelector("[data-card=b] .sd-media-caption"),
     through: getComputedStyle(document.querySelector("[data-card=b]")).pointerEvents, tools: [...document.querySelectorAll(".sd-tools")].map((e) => e.textContent) }))
@@ -462,11 +468,11 @@ for (const dark of [false, true]) {
     look.tools.length === 1 && !look.tools[0].includes("(before)"), { card, img, s, look })
   await page.screenshot({ path: path.join(SHOTS, "screendraw-before.png"), clip: { x: s.x - 160, y: s.y - 30, width: s.w + 200, height: s.h + 90 } })
   await both(ring, { ...before, hidden: true })
-  await page.waitForTimeout(400)
+  await idle(page)
   const flipped = await page.evaluate(() => ({ before: getComputedStyle(document.querySelector("[data-agent='Claude (before)']")).opacity, ring: getComputedStyle(document.querySelector("[data-agent=Claude]")).opacity }))
   await page.screenshot({ path: path.join(SHOTS, "screendraw-after.png"), clip: { x: s.x - 160, y: s.y - 30, width: s.w + 200, height: s.h + 90 } })
   await both(ring, before)
-  await page.waitForTimeout(400)
+  await idle(page)
   const back = await page.evaluate(() => getComputedStyle(document.querySelector("[data-agent='Claude (before)']")).opacity)
   check("proof: flipped, the before goes and the thing shows as it is now, its ring still up; flipped back, the before again", flipped.before === "0" && flipped.ring === "1" && back === "1", { flipped, back })
   await page.close()
@@ -481,7 +487,7 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   const at = pointer ? { pointer } : {}
   await show(page, proof, at)
   await page.waitForSelector("[data-mark=video][data-state=ok]")
-  await page.waitForTimeout(600)
+  await idle(page)
   // (its lowest opacity while the voice says the narration: waiting for a sentence, heard later, waiting again)
   const lowest = async (fn) => {
     await page.evaluate(() => { window.__low = 1; const tick = () => { const e = document.querySelector("[data-mark=video]"); window.__low = Math.min(window.__low, e ? Number(getComputedStyle(e).opacity) : 0); window.__lowId = requestAnimationFrame(tick) }; tick() })
@@ -491,7 +497,7 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   const low = await lowest(async () => {
     for (const s of [{ waits: true, spoken: [null] }, { spoken: [null] }, { waits: true, spoken: [{ at: Date.now() + 2500, dur: 1500 }] }, { waits: true, spoken: [null] }, {}]) {
       await show(page, { ...proof, ...s }, at)
-      await page.waitForTimeout(350)
+      await idle(page)
     }
   })
   if (pointer) check("proof video: it stays up, never blinking out, while the layer is paced to the narration said with it", low > 0.99, low)
@@ -499,7 +505,7 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   await show(page, { ...proof, question: "Keep it and merge it in, or does it need changes?", marks: [...proof.marks,
     ...["Keep and merge", "Needs changes", "Not yet"].map((label, i) => ({ type: "button", id: `m${i}`, label, do: { ask: label } }))] }, at)
   await page.waitForSelector("[data-choices]")
-  await page.waitForTimeout(900)
+  await idle(page)
   const choice = (await rects(page, "[data-choices]"))[0], tools = (await rects(page, ".sd-tools"))[0], video = (await rects(page, "[data-mark=video]"))[0]
   const rows = await page.evaluate(() => [...document.querySelectorAll("[data-answer]")].map((b) => b.textContent).join())
   check(`proof video: its choice is one card, Keep and merge, Needs changes, Not yet, clear of Keep and Clear and of the video${pointer ? ", the pointer by them" : ""}`,
@@ -510,7 +516,8 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   const hint = 'Or hold your Talk key and say what to change: it goes to "Make the heading blue".'
   await show(page, { ...proof, id: "dpvh", question: "Keep it and merge it in, or does it need changes?", hint, marks: [...proof.marks,
     ...["Keep and merge", "Needs changes", "Not yet"].map((label, i) => ({ type: "button", id: `m${i}`, label, do: { ask: label } }))] }, at)
-  await page.waitForTimeout(900)
+  await marksUp(page, ".sd-choices-hint", 1)
+  await idle(page)
   const hinted = (await rects(page, "[data-choices]"))[0], line = (await rects(page, ".sd-choices-hint"))[0]
   const fits = await page.evaluate(() => { const c = document.querySelector("[data-choices]"); return c.scrollHeight <= c.clientHeight + 1 })
   check(`proof video: its choice card shows the hint under the answers, whole inside it${pointer ? ", the pointer by them" : ""}`,
@@ -518,7 +525,8 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   if (pointer) await page.locator("[data-choices]").screenshot({ path: path.join(SHOTS, "screendraw-proof-choice-hint.png") })
   // (a button placed at the bottom, as any agent may: it keeps off the toolbar too)
   await show(page, { ...proof, id: "dpv2", marks: [...proof.marks, ...["Keep and merge", "Needs changes"].map((label, i) => ({ type: "button", id: `c${i}`, label, do: { ask: label }, at: { area: "bottom" } }))] }, at)
-  await page.waitForTimeout(900)
+  await marksUp(page, ".sd-chip", 2)
+  await idle(page)
   const chips = await rects(page, ".sd-chip"), tools2 = (await rects(page, ".sd-tools"))[0]
   check(`proof video: buttons put at the bottom keep clear of Keep and Clear${pointer ? ", the pointer by them" : ""}`, chips.length === 2 && !!tools2 && chips.every((c) => !hit(c, tools2) && onScreen(c)), { chips, tools2 })
   await page.close()
@@ -533,7 +541,8 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   const rate = (fs) => { const g = fs.slice(1).map((t, i) => t - fs[i]).sort((a, b) => a - b); return { fps: Math.round((fs.length - 1) / ((fs.at(-1) - fs[0]) / 1000)), p95: Math.round(g[Math.floor(g.length * 0.95)]) } }
   const rest = rate(await page.evaluate(() => new Promise((ok) => { const f = []; const tick = (t) => { f.push(t); if (f.length < 60) requestAnimationFrame(tick); else ok(f) }; requestAnimationFrame(tick) })))
   await show(page, layer(ELEMENTS))
-  await page.waitForTimeout(1500)
+  await marksUp(page, "[data-screendraw=dc1] [data-mark-i]", 3)
+  await idle(page)
   // (from here, once its code has loaded and it's drawn: the glides)
   await page.evaluate(() => { window.__frames = []; window.__long = []; new PerformanceObserver((l) => window.__long.push(...l.getEntries().map((e) => Math.round(e.duration)))).observe({ type: "longtask" })
     const tick = (t) => { window.__frames.push(t); requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
@@ -544,16 +553,15 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   await page.screenshot({ path: path.join(SHOTS, "screendraw-rings.png") })
   const moved = { ...ELEMENTS, "el:row1": { ...ELEMENTS["el:row1"], y: ELEMENTS["el:row1"].y + 200 } }
   await show(page, layer(moved))
-  await page.waitForTimeout(160)
-  const mid = await box("[data-mark-i='0']")
-  await page.waitForTimeout(700)
+  const mid = await until(async () => { const b = await box("[data-mark-i='0']"); return b && b.y > ring.y + 2 && b }, 2000, 10) || await box("[data-mark-i='0']")
+  await idle(page)
   const end = await box("[data-mark-i='0']")
   const drawn = await page.evaluate(() => [...document.querySelectorAll("[data-mark-i='0'] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01))
   check("choreography: a mark whose thing moved glides there (part way at first, then on it), its ink not drawn again",
     mid.y > ring.y + 2 && mid.y < ring.y + 196 && Math.abs(end.y - (ring.y + 200)) < 2 && Math.abs(end.x - ring.x) < 1 && drawn, { ring, mid, end })
   const still = await box("[data-mark-i='2']")
   await show(page, layer({ ...moved, "el:inbox": { ...ELEMENTS["el:inbox"], x: ELEMENTS["el:inbox"].x + 40 } }))
-  await page.waitForTimeout(700)
+  await idle(page)
   const slid = await box("[data-mark-i='2']")
   check("choreography: an underline follows its row sideways too", Math.abs(slid.x - still.x - 40) < 2 && Math.abs(slid.y - still.y) < 1, { still, slid })
   const busy = rate(await page.evaluate(() => window.__frames)), long = await page.evaluate(() => window.__long)

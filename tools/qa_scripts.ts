@@ -15,6 +15,7 @@ export const FRONT = new Set(["agentpages", "desktop", "lights", "webpanes", "we
 /** Scripts that measure time, each run with the machine to itself (tools/qa_slots.ts' alone), and why. */
 export const MEASURES = new Map([
   ["paneswipe", "asserts frame timings: other scripts' CPU makes long tasks"],
+  ["screendraw", "asserts frame rates and no long task while the choreography glides"],
 ])
 
 /** Every script's name, the skipped ones too. */

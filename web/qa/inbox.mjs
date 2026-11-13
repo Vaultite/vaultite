@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node
 import path from "node:path"
 import { devices } from "playwright-core"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { fileURLToPath } from "node:url"
 const { args: [B, OUT = "/tmp/inbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -21,12 +22,13 @@ await until(async () => !(await api("GET", "inbox")).length)
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
-const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
+const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
 const shot = (p, name) => p.screenshot({ path: `${OUT}${name}.png` })
 const toasts = (p = page) => p.locator("[data-sonner-toast]")
 const toastWith = (text, p = page, ms) => until(async () => (await toasts(p).allInnerTexts()).find((t) => t.includes(text)), ms)
 const count = () => page.locator("aside [data-inbox-button]").getAttribute("data-count").then(Number).catch(() => -1)
 const enc = encodeURIComponent
+const pastMarkSeen = () => wait(2000)
 // A page with the Inbox's block (removed at the end).
 const PAGE = "Qa inbox.md"
 writeFileSync(path.join(VAULT, PAGE), "---\ntype: dashboard\n---\n\n```block-inbox\n```\n")
@@ -35,13 +37,13 @@ writeFileSync(path.join(VAULT, PAGE), "---\ntype: dashboard\n---\n\n```block-inb
 writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "files:files"], right: [], collapsed: [] }))
 await page.goto(`${B}#file/${enc(PAGE)}`)
 await page.waitForSelector("aside [data-inbox-button]")
-await wait(800)
+await ui.idle()
 check("the Inbox button is in the sidebar's header, nothing new", (await count()) === 0, await count())
 
 // 1. A message: a toast, no count (the badge is what needs you).
 await api("POST", "inbox/events", { source: "backup", kind: "done", title: "Backup finished", body: "12 GB in 4 min" })
 check("a message toasts", !!(await toastWith("Backup finished: 12 GB in 4 min")), await toasts().allInnerTexts())
-await wait(500)
+await ui.idle()
 check("and doesn't count on the button: nothing needs you", (await count()) === 0, await count())
 await api("POST", "inbox/events", { source: "browser", kind: "waiting", title: "Lighthouse needs you in the browser" })
 check("an ask counts", (await until(async () => (await count()) === 1)) === true, await count())
@@ -53,9 +55,9 @@ const term = `claude-qa${Date.now().toString(36)}`
 await api("POST", `terminals/${term}`)
 await page.goto(`${B}#view/terminal%2F${term}`)
 await until(() => page.locator("[data-term]").count())
-await wait(1500)
+await until(async () => ((await api("GET", `terminals/${term}/capture?lines=50`))?.text ?? "").includes("a stand-in for QA"), 10_000)
 await page.goto(`${B}#file/${enc(PAGE)}`)
-await wait(800)
+await ui.idle()
 await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission to use Bash", session_id: "qa-session" })
 const waitingToast = await toastWith("permission to use Bash")
 check("a session asking: a toast saying what it asks", !!waitingToast, await toasts().allInnerTexts())
@@ -65,7 +67,7 @@ check("Open shows its sheet, with Approve and Deny (no reply: it's answered ther
   (await sheet.locator("[data-reply]").count()) === 0, await sheet.count())
 let ev = await api("GET", "inbox/events")
 check("a permission isn't read by opening it (its answer reads it)", ev.events.find((e) => e.ask === "permission")?.read !== true, ev.events)
-await wait(400)
+await ui.idle()
 await shot(page, "2-session-sheet-permission")
 await sheet.getByRole("button", { name: "Open session" }).click()
 check("Open session goes to its terminal", !!(await until(() => page.evaluate((t) => location.hash.includes(`terminal%2F${t}`) || location.hash.includes(`terminal/${t}`), term))), await page.evaluate(() => location.hash))
@@ -87,14 +89,14 @@ if (focused) {
 // 3b. A session answering elsewhere: one row (bold), a toast; its sheet shows the answer as Markdown (read once open),
 // and the reply goes into its terminal. A turn done with nothing for the user: quiet, read, no toast.
 await page.goto(`${B}#file/${enc(PAGE)}`)
-await wait(800)
+await ui.idle()
 const other = `qb${Date.now().toString(36)}`
 await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "Stop", session_id: "qa-other", cwd: "/tmp/lighthouse",
   last_assistant_message: "Two ways to fix the **flaky test**:\n\n1. Await the write\n2. Retry the read\n\nWhich one do you want?" })
 check("a session that needs you: a toast with its answer's first line", !!(await toastWith("lighthouse: Two ways to fix the flaky test")), await toasts().allInnerTexts())
 // (a turn that goes on by itself, a background task's: no prompt of the user's)
 await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "Stop", last_assistant_message: "" })
-await wait(1200)
+await ui.idle()
 ev = await api("GET", "inbox/events")
 const rows = ev.events.filter((e) => e.terminal === other)
 check("one thread per session; a quiet turn after leaves its answer to read as it was", rows.length === 1 && rows[0].state === "open" && rows[0].read !== true && rows[0].preview?.startsWith("Two ways"), rows)
@@ -107,7 +109,7 @@ check("a turn done with nothing for you: done, no toast", ev.events.find((e) => 
 await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("button", { name: "Open" }).click()
 check("its sheet: the answer drawn as Markdown", !!(await until(() => sheet.locator("strong", { hasText: "flaky test" }).count())) && (await sheet.locator("ol li").count()) === 2, await sheet.innerText().catch(() => ""))
 check("opened, it's read, and still needs you", !!(await until(async () => { const e = (await api("GET", "inbox/events")).events.find((x) => x.id === rows[0].id); return e?.read === true && e.state === "open" })))
-await wait(400)
+await ui.idle()
 await shot(page, "2b-session-sheet-answer")
 // What the inbox was for: read and not answered, it doesn't go away (the block's Needs you still has it, plain).
 await page.keyboard.press("Escape")
@@ -120,7 +122,7 @@ await sheet.locator("[data-session-done]").click()
 check("Done with this, in its sheet: done, out of the list", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "done")) &&
   !!(await until(async () => (await kept.count()) === 0)))
 // (settled, the next session's sheet takes its place: closed for the toast)
-if (await page.locator("[data-session-sheet]").filter({ visible: true }).count()) { await page.keyboard.press("Escape"); await wait(400) }
+if (await page.locator("[data-session-sheet]").filter({ visible: true }).count()) { await page.keyboard.press("Escape"); await ui.idle() }
 await page.locator("[data-sonner-toast]", { hasText: "Settled “" }).first().getByRole("button", { name: "Undo" }).click()
 check("Undo: it needs you again", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "open")))
 // The reply goes into its session: here its terminal, its agent still running (the stand-in, which the terminal echoes).
@@ -158,7 +160,7 @@ const longToast = await toastWith("Lighthouse learned 10 things")
 check("a long event toasts its title and first line only", !!longToast && longToast.includes("Fact 1") && !longToast.includes("Fact 2"), longToast)
 vau("notify", "Imported ".repeat(200), "--action-open", "Welcome.md")
 await toastWith("Imported Imported")
-await wait(800) // its slide in
+await ui.idle()
 const box = await toasts().filter({ hasText: "Imported Imported" }).first().evaluate((t) => {
   const title = t.querySelector("[data-title]"), b = t.querySelector("[data-button]")?.getBoundingClientRect()
   return { lines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)), button: !!b && b.width > 0 && b.right <= innerWidth && b.bottom <= innerHeight }
@@ -168,10 +170,10 @@ await shot(page, "1b-long-toasts")
 
 // 5. Results: a file written in Inbox/, one through the API (an agent's, like MCP's inbox_add).
 await page.goto(`${B}#file/${enc(PAGE)}`)
-await wait(1000)
+await ui.idle()
 mkdirSync(path.join(VAULT, "Inbox"), { recursive: true })
 const now = new Date().toISOString().slice(0, 19).replace("T", " ")
-writeFileSync(path.join(VAULT, "Inbox", "Plant care apps compared.md"), `---\ntype: inbox\nstatus: new\nfrom: Claude\ncreated: '${now}'\n---\n\n## Findings\n\n- Three tools.\n`)
+await ui.sees("Inbox/Plant care apps compared.md", () => writeFileSync(path.join(VAULT, "Inbox", "Plant care apps compared.md"), `---\ntype: inbox\nstatus: new\nfrom: Claude\ncreated: '${now}'\n---\n\n## Findings\n\n- Three tools.\n`))
 check("a result written as a file toasts", !!(await toastWith("In your inbox: Plant care apps compared")), await toasts().allInnerTexts())
 await api("POST", "inbox", { title: "A field guide to tiling", body: "Worth reading.", from: "Web clipper", source: "https://example.com/tiling" })
 await api("POST", "inbox", { title: "Notes to file away", body: "Some notes.", from: "Codex" })
@@ -189,7 +191,7 @@ check("and what needs you and messages under Active, what agents work on not lis
   [await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count(), await page.locator("[data-inbox-view] [data-event][data-state=working]").count()])
 const firstActive = await page.locator("[data-inbox-view] [data-inbox-active]").locator("[data-event], [data-result]").first().getAttribute("data-kind").catch(() => null)
 check("Active: what waits on you first", firstActive === "session" || firstActive === "waiting", firstActive)
-await wait(400)
+await ui.idle()
 await shot(page, "2-inbox-view")
 check("open, it reads the messages, which doesn't change the count", !!(await until(async () => !(await api("GET", "inbox/events")).events.some((e) => e.kind === "info" && !e.read && !e.kept))) &&
   (await count()) === 3 + (await needs()), await count())
@@ -207,20 +209,20 @@ await dealt.getByRole("button", { name: /^Settled \d/ }).click()
 check("Done, open: there, drawn as read", (await evRow("Wrote the weekly review").getAttribute("data-unread")) === null, await evRow("Wrote the weekly review").getAttribute("data-unread"))
 
 // 6c. Right-click: Mark as unread brings a message back, and stays so while the view is seen; Mark as read.
-await evRow("Wrote the weekly review").click({ button: "right" })
-await page.getByRole("menuitem", { name: "Mark as unread" }).click()
-await wait(2000)
+await ui.menu.context(evRow("Wrote the weekly review"))
+await ui.menu.pick("Mark as unread")
+await pastMarkSeen()
 let one = (await api("GET", "inbox/events")).events.find((e) => e.title === "Wrote the weekly review")
 check("Mark as unread: unread, open again, and seeing the view doesn't read it", one?.read === false && one.kept === true && one.state === "open" &&
   (await page.locator("[data-inbox-view] [data-inbox-active] [data-event]", { hasText: "Wrote the weekly review" }).first().getAttribute("data-unread")) === "true", one)
-await evRow("Wrote the weekly review").click({ button: "right" })
-await page.getByRole("menuitem", { name: "Mark as read" }).click()
+await ui.menu.context(evRow("Wrote the weekly review"))
+await ui.menu.pick("Mark as read")
 one = (await until(async () => { const e = (await api("GET", "inbox/events")).events.find((x) => x.title === "Wrote the weekly review"); return e?.read ? e : null }))
 check("Mark as read: read, done", !!one && one.state === "done", one)
 await dealt.getByRole("button", { name: /^Settled \d/ }).click()
-await page.locator("[data-inbox-view] [data-result]").first().click({ button: "right" })
+await ui.menu.context(page.locator("[data-inbox-view] [data-result]").first())
 check("a result's right-click has Done", (await page.getByRole("menuitem", { name: "Settle" }).count()) === 1)
-await page.keyboard.press("Escape")
+await ui.menu.close()
 await shot(page, "2b-inbox-menus")
 
 // 7. Done (into the archive, with Undo), File to…
@@ -231,9 +233,9 @@ check("Done: status done, moved into Inbox/.archive/, archived in the file", !!(
 check("and it leaves the list", !!(await until(async () => (await row("Plant care apps compared").count()) === 0)))
 await page.locator("[data-sonner-toast]", { hasText: "Settled “" }).getByRole("button", { name: "Undo" }).click()
 check("Undo: new again, out of the archive", !!(await until(() => read("Inbox/Plant care apps compared.md").includes("status: new") && !read("Inbox/Plant care apps compared.md").includes("archived"))), read("Inbox/Plant care apps compared.md"))
-await row("A field guide to tiling").getByRole("button", { name: "More" }).click()
+await ui.menu.open(row("A field guide to tiling").getByRole("button", { name: "More" }))
 check("no Archive in the menu (Done is it)", (await page.getByRole("menuitem", { name: "Archive" }).count()) === 0)
-await page.keyboard.press("Escape")
+await ui.menu.close()
 await row("A field guide to tiling").getByRole("button", { name: "Settle" }).click()
 check("Done: into Inbox/.archive/", !!(await until(() => read("Inbox/.archive/A field guide to tiling.md").includes("archived: true"))))
 // What's dealt with goes last, folded: open it, and Back to review brings one back (out of the archive).
@@ -246,21 +248,21 @@ await shot(page, "3a-inbox-dealt")
 await dealt.locator("[data-result]", { hasText: "A field guide to tiling" }).getByRole("button", { name: "Back to review" }).dispatchEvent("click")
 check("Back to review: out of the archive, to review again", !!(await until(() => read("Inbox/A field guide to tiling.md") && !read("Inbox/A field guide to tiling.md").includes("archived") && read("Inbox/A field guide to tiling.md").includes("status: new"))) &&
   !!(await until(() => row("A field guide to tiling").count())))
-await row("Notes to file away").getByRole("button", { name: "More" }).click()
-await page.getByRole("menuitem", { name: "File to…" }).click()
-await wait(300)
-await page.keyboard.type("Notes/Filed"); await wait(300)
+await ui.menu.open(row("Notes to file away").getByRole("button", { name: "More" }))
+await ui.menu.pick("File to…")
+await page.waitForSelector("[role=dialog] input:focus")
+await page.keyboard.type("Notes/Filed"); await ui.idle()
 await page.keyboard.press("Shift+Enter")
 const filed = await until(() => read("Notes/Filed/Notes to file away.md"))
 check("File to…: moved, without its inbox keys", !!filed && !/type: inbox|status:/.test(filed) && filed.includes("from: Codex") && !existsSync(path.join(VAULT, "Inbox/Notes to file away.md")), filed)
-await wait(500)
+await ui.idle()
 await shot(page, "3-after-actions")
 
 // 7b. Snooze: out of the list till its time, under Snoozed meanwhile, back at once when it comes.
 // (toasts pause under the pointer and cover the rows' right end and menus: moved off, they go)
 const noToasts = async () => { await page.mouse.move(5, 5); await until(async () => (await toasts().count()) === 0, 15_000) }
 await noToasts()
-await row("A field guide to tiling").getByRole("button", { name: "Snooze" }).click()
+await ui.menu.open(row("A field guide to tiling").getByRole("button", { name: "Snooze" }))
 check("Snooze: the choices, each with its time", (await page.getByRole("menuitem", { name: /^Tomorrow/ }).count()) === 1 && (await page.getByRole("menuitem", { name: /^Pick a time/ }).count()) === 1)
 await shot(page, "3b-snooze-menu")
 await page.getByRole("menuitem", { name: /^Tomorrow/ }).dispatchEvent("click")
@@ -277,18 +279,18 @@ if (evOne) {
   await noToasts()
   const one = page.locator(`[data-inbox-view] [data-event="${evOne.id}"]`)
   await one.hover()
-  await one.getByRole("button", { name: "Snooze" }).click()
+  await ui.menu.open(one.getByRole("button", { name: "Snooze" }))
   await page.getByRole("menuitem", { name: /^In 1 hour/ }).dispatchEvent("click")
   check("an event snoozed: under Snoozed", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.title === evName)?.snoozed > Date.now())) &&
     !!(await until(() => later.locator("[data-snoozed]", { hasText: evName }).count())))
 }
-await wait(400)
+await ui.idle()
 await shot(page, "3c-snoozed")
 await laterRow.getByRole("button", { name: "Wake" }).dispatchEvent("click")
 check("Unsnooze: back to review", !!(await until(async () => (await row("A field guide to tiling").count()) === 1)), read("Inbox/A field guide to tiling.md"))
 if (evName) await later.locator("[data-snoozed]", { hasText: evName }).getByRole("button", { name: "Wake" }).dispatchEvent("click")
 await noToasts()
-await row("A field guide to tiling").click({ button: "right" })
+await ui.menu.context(row("A field guide to tiling"))
 await page.getByRole("menuitem", { name: "Snooze" }).dispatchEvent("click")
 await page.getByRole("menuitem", { name: /^Pick a time/ }).dispatchEvent("click")
 const pick = page.locator("[data-snooze-sheet]")
@@ -301,13 +303,13 @@ await api("PUT", `inbox/${enc("Inbox/A field guide to tiling")}`, { snoozed: new
 check("its time come: back at once, with a toast", !!(await toastWith("Back in your inbox: A field guide to tiling", page, 8000)) && (await row("A field guide to tiling").count()) === 1, [await toasts().allInnerTexts(), read("Inbox/A field guide to tiling.md")])
 
 // 8. The sidebar panel, shown through sidebars.json.
-writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "inbox:inbox", "pages:pages", "files:files"], right: [], collapsed: [] }))
+await ui.sees(".vaultite/sidebars.json", () => writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "inbox:inbox", "pages:pages", "files:files"], right: [], collapsed: [] })))
 await api("POST", "inbox/events", { source: "codex", kind: "done", title: "Codex finished", body: "lighthouse" })
 const panel = await until(() => page.locator("aside [data-inbox-panel]").count())
 check("the panel shows", !!panel)
 check("and the header's button steps aside", !!(await until(async () => (await page.locator("aside [data-inbox-button]").count()) === 0)))
 check("with results and events", !!(await until(async () => (await page.locator("aside [data-inbox-panel] [data-result]").count()) >= 1 && (await page.locator("aside [data-inbox-panel] [data-event]").count()) >= 1)))
-await wait(400)
+await ui.idle()
 await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}4-sidebar-panel.png` })
 
 // 8a. Done on the result being read: the next one to review takes its tab, rather than the tab closing (Undo: back).
@@ -315,7 +317,7 @@ const panelIds = () => page.locator("aside [data-inbox-panel] [data-result]").ev
 const ids = await panelIds()
 const reading = ids[0], after = ids[1]
 await page.goto(`${B}#file/${enc(`${reading}.md`)}`)
-await wait(800)
+await ui.idle()
 await page.locator(`aside [data-inbox-panel] [data-result="${reading}"]`).hover()
 await page.locator(`aside [data-inbox-panel] [data-result="${reading}"]`).getByRole("button", { name: "Settle" }).click()
 const hashNow = () => page.evaluate(() => decodeURIComponent(location.hash))
@@ -324,19 +326,19 @@ check("Done on the result being read: the next one shows in its place", !!after 
 // (the newest, first in sonner's list: an older one may still be going, behind it)
 await page.locator("[data-sonner-toast]", { hasText: /Settled “.+”/ }).first().getByRole("button", { name: "Undo" }).click()
 check("Undo puts it back to review", !!(await until(() => read(`${reading}.md`).includes("status: new"))))
-await wait(500)
+await ui.idle()
 
 // 8b. What needs you always shows, read or not; messages after it, past 8 rows folded; what agents work on and done
 // ones never (read messages are done).
 await page.goto(`${B}#file/${enc(PAGE)}`)
-await wait(800)
+await ui.idle()
 const prow = (sel = "") => page.locator(`aside [data-inbox-panel] [data-event]${sel}`)
 // (a session answered: its agent working on it)
 const busy = `qw${Date.now().toString(36)}`
 await api("POST", `inbox/hook?agent=claude&terminal=${busy}`, { hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission to use Bash", session_id: "qa-busy" })
 await api("POST", `inbox/hook?agent=claude&terminal=${busy}`, { hook_event_name: "UserPromptSubmit", session_id: "qa-busy" })
 await until(async () => (await api("GET", "inbox/events")).events.some((e) => e.session === "qa-busy" && e.state === "working"))
-await wait(600)
+await ui.idle()
 check("what an agent works on isn't in the panel (the Agents panel has it)", (await prow("[data-state=working]").count()) === 0, await prow("[data-state=working]").count())
 for (let i = 1; i <= 10; i++) await api("POST", "inbox/events", { source: "backup", kind: "info", title: `Backup ${i} finished` })
 const fold = page.locator("aside [data-inbox-panel] [data-inbox-fold]")
@@ -370,10 +372,10 @@ check("as text too", text.includes("## Inbox") && text.includes("Plant care apps
 // 10. A phone: the block, and the button at the top of the tab list.
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
-const ph = watch(await phone.newPage(), { label: "phone" })
+const ph = watch(await phone.newPage(), { label: "phone" }), phUi = app(ph)
 await ph.goto(`${B}#file/${enc(PAGE)}`)
 await ph.waitForSelector("[data-phone-bar]")
-await wait(1500)
+await phUi.idle()
 const pblock = ph.locator("[data-inbox-active]").first()
 await pblock.scrollIntoViewIfNeeded().catch(() => {})
 check("phone: the block", await until(async () => (await pblock.count()) === 1, 8000))
@@ -383,12 +385,12 @@ await shot(ph, "6-phone-page")
 await ph.locator("[data-tabs-button]").tap()
 const pbutton = await until(() => ph.locator("[data-sheet-bar] [data-inbox-button]").count())
 check("phone: the Inbox button in the tab list's bottom bar", !!pbutton)
-await wait(800) // the tab list slides up
+await phUi.idle()
 await shot(ph, "7-phone-tabs")
 if (pbutton) {
   await ph.locator("[data-sheet-bar] [data-inbox-button]").tap()
   check("phone: it opens the Inbox", !!(await until(() => ph.locator("[data-inbox-view]").count())))
-  await wait(500)
+  await phUi.idle()
   await shot(ph, "8-phone-inbox")
   // A session that needs you: its row opens its sheet, the answer and the reply, in the phone's width.
   await api("POST", `inbox/hook?agent=claude&terminal=qp${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: "/tmp/harbor",
@@ -399,7 +401,7 @@ if (pbutton) {
   const psheet = ph.locator("[data-session-sheet]")
   check("phone: a session's row opens its sheet, with the reply", !!(await until(() => psheet.locator("[data-reply]").count())) &&
     await ph.evaluate(() => document.documentElement.scrollWidth <= 390), await psheet.count())
-  await wait(600)
+  await phUi.idle()
   await shot(ph, "9-phone-session")
 }
 
