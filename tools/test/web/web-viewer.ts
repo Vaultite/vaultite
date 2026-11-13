@@ -147,3 +147,11 @@ import { check } from "../lib.ts"
   const sandbox = /sandbox="([^"]*)"/.exec(read("FramedPage.tsx"))?.[1] ?? ""
   check("Browser: a framed site never reaches the top window", sandbox.includes("allow-scripts") && !sandbox.includes("allow-top-navigation"), sandbox)
 }
+
+// ---------- Find bars: the parts the terminal's and the browser's share (plugins/core/find/tools.tsx) ----------
+{
+  const { readFileSync } = await import("node:fs")
+  const src = readFileSync(new URL("../../../plugins/core/find/tools.tsx", import.meta.url), "utf8")
+  const from = [...src.matchAll(/^import [^"]*"([^"]+)"/gm)].map((m) => m[1])
+  check("Find: the find bar parts other plugins import bring no CodeMirror with them", from.length > 0 && !from.some((f) => /codemirror|lezer/.test(f)), from)
+}
