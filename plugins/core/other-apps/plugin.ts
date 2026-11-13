@@ -1,5 +1,3 @@
-// The server side: the .obsidian/app.json settings that apply here (settings.ts), in /api/state as `obsidian`,
-// and its types.json's property types, under the vault's own (the service `property-types`: propertyTypes in core).
 import fs from "node:fs"
 import path from "node:path"
 import { OpError, Plugin, type OpCtx } from "../../../core/plugins.ts"
@@ -7,16 +5,13 @@ import { obsidianDefaults, obsidianSettings, obsidianTypes } from "./settings.ts
 
 export const plugin = new Plugin(import.meta.url)
 
-// (the offer to run its plugins, until taken or dismissed: other-apps.run-all, other-apps.offered)
 plugin.state(() => ({ obsidian: obsidianSettings(plugin.vault), obsidianOffer: plugin.settings({}).offered ? null : communityIds().length || null,
   obsidianRunning: typeof plugin.service("obsidian:run") === "function" }))
 plugin.provide("property-types", () => obsidianTypes(plugin.vault))
 
-// Its settings as the defaults of the app's own (excluded files, attachments, templates, daily notes): never written.
 plugin.provide("setting-defaults", () => obsidianDefaults(plugin.vault))
 
-// A plugin that runs Obsidian's plugins themselves says so (`replaces: {"obsidian": ["*"]}`, the "runner") and offers the
-// services `obsidian:originals` (those it has: id, enabled, allowed) and `obsidian:run` ({ids, on, owner}).
+// A runner of Obsidian's plugins says `replaces: {"obsidian": ["*"]}` and offers `obsidian:originals` and `obsidian:run`.
 type Original = { id: string; enabled: boolean; allowed: boolean }
 type Runner = { id: string; name: string; on: boolean; source?: string }
 type Row = { id: string; name: string; here: { id: string; name: string; on: boolean }[]; directory: { id: string; name: string; source: string; installed: boolean }[]
@@ -29,7 +24,6 @@ const covers = (m: unknown, id: string) => obsidianOf(m).includes(id)
 const manifest = (p: { id: string; tier: string }) => p.tier === "vault" ? json(plugin.vault.abs(`.vaultite/plugins/${p.id}/manifest.json`)) : plugin.peer(p.id)?.manifest
 const communityIds = () => { const l = json(path.join(plugin.vault.path, ".obsidian", "community-plugins.json")); return Array.isArray(l) ? l.filter((x): x is string => typeof x === "string") : [] }
 
-/** What's here and in the directory: plugins standing in for Obsidian's, and the runner (installed, or to install). */
 async function survey(ctx: OpCtx) {
   const list = (await ctx.op("plugin.list", {})) as Listed[]
   let found: Found[] = []
@@ -40,7 +34,6 @@ async function survey(ctx: OpCtx) {
   return { list, found, runner, originals }
 }
 
-/** The runner installed and on, its services up (a vault plugin's backend loads a moment after it's turned on). */
 async function runnerUp(ctx: OpCtx, r: Runner | null) {
   if (!r) throw new OpError("nothing here runs other apps' plugins: install plugin-compat from the plugin directory (vau plugin search plugin-compat)")
   if (r.source) await ctx.op("plugin.install", { source: r.source })
@@ -51,7 +44,6 @@ async function runnerUp(ctx: OpCtx, r: Runner | null) {
   return run as (a: { ids: string[]; on: boolean; owner: boolean }) => Promise<unknown>
 }
 
-/** Turn off what stands in for these (opt-in plugins: the app's own on by default stay), naming them. */
 async function standInsOff(ctx: OpCtx, list: Listed[], ids: string[]) {
   const off = list.filter((p) => p.on && p.tier === "vault" && ids.some((id) => covers(manifest(p), id)))
   for (const p of off) await ctx.op("plugin.disable", { id: p.id })
@@ -134,7 +126,6 @@ plugin.op({
   cli: "other-apps run-all",
   run: async (_params, ctx) => {
     const s = await survey(ctx)
-    // (what a vault plugin stands in for, on, stays with it; the app's own on by default, like Search, run beside the original)
     const ids = communityIds().filter((id) => !s.list.some((p) => p.on && p.tier === "vault" && covers(manifest(p), id)))
     const owner = !(await ctx.refusal?.("running other apps' plugins on this machine"))
     if (ids.length) await (await runnerUp(ctx, s.runner))({ ids, on: true, owner })
@@ -152,7 +143,6 @@ plugin.op({
   run: () => { plugin.saveSettings({ ...plugin.settings({}), offered: true }); return { offered: true } },
 })
 
-// What stands in for Obsidian's plugins, by their id: plugins here (on or off) and the directory's (for Browse).
 plugin.provide("obsidian:stand-ins", async () => {
   const list = (await plugin.runOp("plugin.list", {})).result as Listed[]
   let found: Found[] = []
@@ -163,7 +153,6 @@ plugin.provide("obsidian:stand-ins", async () => {
   return out
 })
 
-// A plugin standing in for Obsidian's turned on: the original stops (they'd draw the same).
 plugin.around("plugin.enable", async (call, next) => {
   const r = await next(call.params)
   const id = String((call.params as { id?: string }).id ?? "")

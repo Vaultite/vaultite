@@ -1,5 +1,3 @@
-// The .obsidian/app.json keys that mean the same thing here (formats: AGENTS.md), only those it sets, and its types.json;
-// nothing is ever written to .obsidian/. Their changes count in the vault's settingsVersion, so /api/state follows.
 import fs from "node:fs"
 import path from "node:path"
 import type { Item, Vault } from "../../../core/vault.ts"
@@ -11,7 +9,6 @@ export type ObsidianSettings = {
   attachmentFolderPath?: string
   useMarkdownLinks?: boolean
   userIgnoreFilters?: string[]
-  /** The editor's (web/src/core/editorPrefs.ts reads them under the app's own editor.json). */
   spellcheck?: boolean
   useTab?: boolean
   tabSize?: number
@@ -19,7 +16,6 @@ export type ObsidianSettings = {
   autoPairMarkdown?: boolean
   readableLineLength?: boolean
   propertiesInDocument?: "visible" | "hidden" | "source"
-  /** Its "Default view for new tabs" (defaultViewMode) and "Default editing mode" (livePreview), as the app names them. */
   defaultView?: "editing" | "reading"
   editingMode?: "live" | "source"
 }
@@ -57,8 +53,6 @@ const folder = (p: string) => p.trim().replace(/^\/+|\/+$/g, "")
 
 const typesCache = new WeakMap<Vault, { mtime: number; value: Item }>()
 
-/** .obsidian/types.json's `types` as written ({"due": "date", "cssclasses": "multitext"}), {} without one; the core
- *  reads the names (core/proptypes.ts). */
 export function obsidianTypes(vault: Vault): Item {
   const file = path.join(vault.path, ".obsidian", "types.json")
   let mtime = -1
@@ -76,7 +70,6 @@ export function obsidianTypes(vault: Vault): Item {
 
 const jsonCache = new WeakMap<Vault, Map<string, { mtime: number; value: Item | null }>>()
 
-/** A .obsidian/<name>.json as an object, null when there's none or it doesn't parse. */
 function obsidianJson(vault: Vault, name: string): Item | null {
   const file = path.join(vault.path, ".obsidian", `${name}.json`)
   let mtime = -1
@@ -94,8 +87,6 @@ function obsidianJson(vault: Vault, name: string): Item | null {
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined)
 const keys = (o: Item) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
-/** The defaults .obsidian/ sets for the app's settings, by file (settingDefaults): excluded files, attachments,
- *  templates folder and formats, daily notes' folder, format and template, and the look. Only keys they set. */
 export function obsidianDefaults(vault: Vault): Record<string, Item> {
   const app = obsidianSettings(vault)
   if (app === null) return {}
@@ -121,8 +112,6 @@ export function obsidianDefaults(vault: Vault): Record<string, Item> {
   return out
 }
 
-/** Obsidian's core commands by id, as the app's that do the same (`vau hotkeys --all`). Its plugins' commands need no
- *  map: plugin-compat runs them under their own ids and reads hotkeys.json itself. */
 export const OBSIDIAN_COMMANDS: Record<string, string> = {
   "command-palette:open": "palette:open", "switcher:open": "switcher:open", "global-search:open": "search:open-tab",
   "app:go-back": "nav:back", "app:go-forward": "nav:forward", "app:toggle-left-sidebar": "sidebar:toggle",
@@ -146,11 +135,9 @@ export const OBSIDIAN_COMMANDS: Record<string, string> = {
   "note-composer:split-file": "note-composer:extract", "random-note": "random-note:open", "canvas:new-file": "canvas:new",
   "file-recovery:open": "history:open", "slides:start": "slides:start", "zk-prefixer": "unique-note:new",
 }
-// (Meta is ⌘ on a Mac, where Obsidian writes Mod for it anyway; Mod and Ctrl mean what they do here)
+// (Obsidian's Meta is a Mac's ⌘, which it writes as Mod too)
 const OBSIDIAN_MODS: Record<string, string> = { Mod: "Mod", Meta: "Mod", Ctrl: "Ctrl", Alt: "Alt", Shift: "Shift" }
 
-/** hotkeys.json's keys for the commands the app has too, as hotkeys.json here writes them ({"palette:open": ["Mod+P"]});
- *  `[]` (its default taken away) too. Not workspace.json: a layout, not settings. */
 function hotkeys(vault: Vault): Record<string, string[]> {
   const h = obsidianJson(vault, "hotkeys")
   if (!h) return {}
@@ -170,8 +157,6 @@ function hotkeys(vault: Vault): Record<string, string[]> {
 
 const MODES: Record<string, string> = { obsidian: "dark", moonstone: "light", system: "system" }
 
-/** appearance.json's look as the app's (core/look.ts): light or dark, its theme as the colour scheme, its snippets
- *  (both listed from .obsidian/ too: core/appearance.ts) and its fonts; its accent colour and text size have no match. */
 function appearance(vault: Vault): Item {
   const a = obsidianJson(vault, "appearance")
   if (!a) return {}

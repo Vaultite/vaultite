@@ -1,5 +1,3 @@
-// Vaults from other apps: the app follows the settings that mean the same here (`conventions`: new notes, links, the
-// editor; more through the server's setting-defaults). Only keys .obsidian/ sets change anything.
 import { useEffect } from "react"
 import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, plural, type Store } from "@vaultite"
 import { OtherPlugins } from "./Plugins"
@@ -8,7 +6,6 @@ import "./types"
 
 const settings = (s: Store) => s.obsidian ?? null
 
-/** A vault with another app's plugins, opened here: offered once to run them (its sheet does it). */
 function Offer({ store }: { store: Store }) {
   const n = store.obsidianOffer
   useEffect(() => {
@@ -17,7 +14,6 @@ function Offer({ store }: { store: Store }) {
     notify(`This vault has ${plural(n, "plugin")} from another app: run them here?`, { id: "other-apps:offer", duration: 30_000,
       action: { label: "Review", run: () => openPluginSettings("other-apps") } })
   }, [n])
-  // (taken up elsewhere: what runs them came on)
   useEffect(() => { if (store.obsidianRunning) dismissNotice("other-apps:offer") }, [store.obsidianRunning])
   return null
 }

@@ -1,5 +1,3 @@
-// The settings sheet: the vault's plugins of another app, each run as it is (the original) or with what stands in for it
-// here, picked in a click (other-apps.use); "Run them here" runs them all (other-apps.run-all).
 import { useEffect, useState } from "react"
 import { Button, cn, Group, notify, notifyError, op, plural, Segmented, SettingRow, Switch } from "@vaultite"
 
@@ -7,7 +5,6 @@ type Row = { id: string; name: string; here: { id: string; name: string; on: boo
   original: "on" | "waiting" | "off" | null }
 type Used = { id: string; using: string; off: string[] }
 
-/** What does its job now: "original", a stand-in's id, or "" (nothing). */
 const usedBy = (r: Row) => (r.original === "on" || r.original === "waiting" ? "original" : r.here.find((h) => h.on)?.id ?? "")
 
 function status(r: Row) {
@@ -35,8 +32,6 @@ export function OtherPlugins() {
       const u = await op<Used>("other-apps.use", { id: r.id, with: w })
       if (u.off.length) notify(`${r.name}: turned off ${u.off.join(" and ")}, so only one draws it`)
     }
-    // Picked at once when it's here already; one from the directory installs first, and Allow it asks, so they show
-    // they're busy instead.
     if (w === "original" ? r.original === "waiting" : w !== "none" && !r.here.some((h) => h.id === w)) return act(r.id, write, `change ${r.name}`)
     setRows((l) => l && l.map((x) => (x.id !== r.id ? x : {
       ...x, original: w === "original" ? "on" : x.original && "off", here: x.here.map((h) => ({ ...h, on: h.id === w })),
@@ -44,7 +39,6 @@ export function OtherPlugins() {
     return write().catch((e) => notifyError(e, `Couldn't change ${r.name}`)).finally(() => setN((x) => x + 1))
   }
   const idle = rows.filter((r) => !usedBy(r)).length
-  // (a switch takes the toggle's width when any row has a toggle, so the controls line up)
   const wide = rows.some((r) => r.here[0] ?? r.directory[0])
   return (
     <div data-obsidian-plugins>

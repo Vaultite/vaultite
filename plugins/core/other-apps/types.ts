@@ -1,11 +1,8 @@
-// What Obsidian keeps in the store (/api/state's `obsidian`: plugin.ts): the settings of the vault's .obsidian/app.json
-// that apply here, only the keys the file sets; null when the vault has no .obsidian folder.
 export type ObsidianSettings = {
   newFileLocation?: "root" | "current" | "folder"
   newFileFolderPath?: string
   attachmentFolderPath?: string
   useMarkdownLinks?: boolean
-  /** The editor's (web/src/core/editorPrefs.ts reads them under the app's own editor.json). */
   spellcheck?: boolean
   useTab?: boolean
   tabSize?: number
@@ -13,7 +10,6 @@ export type ObsidianSettings = {
   autoPairMarkdown?: boolean
   readableLineLength?: boolean
   propertiesInDocument?: "visible" | "hidden" | "source"
-  /** Its "Default view for new tabs" (defaultViewMode) and "Default editing mode" (livePreview), as the app names them. */
   defaultView?: "editing" | "reading"
   editingMode?: "live" | "source"
 }
@@ -21,9 +17,7 @@ export type ObsidianSettings = {
 declare module "@vaultite" {
   interface PluginState {
     obsidian?: ObsidianSettings | null
-    /** The vault's Obsidian plugins to offer to run here (how many), until that's taken or dismissed. */
     obsidianOffer?: number | null
-    /** A plugin that runs Obsidian's plugins is on (the offer is moot). */
     obsidianRunning?: boolean
   }
 }

@@ -1,10 +1,7 @@
-// Obsidian's own links, obsidian://open, new and search (notes written in Obsidian keep them), followed here.
-// Other actions (a plugin's, obsidian://advanced-uri) are left to whoever registered them.
 import { createNamed, get, getStore, newNoteFolder, notify, openAt, openView, post, put, resolver } from "@vaultite"
 
 const params = (u: URL) => Object.fromEntries([...u.searchParams].map(([k, v]) => [k.toLowerCase(), v]))
 
-/** A vault path, a note's name, or an absolute path ending in one of the vault's files. */
 function fileFor(target: string): string | null {
   const s = getStore()
   if (!s) return null
