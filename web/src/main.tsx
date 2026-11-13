@@ -1,6 +1,6 @@
 import "./core/dev" // keeps the console's messages from here on, and answers the server's asks (vau dev, vau commands)
 import { StrictMode } from "react"
-import { createRoot } from "react-dom/client"
+import { createRoot, type RootOptions } from "react-dom/client"
 import "./index.css"
 import "./core/shifts" // traces layout shifts the user didn't cause
 import "./core/appearance" // applies the theme, scheme, density and fonts before the first paint
@@ -44,7 +44,9 @@ const stopped = (error: unknown, info?: { componentStack?: string }) => {
 }
 // (React logs a caught error itself unless given onCaughtError: so does this one)
 const caught = (error: unknown, info: { componentStack?: string }) => { console.error(error); noteAppError("boundary", error, { component: info.componentStack }) }
-createRoot(document.getElementById("root")!, { onUncaughtError: stopped, onCaughtError: caught }).render(
+const recovered: NonNullable<RootOptions["onRecoverableError"]> = (error, info) =>
+  noteAppError("boundary", error instanceof Error && error.cause !== undefined ? error.cause : error, { component: info.componentStack })
+createRoot(document.getElementById("root")!, { onUncaughtError: stopped, onCaughtError: caught, onRecoverableError: recovered }).render(
   <StrictMode>
     <App />
   </StrictMode>,
