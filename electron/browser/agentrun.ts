@@ -3,7 +3,10 @@
 import { session, WebContentsView, type Session } from "electron"
 import { localUrl, type EnginePage } from "./engine.ts"
 import { scrub } from "./pagesecrets.ts"
-import { actIn, acting, byOf, GLIDE_MS, hostOf, navigateIn, OUTSIDE, pageFor, readIn, record, refFor, serve, snapshot, waitIn, type Act, type By, type Wait } from "./agent.ts"
+import { actIn, acting, GLIDE_MS, hostOf, navigateIn, OUTSIDE, pageFor, readIn, record, refFor, serve, snapshot, waitIn } from "./agent.ts"
+import { ACT, BY, WAIT, type By } from "./agentwire.ts"
+import { z } from "zod"
+import { messageOf } from "./errors.ts"
 import path from "node:path"
 
 // (in a world of its own and a closed shadow root: the page's scripts and styles never reach it)
@@ -103,6 +106,8 @@ const BRIDGE = `(() => {
 /** The first control whose name has `name` (an exact one first), of `role` if given: its ref, or null. */
 const refIn = (p: EnginePage, name: unknown, role: unknown) => refFor(p, String(name ?? ""), String(role ?? "") || undefined).catch(() => null)
 
+const TIMEOUT = z.object({ timeout: z.unknown().optional() }).catch({})
+const RAN = z.object({ value: z.unknown().optional(), error: z.string().optional(), logs: z.array(z.string()).catch([]) }).catch({ error: "its answer couldn't be read", logs: [] })
 async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
   if (!script.trim()) throw new Error("run needs a script")
   const view = new WebContentsView({ webPreferences: { session: sandboxSession(), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
@@ -112,10 +117,10 @@ async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
   // (each call checks the tab's access again: the user may pause agents mid-run)
   const calls: Record<string, (...a: unknown[]) => Promise<unknown>> = {
     snapshot: async () => (await snapshot(pageFor(p.id, "read", who))).snapshot,
-    act: (a) => actIn(pageFor(p.id, "act", who), { diff: "none", ...(a && typeof a === "object" ? a as Act : { action: "" }) }, who),
+    act: (a) => actIn(pageFor(p.id, "act", who), ACT.parse(a && typeof a === "object" ? { diff: "none", ...a } : { action: "" }), who),
     ref: (name, role) => refIn(pageFor(p.id, "read", who), name, role),
     read: async () => (await readIn(pageFor(p.id, "read", who))).text,
-    wait: (w) => { const x = (w && typeof w === "object" ? w : {}) as Wait & { timeout?: number }; return waitIn(pageFor(p.id, "read", who), x, (Number(x.timeout) || 10) * 1000) },
+    wait: (w) => waitIn(pageFor(p.id, "read", who), WAIT.parse(w), (Number(TIMEOUT.parse(w).timeout) || 10) * 1000),
     go: (to) => navigateIn(pageFor(p.id, "act", who), to, who),
   }
   const answer = (id: unknown, ok: boolean, v: unknown) => {
@@ -127,7 +132,7 @@ async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
     try { m = JSON.parse(e.message.slice(CALL.length)) } catch { return }
     const fn = calls[String(m.name)]
     void (fn ? fn(...(Array.isArray(m.args) ? m.args : [])) : Promise.reject(new Error(`no call ${String(m.name)}`)))
-      .then((v) => answer(m.id, true, v), (err: Error) => answer(m.id, false, err.message))
+      .then((v) => answer(m.id, true, v), (err) => answer(m.id, false, messageOf(err)))
   })
   acting(p, who, "Running a script")
   void record(p, who, { action: "run", value: script.slice(0, 2000) })
@@ -135,10 +140,10 @@ async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
   try {
     await wc.loadURL("about:blank")
     await wc.executeJavaScript(BRIDGE)
-    const out = await Promise.race([
-      wc.executeJavaScript(`window.__run(${JSON.stringify(script)}, ${JSON.stringify(args ?? null)})`) as Promise<{ value?: unknown; error?: string; logs: string[] }>,
+    const out = RAN.parse(await Promise.race([
+      wc.executeJavaScript(`window.__run(${JSON.stringify(script)}, ${JSON.stringify(args ?? null)})`),
       new Promise<never>((_r, fail) => { timer = setTimeout(() => { late = true; fail(new Error(`the script took over ${RUN_MS / 1000} s: it was stopped`)) }, RUN_MS) }),
-    ])
+    ]))
     if (out.error) throw new Error(`the script failed: ${out.error}${out.logs.length ? `\nIt logged:\n${out.logs.join("\n")}` : ""}`)
     let value = JSON.stringify(out.value ?? null) ?? "null"
     if (value.length > 100_000) value = `${value.slice(0, 100_000)}… (cut short)`
@@ -152,7 +157,7 @@ async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
 
 /** A file at `url` as the tab's page would get it (its logins, its address as referrer): for a link's PDF, an invoice. */
 serve("agent:download", async (_win, tab, url, by) => {
-  const who = byOf(by), p = pageFor(tab, "act", who), u = String(url ?? "")
+  const who = BY.parse(by), p = pageFor(tab, "act", who), u = String(url ?? "")
   let to: URL
   try { to = new URL(u, p.wc.getURL()) } catch { throw new Error("an http(s) address") }
   if (!/^https?:$/.test(to.protocol)) throw new Error("an http(s) address")
@@ -167,4 +172,4 @@ serve("agent:download", async (_win, tab, url, by) => {
   void record(p, who, { action: "download", value: to.href })
   return { tab: p.id, url: scrub(to.href), name, type: r.headers.get("content-type") ?? "", data: data.toString("base64") }
 })
-serve("agent:run", (_win, tab, script, by, args) => runIn(pageFor(tab, "act", byOf(by)), String(script ?? ""), byOf(by), args))
+serve("agent:run", (_win, tab, script, by, args) => runIn(pageFor(tab, "act", BY.parse(by)), String(script ?? ""), BY.parse(by), args))

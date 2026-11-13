@@ -4,7 +4,8 @@ import { app, dialog, safeStorage, systemPreferences } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { acting, byOf, pageFor, record, serve, settle, taskOf } from "./agent.ts"
+import { acting, pageFor, record, serve, settle, taskOf } from "./agent.ts"
+import { BY, type By } from "./agentwire.ts"
 import { allPages, handle, tellAll, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { fillLogin } from "./fill.ts"
@@ -227,7 +228,7 @@ type Opts = z.infer<typeof OPTS>
 const shown = (e: Entry) => ({ id: e.id, title: e.title, username: e.username })
 const named = (e: Entry) => (e.username ? `${e.title} (${e.username})` : e.title)
 
-async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
+async function login(p: EnginePage, o: Opts, who: By) {
   const url = p.wc.getURL(), host = new URL(url).host
   const log = (result: string, e?: Entry, approved?: string) => void record(p, who, { action: "login", value: e ? named(e) : "", site: host, result, ...(approved ? { approved } : {}) })
   const db = await database()
@@ -274,7 +275,7 @@ async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
   }
 }
 
-async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnType<typeof byOf>, approved: string) {
+async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: By, approved: string) {
   const url = p.wc.getURL(), host = new URL(url).host
   const s = db.secrets(e.id)
   if (!s) throw new Error(`${named(e)} is gone from the agents' passwords`)
@@ -285,4 +286,4 @@ async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnT
 }
 
 // (the server's call: for an entry that needs the user's yes, it tells them (the Inbox) and waits (agent:login-wait))
-serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act", byOf(by)), OPTS.parse(opts), byOf(by)))
+serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act", BY.parse(by)), OPTS.parse(opts), BY.parse(by)))

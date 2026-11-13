@@ -9,6 +9,7 @@ import { clipboardKey, keyEvent } from "./keypress.ts"
 import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
 import { messageOf } from "./errors.ts"
+import { ACT, AT, BY, PAGE_TEXT, WAIT, type Act, type By, type Field, type Upload, type Wait } from "./agentwire.ts"
 
 export const THUMB_WIDTH = 320
 
@@ -186,16 +187,15 @@ const shownDownload = (d: Download) => ({ name: d.name, state: d.state, ...(d.pa
 
 const UPLOADS = () => path.join(app.getPath("userData"), "agent-uploads")
 const MAX_UPLOAD = 50 << 20
-function uploadFiles(files: unknown): string[] {
-  const list = Array.isArray(files) ? files as { name?: unknown; data?: unknown }[] : []
+function uploadFiles(list: Upload[] = []): string[] {
   if (!list.length) throw new Error("upload needs files")
   const dir = path.join(UPLOADS(), crypto.randomUUID())
   fs.mkdirSync(dir, { recursive: true })
   let size = 0
   return list.map((f, i) => {
-    const data = Buffer.from(String(f?.data ?? ""), "base64")
+    const data = Buffer.from(f.data, "base64")
     if ((size += data.length) > MAX_UPLOAD) throw new Error("upload takes 50 MB at most")
-    const name = path.basename(String(f?.name ?? "")).replace(/^\.+/, "") || `file-${i + 1}`
+    const name = path.basename(f.name).replace(/^\.+/, "") || `file-${i + 1}`
     const file = path.join(dir, name)
     fs.writeFileSync(file, data)
     return file
@@ -207,7 +207,7 @@ async function nodeOf(p: EnginePage, ref: unknown) {
   if (!id) throw new Error(`no ref ${String(ref)} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
   const was = r.what.get(String(ref))
   if (was) {
-    const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false }).catch(() => ({ nodes: [] as AXNode[] }))
+    const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false }).catch(() => ({ nodes: Array<AXNode>() }))
     const n = nodes.find((x) => x.backendDOMNodeId === id) ?? nodes[0]
     const name = String(n?.name?.value ?? "").replace(/\s+/g, " ").trim().slice(0, 200), role = String(n?.role?.value ?? "")
     if (n && (role !== was.role || name !== was.name)) throw new Error(`ref ${String(ref)} is now ${role} "${scrub(name)}", not the ${was.role} "${scrub(was.name)}" it was: take a new snapshot`)
@@ -296,9 +296,6 @@ export async function settle(p: EnginePage, was: string, since = Date.now(), lat
   return { tab: p.id, url: scrub(url), title: p.wc.isDestroyed() ? "" : scrub(p.wc.getTitle()), navigated: url !== was, ...(got.length ? { downloads: got.map(shownDownload) } : {}) }
 }
 
-type Field = { ref: string; value: string; name?: string }
-export type Act = { action: string; ref?: string; name?: string; role?: string; at?: { x: number; y: number }; value?: string; html?: string; key?: string; direction?: string; files?: unknown; fields?: Field[]; diff?: unknown }
-
 export async function refFor(p: EnginePage, name: string, role?: string) {
   const want = name.trim().toLowerCase(), r = String(role ?? "").trim()
   const all = (await tree(p)).flatMap((l) => [...l.matchAll(/(?:^\s*- |: | \| )(\S+) "([^"]*)"[^|]*?\[ref=(e\d+)\]/g)])
@@ -315,7 +312,7 @@ async function named(p: EnginePage, a: Act): Promise<Act> {
     if (out.role && !INTERACTIVE.has(out.role)) delete out.role
     try { out.ref = await refFor(p, out.name, out.role) } catch (e) {
       const { TEXT_AT } = await import("./agentrun.ts")
-      const at = out.role ? null : await p.wc.executeJavaScriptInIsolatedWorld(1017, [{ code: TEXT_AT(out.name) }]).catch(() => null) as { x: number; y: number } | null
+      const at = out.role ? null : AT.nullable().catch(null).parse(await p.wc.executeJavaScriptInIsolatedWorld(1017, [{ code: TEXT_AT(out.name) }]).catch(() => null))
       if (!at) throw e
       out.at = at
     }
@@ -429,14 +426,6 @@ async function fillForm(p: EnginePage, fields: Field[]) {
   }
 }
 
-const fieldsOf = (x: unknown): Field[] => {
-  if (!Array.isArray(x) || !x.length) throw new Error("fields: a list of { ref, value }")
-  return x.slice(0, 200).map((f: { ref?: unknown; name?: unknown; value?: unknown }) => {
-    if (!f || typeof f !== "object" || !(String(f.ref ?? "").trim() || String((f as { name?: unknown }).name ?? "").trim())) throw new Error("fields: each needs a ref (e12) or its control's name, and its value")
-    return { ref: String(f.ref ?? "").trim(), name: String((f as { name?: unknown }).name ?? "").trim() || undefined, value: typeof f.value === "string" ? f.value : f.value == null ? "" : String(f.value) }
-  })
-}
-
 async function openedBy(p: EnginePage, had: Set<number>) {
   const opened = allPages().filter((x) => !had.has(x.id) && x.opener === p.id && !x.wc.isDestroyed())
   if (!opened.length) return {}
@@ -449,7 +438,7 @@ async function act(p: EnginePage, a: Act) {
   const limit = diffLimit(a.diff)
   if (limit && !seen.has(p.wc)) await tree(p)
   const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now(), had = new Set(allPages().map((x) => x.id)), doc = docOf(p.wc)
-  if (a.fields) await fillForm(p, fieldsOf(a.fields)); else await step(p, a)
+  if (a.fields) await fillForm(p, a.fields); else await step(p, a)
   const still = limit ? quiet(p, since, 2000) : null
   const r = { ...await settle(p, was, since, a.fields ? false : LATE.has(a.action)), ...await openedBy(p, had) }
   if (!limit || p.wc.isDestroyed()) {
@@ -466,7 +455,6 @@ async function act(p: EnginePage, a: Act) {
 
 const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 const KEEP_DAYS = 14
-export type By = { name?: string; session?: string; task?: string; summary?: string; remote?: boolean }
 const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${[by.session || by.name || "agent", by.task].filter(Boolean).join("-").replace(/[^\w.-]+/g, "_").slice(0, 80)}`
 const groupOf = (by: By) => [by.name || "Agent", by.task].filter(Boolean).join("/")
 const sameAgent = (a: By, b: By) => (a.name ?? "") === (b.name ?? "") && (a.session ?? "") === (b.session ?? "") && (!b.task || a.task === b.task)
@@ -546,7 +534,11 @@ function changed(win: EngineWindow) {
   if (soon.has(win)) return
   soon.set(win, setTimeout(() => { soon.delete(win); tell(win, { type: "engine:agent:pages", pages: pagesOf(win) }) }, 120))
 }
-eachPage((p) => { for (const ev of ["did-navigate", "page-title-updated"] as const) p.wc.on(ev as "did-navigate", () => { if (atWork(p)) changed(p.win) }) })
+eachPage((p) => {
+  const moved = () => { if (atWork(p)) changed(p.win) }
+  p.wc.on("did-navigate", moved)
+  p.wc.on("page-title-updated", moved)
+})
 handle("agents:pages", (win) => pagesOf(win))
 
 async function nameOf(p: EnginePage, ref: unknown) {
@@ -564,25 +556,19 @@ async function logged(p: EnginePage, ref: string | undefined, value: unknown) {
   return { name: ref ? await nameOf(p, ref) : "", value: secret ? "•••" : value }
 }
 
-export const byOf = (x: unknown): By => {
-  if (!x || typeof x !== "object") return {}
-  const s = (k: keyof By, n = 80) => String((x as By)[k] ?? "").replace(/\s+/g, " ").trim().slice(0, n) || undefined
-  return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300), ...((x as By).remote === true ? { remote: true } : {}) }
-}
-
 const DOING: Record<string, string> = { click: "Clicking", dblclick: "Double-clicking", hover: "Pointing at", fill: "Filling", type: "Typing in", paste: "Pasting into",
   press: "Pressing", check: "Checking", uncheck: "Unchecking", select: "Picking in", upload: "Uploading into", scroll: "Scrolling" }
 export async function actIn(p: EnginePage, given: Act, who: By) {
-  const a = await named(p, given.fields ? { ...given, fields: fieldsOf(given.fields) } : given)
+  const a = await named(p, given)
   if (a.fields) {
-    const fields = fieldsOf(a.fields)
+    const fields = a.fields
     const kept = await Promise.all(fields.map(async (f) => ({ ref: f.ref, ...(await logged(p, f.ref, f.value)) })))
     acting(p, who, `Filling ${fields.length === 1 ? "a field" : `${fields.length} fields`}`)
     const r = await act(p, { ...a, action: "fill", fields })
     void record(p, who, { action: "form", fields: kept })
     return r
   }
-  const files = a.action === "upload" && Array.isArray(a.files) ? (a.files as { name?: unknown }[]).map((f) => String(f?.name ?? "")).join(", ") : ""
+  const files = a.action === "upload" ? (a.files ?? []).map((f) => f.name).join(", ") : ""
   const kept = await logged(p, a.ref, files || (a.action === "paste" ? String(a.value ?? "").slice(0, 300) : a.value ?? a.key ?? a.direction))
   if (!kept.name && a.name) kept.name = a.name
   acting(p, who, `${DOING[a.action] ?? a.action}${kept.name ? ` “${kept.name}”` : ""}`)
@@ -606,15 +592,16 @@ const READ = (main: boolean, text: string) => `(async () => {
 })()`
 export async function readIn(p: EnginePage, main = false) {
   const { linkTextCode } = await import("./linktext.ts")
-  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: READ(main, linkTextCode("root")) }]) as { url: string; title: string; text: string; as?: string }
+  const read = PAGE_TEXT.safeParse(await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: READ(main, linkTextCode("root")) }]))
+  if (!read.success) throw new Error("the page's text couldn't be read: try again once it has loaded")
+  const r = read.data
   const text = scrub(r.text)
   return { tab: p.id, url: scrub(r.url), title: scrub(r.title), ...(r.as ? { as: r.as } : {}), text: text.length > 200_000 ? `${text.slice(0, 200_000)}\n… (cut short)` : text }
 }
 
-export type Wait = { text?: string; url?: string; download?: boolean; helped?: boolean }
 export async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   const wait = Math.min(w.helped ? 600_000 : 60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
-  const shows = async () => !w.text || scrub(String(await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code: "document.body ? document.body.innerText : ''" }]).catch(() => ""))).includes(String(w.text))
+  const shows = async () => !w.text || scrub(String(await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code: "document.body ? document.body.innerText : ''" }]).catch(() => ""))).includes(w.text)
   const last = () => (downloads.get(p.wc) ?? []).at(-1)
   if (w.helped && asks.has(p.id)) {
     await new Promise<void>((done) => {
@@ -628,7 +615,7 @@ export async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   }
   for (;;) {
     const d = last()
-    const ok = (!w.url || scrub(p.wc.getURL()).includes(String(w.url))) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading() && await shows()
+    const ok = (!w.url || scrub(p.wc.getURL()).includes(w.url)) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading() && await shows()
     if (ok) return { tab: p.id, url: scrub(p.wc.getURL()), title: scrub(p.wc.getTitle()), ...(w.download && d ? { download: shownDownload(d) } : {}) }
     if (Date.now() > until) {
       throw new Error(`waited ${Math.round(wait / 1000)} s: ${w.text ? `no "${w.text}"` : w.url ? `not at ${w.url}` : w.download ? (d ? `${d.name} is still downloading` : "nothing downloaded in this tab") : "still loading"}`)
@@ -750,7 +737,7 @@ function failed(name: string, a: unknown[], why: string) {
   const p = allPages().find((x) => x.id === Number(a[1]))
   if (!p || p.wc.isDestroyed()) return
   const last = a[a.length - 1]
-  const asked = last && typeof last === "object" && !Array.isArray(last) && ("name" in last || "session" in last) ? byOf(last) : {}
+  const asked = last && typeof last === "object" && !Array.isArray(last) && ("name" in last || "session" in last) ? BY.parse(last) : {}
   const by = { ...(owners.get(p.id) ?? {}), ...asked }
   const run = latest.get(p.id)?.run ?? (by.name || by.session ? runOf(by) : "")
   if (!run) return
@@ -764,15 +751,15 @@ function failed(name: string, a: unknown[], why: string) {
 
 handle("agent:busy", (_win, of) => { const why = engineBusy(of === "server" ? "server" : "app"); return { busy: !!why, why } })
 
-serve("agent:tabs", (_win, by) => listOf(byOf(by)))
+serve("agent:tabs", (_win, by) => listOf(BY.parse(by)))
 serve("agent:open", async (win, url, container, by, lines) => {
   const u = String(url ?? "")
   if (!/^https?:\/\//i.test(u)) throw new Error("only http and https addresses")
-  if (byOf(by).remote && localUrl(u)) throw new Error(OUTSIDE)
+  if (BY.parse(by).remote && localUrl(u)) throw new Error(OUTSIDE)
   const profile = container ? `c-${String(container)}` : home
   if (!profile) throw new Error("no container lets agents act: set one's Agents to Act (the container menu in a page's bar)")
   if (access.get(profile) !== "act" || !mayOpen(profile)) throw new Error(`agents may not act in ${container ? `the container ${String(container)}` : "that container"}`)
-  const who = byOf(by), p = await openInBackground(win, u, profile), since = Date.now()
+  const who = BY.parse(by), p = await openInBackground(win, u, profile), since = Date.now()
   void trackRequests(p)
   owners.set(p.id, who)
   used.set(p.id, Date.now())
@@ -803,7 +790,7 @@ serve("agent:at", async (_win, tab, x, y) => {
 })
 serve("agent:find", async (_win, tab, words) => {
   const p = pageFor(tab, "read"), want = String(words ?? "").slice(0, 200), { findWords } = await import("./findwords.ts")
-  const found = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: `(${findWords})(${JSON.stringify(want)})` }]).catch(() => []) as unknown
+  const found: unknown = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: `(${findWords})(${JSON.stringify(want)})` }]).catch(() => [])
   return { tab: p.id, zoom: p.wc.getZoomFactor(), found: Array.isArray(found) ? found.slice(0, 20) : [] }
 })
 serve("agent:close", async (_win, tab) => {
@@ -837,14 +824,14 @@ serve("agent:pdf", async (_win, tab, by) => {
   const p = await unexposed(pageFor(tab, "read"))
   const pdf = await p.wc.printToPDF({ printBackground: true })
   if (pdf.length > 50 << 20) throw new Error("the page makes a PDF over 50 MB")
-  void record(p, byOf(by), { action: "pdf" })
+  void record(p, BY.parse(by), { action: "pdf" })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), pdf: pdf.toString("base64") }
 })
 const PASSWORD_GIVEN = `(() => { const any = (root) => [...root.querySelectorAll("*")].some((el) => (el.tagName === "INPUT" && el.type === "password" && el.value)
   || (el.shadowRoot && any(el.shadowRoot)) || ((el.tagName === "IFRAME" || el.tagName === "FRAME") && (() => { try { return !!el.contentDocument && any(el.contentDocument) } catch { return false } })()))
   return any(document) })()`
 serve("agent:evaluate", async (_win, tab, expression, by) => {
-  const who = byOf(by), p = pageFor(tab, "act", who)
+  const who = BY.parse(by), p = pageFor(tab, "act", who)
   const code = String(expression ?? "")
   if (!code.trim()) throw new Error("evaluate needs an expression")
   const held = heldNear(p)
@@ -863,10 +850,10 @@ serve("agent:evaluate", async (_win, tab, expression, by) => {
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
 })
 serve("agent:help", (_win, tab, reason, by) => {
-  const p = pageFor(tab, "read", byOf(by))
+  const p = pageFor(tab, "read", BY.parse(by))
   const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
   if (!why) throw new Error("say what the user should do (sign in, solve the check)")
-  const who = byOf(by)
+  const who = BY.parse(by)
   asks.set(p.id, { by: who.name || "An agent", reason: why })
   hold(p)
   const mine = owners.get(p.id) ?? who
@@ -876,8 +863,8 @@ serve("agent:help", (_win, tab, reason, by) => {
   void record(p, who, { action: "help", value: why })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-serve("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), (what && typeof what === "object" ? what : {}) as Wait, ms))
-serve("agent:navigate", (_win, tab, to, by, lines) => navigateIn(pageFor(tab, "act", byOf(by)), to, byOf(by), lines ?? "summary"))
+serve("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), WAIT.parse(what), ms))
+serve("agent:navigate", (_win, tab, to, by, lines) => navigateIn(pageFor(tab, "act", BY.parse(by)), to, BY.parse(by), lines ?? "summary"))
 serve("agent:player", (_win, tab, on, fullScreen) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
@@ -885,7 +872,7 @@ serve("agent:player", (_win, tab, on, fullScreen) => {
   p.player(on !== false, fullScreen === true)
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act", byOf(by)), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
+serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act", BY.parse(by)), ACT.parse(a), BY.parse(by)))
 
 eachPage((p) => p.wc.once("destroyed", () => {
   const was = atWork(p)

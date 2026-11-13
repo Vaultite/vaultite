@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import type { VaultTest } from "./harness.ts"
 
 type Check = VaultTest["check"]
@@ -159,7 +160,64 @@ async function webWire(check: Check) {
     rect({ x: 1, y: 2, width: 3, height: 4, radius: Infinity })?.radius === 0 && rect({ x: 1, y: 2, width: 3, height: NaN }) === null && rect("r") === null)
 }
 
+const same = (pairs: [got: unknown, want: unknown][]) => pairs.every(([got, want]) => JSON.stringify(got) === JSON.stringify(want))
+
+async function agentAsks(check: Check) {
+  const { BY } = await import("../../../electron/browser/agentwire.ts")
+  check("browser agents: who asks is read field by field, spaces folded and cut, remote only when true, nothing from a non-object", same([
+    [BY.parse({ name: "  Claude\n Code ", session: 5, task: "t".repeat(90), summary: "s".repeat(400), remote: "yes" }), { name: "Claude Code", session: "5", task: "t".repeat(80), summary: "s".repeat(300) }],
+    [BY.parse({ name: "a", remote: true }), { name: "a", remote: true }], [BY.parse(null), {}], [BY.parse("x"), {}], [BY.parse({ name: "  " }), {}],
+  ]))
+}
+
+async function agentActs(check: Check) {
+  const { ACT } = await import("../../../electron/browser/agentwire.ts")
+  const act = ACT.parse({ action: "fill", ref: "e12", value: 42, at: { x: "1", y: 2 }, html: { b: 1 }, diff: "none", files: "x", extra: true })
+  check("browser agents: an act's words are text, a malformed point or file list left out, its diff kept as given",
+    same([[act, { action: "fill", ref: "e12", value: "42", diff: "none" }], [[act.html, act.at, act.files], [null, null, null]]]), act)
+  const fields = ACT.parse({ action: "fill", fields: [{ ref: " e3 ", value: true }, { name: " Email ", value: null }, { ref: "e4", value: "x" }, ...Array.from({ length: 300 }, () => ({ ref: "e5", value: 1 }))] }).fields ?? []
+  check("browser agents: a form's fields each by its ref or name, values as text, at most 200",
+    same([[fields.length, 200], [fields.slice(0, 3), [{ ref: "e3", value: "true" }, { ref: "", name: "Email", value: "" }, { ref: "e4", value: "x" }]]]), fields.slice(0, 3))
+  const { messageOf } = await import("../../../electron/browser/errors.ts")
+  const refused = (x: Parameters<typeof ACT.parse>[0]) => { try { ACT.parse(x); return "" } catch (e) { return messageOf(e) } }
+  const each = "fields: each needs a ref (e12) or its control's name, and its value", list = "fields: a list of { ref, value }"
+  check("browser agents: malformed fields are refused saying how, no fields at all is no form", same([
+    [refused({ action: "fill", fields: [] }), list], [refused({ action: "fill", fields: "e3=x" }), list],
+    [refused({ action: "fill", fields: [{ ref: "e1", value: "x" }, { value: "x" }] }), each], [refused({ action: "fill", fields: [null] }), each],
+    [[ACT.parse({ action: "click", ref: "e1", fields: 0 }).fields, ACT.parse({ action: "click", ref: "e1", fields: null }).fields], [null, null]],
+  ]), [refused({ action: "fill", fields: [] }), refused({ action: "fill", fields: [{ value: "x" }] })])
+  check("browser agents: no act is no action, an upload's files each with a name and data as text", same([
+    [ACT.parse(null).action, ""], [ACT.parse([1]).action, ""], [ACT.parse({ action: 3 }).action, "3"],
+    [ACT.parse({ action: "upload", ref: "e2", files: [{ name: "cv.pdf", data: "QQ==" }, null, { name: 7 }] }).files, [{ name: "cv.pdf", data: "QQ==" }, { name: "", data: "" }, { name: "7", data: "" }]],
+  ]))
+}
+
+async function agentWaits(check: Check) {
+  const { PAGE_TEXT, WAIT } = await import("../../../electron/browser/agentwire.ts")
+  check("browser agents: a wait's text and address only when given, its flags as yes or no", same([
+    [WAIT.parse({ text: "Saved", url: "", download: 1, helped: undefined }), { text: "Saved", download: true, helped: false }],
+    [WAIT.parse({ text: 5 }), { text: "5", download: false, helped: false }], [WAIT.parse("x"), { download: false, helped: false }],
+  ]))
+  const page = { url: "https://example.com/", title: "Example", text: "hi" }
+  check("browser agents: a page's text is read only with its address, title and text", same([
+    [PAGE_TEXT.safeParse({ ...page, as: "md" }).data, { ...page, as: "md" }], [PAGE_TEXT.safeParse({ ...page, as: 3 }).data, page], [PAGE_TEXT.safeParse({ url: "u", title: "t" }).success, false],
+  ]))
+}
+
+async function takeoverSteps(check: Check) {
+  const { STEP } = await import("../../../electron/takeoverlogic.ts")
+  const { stepOf } = await import("../../../plugins/core/companion/takeover.ts")
+  const near = [{ id: "a1", role: "button", ax: "AXButton", label: "Save", frame: { x: 1, y: 2, width: 3, height: 4 }, state: {}, actions: [], inside: [] }]
+  const sent = [stepOf({ action: "click", ax: "a1" }, near), stepOf({ action: "scroll", sx: 10.4, sy: 20, direction: "up" }, near), stepOf({ action: "type", value: "hi", doing: " Typing " }, near),
+    stepOf({ action: "click", app: "Mail", find: "Send", role: "AXButton" }, near), stepOf({ action: "scroll", direction: "left" }, near)]
+  const read = sent.map((s) => STEP.safeParse(s).data)
+  check("takeover: each step the server sends is read as it was sent, a scroll's unknown way as down",
+    isDeepStrictEqual(read.slice(0, 4), sent.slice(0, 4)) && read[4]?.direction === "down", read)
+  check("takeover: a step without its action, or with a malformed element or point, is refused, never acted on",
+    [null, "click", { el: near[0] }, { action: "click", el: { frame: { x: 1, y: 2 } } }, { action: "click", at: { x: "1", y: 2 } }, { action: 5 }].every((s) => !STEP.safeParse(s).success))
+}
+
 export default async ($: VaultTest) => {
   winspawnFirst($.check)
-  for (const t of [bridge, clipboard, snapshots, linkText, accounts, hangs, cloudSessions, webWire]) await t($.check)
+  for (const t of [bridge, clipboard, snapshots, linkText, accounts, hangs, cloudSessions, webWire, agentAsks, agentActs, agentWaits, takeoverSteps]) await t($.check)
 }

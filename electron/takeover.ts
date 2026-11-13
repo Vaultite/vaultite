@@ -10,7 +10,7 @@ import { quiet, takePointer } from "./quiet.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../core/desktop/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
-  spotOf, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
+  spotOf, STEP, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
   type Window } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
@@ -497,9 +497,11 @@ export function takeoverHeard(m: Record<string, unknown>, host: TakeoverHost) {
   redraw = host.redraw
   if (m.t === "takeover-answer") return void (cards.size && spoken(m.yes === true ? "yes" : m.asked === true ? "asked" : "no"))
   if (m.t === "confirm" && typeof m.id === "string") return void confirm(m, host)
-  if (m.t !== "takeover" || typeof m.id !== "string" || !m.step || typeof m.step !== "object") return
+  if (m.t !== "takeover" || typeof m.id !== "string") return
+  const step = STEP.safeParse(m.step)
+  if (!step.success) return void host.reply({ t: "takeover-done", id: m.id, ok: false, why: "refused", text: "that isn't a step take-over knows: an action, and an element (its frame), a point or neither" })
   const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
-  const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: m.step as Step, ...(typeof m.ask === "string" ? { ask: m.ask } : {}), apps: list(m.apps), sites: list(m.sites) }
+  const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: step.data, ...(typeof m.ask === "string" ? { ask: m.ask } : {}), apps: list(m.apps), sites: list(m.sites) }
   queue = queue.then(() => run(req, host).catch((e: Error) => ({ ok: false, why: "failed", text: e.message })).then((r) => host.reply({ t: "takeover-done", id: req.id, ...r })))
 }
 

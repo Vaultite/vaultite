@@ -1,6 +1,7 @@
 // Take-over's rules, apart from the Mac (tested alone): what it never does, what needs the user's yes each time, and
 // how each step is done (Accessibility first, then the pointer or the keys).
 import { actionsOfAx, roleOfAx, type Thing } from "../core/desktop/uimodel.ts"
+import { z } from "zod"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 /** A step the companion asked for: at an element an ask listed (`el`), a screen point (`at`), or the field with the
@@ -11,6 +12,12 @@ export type Step = { action: string; el?: { frame: Rect; role?: string; label?: 
   doing?: string
   /** Behind their windows: the app it acts in (its front window), by name; the element there by its words (`find`). */
   app?: string; find?: string; role?: string }
+const RECT = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+const WORDS = z.string().optional()
+export const STEP: z.ZodType<Step> = z.object({
+  action: z.string(), el: z.object({ frame: RECT, role: WORDS, label: WORDS }).optional(), at: z.object({ x: z.number(), y: z.number() }).optional(),
+  value: WORDS, key: WORDS, direction: z.enum(["up", "down"]).optional().catch("down"), doing: WORDS, app: WORDS, find: WORDS, role: WORDS,
+})
 /** What takeover.swift found there (`probe`). */
 export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string; pid?: number; vaultite?: boolean; role?: string; roleName?: string; subrole?: string
   secure?: boolean; label?: string; frame?: Rect | null; actions?: string[]; valueSettable?: boolean; checked?: boolean; web?: boolean; window?: number; title?: string
