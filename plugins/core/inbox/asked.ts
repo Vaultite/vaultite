@@ -2,7 +2,7 @@ import path from "node:path"
 import { type SampleAsk } from "../../../core/agents.ts"
 import { type Op, type OpCtx, OpError, quoted } from "../../../core/plugins.ts"
 import { isArchived, type Item, nowStamp, sortBy, str, truthy } from "../../../core/vault.ts"
-import { answerOf, type DecisionSpec, overlap, sameQuestion, specOf } from "./decisions.ts"
+import { answerOf, decidedText, type DecisionSpec, linkTo, listOf, optionsText, overlap, sameQuestion, specOf, toldOf } from "./decisions.ts"
 import { clip, previewOf, TERMINAL } from "./model.ts"
 import { latest, resultAt, tldrOf } from "./results.ts"
 import { agentOfTerminal, DAY, holdNow, plugin, selfMachine } from "./server.ts"
@@ -15,7 +15,6 @@ import { addEvent, list } from "./store.ts"
 
 const openDecisions = () => plugin.vault.items("inbox").filter((r) => truthy(r.question) && str(r.status) === "new" && !isArchived(r))
 export const baseOf = (p: string) => path.posix.basename(p.replace(/\.md$/i, ""))
-const linkTo = (p: string) => /^\[\[([^\]|#]+)/.exec(p.trim())?.[1]?.trim() ?? p.trim()
 const reportOf = (link: string) => {
   const name = baseOf(linkTo(link))
   return name ? plugin.vault.items("inbox").find((r) => baseOf(str(r.id)) === name && !truthy(r.question)) : undefined
@@ -28,7 +27,7 @@ const askerFields = (w: Asker) => ({ ...(w.agent ? { agent: w.agent } : {}), ...
 /** A decision that waits on the user is told (toast, notifications) by an event linking its file: not listed apart, done
  *  once the file is archived, and not its session's (whose row is its thread). */
 function tellDecision(r: Item, w: Asker) {
-  const options = (r.options as string[]) ?? []
+  const options = listOf(r.options)
   addEvent({ source: w.agent || "vau", kind: "waiting", state: "open", ask: "question", title: str(r.question), link: `${r.id}.md`,
     body: options.map((o) => (o === r.default ? `${o} (default)` : o)).join(" · ") })
 }
@@ -46,7 +45,7 @@ export async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report
       out.map((x) => resultAt(x.path)).find((r) => r && sameQuestion(str(r.question), d.question))
     if (same) {
       const link = report ? `[[${report}]]` : ""
-      const also = (same.also as string[] | undefined) ?? []
+      const also = listOf(same.also)
       const more = link && baseOf(linkTo(str(same.report))) !== report && !also.some((l) => baseOf(linkTo(l)) === report)
       const waits = d.blocking && same.blocking !== true
       if (more || waits) await ctx.api("PUT", `inbox/${encodeURIComponent(same.id)}`, { ...(more ? { also: [...also, link] } : {}), ...(waits ? { blocking: true } : {}) })
@@ -68,13 +67,13 @@ export async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report
 /** The same question said another way ("Keep the quieter island?", "Should the island stay quieter?"): a small model
  *  matches new decisions against the open ones, and a match is merged into the one asked first, saying so. */
 async function mergeAlike(ctx: OpCtx, made: string[]) {
-  const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string }>) | null
+  const sample: ((a: SampleAsk) => Promise<{ text: string }>) | null = plugin.service("sample")
   const fresh = made.map(resultAt).filter((r): r is Item => !!r && str(r.status) === "new")
   const open = openDecisions().filter((r) => !fresh.some((f) => f.id === r.id)).slice(0, 40)
   if (!sample || !fresh.length || !open.length) return
   const L = "ABCDEFGHIJ"
-  const prompt = `New questions:\n${fresh.slice(0, 10).map((r, i) => `${L[i]}. ${str(r.question)} (options: ${((r.options as string[]) ?? []).join(" / ")})`).join("\n")}\n\n` +
-    `Questions already open:\n${open.map((r, i) => `${i + 1}. ${str(r.question)} (options: ${((r.options as string[]) ?? []).join(" / ")})`).join("\n")}`
+  const prompt = `New questions:\n${fresh.slice(0, 10).map((r, i) => `${L[i]}. ${str(r.question)} (options: ${listOf(r.options).join(" / ")})`).join("\n")}\n\n` +
+    `Questions already open:\n${open.map((r, i) => `${i + 1}. ${str(r.question)} (options: ${listOf(r.options).join(" / ")})`).join("\n")}`
   let text = ""
   try {
     text = (await sample({ tier: "quick", signal: AbortSignal.timeout(60_000), prompt,
@@ -85,7 +84,7 @@ async function mergeAlike(ctx: OpCtx, made: string[]) {
     // (the model's match alone merged unrelated questions: the same question shares some of its words)
     if (!r || !into || str(into.status) !== "new" || overlap(str(r.question), str(into.question)) < 0.2) continue
     const link = str(r.report)
-    const also = [...((into.also as string[] | undefined) ?? []), ...(link && baseOf(linkTo(link)) !== baseOf(linkTo(str(into.report))) ? [link] : [])]
+    const also = [...listOf(into.also), ...(link && baseOf(linkTo(link)) !== baseOf(linkTo(str(into.report))) ? [link] : [])]
     await ctx.api("PUT", `inbox/${encodeURIComponent(into.id)}`, { also, ...(r.blocking === true && into.blocking !== true ? { blocking: true } : {}) }).catch(() => {})
     await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: `Same as [[${baseOf(str(into.id))}]]` }).catch(() => {})
   }
@@ -100,7 +99,7 @@ export function specsOf(given: unknown, blocking: boolean): DecisionSpec[] {
  *  reports that asked it too. Each once, by the file the reply goes into. */
 function answerTargets(d: Item): string[] {
   const out: string[] = [], seen = new Set<string>()
-  for (const r of [reportOf(str(d.report)) ?? d, ...((d.also as string[] | undefined) ?? []).map(reportOf)]) {
+  for (const r of [reportOf(str(d.report)) ?? d, ...listOf(d.also).map(reportOf)]) {
     const key = r ? str(r.session) || str(r.terminal) : ""
     if (!r || !key || seen.has(key)) continue
     seen.add(key)
@@ -108,12 +107,6 @@ function answerTargets(d: Item): string[] {
   }
   return out
 }
-
-/** What its agent is told of an answer: a decision it waits on, or a default it took that the user changed; nothing
- *  when they kept the default it took. */
-const toldOf = (d: Item, answer: string) => d.blocking === true
-  ? `"${str(d.question)}": ${answer}`
-  : answer !== str(d.default) ? `"${str(d.question)}": you went with "${str(d.default)}"; the user wants "${answer}" instead, so change it` : ""
 
 /** Answers to the sessions that asked, one reply each (inbox.reply: typed in, resumed, or a new session reading the
  *  report). Never fails the answer: what couldn't be sent is said. */
@@ -125,7 +118,7 @@ async function sendAnswers(ctx: OpCtx, answered: { d: Item; answer: string }[]) 
   }
   const sent: string[] = [], failed: string[] = []
   for (const [to, lines] of by) {
-    const text = `The user decided${lines.length > 1 ? ` ${lines.length} of your questions` : ""}: ${lines.map((l, i) => (lines.length > 1 ? `${i + 1}. ${l}` : l)).join(" ")}`
+    const text = decidedText(lines)
     try { await ctx.op("inbox.reply", { to, text }); sent.push(to) } catch (e) { failed.push(`${to}: ${(e as Error).message}`) }
   }
   return { sent, failed }
@@ -134,11 +127,11 @@ async function sendAnswers(ctx: OpCtx, answered: { d: Item; answer: string }[]) 
 /** Open decisions that later work settled (a report, another answer) close themselves, saying why: a small model reads
  *  what was done against them, and only what it clearly settles goes. Runs after its op has answered. */
 export async function closeSettled(ctx: OpCtx, said: string, by: string, skip: Set<string>) {
-  const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string }>) | null
+  const sample: ((a: SampleAsk) => Promise<{ text: string }>) | null = plugin.service("sample")
   const open = openDecisions().filter((r) => !skip.has(str(r.id))).slice(0, 30)
   if (!sample || !open.length || !said.trim()) return
   const prompt = `What was just done or decided (${by}):\n<done>\n${said.slice(0, 6000)}\n</done>\n\nQuestions still open for the user:\n` +
-    open.map((r, i) => `${i + 1}. ${str(r.question)} (options: ${((r.options as string[]) ?? []).join(" / ")})`).join("\n")
+    open.map((r, i) => `${i + 1}. ${str(r.question)} (options: ${listOf(r.options).join(" / ")})`).join("\n")
   let text = ""
   try {
     text = (await sample({ tier: "quick", signal: AbortSignal.timeout(60_000), prompt,
@@ -180,13 +173,7 @@ export function decisionAt(p: string): Item | undefined {
   return r && truthy(r.question) ? r : undefined
 }
 
-/** A decision's options as text, each with what it causes: "Keep (default): the island stays quiet · Go back: ...". */
-const optionsText = (r: Item, sep = " · ") => ((r.options as string[]) ?? []).map((o, i) => {
-  const does = str(((r.effects as string[] | undefined) ?? [])[i])
-  return `${o}${o === r.default ? " (default)" : ""}${does ? `: ${does}` : ""}`
-}).join(sep)
-
-export const decisionRow = (r: Item) => ({ path: `${r.id}.md`, question: str(r.question), options: (r.options as string[]) ?? [], effects: (r.effects as string[] | undefined) ?? [], default: str(r.default), blocking: r.blocking === true,
+export const decisionRow = (r: Item) => ({ path: `${r.id}.md`, question: str(r.question), options: listOf(r.options), effects: listOf(r.effects), default: str(r.default), blocking: r.blocking === true,
   from: str(r.from) || null, where: str(r.where) || null, report: str(r.report) || null, gist: str(r.gist) || null, why: previewOf(str(r.body).replace(/```[\s\S]*?```/g, "")).slice(0, 300) || null, created: r.created ?? null,
   ...(str(r.answer) ? { answer: str(r.answer), answered: r.answered ?? null } : {}), ...(str(r.closed) ? { closed: str(r.closed) } : {}),
   ...(snoozed(str(r.snoozed)) ? { snoozed: str(r.snoozed) } : {}) })
@@ -203,7 +190,7 @@ export function decisionsIn(p: string): Item[] {
   const all = plugin.vault.items("inbox").filter((r) => truthy(r.question))
   const own = all.find((r) => `${r.id}.md` === p || r.id === p.replace(/\.md$/, ""))
   if (own) return [own]
-  const asks = (r: Item) => baseOf(linkTo(str(r.report))) === name || ((r.also as string[] | undefined) ?? []).some((l) => baseOf(linkTo(l)) === name)
+  const asks = (r: Item) => baseOf(linkTo(str(r.report))) === name || listOf(r.also).some((l) => baseOf(linkTo(l)) === name)
   return sortBy(all.filter(asks), (r) => str(r.created), false)
 }
 
@@ -334,7 +321,7 @@ why; undo opens it again. Only with the user's own answer: never decide for them
         rows.push({ path: `${out.id}.md`, question: str(r.question), closed: clip(moot, 300) })
         continue
       }
-      const answer = all || p.default === true ? str(r.default) : answerOf((r.options as string[]) ?? [], str(p.answer)).answer
+      const answer = all || p.default === true ? str(r.default) : answerOf(listOf(r.options), str(p.answer)).answer
       const out = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", answer, answered: nowStamp() }) as Item
       done.push({ d: { ...r, ...out }, answer })
       rows.push({ path: `${out.id}.md`, question: str(r.question), answer, told: !!toldOf(r, answer) })

@@ -1,5 +1,5 @@
-// Decisions: a question an agent asks the user, a file each (Inbox/<title>.md with `question`): its options, the default
-// it takes unanswered, whether it waits on it (blocking). Pure: asked.ts keeps the files.
+import { str } from "../../../core/vault.ts"
+
 
 /** `effects`: what each option causes, a few words shown under its button; `warn`: what to fix in how it's asked, said
  *  back to the asker (a question that doesn't name its subject). */
@@ -103,6 +103,28 @@ export function answerOf(options: string[], said: string): { answer: string; own
 
 /** A decision as the lists read it: an Inbox/ result with a question. */
 export type Asked = { question?: string; options?: string[]; effects?: string[]; default?: string; blocking?: boolean; answer?: string; closed?: string }
+
+/** A list a decision's file keeps (its options, effects, the reports that asked it too); [] when it has none. */
+export const listOf = (v: unknown): string[] => (Array.isArray(v) ? v : [])
+
+/** The page a wikilink names (`[[Inbox/A|a]]`: Inbox/A), else the text as given. */
+export const linkTo = (p: string) => /^\[\[([^\]|#]+)/.exec(p.trim())?.[1]?.trim() ?? p.trim()
+
+/** What its agent is told of an answer: a decision it waits on, or a default it took that the user changed; nothing
+ *  when they kept the default it took. */
+export const toldOf = (d: Asked, answer: string) => (d.blocking === true
+  ? `"${str(d.question)}": ${answer}`
+  : answer !== str(d.default) ? `"${str(d.question)}": you went with "${str(d.default)}"; the user wants "${answer}" instead, so change it` : "")
+
+/** One reply for a session of what the user decided: its lines numbered when there are several. */
+export const decidedText = (lines: string[]) =>
+  `The user decided${lines.length > 1 ? ` ${lines.length} of your questions` : ""}: ${lines.map((l, i) => (lines.length > 1 ? `${i + 1}. ${l}` : l)).join(" ")}`
+
+/** Its options as text, each with what it causes: "Keep (default): the island stays quiet · Go back: ...". */
+export const optionsText = (r: Asked, sep = " · ") => listOf(r.options).map((o, i) => {
+  const does = str(listOf(r.effects)[i])
+  return `${o}${o === r.default ? " (default)" : ""}${does ? `: ${does}` : ""}`
+}).join(sep)
 export const isDecision = (r: Asked) => !!r.question
 /** What it says to the user it already did, or waits on: "I went with X" (a default taken), "Waits on you". */
 export const standingOf = (r: Asked) => (r.answer ? `You chose ${r.answer}` : r.closed ? "Closed" : r.blocking ? "Waits on you" : `Went with ${r.default}`)
