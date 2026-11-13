@@ -77,13 +77,28 @@ async function ownPlugins(vault, base) {
   }
 }
 
+const SIZES = { desktop: { width: 1280, height: 800 }, phone: { width: 390, height: 844 } }
+const SHOWN = "[data-pane], [data-phone-header]"
+
+async function viewport(name) {
+  const s = state(), size = SIZES[name] ?? die(`a viewport is one of ${Object.keys(SIZES).join(", ")}`)
+  fs.writeFileSync(STATE, JSON.stringify({ ...s, size: name }, null, 2))
+  await withPage(async (page) => {
+    const cdp = await page.context().newCDPSession(page)
+    const { windowId } = await cdp.send("Browser.getWindowForTarget")
+    await cdp.send("Browser.setWindowBounds", { windowId, bounds: size })
+    await page.locator(SHOWN).first().waitFor()
+    console.log(`${name}: ${size.width}x${size.height}`)
+  })
+}
+
 async function withPage(fn) {
   const s = state()
   const { chromium } = await import("playwright-core")
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${s.cdp}`)
   const ctx = browser.contexts()[0] ?? await browser.newContext()
   const page = ctx.pages()[0] ?? await ctx.newPage()
-  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.setViewportSize(SIZES[s.size ?? "desktop"])
   if (!s.motion) await page.emulateMedia({ reducedMotion: "reduce" })
   const ui = app(page)
   try { return await fn(page, ui, s) } finally { await ui.idle().catch(() => {}) }
@@ -104,13 +119,27 @@ async function doctor() {
   process.exit(bad.length ? 1 : 0)
 }
 
-function target(page) {
-  const role = flag("role"), name = flag("name"), label = flag("label"), text = flag("text"), sel = flag("sel")
+function target(page, to = "") {
+  const role = flag(`${to}role`), name = flag(`${to}name`), label = flag(`${to}label`), text = flag(`${to}text`), sel = flag(`${to}sel`)
   if (role) return page.getByRole(role, name ? { name, exact: true } : {}).first()
   if (label) return page.getByLabel(label, { exact: true }).first()
   if (text) return page.getByText(text, { exact: true }).first()
   if (sel) return page.locator(sel).first()
-  return die("say what: --role <role> [--name <name>], --label, --text or --sel <css>")
+  return die(`say what: --${to}role <role> [--${to}name <name>], --${to}label, --${to}text or --${to}sel <css>`)
+}
+
+const SPOTS = { center: [0.5, 0.5], left: [0.08, 0.5], right: [0.92, 0.5], top: [0.5, 0.08], bottom: [0.5, 0.92] }
+async function drag(page) {
+  const spot = SPOTS[flag("at") ?? "center"] ?? die(`--at is one of ${Object.keys(SPOTS).join(", ")}`)
+  const from = target(page), to = target(page, "to-")
+  await from.scrollIntoViewIfNeeded()
+  const a = await from.boundingBox(), b = await to.boundingBox()
+  if (!a || !b) die(`${a ? "the drop target" : "what to drag"} isn't on screen`)
+  await page.mouse.move(a.x + Math.min(60, a.width / 2), a.y + a.height / 2); await page.mouse.down()
+  await page.mouse.move(a.x + Math.min(60, a.width / 2) + 8, a.y + a.height / 2 + 4, { steps: 2 })
+  await page.mouse.move(b.x + b.width * spot[0], b.y + b.height * spot[1], { steps: 10 })
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+  await page.mouse.up()
 }
 
 async function down() {
@@ -129,8 +158,10 @@ switch (cmd) {
   case "up": await up(); break
   case "doctor": await doctor(); break
   case "down": await down(); break
-  case "open": await withPage(async (page, ui, s) => { await page.goto(`${s.base}${rest[0] ?? ""}`); await page.locator("[data-pane]").first().waitFor(); await ui.idle(); console.log(page.url()) }); break
+  case "open": await withPage(async (page, ui, s) => { await page.goto(`${s.base}${rest[0] ?? ""}`); await page.locator(SHOWN).first().waitFor(); await ui.idle(); console.log(page.url()) }); break
   case "click": await withPage(async (page) => { const right = flag("right"); await target(page).click(right ? { button: "right" } : {}) }); break
+  case "viewport": await viewport(rest[0]); break
+  case "drag": await withPage(drag); break
   case "type": await withPage((page) => page.keyboard.type(rest.join(" "))); break
   case "press": await withPage((page) => page.keyboard.press(rest[0] ?? die("which key: Enter, Escape, ControlOrMeta+p..."))); break
   case "menu": await withPage(async (_page, ui) => { if (!(await ui.menu.isOpen())) die("no menu open"); await ui.menu.pick(...rest) }); break
@@ -143,10 +174,11 @@ switch (cmd) {
   }); break
   case "shot": await withPage(async (page) => { const f = `${shotName(rest[0] ?? "shot")}.png`; await page.screenshot({ path: f }); console.log(f) }); break
   case "eval": await withPage(async (page) => console.log(JSON.stringify(await page.evaluate(rest.join(" ")), null, 2))); break
-  case "vau": process.stdout.write(vau(state().base, rest)); break
+  case "vau": try { process.stdout.write(vau(state().base, rest)) } catch (e) { process.stdout.write(e.stdout ?? ""); process.stderr.write(e.stderr ?? String(e)); process.exit(e.status ?? 1) } break
   default:
     console.log(`up [--motion] | doctor | open [#hash] | click --role R [--name N] | --label L | --text T | --sel CSS [--right]
+drag <what> --to-role R [--to-name N] | --to-sel CSS ... [--at center|left|right|top|bottom]
 type <text> | press <key> | menu <item> [<subitem>...] | idle | aria [--sel CSS] [--out name] | shot <name> | eval <js>
-vau <args> | down     (state: ${STATE})`)
+viewport desktop|phone | vau <args> | down     (state: ${STATE})`)
 }
 process.exit(0)
