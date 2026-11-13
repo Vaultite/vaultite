@@ -167,6 +167,7 @@ export default async ($: VaultTest) => {
     const says = async () => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text)
     const over = { app: "com.example.browser", title: "Site", screen: "Address and search bar: localhost:5199/", sx: 10, sy: 20 }
     let job = ""
+    const jobNow = async () => { const r = (await api("POST", "ops/companion.job", { id: job }))[1]; return [r.state, r.log?.slice(-3).map((x: Any) => `${x.from}>${x.to}`).join(" "), r.last?.text] }
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude" })
       cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "make me a landing page", ...over })
@@ -186,7 +187,7 @@ export default async ($: VaultTest) => {
       check("live edit: the companion handing the same ask on is refused: the job has it", hs === 409 && /already went straight to the job/.test(hb.error), [hs, hb])
       await end({ text: "Title says Hi now.", files: [page], at: Date.now(), final: true })
       const said = await waitFor(async () => (await says()).includes("Title says Hi now."), 10000, 100)
-      check("live edit: its turn over with nothing to ring (no screen here), its few words are said", !!said, await says())
+      check("live edit: its turn over with nothing to ring (no screen here), its few words are said", !!said, [await says(), await jobNow()])
       const liveStates = heard.slice(heardFrom).flatMap((x) => (x.t === "agent" && x.agent.name === "Claude" ? [`${x.agent.state}${x.agent.seen ? " seen" : ""}`] : [])).filter((x, i, xs) => x !== xs[i - 1]).join(", ")
       check("live edit: the companion's cursor shows it sent the ask on (a seen tick), then watches once the job's words are said", liveStates === "watching seen, watching", liveStates)
 
@@ -206,7 +207,7 @@ export default async ($: VaultTest) => {
       const later = await waitFor(async () => (await says()).includes("I'll undo it once it's done."), 3000, 50)
       await end({ text: "Footer added.", files: [page], at: Date.now(), final: true })
       const after = await waitFor(() => fs.readFileSync(page, "utf8") === "<h1>Hello</h1>\n<p>mine</p>\n", 10000, 50)
-      check("live edit: undo said while it works waits for its turn's end, then takes back the ask it was on", !!later && !!after, [await says(), fs.readFileSync(page, "utf8")])
+      check("live edit: undo said while it works waits for its turn's end, then takes back the ask it was on", !!later && !!after, [await says(), fs.readFileSync(page, "utf8"), await jobNow()])
       turn = null
       const q = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "what does this button do?", ...over }) as Any
       const qText = cMoments.momentsText([q], "quiet", null)
