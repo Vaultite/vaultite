@@ -187,7 +187,7 @@ export function drawIcons(root: HTMLElement) {
     acceptNode: (n) => { const no = n.parentElement?.closest("code, pre, .cm-line"); return no && root.contains(no) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT },
   })
   const texts: Text[] = []
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (HAS_ICON.test((n as Text).data)) texts.push(n as Text)
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n instanceof Text && HAS_ICON.test(n.data)) texts.push(n)
   for (const t of texts) {
     const parts: (string | Node)[] = []
     let last = 0

@@ -95,7 +95,7 @@ const chevrons = gutter({
   lineMarkerChange: (u) => syntaxTree(u.startState) !== syntaxTree(u.state) || u.startState.field(foldState, false) !== u.state.field(foldState, false),
   domEventHandlers: {
     mousedown(view, block, e) {
-      if (!(e.target as Element).closest?.(".cm-vau-fold")) return false
+      if (!(e.target instanceof Element && e.target.closest(".cm-vau-fold"))) return false
       e.preventDefault()
       return toggleLine(view, view.state.doc.lineAt(block.from).number)
     },
