@@ -2,14 +2,14 @@ import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Setting
 import {
   cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
-  allPanes, cleanTabLayout as clean, focusedPane, placesIn as placesOfTab, shownTab, withMyTabs, withoutPanes, withoutTabs, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  allPanes, cleanTabLayout as clean, focusedPane, placesIn as placesOfTab, shownTab, withMyTabs, withoutPanes, withoutTabs, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
-import { blankLayout, isBlank } from "./blank"
+import { blankLayout, isBlank, isObj, type Obj } from "./blank"
 import { markIcon } from "./Mark"
 
 const MAX = 5
 export const SLOTS = Array.from({ length: MAX }, (_, i) => i + 1)
-type Def = { name?: string; icon?: string; tint?: Color; container?: string; sidebars?: Sidebars; layout?: TabLayout; pinned?: string[]; state?: Record<string, unknown> }
+type Def = { name?: string; icon?: unknown; tint?: unknown; container?: unknown; sidebars?: Sidebars; layout?: TabLayout; pinned?: unknown; state?: Obj }
 type Slots = (Def | null)[]
 
 const current_ = devicePref<number>("workspace", 0)
@@ -19,12 +19,18 @@ let arrived = false
 for (const ev of ["hashchange", "popstate"]) addEventListener(ev, (e) => { if (e.isTrusted && !arrived) wentTo = location.hash })
 
 export const defaultSidebars = (x: unknown) => x === undefined || sameSidebars(readSidebars(x), savedSidebars())
+function defOf(x: Obj): Def {
+  const { name, sidebars, state, layout, ...rest } = x
+  const d: Def = rest, own = readSidebars(sidebars), l = clean(layout)
+  if (typeof name === "string") d.name = name
+  if (own) d.sidebars = own
+  if (isObj(state)) d.state = state
+  if (l) d.layout = l
+  return d
+}
 const unusedIfBlank = (list: unknown[]): Slots => SLOTS.map((n) => {
   const d = list[n - 1]
-  if (!d || typeof d !== "object" || isBlank(d, defaultSidebars)) return null
-  const { sidebars: own, ...rest } = d as Def
-  const s = readSidebars(own)
-  return s ? { ...rest, sidebars: s } : rest
+  return isObj(d) && !isBlank(d, defaultSidebars) ? defOf(d) : null
 })
 let seen: unknown = undefined
 let seenDef = ""
@@ -58,19 +64,18 @@ function queue(write: () => Promise<unknown>): Promise<unknown> {
     }
   })
 }
-export function patch(n: number, keys: Partial<Record<keyof Def, unknown>>) {
+export function patch(n: number, keys: Partial<Record<keyof Def, unknown>>): void {
   const list = [...(slots() ?? SLOTS.map(() => null))]
   const had = list[n - 1]
   const next: Record<string, unknown> = { ...(had ?? {}) }
   for (const [k, v] of Object.entries(keys)) { if (v === null) delete next[k]; else next[k] = v }
-  if (isBlank(next, defaultSidebars)) { if (had) clear(n); return null }
+  if (isBlank(next, defaultSidebars)) { if (had) clear(n); return }
   const held = memory.get(n)
-  if (!had && held && Object.keys(held).length) { next.state = { ...held, ...(next.state as object ?? {}) }; memory.delete(n) }
-  list[n - 1] = next as Def
+  if (!had && held && Object.keys(held).length) { next.state = isObj(next.state) ? { ...held, ...next.state } : held; memory.delete(n) }
+  list[n - 1] = defOf(next)
   local = list
   emit(); sidebarsChanged()
   writing = queue(() => put(`workspaces/${n}`, had ? keys : next)).catch(() => {})
-  return next as Def
 }
 
 const memory = new Map<number, Record<string, unknown>>()
@@ -163,7 +168,7 @@ export function saveTabs() {
   if (moving) { timer = window.setTimeout(saveTabs, 300); return }
   const n = current()
   if (!n) return
-  const saved = slots()?.[n - 1]?.layout, there = saved && clean(saved)
+  const saved = slots()?.[n - 1]?.layout, there = clean(saved)
   const l = strip(there ? withMyTabs(there) : getTabLayout())
   if (shape(l) === shape(saved) && !tabsSeenSince(saved)) return
   mine.add(shape(l))

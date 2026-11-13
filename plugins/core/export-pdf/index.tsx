@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { FileDown, Printer } from "lucide-react"
 import { activeFile, cell, currentFile, definePlugin, dismissNotice, getStore, NoteBody, notify, notifyError, Panel, plural, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
 
-type Job = { path: string; text: string; how: "pdf" | "print"; ready: () => void }
+type Job = { path: string; text: string; how: "pdf" | "print"; store: Store; ready: () => void }
 const job = cell<Job | null>(null)
 const setJob = job.set
 
@@ -58,7 +58,7 @@ function PrintRoot({ j }: { j: Job }) {
     <div id="vau-print" ref={ref} className="scheme-preview" aria-hidden data-print={j.path}>
       <style>{CSS}</style>
       <h1 className="print-title">{stem(j.path)}</h1>
-      <NoteBody store={getStore() as Store} path={j.path} body={body} fm={fm} className="print-body" />
+      <NoteBody store={j.store} path={j.path} body={body} fm={fm} className="print-body" />
     </div>,
     document.body,
   )
@@ -71,13 +71,14 @@ function Background() {
 
 export async function printNote(path: string, how: "pdf" | "print") {
   if (!path) { notify("Open a note to print it."); return }
-  if (job.get()) return
+  const store = getStore()
+  if (job.get() || !store) return
   let text: string
   try {
     const f = activeFile()
     text = f?.path === path ? f.text() : (await readFile(path)).text
   } catch (e) { notifyError(e, "Couldn't read the note"); return }
-  const ready = new Promise<void>((r) => setJob({ path, text, how, ready: r }))
+  const ready = new Promise<void>((r) => setJob({ path, text, how, store, ready: r }))
   await ready
   const title = document.title
   document.title = stem(path) // a browser's Save as PDF names the file after the page's title

@@ -112,7 +112,7 @@ export function artOf(path: string) {
 export const titleOf = (path: string) => path.split("/").pop()!.replace(/\.[^.]+$/, "")
 export function labelOf(n: Pick<Now, "path" | "from">) {
   const id = n.from?.replace(/\.md$/i, "")
-  const r = id ? ((getStore() as { inbox?: { id: string; title: string; from: string }[] } | null)?.inbox ?? []).find((x) => x.id === id) : null
+  const r = id ? (getStore()?.inbox ?? []).find((x) => x.id === id) : null
   if (r) return { title: r.title, by: r.from }
   const m = metas.get(n.path)
   if (m?.title) return { title: m.title, by: m.artist ?? "" }

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
-import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
+import { cn, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
 import { Boxes, layOut, LAYOUT_CSS } from "./Layout"
 import { annotate, backgroundOf, DECK_CSS, frameOf, SlideFrame, TITLE } from "./Presentation"
 import { exportAsked } from "./asked"
@@ -112,9 +112,8 @@ async function build(root: HTMLElement, name: string, deckCss: string, theme: st
 `
 }
 
-export function DeckExport({ path, slides, fm, props, css }: { path: string; slides: Slide[]; fm: string; props: Record<string, unknown>; css: string }) {
+export function DeckExport({ path, slides, fm, props, css, store }: { path: string; slides: Slide[]; fm: string; props: Record<string, unknown>; css: string; store: Store }) {
   const root = useRef<HTMLDivElement>(null)
-  const store = getStore() as Store
   const theme = revealTheme(props.theme), frame = frameOf(props), themeName = theme?.name
   const content = (s: Slide) => (s.boxes ? <Boxes items={s.boxes} ctx={{ store, path, fm }} /> : s.md && <NoteBody store={store} path={path} body={s.md} fm={fm} className="slide-body" />)
   useEffect(() => {

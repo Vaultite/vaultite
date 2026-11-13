@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { z } from "zod"
 import { BookOpen, Check, CheckCheck, Globe, ListVideo, Pause, Play, RotateCcw } from "lucide-react"
 import { cn, Empty, fmtAgo, isArchived, List, menuFor, op, openFile, optimistic, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type BlockCtx, type SwipeAction } from "@vaultite"
 import { leftText, shelfOf, type Place, type Shelf } from "./shelves"
@@ -9,7 +10,7 @@ type Show = "all" | Shelf
 
 function entries(store: Store): Entry[] {
   const find = resolver(store)
-  const inbox = ((store as { inbox?: { id: string; title: string; status: string; body: string; source: string; from: string; created: string | null; archived?: boolean }[] }).inbox ?? [])
+  const inbox = (store.inbox ?? [])
   return inbox.filter((r) => r.status === "new" && !isArchived(r)).flatMap((r) => {
     const s = shelfOf(r)
     if (!s) return []
@@ -18,9 +19,11 @@ function entries(store: Store): Entry[] {
   })
 }
 
+const Books = z.array(z.looseObject({ id: z.string(), title: z.string().catch(""), author: z.string().optional().catch(undefined), status: z.unknown(),
+  current_page: z.number().nullish().catch(null), total_pages: z.number().nullish().catch(null) })).catch([])
+
 function books(store: Store) {
-  const list = (store as { books?: { id: string; title: string; author: string; status: string; current_page: number | null; total_pages: number | null; archived?: boolean }[] }).books ?? []
-  return list.filter((b) => b.status === "reading" && !isArchived(b))
+  return ("books" in store ? Books.parse(store.books) : []).filter((b) => b.status === "reading" && !isArchived(b))
 }
 
 const SHELVES: Shelf[] = ["watch", "listen", "read"]

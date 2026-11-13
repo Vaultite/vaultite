@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject, type TouchEvent } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, LayoutGrid, Maximize2, Minimize2, NotebookText, Pencil, ScreenShare, X } from "lucide-react"
-import { activeFile, cn, folderOf, getStore, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
+import { activeFile, cn, folderOf, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useStoreWith, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
 import { BACK_KEYS, cssFiles, cssPlaces, cssUrls, fragmentGroups, isTitleSlide, moveOf, NEXT_KEYS, parseDeck, scopeCss, templateNames, sizeOf, upcoming, type Slide } from "./slides"
@@ -272,6 +272,11 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
 }
 
 export function Presentation({ path, onClose }: { path: string; onClose: () => void }) {
+  const store = useStoreWith((s) => s)
+  return store && <Deck path={path} onClose={onClose} store={store} />
+}
+
+function Deck({ path, onClose, store }: { path: string; onClose: () => void; store: Store }) {
   const exporting = exportAsked.use() === path
   const [text, setText] = useState<string | null>(null)
   const [pos, setPos] = useState({ at: 0, step: 0 })
@@ -282,7 +287,6 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const frags = useRef<HTMLElement[][]>([])
   const [count, setCount] = useState(0)
   const screenBox = useRef<HTMLDivElement>(null)
-  const store = getStore() as Store
 
   const load = useCallback(() => { textOf(path).then(setText, () => onClose()) }, [path, onClose])
   useEffect(load, [load])
@@ -573,7 +577,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           )}
         </aside>
       )}
-      {exporting && text !== null && <DeckExport path={path} slides={slides} fm={fm} props={props} css={css} />}
+      {exporting && text !== null && <DeckExport path={path} slides={slides} fm={fm} props={props} css={css} store={store} />}
     </div>,
     document.body,
   )}
