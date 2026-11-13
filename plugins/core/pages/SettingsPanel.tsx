@@ -1,5 +1,3 @@
-// Pinned's settings sheet: the pinned pages to reorder, then the pages not pinned, then archived ones; unpinning only
-// hides a page. It's the sidebar's menu again, here so the list is findable at all.
 import { FileText, GripVertical } from "lucide-react"
 import { cn, currentWorkspace, fileAt, Group, iconOf, isListedPage, isPage, offPlugin, pluginById, Section, SortableList, stem, Switch, tintOf, useEnabled, useWorkspaceVersion, type Store } from "@vaultite"
 import { currentPins, movePinned, pin } from "./types"
@@ -7,7 +5,7 @@ import { currentPins, movePinned, pin } from "./types"
 export function PinnedSettings({ store }: { store: Store }) {
   useWorkspaceVersion()
   const desk = currentWorkspace()
-  useEnabled() // drawn again when a plugin is turned on or off
+  useEnabled()
   const pinned = currentPins(store)
   const files = store.files.files
   const archived = (p: string) => !!fileAt(files, p)?.archived
@@ -25,7 +23,6 @@ export function PinnedSettings({ store }: { store: Store }) {
     const note = off ? `${pluginById(f!.plugin!)?.name ?? f!.plugin} is off` : isPage(p, store) ? "" : folder
     return (
       <div className="group/page flex h-11 items-center gap-2.5 md:h-10" data-page-row={p}>
-        {/* The handle says it drags (the whole row does); the list that doesn't drag keeps its place, so icons line up. */}
         <GripVertical aria-hidden className={cn("-mx-1 size-4 shrink-0 text-tertiary transition-opacity",
           sortable ? "cursor-grab md:opacity-0 md:group-hover/page:opacity-100" : "invisible")} strokeWidth={2} />
         <span className={cn("grid size-7 shrink-0 place-items-center rounded-[7px] bg-muted md:size-6 md:rounded-[6px]", off && "opacity-45")}

@@ -8,17 +8,12 @@ import { PinCurrent, pinChecklist, PinnedPages, showAsMenu } from "./Pinned"
 import { PinnedSettings } from "./SettingsPanel"
 import { currentPins, isPinned, pinItems, pinnable, pinName, pinNoted, relabel, shownPinned, viewPin } from "./types"
 
-// Pinned: all of pinning in the app (panel, Pin/Unpin, Open commands, a device's first tab, a phone's tiles). Off,
-// nothing is pinned or shown; the lists stay in the vault for when it's on again.
-
-/** The heading the cursor is under in the note being edited, as a pin ("Notes/Idea.md#Plan"), or null. */
 function headingHere() {
   const ed = currentEditor()
   if (!ed || ed.kind !== "markdown" || !ed.path || !pinnable(ed.path)) return null
   const doc = ed.view.state.doc
   let fence = false
   const found: string[] = []
-  // The last heading above the cursor, outside code fences and the frontmatter.
   for (let n = doc.lineAt(ed.start?.(ed.view.state) ?? 0).number; n <= doc.lineAt(ed.view.state.selection.main.head).number; n++) {
     const t = doc.line(n).text
     if (/^\s*(```|~~~)/.test(t)) fence = !fence
@@ -28,31 +23,25 @@ function headingHere() {
   return found.length ? `${ed.path}#${found[found.length - 1]}` : null
 }
 
-/** The focused pane's target. */
 function activeTarget(w: TabLayout) {
   const t = shownTab(w)
   return t ? focusedPane(t).to : null
 }
-/** The search on screen (a search tab with a query), as a pin ("search:<query>"), or null. */
 function searchHere() {
   const to = activeTarget(getTabLayout()) ?? ""
   const q = to.startsWith("view:search/") ? to.slice("view:search/".length).trim() : ""
   return q ? PIN_SEARCH + q : null
 }
 
-/** "Show in the sidebar", drawn there, or taking it out: a mini-app's third place, after a tab and an embed. */
 const showFile = (path: string, on: boolean) => (on ? dockAtEnd(filePanelKey(path), "right") : hidePanel(filePanelKey(path)))
 const fileShown = (path: string) => !!panelSide(filePanelKey(path))
 
-// The same list as a tab (view:pages: drag the panel's heading onto a pane, or the command).
 function PinnedView({ store }: { store: Store }) {
-  // Pages open beside this tab: in the pane of the file focused last when that's another pane (like Links).
   const focused = useFocusedFile()
   const own = usePane().pane
   return (
     <div data-pages-view>
       <p className="mb-3 text-[13px] text-muted-foreground max-md:text-[15px]">The sidebar's pages, in its order.<span className="max-md:hidden"> Drag one to reorder it, or onto a pane to open it there.</span></p>
-      {/* The panel's list, a size up (`data-size-up`). */}
       <div className="size-up-bleed"><div data-size-up>
         <PinnedPages store={store} open file={focused.path} tab="" pane={focused.pane && focused.pane !== own ? focused.pane : undefined} />
       </div></div>
@@ -60,16 +49,14 @@ function PinnedView({ store }: { store: Store }) {
   )
 }
 
-/** "Open Today", "Open People"...: one command per pinned page, while it shows (registered from the background). */
 function PageCommands({ store }: { store: Store }) {
-  useWorkspaceVersion() // the list is the current workspace's
+  useWorkspaceVersion()
   const pages = shownPinned(store)
   useCommands(() => pages.map(({ key: p }) => ({ id: `page:file/${encodeURIComponent(p)}`, name: `Open ${pinName(p)}`, run: () => openFile(p), icon: iconAt(p).icon })),
     [pages.map((p) => `${p.key}\t${p.file?.icon ?? ""}`).join("\n")])
   return null
 }
 
-/** Pinned views renamed as their views learn their names (a web page's title, once it's loaded and as it changes). */
 function PinLabels({ store }: { store: Store }) {
   useViewsVersion()
   useWorkspaceVersion()
@@ -83,14 +70,12 @@ function PinLabels({ store }: { store: Store }) {
   return null
 }
 
-/** A phone's new tab: pinned pages first, as the sidebar's tiles (icons, each named when held), drawn a size up. */
 function Tiles({ store }: { store: Store }) {
   if (!shownPinned(store).length) return null
   return <div data-new-tab-pages><PinnedPages store={store} open tiles file="" tab="" /></div>
 }
 
 export default definePlugin({
-  // Any file drawn in a sidebar: `vau panels right Apps/Weather.html`, or a file's menu.
   sidebarFor: {
     file: (path) => ({
       title: stem(path).replace(/^.*\//, ""), flyout: { icon: AppWindow, width: 360 },
@@ -101,41 +86,31 @@ export default definePlugin({
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,
     actions: ({ file }) => <PinCurrent file={file} />, menu: () => [{ label: "Pinned pages", icon: Pin, run: () => {}, items: pinChecklist(currentFile()) }, ...showAsMenu()] } },
   views: {
-    // (the list itself: pinned in itself it would only open the list)
     pages: { icon: Pin, title: () => "Pinned pages", pinAs: () => null, render: ({ store }) => <PinnedView store={store} /> },
   },
   commands: [
     { id: "pages:open-tab", name: "Open pinned pages in a tab", run: () => openView("pages", { newTab: !isViewOpen("pages") }) },
-    // In the sidebar's list: the current workspace's, with Workspaces on.
     { id: "file:pin", name: "Pin current file to the sidebar", desktop: true, when: () => pinnable(currentFile()) || (!!currentFile() && isPinned(currentFile())),
       run: () => pinNoted(currentFile(), !isPinned(currentFile())), nameWhenOn: "Unpin current file from the sidebar", on: () => isPinned(currentFile()) },
-    // Bookmarks: the heading the cursor is under, the search on screen.
     { id: "file:pin-heading", name: "Pin current heading to the sidebar", desktop: true, when: () => { const h = headingHere(); return !!h && !isPinned(h) }, run: () => pinNoted(headingHere()!, true) },
     { id: "file:panel", name: "Show current file in the sidebar", when: () => !!currentFile(), run: () => showFile(currentFile(), !fileShown(currentFile())),
       nameWhenOn: "Remove current file from the sidebar", on: () => !!currentFile() && fileShown(currentFile()) },
     { id: "search:pin", name: "Pin current search to the sidebar", desktop: true, when: () => { const q = searchHere(); return !!q && !isPinned(q) }, run: () => pinNoted(searchHere()!, true) },
   ],
-  // Any file of the vault, or a folder (it opens in place there): Pin or Unpin in its menus (the tree's, its tab's, the
-  // phone's …), in the current workspace's list with Workspaces on.
   fileMenu: (path) => [...(pinnable(path) ? pinItems(path) : []), fileShown(path)
     ? { label: "Remove from the sidebar", icon: PanelRightClose, section: "navigate", run: () => showFile(path, false) }
     : { label: "Show in the sidebar", icon: PanelRight, section: "navigate", run: () => showFile(path, true) }],
   folderMenu: (path) => (pinnable(path) ? pinItems(path) : []),
-  // A view that can be pinned (a web page, Inbox, a coding agent's terminal: its conversation, a search): Pin or Unpin
-  // in its tab's menu and its row's.
   viewMenu: (target) => {
     const p = viewPin(target)
     if (!p) return []
     return [isPinned(p.key) ? { label: "Unpin", icon: PinOff, run: () => void pinNoted(p.key, false) } : { label: "Pin", icon: Pin, run: () => void pinNoted(p.key, true, p.label) }]
   },
-  // The pinned pages, found first (search's highest weight) and listed with the suggestions.
   search: (store) => shownPinned(store).map(({ key }) => ({
     id: `page-${key}`, title: pinName(key), meta: "Page", kind: "Page", icon: iconAt(key).icon, tint: iconAt(key).tint ?? "var(--primary)",
     file: key, text: key, recent: 0, weight: 12,
   })),
-  // A new device opens on the first pinned page.
   home: (store) => { const first = shownPinned(store)[0]; return first ? `file:${first.key}` : null },
-  // The pinned pages as tiles, at the top of a blank tab on phones (dragged by their heading, as the other sections).
   newTab: { tiles: { title: "Pinned pages", sort: 0, only: "phone", heading: "Pinned", render: ({ store }) => <Tiles store={store} /> } },
   settingsPanel: ({ store }) => <PinnedSettings store={store} />,
   settingsSearch: [{ label: "Pinned pages", description: "which pages the sidebar pins, in order" }],

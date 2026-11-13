@@ -1,18 +1,13 @@
-// Pinned: the files pinned to the sidebar (.vaultite/pages.json), all of pinning. Pins change one at a time on the file
-// as it is (POST /api/pins), so an old copy can't bring back pages unpinned elsewhere; pins follow moves.
 import { HTTPError, movedFilePanels, type OpCtx, OpError, type Param, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The pinned entries, in order. One whose file was moved outside the app (Finder, iCloud) is where it is now
- *  (Vault.relocated); the next change to the list writes it so. */
 export function pinned(vault: Vault): string[] {
   const p = vault.config("pages").pinned
   return Array.isArray(p) ? [...new Set(p.filter((x) => typeof x === "string").map((x) => relocatedPin(vault, x)))] : []
 }
 
-/** A pinned view's name as it was when pinned (a conversation's title), by its key: pages.json's `labels`. */
 export function labels(vault: Vault): Record<string, string> {
   const l = vault.config("pages").labels
   return l && typeof l === "object" && !Array.isArray(l) ? Object.fromEntries(Object.entries(l).filter(([, v]) => typeof v === "string")) as Record<string, string> : {}
@@ -20,9 +15,7 @@ export function labels(vault: Vault): Record<string, string> {
 
 plugin.state(() => ({ pinned: pinned(plugin.vault), pinLabels: labels(plugin.vault) }))
 
-/** Pin or unpin one entry (POST /api/pins), on the file as it is now. */
 export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; before?: unknown }) {
-  // (a path from before the user moved its folder is the file where it is now)
   const p = typeof body.path === "string" ? relocatedPin(vault, body.path.trim()) : ""
   if (!p) throw new HTTPError(400, "path is required")
   const conf = vault.config("pages")
@@ -31,11 +24,9 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
   let out = cur
   if (body.pinned === false) {
     out = cur.filter((x) => x !== p)
-    // (a view's name goes with it: pinned again, it's named as it is then)
     if (p in labels(vault)) { const { [p]: _, ...rest } = labels(vault); vault.setConfig("pages", { ...conf, pinned: out, labels: rest }); return { pinned: out } }
   }
   else if (at < 0 || body.before !== undefined) {
-    // A page is a file or folder (or a heading in a note, or a search): a path that isn't one would be a pin nothing shows.
     const problem = at < 0 ? pinProblem(vault, p) : null
     if (problem) throw new HTTPError(404, problem)
     out = placePin(cur, p, true, typeof body.before === "string" ? body.before : null)
@@ -46,14 +37,12 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
 
 plugin.route("POST", "pins", (req) => pinOne(plugin.vault, req.body ?? {}))
 
-/** Name a pinned view: what it shows as, its tab's title when pinned (a conversation's, a web page's). */
 export function setLabel(vault: Vault, p: string, label: string) {
   const conf = vault.config("pages"), now = labels(vault)
   const name = label.trim().slice(0, 200)
   if (now[p] !== name) vault.setConfig("pages", { ...conf, labels: { ...now, [p]: name } })
 }
 
-/** POST /api/pins/label: setLabel. */
 plugin.route("POST", "pins/label", (req) => {
   const { path: p, label } = (req.body ?? {}) as { path?: unknown; label?: unknown }
   if (typeof p !== "string" || !p.startsWith("view:") || typeof label !== "string") throw new HTTPError(400, "path (a view: view:<name>/<arg>) and label are required")
@@ -61,18 +50,15 @@ plugin.route("POST", "pins/label", (req) => {
   return { ok: true }
 })
 
-/** A file or folder moved (to null: to the trash): the pins follow it. */
 export function repin(vault: Vault, src: string, dst: string | null) {
   const conf = vault.config("pages")
   const list = conf.pinned
   if (!Array.isArray(list)) return
-  // (an entry that isn't a string stays where it is)
   const strings = repinList(list.filter((p): p is string => typeof p === "string"), src, dst)
   const out = [...strings, ...list.filter((p) => typeof p !== "string")]
   if (JSON.stringify(out) !== JSON.stringify(list)) vault.setConfig("pages", { ...conf, pinned: out })
 }
 
-/** A file moved: the panels drawing it follow it. */
 export function repanel(vault: Vault, src: string, dst: string | null) {
   const s = readSidebars(vault.config("sidebars"))
   if (!s) return
@@ -82,11 +68,8 @@ export function repanel(vault: Vault, src: string, dst: string | null) {
 
 plugin.onMove((from, to) => { repin(plugin.vault, from, to); repanel(plugin.vault, from, to) })
 
-/** What core/pages.ts tells "pages:installed" (its Installed). */
 type Installed = { made: string[] }
 
-/** Pin the pages a plugin just wrote, turned on. One whose pages.json can't be read (mid-sync) is left alone, or every
- *  page the user unpinned would come back. */
 export function pinInstalled(vault: Vault, { made }: Installed) {
   let conf
   try { conf = vault.readConfig("pages") } catch (e) {
@@ -98,19 +81,14 @@ export function pinInstalled(vault: Vault, { made }: Installed) {
   const add = made.filter((m) => !list.includes(m))
   if (!add.length) return
   vault.setConfig("pages", { ...conf, pinned: [...list, ...add] })
-  // A plugin keeping lists of its own (Workspaces: a workspace's) pins them there too.
   const fn = plugin.service("pins:installed")
   if (typeof fn === "function") fn(add)
 }
 
 plugin.provide("pages:installed", (info: Installed) => pinInstalled(plugin.vault, info))
 
-// ---------- operations (vau pages, pin, unpin) and vau context ----------
-
 type PinsTarget = { label: string; pinned: string[] | null; pin: (path: string, on: boolean, before?: string) => { pinned: string[] } }
 
-/** The list the user sees: workspace n's with Workspaces on (the service "pins:of": the one asked for, else the user's
- *  window's; `vault`: pages.json itself), else pages.json's. */
 async function target(ctx: OpCtx, { workspace, vault }: { workspace?: number; vault?: boolean }) {
   const own = pinned(plugin.vault)
   const of = plugin.service("pins:of") as ((n: number) => PinsTarget) | null
@@ -125,7 +103,6 @@ async function target(ctx: OpCtx, { workspace, vault }: { workspace?: number; va
 
 const numbered = (pins: string[], indent = "") => (pins.length ? pins.map((p, i) => `${indent}${i + 1}. ${p}`).join("\n") : `${indent}(none)`)
 
-/** One change, in the list the user sees. */
 async function change(ctx: OpCtx, given: { path: string; before?: string; label?: string; workspace?: number; vault?: boolean }, on: boolean) {
   const { t, label } = await target(ctx, given)
   if (on && given.label?.trim() && !given.path.startsWith("view:")) throw new OpError("Only a view is named (`label`): a file or folder shows its own name")
