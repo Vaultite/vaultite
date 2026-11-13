@@ -1,8 +1,12 @@
 import { HTTPError, keptOf, MACHINE_CLIENT, type Plugin, type SharedKept as Shared } from "../../../core/plugins.ts"
-import type { Item } from "../../../core/vault.ts"
+import { z } from "zod"
 
 type Peer = { id: string; label: string; url: string; online: boolean; self: boolean; via?: string; vault?: string }
 const PUSH_MS = 300, PULL_MS = 30_000
+const ENTRY = z.object({ name: z.string(), at: z.number(), data: z.unknown() }).transform((e): Shared => ({ name: e.name, at: e.at, data: e.data }))
+const ENTRIES = z.array(z.unknown()).transform((list) => list.flatMap((x) => { const e = ENTRY.safeParse(x); return e.success ? [e.data] : [] }))
+const PULLED = z.object({ store: z.string(), seq: z.number(), entries: ENTRIES })
+const PUSHED = z.object({ entries: ENTRIES })
 
 export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vaultId: () => string) {
   const kept = () => keptOf(plugin.vault.path)
@@ -55,9 +59,10 @@ export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vault
           const q = was ? `?after=${was.seq}&store=${encodeURIComponent(was.store)}` : ""
           const r = await fetch(`${m.url}/api/machines/kept${q}`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(10_000) })
           if (!r.ok) return
-          const got = await r.json() as { store?: unknown; seq?: unknown; entries?: unknown }
-          if (typeof got.store !== "string" || typeof got.seq !== "number" || !Array.isArray(got.entries)) return
-          kept().merge(got.entries as Shared[])
+          const pulled = PULLED.safeParse(await r.json())
+          if (!pulled.success) return
+          const got = pulled.data
+          kept().merge(got.entries)
           if (was && got.store === was.store && got.seq < was.seq) seen.delete(m.id)
           else seen.set(m.id, { store: got.store, seq: got.seq })
         } catch {}
@@ -73,10 +78,10 @@ export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vault
 
   plugin.route("POST", "machines/kept", async (req) => {
     await plugin.ownerOnly(req, "This machine's state")
-    const body = (req.body ?? {}) as Item
-    if (!Array.isArray(body.entries)) throw new HTTPError(400, "send `entries`: [{name, at, data}]")
+    const body = PUSHED.safeParse(req.body)
+    if (!body.success) throw new HTTPError(400, "send `entries`: [{name, at, data}]")
     watch()
-    return { changed: kept().merge(body.entries as Shared[]).length }
+    return { changed: kept().merge(body.data.entries).length }
   }, { lock: false, sync: false })
 
   plugin.onSync(() => watch())

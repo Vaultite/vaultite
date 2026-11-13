@@ -178,8 +178,9 @@ function Conversation({ rows, evs }: { rows: unknown[]; evs: (Ev | null)[] }) {
   const called = useMemo(() => new Set(evs.filter((e) => e?.kind === "call" && e.callId).map((e) => e!.callId)), [evs])
   return <>{evs.map((e, i) => {
     const time = e ? when(e.at) : ""
-    if (!e) return isObj(rows[i]) && rows[i].type === "session_header"
-      ? <p key={i} className="text-[12px] text-muted-foreground">Session started{when((rows[i] as Obj).created_at ?? (rows[i] as Obj).timestamp) ? ` · ${when((rows[i] as Obj).created_at ?? (rows[i] as Obj).timestamp)}` : ""}</p>
+    const row = rows[i], began = isObj(row) && row.type === "session_header" ? when(row.created_at ?? row.timestamp) : null
+    if (!e) return began !== null
+      ? <p key={i} className="text-[12px] text-muted-foreground">Session started{began ? ` · ${began}` : ""}</p>
       : <details key={i} className="text-[13px] text-muted-foreground"><summary className="cursor-pointer">Line {i + 1}</summary><JsonNode value={rows[i]} depth={1} /></details>
     if (e.kind === "message") {
       const user = e.role === "user"

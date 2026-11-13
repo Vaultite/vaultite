@@ -3,6 +3,7 @@ import fs from "node:fs"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { Duplex } from "node:stream"
 import { WebSocket, WebSocketServer } from "ws"
+import { z } from "zod"
 import type { Item } from "../../../core/vault.ts"
 import { HTTPError, type Plugin } from "../../../core/plugins.ts"
 
@@ -15,6 +16,9 @@ const ID = /^[a-z0-9][a-z0-9-]{0,62}$/
 const HASH = /^[A-Za-z0-9_-]{43}$/
 const digest = (s: string) => crypto.createHash("sha256").update(s).digest("base64url")
 const clean = (v: unknown, max = 200) => String(v ?? "").slice(0, max)
+const KEYS = z.record(z.string(), z.string()).catch({})
+const ENROLL = z.object({ id: z.string().regex(ID), hash: z.string().regex(HASH), label: z.unknown().optional(), hello: z.looseObject({}).optional().catch(undefined) })
+const MESSAGE = z.looseObject({ t: z.unknown().optional(), v: z.unknown().optional(), id: z.unknown().optional(), ok: z.unknown().optional(), data: z.unknown().optional(), error: z.unknown().optional() })
 const helloOf = (v: Item): Hello => ({ host: clean(v.host), platform: clean(v.platform, 30), home: clean(v.home, 2000), os: clean(v.os), v: clean(v.v, 10) })
 
 export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () => Promise<string | null>) {
@@ -22,8 +26,8 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
   const connected = new Map<string, Connected>()
   const server = new WebSocketServer({ noServer: true, maxPayload: 12 << 20, perMessageDeflate: false })
   let seq = 0, attempts = 0, minute = Date.now()
-  const stored = () => (plugin.secrets().machines ?? {}) as Item
-  const hashes = () => (stored().keys ?? {}) as Record<string, string>
+  const stored = (): Item => plugin.secrets().machines ?? {}
+  const hashes = () => KEYS.parse(stored().keys ?? {})
   const expire = () => { for (const [code, p] of pending) if (p.until < Date.now()) pending.delete(code) }
   const changed = () => plugin.forget()
   const forget = (id: string, c: Connected) => {
@@ -79,9 +83,10 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
       ws.on("message", (data, binary) => {
         try {
           if (binary) throw new Error("text only")
-          const m = JSON.parse(data.toString()) as Item
+          const m = MESSAGE.parse(JSON.parse(data.toString()))
           if (m.t === "hello" && !c.hello && m.v === "1") { c.hello = helloOf(m); clearTimeout(helloTimer); changed(); return }
           if (m.t !== "res" || !c.hello) throw new Error("unexpected message")
+          if (typeof m.id !== "number") return
           const w = c.waiting.get(m.id)
           if (!w) return
           c.waiting.delete(m.id); clearTimeout(w.timer)
@@ -106,9 +111,11 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
     let body = "", size = 0
     for await (const part of req) { size += part.length; if (size <= 8192) body += part.toString() }
     if (size > 8192) return json(413, { error: "Enrollment is at most 8 KB" })
-    let b: Item
-    try { b = JSON.parse(body) } catch { return json(400, { error: "Expected JSON" }) }
-    if (!b || !ID.test(String(b.id)) || !HASH.test(String(b.hash))) return json(400, { error: "Expected a machine id and SHA-256 key hash" })
+    let parsed: unknown
+    try { parsed = JSON.parse(body) } catch { return json(400, { error: "Expected JSON" }) }
+    const enroll = ENROLL.safeParse(parsed)
+    if (!enroll.success) return json(400, { error: "Expected a machine id and SHA-256 key hash" })
+    const b = enroll.data
     if (entries().some((e) => e.id === b.id && !e.via)) return json(409, { error: "That id belongs to a Vaultite server" })
     let code: string
     do { code = String(crypto.randomInt(10000000, 100000000)) } while (pending.has(code))

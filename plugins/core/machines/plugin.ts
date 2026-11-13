@@ -1,4 +1,5 @@
 import crypto from "node:crypto"
+import { z } from "zod"
 import os from "node:os"
 import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
@@ -65,7 +66,15 @@ const isOwn = (url: string, own: string) => LOOPBACK.test(url) || (!!own && url 
 
 const dial = dialIn(plugin, listed, selfId)
 
-type Probed = { machine: Machine; dialed?: Record<string, Item> }
+const said = <T extends z.ZodType>(t: T) => t.optional().catch(undefined)
+const SIZE = z.number().nonnegative()
+const SELF = z.object({
+  instance: z.unknown().optional(), host: said(z.string()), platform: said(z.string()), version: said(z.string()), commit: said(z.string()),
+  plugins: z.array(z.string()).catch([]), vault: said(z.string()), desktop: z.boolean().catch(false), standalone: z.boolean().catch(false),
+  dialed: said(z.record(z.string(), z.looseObject({}))),
+  cores: said(z.number().positive()), load: said(SIZE), memory: said(z.object({ total: SIZE, free: SIZE })), display: said(z.boolean()),
+})
+type Probed = { machine: Machine; dialed?: z.infer<typeof SELF>["dialed"] }
 const answered = new Map<string, { at: number; probed: Probed }>()
 const SLOW_GRACE_MS = 2 * 60_000
 
@@ -78,30 +87,23 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
   try {
     const r = await fetch(`${m.url}/api/machines/self`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
     if (!r.ok) return { machine: { ...m, online: false, self: false, error: `answered ${r.status}` } }
-    const s = await r.json() as Item
-    if (s.instance === INSTANCE) knownOwn.add(m.url)
-    const probed: Probed = { machine: { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
-      commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined,
-      desktop: s.desktop === true, standalone: s.standalone === true, ...nowOf(s) }, dialed: s.dialed && typeof s.dialed === "object" ? s.dialed as Record<string, Item> : undefined }
+    const { instance, dialed, ...s } = SELF.parse(await r.json())
+    if (instance === INSTANCE) knownOwn.add(m.url)
+    const probed: Probed = { machine: { ...m, online: true, self: instance === INSTANCE, ...s, commit: s.commit || undefined, vault: s.vault || undefined }, dialed }
     answered.set(m.url, { at: Date.now(), probed })
     return probed
   } catch (e) {
     const last = answered.get(m.url)
-    if ((e as Error).name === "TimeoutError" && last && Date.now() - last.at < SLOW_GRACE_MS) return { ...last.probed, machine: { ...last.probed.machine, ...m, slow: true } }
+    if (e instanceof Error && e.name === "TimeoutError" && last && Date.now() - last.at < SLOW_GRACE_MS) return { ...last.probed, machine: { ...last.probed.machine, ...m, slow: true } }
     answered.delete(m.url)
     return { machine: { ...m, online: false, self: false, error: unreachable(e) } }
   }
 }
 
-function nowOf(s: Item): Partial<Now> {
-  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined), mem = s.memory as Item | undefined
-  const memory = mem && n(mem.total) !== undefined && n(mem.free) !== undefined ? { total: n(mem.total)!, free: n(mem.free)! } : undefined
-  return { ...(n(s.cores) ? { cores: n(s.cores) } : {}), ...(n(s.load) !== undefined ? { load: n(s.load) } : {}), ...(memory ? { memory } : {}), ...(typeof s.display === "boolean" ? { display: s.display } : {}) }
-}
-
 function unreachable(e: unknown) {
-  if ((e as Error).name === "TimeoutError") return "no answer"
-  const code = ((e as { cause?: { code?: string } }).cause)?.code
+  if (e instanceof Error && e.name === "TimeoutError") return "no answer"
+  const cause = e instanceof Error ? e.cause : undefined
+  const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "its name isn't found (DNS)"
   if (code === "ECONNREFUSED") return "refused (its server isn't running)"
   return "unreachable"
@@ -203,7 +205,7 @@ plugin.route("POST", "machines/desktop", async (req) => {
   if (!/^agent:[a-z-]+$/.test(name)) throw new HTTPError(400, "only the browser's agent calls")
   const waits = Math.min(3600_000, Math.max(0, Number(req.body?.waits) || 0))
   try { return { value: (await plugin.desktopWaiting(waits, name, ...(Array.isArray(req.body.args) ? req.body.args : []))) ?? null } }
-  catch (e) { throw new HTTPError(409, (e as Error).message) }
+  catch (e) { throw new HTTPError(409, e instanceof Error ? e.message : String(e)) }
 }, { lock: false })
 
 const FS: Record<string, string> = { "fs/list": "ls", "fs/read": "read", "fs/recent": "recent" }
@@ -282,7 +284,7 @@ const watching = watch()
 let latest: Sample | null = null
 function health(span: string): Report {
   let since: number
-  try { since = Date.now() - duration(span) } catch (e) { throw new HTTPError(400, (e as Error).message) }
+  try { since = Date.now() - duration(span) } catch (e) { throw new HTTPError(400, e instanceof Error ? e.message : String(e)) }
   const days: string[] = []
   for (let t = since; t < Date.now() + 86400_000; t += 86400_000) days.push(localDate(t))
   return report([...new Set(days)].flatMap((d) => healthLog.read(d)).filter((s) => s.t >= since).sort((a, b) => a.t - b.t), since)
