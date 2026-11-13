@@ -1,4 +1,5 @@
 import { check } from "../lib.ts"
+import { plugin } from "./lib.ts"
 
 // ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------
 {
@@ -138,6 +139,25 @@ import { check } from "../lib.ts"
     out.includes("from { opacity: 0 }") && out.includes(`src: url("x;y.woff") }`) && out.includes(`@import url("a;b.css");`) && !out.includes("comment"), out)
   check("Browser: a site style's nested rules and strings with braces",
     out.includes("color: blue !important;") && out.includes("color: green !important;") && out.includes(`content: "a;}b" !important}`), out)
+}
+
+{
+  type Said = { url: string }
+  const st: { stateCame(id: number, s: Said): void; takeUnheard(id: number): Said | undefined; forgetUnheard(id: number): void
+    shown: Map<number, { onState(s: Said): void }> } = await plugin("web-viewer/state.ts")
+  const at = (url: string) => ({ url })
+  st.stateCame(7, at("a")); st.stateCame(7, at("b"))
+  const first = st.takeUnheard(7), again = st.takeUnheard(7)
+  check("Browser: what a page says before its tab listens is kept, its latest, for the tab to take once", first?.url === "b" && again === undefined, { first, again })
+  const heard: Said[] = []
+  st.shown.set(8, { onState: (s) => heard.push(s) })
+  st.stateCame(8, at("c"))
+  check("Browser: what a page says while its tab listens goes to the tab, never kept to be said again", heard.length === 1 && heard[0].url === "c" && st.takeUnheard(8) === undefined, heard)
+  st.shown.delete(8)
+  st.stateCame(9, at("d")); st.forgetUnheard(9)
+  check("Browser: what a page said before its open answered (which has its state) is forgotten", st.takeUnheard(9) === undefined)
+  for (let id = 100; id <= 200; id++) st.stateCame(id, at(String(id)))
+  check("Browser: the last 100 pages' unheard states are kept, the oldest dropped", st.takeUnheard(100) === undefined && st.takeUnheard(101)?.url === "101" && st.takeUnheard(200)?.url === "200")
 }
 
 {

@@ -54,6 +54,10 @@ const COTYPE_STUBS: Record<string, string> = {
   "y-codemirror.next": "export const ySyncAnnotation = {}; export const yCollab = (ytext) => ({ ytext })",
   "./text": `export * from ${JSON.stringify(pathToFileURL(path.join(ROOT, "plugins", "core", "companion", "text.ts")).href)}`,
 }
+const WEB_VIEWER_APP_IDLE = `export { cell } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "signal.ts")).href)}
+export const webPages = null; export const currentWorkspace = () => null; export const notifyError = () => {}; export const viewsChanged = () => {}
+export const pluginSettings = () => ({ get: () => ({}), ready: async () => {} })`
+const ON_WEB_VIEWER_APP_IDLE = ["state.ts", "layers.ts"].map((f) => `/plugins/core/web-viewer/${f}`)
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
 fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}
@@ -62,6 +66,7 @@ export const notify = (...a) => globalThis.__learn?.toasts.push(a); export const
 registerHooks({
   resolve(spec, context, next) {
     if (spec in COTYPE_STUBS && context.parentURL?.endsWith("/plugins/core/companion/cotype.ts")) return { url: `data:text/javascript,${encodeURIComponent(COTYPE_STUBS[spec])}`, shortCircuit: true }
+    if (spec === "@vaultite" && ON_WEB_VIEWER_APP_IDLE.some((f) => context.parentURL?.endsWith(f))) return { url: `data:text/javascript,${encodeURIComponent(WEB_VIEWER_APP_IDLE)}`, shortCircuit: true }
     if (spec === "@vaultite") return { url: pathToFileURL(shim).href, shortCircuit: true }
     if (spec in AUTOSAVE_STUBS && context.parentURL?.endsWith("/web/src/core/autosave.ts")) return { url: `data:text/javascript,${encodeURIComponent(AUTOSAVE_STUBS[spec])}`, shortCircuit: true }
     if (spec in STUBS) return { url: `data:text/javascript,${encodeURIComponent(STUBS[spec])}`, shortCircuit: true }
