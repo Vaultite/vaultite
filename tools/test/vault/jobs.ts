@@ -715,7 +715,7 @@ export default async ($: VaultTest) => {
           ended.push(b.id)
           check("handoff from a terminal companion's own session: it says so, and its ask goes with it", st === 200 && /fix the footer/.test(said.at(-1)?.prompt ?? "") &&
             !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.agent === "Ada" && n.text === "Handed that off to a background agent."), 3000, 50)), [st, b, said.at(-1)?.prompt])
-        } finally { fs.rmSync(sess, { force: true }) }
+        } finally { fs.rmSync(sess, { force: true }); cWindows.comeBack("Ada") }
         for (const id of ended.filter(Boolean)) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
       }
       fs.mkdirSync(path.join(tmp, "Work"), { recursive: true })
