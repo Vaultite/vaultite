@@ -599,7 +599,7 @@ export default async ($: VaultTest) => {
     const paste = r.term.mode(2004)
     r.driver.kill()
     check("terminal server: a screen started again blank has its program draw itself again, at its own size, its paste mode kept (a long text typed reaches it whole)",
-      /drawn 24 79/.test(String(drawn)) && !/ready/.test(String(drawn)) && paste === true, [drawn, paste])
+      /drawn 24 80/.test(String(drawn)) && !/ready/.test(String(drawn)) && paste === true, [drawn, paste])
   }
 
   // A terminal server that stops answering (stuck): said once, its trouble told, what's asked then failing at once; heard
