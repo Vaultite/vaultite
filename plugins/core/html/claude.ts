@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { WebSocket } from "ws"
 import { z } from "zod"
-import type { SampleAnswer, SampleAsk } from "../../../core/agents.ts"
+import type { SampleAsk } from "../../../core/agents.ts"
 import { HTTPError, type Plugin, reply } from "../../../core/plugins.ts"
 import { type Item, readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
@@ -72,6 +72,7 @@ export async function publish(vault: Vault, body: Item) {
   return { version: String(versionOf(vault, rel)) }
 }
 
+const Sampled = z.looseObject({ text: z.string(), truncated: z.boolean(), model: z.string().optional() })
 export const sampleGrant = (rel: string) => `sample ${rel}`
 
 export function sampleSocket(plugin: Plugin, ws: WebSocket) {
@@ -84,11 +85,11 @@ export function sampleSocket(plugin: Plugin, ws: WebSocket) {
     try {
       const rel = artifactIn(plugin.vault, a.path)
       if (!plugin.allows(sampleGrant(rel))) return send({ t: "error", code: "not_granted", message: "this page may not ask Claude" })
-      const fn = plugin.service("sample") as ((x: SampleAsk) => Promise<SampleAnswer>) | null
+      const fn = plugin.service("sample")
       if (typeof fn !== "function") return send({ t: "error", code: "sampling_disabled", message: "no plugin that's on can ask Claude" })
       if (typeof a.prompt !== "string" || !a.prompt) return send({ t: "error", code: "invalid_request", message: "no prompt" })
-      const out = await fn({ prompt: a.prompt, system: String(a.system ?? ""), tier: a.tier, model: a.model, effort: a.effort,
-        signal: ctl.signal, onText: (delta) => send({ t: "text", delta }) })
+      const out = Sampled.parse(await fn({ prompt: a.prompt, system: String(a.system ?? ""), tier: a.tier, model: a.model, effort: a.effort,
+        signal: ctl.signal, onText: (delta: string) => send({ t: "text", delta }) } satisfies SampleAsk))
       send({ t: "done", ...out })
     } catch (e) {
       const f = FAILURE.parse(e)

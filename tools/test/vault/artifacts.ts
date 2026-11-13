@@ -121,6 +121,18 @@ export default async ($: VaultTest) => {
     check("sample: not allowed until the owner says so", !html.allows(st.sampleGrant("Claude/Drill.html")))
     ;[code] = await api("POST", "artifact/allow", { path: "Claude/Drill.html" })
     check("sample: allowed for that page", code === 200 && html.allows(st.sampleGrant("Claude/Drill.html")), code)
+    {
+      const { EventEmitter } = await import("node:events")
+      const giver = app.plugins.find((p) => Object.hasOwn(p.services, "sample"))!, was = giver.services.sample, sent: Any[] = []
+      giver.services.sample = async (x: Any) => { x.onText("He"); return { text: `Hello from ${x.tier}`, truncated: false, model: "m1" } }
+      const ws = Object.assign(new EventEmitter(), { readyState: 1, OPEN: 1, send: (m: string) => sent.push(JSON.parse(m)), close: () => ws.emit("closed") })
+      const closed = new Promise((ok) => ws.once("closed", ok))
+      st.sampleSocket(html, ws as Any)
+      ws.emit("message", JSON.stringify({ path: "Claude/Drill.html", prompt: "Say hello", tier: "quick" }))
+      await closed
+      giver.services.sample = was
+      check("sample: the page's ask is streamed and answered", JSON.stringify(sent) === JSON.stringify([{ t: "text", delta: "He" }, { t: "done", text: "Hello from quick", truncated: false, model: "m1" }]), sent)
+    }
     await api("POST", "file/move", { from: "Claude/Drill.html", to: "Claude/Chords.html" })
     side = JSON.parse(read(".vaultite/artifacts/Claude/Chords.html.data.json"))
     check("its data and its yes follow a move", side.db["data/users/u_owner/bests"] && !exists(".vaultite/artifacts/Claude/Drill.html.data.json") && html.allows(st.sampleGrant("Claude/Chords.html")))

@@ -3,6 +3,7 @@ import fs from "node:fs"
 import { pathToFileURL } from "node:url"
 import { contentType, HTTPError, isOutside, type Machine, machineSocket, OpError, outsidePath, pipeSockets, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
 import { type Item, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { z } from "zod"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat, WRAP_CSP, wrapper } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
 import { MOST, pictures } from "./picture.ts"
@@ -53,8 +54,8 @@ plugin.serve("cdn", async (req) => {
 
 function ownerName() {
   try {
-    const me = plugin.service("me:file") as (() => string) | null
-    const fm = me ? plugin.vault.entries.get(me())?.fm : null
+    const me = plugin.service("me:file")
+    const fm = me ? plugin.vault.entries.get(z.string().parse(me()))?.fm : null
     return fm && typeof fm.name === "string" ? fm.name : ""
   } catch { return "" }
 }
@@ -93,9 +94,10 @@ const deviceOf = (ua: string) => DEVICES.find(([re]) => re.test(ua))?.[1]
 plugin.provide("html:shared", (ws: WebSocket, rel: string, v: { shown: string; id: string; name: string; ua: string; watch?: string }) =>
   shared.join(ws, artifactIn(plugin.vault, rel), { shown: v.shown, person: { id: v.id, name: v.name, device: deviceOf(v.ua) }, watch: v.watch }))
 type Host = { m: Machine; folders: string[] }
+const sharedFolders = () => z.array(z.string()).parse(plugin.service("share:folders")?.() ?? [])
 const inside = (rel: string, folder: string) => rel.startsWith(`${folder}/`)
 async function hostOf(rel: string) {
-  if (((plugin.service("share:folders")?.() ?? []) as string[]).some((f) => inside(rel, f))) return null
+  if (sharedFolders().some((f) => inside(rel, f))) return null
   return (await plugin.ask<Host[]>("share:hosts", [], true)).find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some((f) => inside(rel, f)))?.m ?? null
 }
 const down = new Map<string, number>()
@@ -120,7 +122,7 @@ plugin.socket("artifact/shared", (ws, req, { query }) => {
 
 plugin.route("GET", "artifact/scope", async (req) => {
   const rel = artifactIn(plugin.vault, req.query.path)
-  const folders = [...(plugin.service("share:folders")?.() ?? []) as string[], ...(await plugin.ask<Host[]>("share:hosts", [])).flatMap((h) => h.folders)]
+  const folders = [...sharedFolders(), ...(await plugin.ask<Host[]>("share:hosts", [])).flatMap((h) => h.folders)]
   return { folder: folders.filter((f) => inside(rel, f)).sort((a, b) => b.length - a.length)[0] ?? null }
 }, { lock: false, sync: false })
 

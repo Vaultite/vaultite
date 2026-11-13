@@ -2,6 +2,7 @@ import ICAL from "ical.js"
 import { addDays, bullets, OpError, Plugin, section, today as todayIso } from "../../../core/plugins.ts"
 import { type Item, sortBy, str } from "../../../core/vault.ts"
 import type { CalEvent } from "./types.ts"
+import { z } from "zod"
 
 export const plugin = new Plugin(import.meta.url)
 const TTL = 600
@@ -69,7 +70,7 @@ function occurrences(cal: ICAL.Component, start: string, end: string) {
 
 async function fromServices(start: string, end: string, out: CalEvent[], errors: string[]) {
   for (const items of plugin.allServices("agenda:items")) {
-    try { for (const e of await (items as AgendaItems)(start, end) ?? []) out.push({ calendar: str(e.calendar), title: str(e.title), location: str(e.location), start: str(e.start), end: e.end ? str(e.end) : null, all_day: !!e.all_day }) }
+    try { for (const e of Agenda.parse(await items(start, end) ?? [])) out.push({ calendar: str(e.calendar), title: str(e.title), location: str(e.location), start: str(e.start), end: e.end ? str(e.end) : null, all_day: !!e.all_day }) }
     catch (e) { errors.push(e instanceof Error ? e.name : "Error") }
   }
 }
@@ -93,7 +94,7 @@ async function events(start: string, end: string) {
   await fromServices(start, end, out, errors)
   return { events: sortBy(out, (x) => x.start), errors, configured: calendars.length > 0 || out.length > 0 }
 }
-type AgendaItems = (from: string, to: string) => Promise<Item[]> | Item[]
+const Agenda = z.array(z.looseObject({}))
 
 plugin.route("GET", "calendar", async (req) => {
   const start = req.query.from || todayIso()
@@ -136,7 +137,7 @@ zone. What matters from one goes where it belongs (a person's timeline, a log), 
   text: (r) => {
     if (!r.configured) return "No calendars connected yet (their private iCal links go in data/config.json on this machine)."
     const byDay = new Map<string, Item[]>()
-    for (const e of r.events as Item[]) byDay.set(e.start.slice(0, 10), [...(byDay.get(e.start.slice(0, 10)) ?? []), e])
+    for (const e of r.events) byDay.set(e.start.slice(0, 10), [...(byDay.get(e.start.slice(0, 10)) ?? []), e])
     const hm = (t: string) => t.slice(11, 16)
     const days = [...byDay].map(([d, es]) => [`### ${d}`, ...es.map((e) => `- ${e.all_day ? "All day" : `${hm(e.start)}-${hm(e.end)}`} ${e.title}${e.location ? ` (${e.location})` : ""}${e.calendar ? ` · ${e.calendar}` : ""}`)].join("\n"))
     return [days.length ? days.join("\n\n") : `No events ${r.from === r.to ? `on ${r.from}` : `from ${r.from} to ${r.to}`}.`,
