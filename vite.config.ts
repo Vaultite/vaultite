@@ -142,9 +142,11 @@ export function lucideByFile(): Plugin {
 }
 
 /** What a window runs as it starts is grouped by the pages (index.html and its siblings) that import it, big libraries
- *  apart from the app; appGroups then splits the app's own by folder. */
-const boot = { pages: new Map<string, string>(), libs: new Set<string>(), editor: new Set<string>(), terminal: new Set<string>(), chat: new Set<string>() }
+ *  apart from the app; appGroups then cuts the app's own into files of a size (cut). */
+const boot = { pages: new Map<string, string>(), libs: new Set<string>(), editor: new Set<string>(), terminal: new Set<string>(), chat: new Set<string>(), parts: new Map<string, string>() }
 const isLib = (id: string) => /[\\/]node_modules[\\/]/.test(id)
+// (a package's module by its path in node_modules: a code root's packages are a folder shared with others, elsewhere)
+const relOf = (id: string) => { const p = normalizePath(id), lib = p.lastIndexOf('/node_modules/'); return lib >= 0 ? p.slice(lib + 1) : normalizePath(path.relative(import.meta.dirname, id)) }
 export function bootChunks(): Plugin {
   return {
     name: 'vaultite-boot-chunks',
@@ -156,7 +158,7 @@ export function bootChunks(): Plugin {
         if (was) this.error(`${id} is bundled twice (also as ${was}): a plugin resolved it to a path of its own`)
         ids.set(key, id)
       }
-      boot.pages.clear(); boot.libs.clear(); boot.editor.clear(); boot.terminal.clear(); boot.chat.clear()
+      boot.pages.clear(); boot.libs.clear(); boot.editor.clear(); boot.terminal.clear(); boot.chat.clear(); boot.parts.clear()
       const pages = [...this.getModuleIds()].filter((id) => id.endsWith('.html') && this.getModuleInfo(id)?.isEntry).sort()
       const starts = new Set(pages.flatMap((p) => this.getModuleInfo(p)?.importedIds ?? []))
       for (const page of pages) {
@@ -170,6 +172,7 @@ export function bootChunks(): Plugin {
       const libBytes = new Map<string, number>()
       for (const [id, by] of boot.pages) if (isLib(id)) libBytes.set(by, (libBytes.get(by) ?? 0) + (this.getModuleInfo(id)?.code?.length ?? 0))
       for (const [by, n] of libBytes) if (n > 50_000) boot.libs.add(by) // (a deploy changes the app, rarely these)
+      cut([...boot.pages].flatMap(([id, by]) => (by === '~index' && !isLib(id) ? [{ id, bytes: this.getModuleInfo(id)?.code?.length ?? 0, key: bitsOf(folderOf(id)) + bitsOf(relOf(id)) }] : [])), '')
       // The editor (CodeMirror), which a note shows and which loads once the first page is drawn: one file too.
       const todo = [...this.getModuleIds()].filter((id) => /[\\/]web[\\/]src[\\/]editor[\\/]Editor\.tsx$/.test(id))
       for (let id; (id = todo.pop());) {
@@ -205,16 +208,29 @@ export const bootGroups = [...Array.from({ length: PAGES * 2 }, (_, i) => {
   }
 }), { name: 'editor', test: (id: string) => boot.editor.has(id) }, { name: 'terminal', test: (id: string) => boot.terminal.has(id) }, { name: 'chat', test: (id: string) => boot.chat.has(id) }]
 
-/** The app's own code in a file per folder (a plugin's, a core folder's; a view's libraries apart from its code), so a
- *  deploy changes a few small files, not one of 2 MB (stableChunks keeps the others' names). Over HTTP/2: many files are cheap. */
 const folderOf = (id: string) => {
   const p = normalizePath(id)
   const m = /\/plugins\/core\/([^/]+)\//.exec(p) ?? /\/web\/src\/([^/]+)\//.exec(p)
   return m ? `${p.includes('/plugins/core/') ? 'p' : 'w'}-${m[1]}` : isLib(id) ? 'lib' : 'w'
 }
+/** The most code (before minifying: 1.65 times minified) in a file the app starts with, halved by a hash of folder then
+ *  path until it fits (cut): a deploy re-downloads a changed file whole, a cold start pays each file's imports. */
+const PART_BYTES = 250_000
+const bitsOf = (s: string) => BigInt(`0x${crypto.createHash('sha256').update(s).digest('hex').slice(0, 8)}`).toString(2).padStart(32, '0')
+function cut(mods: { id: string; bytes: number; key: string }[], at: string) {
+  if (!mods.length) return
+  if (mods.length === 1 || at.length === 64 || mods.reduce((n, m) => n + m.bytes, 0) <= PART_BYTES) {
+    const folders = [...new Set(mods.map((m) => folderOf(m.id)))]
+    const name = folders.length > 1 ? `app-shared-${at}` : `app-${folders[0]}${at.length > 32 ? `-${at.slice(32)}` : ''}`
+    for (const m of mods) boot.parts.set(m.id, name)
+    return
+  }
+  cut(mods.filter((m) => m.key[at.length] === '0'), `${at}0`)
+  cut(mods.filter((m) => m.key[at.length] === '1'), `${at}1`)
+}
 export const appGroups = bootGroups.map((g) => typeof g.name !== 'function'
   ? { ...g, name: (id: string) => `${g.name}-${isLib(id) ? 'lib' : folderOf(id)}` }
-  : { ...g, name: (id: string) => { const n = (g.name as (id: string) => string)(id); return n === 'app' ? `app-${folderOf(id)}` : n } })
+  : { ...g, name: (id: string) => { const n = (g.name as (id: string) => string)(id); return n === 'app' ? boot.parts.get(id) ?? `app-${folderOf(id)}` : n } })
 const indexBoot = (file: string) => /^(app|vendor)-/.test(path.basename(file))
 const grouped = (name: string) => /^(app|vendor|editor|terminal|chat)([~-]|$)/.test(name)
 
@@ -240,8 +256,6 @@ export function steadyDeps(code: string) {
  *  its entry module), which each page's import map points at the file of the moment, named by its content alone. */
 export function stableChunks(): Plugin {
   const hash = (s: string) => crypto.createHash('sha256').update(s).digest('base64url').slice(0, 8)
-  // (a package's module by its path in node_modules: a code root's packages are a folder shared with others, elsewhere)
-  const rel = (id: string) => { const p = normalizePath(id), lib = p.lastIndexOf('/node_modules/'); return lib >= 0 ? p.slice(lib + 1) : normalizePath(path.relative(import.meta.dirname, id)) }
   return {
     name: 'vaultite-stable-chunks',
     apply: 'build',
@@ -255,7 +269,7 @@ export function stableChunks(): Plugin {
         for (const c of chunks) {
           const dir = path.posix.dirname(c.fileName)
           const basis = (by: 'name' | 'modules') => (by === 'name' && !c.facadeModuleId && grouped(c.name) ? `group:${c.name}`
-            : c.facadeModuleId && by === 'name' ? `facade:${rel(c.facadeModuleId)}` : `modules:${c.moduleIds.map(rel).sort().join('\n')}`)
+            : c.facadeModuleId && by === 'name' ? `facade:${relOf(c.facadeModuleId)}` : `modules:${c.moduleIds.map(relOf).sort().join('\n')}`)
           let key = `${dir}/${c.name}-${hash(basis('name'))}.js`
           if (taken.has(key)) key = `${dir}/${c.name}-${hash(basis('modules'))}.js`
           if (taken.has(key)) this.error(`two chunks would share the name ${key}`)

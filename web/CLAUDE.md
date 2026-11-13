@@ -6,7 +6,8 @@
   (`useScopedState(key, fallback, "workspace")`). The core reaches Workspaces only through scope.ts.
 - App plugins load eagerly with the app (lazy loading doubled the phone's cold start), so a plugin's module uses no
   plugin API while it loads (`npm run check` lists what may run at top level).
-- What the app starts with is a file per folder, each named by a key that lasts and mapped to its content's file by the
+- What the app starts with is in files of up to about 150 KB (vite.config.ts `cut`: a big folder over several, small
+  plugins sharing one), each named by a key that lasts and mapped to its content's file by the
   page's import map (vite.config.ts `appGroups`, `stableChunks`), so a deploy re-downloads only what changed (`tools/perf/churn.ts`
   measures it; `startup.ts` counts the files): a heavy
   library only a view needs (CodeMirror, dnd-kit) comes through `import()`, never a plugin's top level.

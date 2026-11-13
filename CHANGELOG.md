@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Updates download less, and the app starts from fewer files**: a change to one part of the interface re-downloads
+  about 40 KB rather than 150 KB, and a first start loads 45 files instead of 103.
 - **An agent done in its terminal stays done**: on a busy machine, its state file read again late made a terminal back at
   its shell show working again for a few seconds; a read with nothing new written is now ignored.
 - **Terminals and chats open on a busy machine**: the terminal server and the chat keeper are waited for as long as they
