@@ -3,7 +3,7 @@
 //   node web/qa/termfade.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { WEBGL, command, qa, terminalText, until, wait } from "./lib/qa.mjs"
-const { args: [B, OUT = "/tmp/termfade-shots/"], browser, check, watch, done } = await qa(import.meta.url, { chrome: { args: WEBGL } })
+const { args: [B, OUT = "/tmp/termfade-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true, chrome: { args: WEBGL } })
 mkdirSync(OUT, { recursive: true })
 const id = `qa${Date.now().toString(36)}`
 
