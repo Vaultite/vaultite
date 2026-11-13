@@ -205,8 +205,8 @@ function connect() {
     if (m.t === "sessions" && Array.isArray(m.list)) { tries = 0; put({ list: m.list, refused: "" }) }
     else if (m.t === "refused") put({ refused: m.reason ?? "refused" })
   }
-  sock.onclose = (e) => {
-    if (ws !== sock || e.code === 4003) return
+  sock.onclose = () => {
+    if (ws !== sock || now.refused) return
     timer = window.setTimeout(connect, Math.min(10000, 500 * 2 ** Math.min(tries++, 5)))
   }
 }

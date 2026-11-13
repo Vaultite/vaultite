@@ -1,7 +1,8 @@
 import type { IncomingMessage } from "node:http"
 import { type RawData, WebSocket } from "ws"
 import { HTTPError, machineSocket, pipeSockets, splitMachine, type Machine } from "../../../core/plugins.ts"
-import { EXITED, GONE, REFUSED, type Session, TERMINAL_ID, clamp, plugin, sessions } from "./shared.ts"
+import { CLOSE } from "./closes.ts"
+import { type Session, TERMINAL_ID, clamp, plugin, sessions } from "./shared.ts"
 import { LOCAL, agentOf, backendOf, context, env, fromReq, ownerOf, pluginBackend, runsHere } from "./backends.ts"
 import { attach, closesTabs, end, endHere, resize, start } from "./start.ts"
 import { type Listed, remotes } from "./list.ts"
@@ -11,7 +12,7 @@ export const terminalMachines = async () => (await plugin.ask<Machine[]>("machin
 
 function joinRemote(ws: WebSocket, m: Machine | null, id: string, path: string, query: Record<string, string>) {
   if (!m || !m.online || !m.plugins?.includes("terminal")) {
-    if (!m) { ws.send(JSON.stringify({ t: "refused", reason: `this terminal runs on '${id}', which isn't one of this vault's machines` })); return ws.close(REFUSED, "refused") }
+    if (!m) { ws.send(JSON.stringify({ t: "refused", reason: `this terminal runs on '${id}', which isn't one of this vault's machines` })); return ws.close(CLOSE.refused, "refused") }
     ws.send(JSON.stringify({ t: "unreachable", machine: m.id, label: m.label, reason: !m.online ? "isn't answering" : "has its terminal turned off" }))
     return ws.close(1013, "unavailable")
   }
@@ -60,7 +61,7 @@ export async function allowed(ws: WebSocket, req: IncomingMessage) {
   const why = await plugin.refusal(req, "the terminal")
   if (why) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "refused", reason: why }))
-    ws.close(REFUSED, "refused")
+    ws.close(CLOSE.refused, "refused")
     return false
   }
   return ws.readyState === ws.OPEN
@@ -78,7 +79,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
     const s = sessions.get(id)
     if (s) end(s)
     else { const b = await backendOf(id); if (b) await endHere(b, id).catch(() => {}) }
-    return ws.close(EXITED, "ended")
+    return ws.close(CLOSE.exited, "ended")
   }
   const cols = clamp(query.cols, 2, 1000, 80), rows = clamp(query.rows, 1, 500, 24)
   const cell = query.cw && query.ch ? { width: clamp(query.cw, 1, 200, 8), height: clamp(query.ch, 1, 200, 16) } : undefined
@@ -90,14 +91,14 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   const agent = agentOf(id), ended = closesTabs(id)
   if (query.attach && (ended || (agent && !agent.resume)) && !starting.has(id) && !(await runsHere(id))) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone", ...(ended ? { ended: true } : {}) }))
-    return ws.close(GONE, "gone")
+    return ws.close(CLOSE.gone, "gone")
   }
   const owned = ownerOf(id)
   if (owned && !starting.has(id) && !(await runsHere(id))) {
     const b = pluginBackend()
     if (b?.name === owned.backend && (await b.ready().catch(() => false))) {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone" }))
-      return ws.close(GONE, "gone")
+      return ws.close(CLOSE.gone, "gone")
     }
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "unreachable", backend: owned.backend, label: owned.label, reason: "isn't running here (or its plugin is off)" }))
     return ws.close(1013, "unavailable")
@@ -108,7 +109,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
     console.error("terminal:", e)
     if (ws.readyState !== ws.OPEN) return
     ws.send(Buffer.from(`\r\nCouldn't start a shell: ${(e as Error).message}\r\n`))
-    ws.close(EXITED, "failed")
+    ws.close(CLOSE.exited, "failed")
   })
 }, {
   accept: (_req, { wild }) => {

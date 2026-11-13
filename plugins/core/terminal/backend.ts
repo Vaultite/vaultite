@@ -6,7 +6,7 @@ import path from "node:path"
 import { execFile, spawn } from "node:child_process"
 import type { IPty } from "node-pty"
 import type { Said } from "./osc7501.ts"
-import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit as Ended } from "./termd/protocol.ts"
+import { Failure, PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit as Ended } from "./termd/protocol.ts"
 import { connectTo, type Msg, termdClient, Wire } from "./wire.ts"
 
 export type { Capture, CaptureFormat, Ended }
@@ -135,14 +135,8 @@ export function hangup(p: IPty) {
 
 let ptyLib: typeof import("node-pty") | null = null
 export async function loadPty() {
-  // node-pty's prebuilt spawn-helper can arrive without the exec bit (npm skips its install scripts): posix_spawnp
-  // fails. Checked before every shell: an npm install while the server runs puts a new one there.
-  const { createRequire } = await import("node:module")
-  const dir = path.dirname(createRequire(import.meta.url).resolve("node-pty/package.json"))
-  if (process.platform !== "win32") for (const sub of [`prebuilds/${process.platform}-${process.arch}`, "build/Release"]) {
-    const helper = path.join(dir, sub, "spawn-helper")
-    try { if (!(fs.statSync(helper).mode & 0o111)) fs.chmodSync(helper, 0o755) } catch { /* not there */ }
-  }
+  const { fixHelper } = await import("./termd/spawnhelper.ts")
+  fixHelper()
   ptyLib ??= (await import("node-pty")).default
   return ptyLib
 }
@@ -292,7 +286,7 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
     trouble: (): Trouble | null => (stall ? { since: stall.since, pid: stall.pid, text: stallText() } : null),
     async create(id: string, spec: Spec, c?: Made) {
       try { await b.create(id, spec, c) } catch (e) {
-        if (!/^RETIRING\b/.test((e as Error).message)) throw e
+        if (!(e instanceof Failure && e.code === "retiring")) throw e
         o.log?.("terminal: the terminal server's files were gone, so it retired: starting a new one")
         for (let i = 0; i < 40 && fs.existsSync(mark); i++) await new Promise((r) => setTimeout(r, 50))
         ctl = null
@@ -324,7 +318,7 @@ export function localBackend(o: { log?: (...a: unknown[]) => void; oldServers?: 
       session: null, ready: false,
       send: (m) => {
         if (closed) return
-        if (paused) { held.push(m); queued += typeof m.d === "string" ? m.d.length : 0; return }
+        if (paused) { held.push(m); queued += "d" in m ? m.d.length : 0; return }
         queueMicrotask(() => { if (!closed) deliver(m) })
       },
       backlog: () => queued,

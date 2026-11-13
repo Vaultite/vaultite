@@ -1,10 +1,10 @@
 import type { ImageSource } from 'claude-code'
+import { CELL_PX } from '../decode/cells.ts'
 import { fit } from '../decode/fit.ts'
 import { decodePicture } from '../decode/index.ts'
 import type { Rgba } from '../decode/pixels.ts'
 
 const MAX_COLUMNS = 48, MAX_ROWS = 16
-const CELL_PX = { width: 24, height: 48 }
 const CELL_ASPECT = CELL_PX.height / CELL_PX.width
 /** Claude Code refuses a tree with more than 2 MiB of Image source: kept under it as base64, should it count those. */
 const ROW_BYTES = ((2 << 20) * 3) / 4 - 4096

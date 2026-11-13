@@ -7,7 +7,8 @@ import type { BackendEvent, AgentRun, Backend, Cell, Listed as Shell, Made, Spec
 import { runScript, wslPath } from "./launch.ts"
 import { kindOf, progName } from "./shells.ts"
 import { byUs, closes, SIGHUP } from "./state.ts"
-import { BLOCKED, EXITED, SPARE, type Session, TERMINAL_ID, TMP, WIN, clamp, plugin, sameShell, scrollback, sessions, shell } from "./shared.ts"
+import { CLOSE } from "./closes.ts"
+import { BLOCKED, SPARE, type Session, TERMINAL_ID, TMP, WIN, clamp, plugin, sameShell, scrollback, sessions, shell } from "./shared.ts"
 import { type From, type Home, LOCAL, PATH, agentOf, backendForNew, backendOf, context, dropped, fallback, hooksText, keeper, oscMark, ours, ownedBy, stateFile, tell, termEnv, upload } from "./backends.ts"
 import { agentReady, agentRun, apply, held, metas, oldMetaFiles, oscSaid, sighted, terms, told, vaultDir } from "./terms.ts"
 import { listChanged } from "./list.ts"
@@ -140,7 +141,7 @@ export async function start(id: string, cols: number, rows: number, from = LOCAL
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
       ws.send(JSON.stringify({ t: "exit", code, signal, ...(lost ? { lost: true } : {}), ...(by && !by.keep ? { ended: true } : {}) }))
-      ws.close(EXITED, "exited")
+      ws.close(CLOSE.exited, "exited")
     }
   })
   sessions.set(id, s)

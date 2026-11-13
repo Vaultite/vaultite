@@ -2,6 +2,7 @@ import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, lin
 import type { FindOptions } from "@plugins/find/tools"
 import { copy, flushCopy, pasteClipboard } from "./clipboard"
 import { fileLinks } from "./fileLinks"
+import { CLOSE } from "./closes"
 import { closedJustNow, parkTerminal, touch, unparkTerminal } from "./sessions"
 import { codeFont, cursor, fontSize, glassy, settings, theme } from "./theme"
 import { Term } from "./vt/term"
@@ -20,9 +21,6 @@ export const touchScreen = () => matchMedia("(pointer: coarse)").matches
 
 const RESIZE_SETTLE = 120
 
-const EXITED = 4000
-const REFUSED = 4003
-const GONE = 4004
 
 export type Status = { kind: "live"; blocked?: boolean } | { kind: "connecting"; tries: number } | { kind: "exited"; code: number; signal: number }
   | { kind: "ended" }
@@ -188,9 +186,9 @@ function create(id: string): Live {
     sock.onclose = (e) => {
       if (ws !== sock || gone) return
       ws = null
-      if (refused || e.code === REFUSED) { if (!refused) { setStatus({ kind: "refused", reason: "" }); over() } return }
-      if (sessionGone || e.code === GONE) { if (!sessionGone) { setStatus({ kind: "ended" }); over() } return }
-      if (exited || e.code === EXITED) { if (!exited) { setStatus({ kind: "exited", code: -1, signal: 0 }); over() } return }
+      if (refused || e.code === CLOSE.refused) { if (!refused) { setStatus({ kind: "refused", reason: "" }); over() } return }
+      if (sessionGone || e.code === CLOSE.gone) { if (!sessionGone) { setStatus({ kind: "ended" }); over() } return }
+      if (exited || e.code === CLOSE.exited) { if (!exited) { setStatus({ kind: "exited", code: -1, signal: 0 }); over() } return }
       tries++
       setStatus(away ? { kind: "away", ...away } : { kind: "connecting", tries })
       timer = window.setTimeout(connect, Math.min(away ? 15000 : 10000, 400 * 2 ** Math.min(tries, 5)))

@@ -3,7 +3,8 @@ import net from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { lineReader } from "../lines.ts"
-import { host, ptyDir, type Conn } from "./host.ts"
+import { host, type Conn } from "./host.ts"
+import { ptyDir } from "./spawnhelper.ts"
 import { PROTOCOL } from "./protocol.ts"
 import { holdRoot } from "../../../../core/update/lease.ts"
 
@@ -84,7 +85,7 @@ const server = net.createServer((sock) => {
   sock.setEncoding("utf8")
   sock.on("data", lineReader((line) => {
     if (!line.trim()) return
-    let m: Record<string, unknown>
+    let m: unknown
     try { m = JSON.parse(line) } catch { return }
     conn.take(m)
   }))

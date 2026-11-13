@@ -2,7 +2,7 @@ import net from "node:net"
 import type { BackendEvent, CaptureFormat, Exit, Input, Link, Listed, Made, Spec, Backend } from "./backend.ts"
 import { launch, shellName } from "./launch.ts"
 import { lineReader } from "./lines.ts"
-import type { Answer, Info, Op, Params, Unasked } from "./termd/protocol.ts"
+import { Failure, type Answer, type Info, type Op, type Params, type Unasked } from "./termd/protocol.ts"
 
 export type Msg = Record<string, unknown>
 type Pipe = { write(m: Msg): void; onMessage(fn: (m: Msg) => void): void; onClose(fn: () => void): void; close(): void; pause(): void; resume(): void }
@@ -37,7 +37,7 @@ export class Wire {
         if (typeof m.re === "number" && this.waiting.has(m.re)) {
           const w = this.waiting.get(m.re)!
           this.waiting.delete(m.re)
-          if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m)
+          if (typeof m.error === "string") w.fail(new Failure(m.error, m.code === "retiring" ? m.code : undefined)); else w.ok(m)
         } else if (typeof m.t === "string") for (const fn of this.listeners) fn(m as Unasked)
       } catch (e) { console.error("terminal: a message from the terminal server:", e) }
     })

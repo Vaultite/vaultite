@@ -438,6 +438,36 @@ export default async ($: VaultTest) => {
     conns[1].take({ op: "subscribe" })
     const told = heard.map((l) => l.filter((m) => m.type === "exited").map((m) => (m.exit as { code: number }).code))
     check("terminal server: an end nobody heard is told to the next to subscribe, once", JSON.stringify(told) === "[[5],[]]", told)
+    const answers: Record<string, unknown>[] = []
+    const asker = h.connect({ session: null, ready: false, send: (m) => answers.push(m), backlog: () => 0 })
+    asker.take({ op: "create", file: "/bin/sh", re: 1 })
+    asker.take({ op: "kill", id: 5, re: 2 })
+    asker.take({ op: "nope", re: 3 })
+    asker.take({ op: "create", id: "huge1", file: "/bin/sh", args: ["-c", "sleep 5"], cols: -3, rows: 1e9, re: 4 })
+    asker.take({ op: "kill", id: "huge1", re: 5 })
+    const said = (re: number) => String(answers.find((m) => m.re === re)?.error ?? "")
+    const huge = JSON.stringify(answers.find((m) => m.re === 4)?.info ?? {})
+    check("terminal server: a request it can't read is answered with which field is wrong",
+      said(1).startsWith("a create request this server can't read: id ") && /^a kill request .*: id .*expected string, received number/.test(said(2)) && said(3) === "unknown op 'nope'", answers)
+    check("terminal server: a new terminal's size is kept in bounds, as a resize's", huge.includes('"cols":2,"rows":500'), huge)
+    const { Failure } = await import("../../../plugins/core/terminal/termd/protocol.ts")
+    const { Wire } = await import("../../../plugins/core/terminal/wire.ts")
+    let reply: (m: Record<string, unknown>) => void = () => {}
+    const wire = new Wire({ write: (m) => queueMicrotask(() => reply({ re: m.re, error: "its files are gone", code: "retiring" })), onMessage: (fn) => { reply = fn },
+      onClose: () => {}, close: () => {}, pause: () => {}, resume: () => {} })
+    const retired = await wire.request("hello", {}).then(() => null, (e) => e)
+    check("terminal server: a retiring server's refusal reaches its client as a code", retired instanceof Failure && retired.code === "retiring", retired)
+  }
+  // termd runs detached and keeps its code until it holds no terminals: what it loads stays its own few files.
+  {
+    const { diskTree, graphOf } = await import("../../../core/update/closure.ts")
+    const root = path.resolve(import.meta.dirname, "../../..")
+    const loads = [...graphOf(diskTree(root)).reach("termd").files.keys()].filter((f) => !f.startsWith("node_modules/") && !/^package(-lock)?\.json$/.test(f)).sort()
+    const own = ["core/update/lease.ts", "plugins/core/terminal/claude-pictures/decode/cells.ts", "plugins/core/terminal/keys.ts", "plugins/core/terminal/lines.ts",
+      "plugins/core/terminal/osc7501.ts", ...["adopt", "host", "kitty", "png", "protocol", "screen", "screenworker", "spawnhelper", "termd"].map((f) => `plugins/core/terminal/termd/${f}.ts`),
+      "plugins/core/terminal/vt/ghostty-vt.wasm", "plugins/core/terminal/vt/load.ts", "plugins/core/terminal/vt/vt.ts"]
+    check("terminal server: loads only its own files (one more is code a running one never updates: keep it compatible, then list it here)",
+      JSON.stringify(loads) === JSON.stringify(own), loads.filter((f) => !own.includes(f)))
   }
 
   // Taking over an older terminal server's terminals (termd/adopt.ts): a stand-in for the keeper before it (protocol 1:

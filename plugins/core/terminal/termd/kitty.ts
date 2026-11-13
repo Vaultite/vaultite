@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import zlib from "node:zlib"
 import type { Picture, Placement, Vt } from "../vt/vt.ts"
+import { CELL_PX } from "../claude-pictures/decode/cells.ts"
 import { decodePng, isPng } from "./png.ts"
 
 export const PICTURE_MAX = 64 << 20
@@ -195,8 +196,6 @@ function shrink(src: Uint8Array, width: number, height: number, ch: number, out:
   }
   return { width: w, height: h, data }
 }
-
-const CELL_PX = { width: 24, height: 48 }
 
 /** Claude Code shows pictures whole in c × r cells (a=T, U=1). Pixels past what those show only fill Ghostty's image
  *  storage, whose oldest pictures go (their rows left blank). */

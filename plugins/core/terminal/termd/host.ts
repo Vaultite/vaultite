@@ -2,14 +2,15 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { createRequire } from "node:module"
 import pty, { type IPty } from "node-pty"
 import { keysBytes } from "../keys.ts"
 import { REPLY, watcher, type Said } from "../osc7501.ts"
 import { adopter } from "./adopt.ts"
 import { KittyFeed, remoteFront } from "./kitty.ts"
 import { Screen } from "./screen.ts"
-import { PROTOCOL, type Answer, type Capture, type CaptureFormat, type Event, type Exit, type Info } from "./protocol.ts"
+import { fixHelper } from "./spawnhelper.ts"
+import { z } from "zod"
+import { Failure, PROTOCOL, Request, type Answer, type Op, type Capture, type CaptureFormat, type Event, type Exit, type Info, type Reply, type Unasked } from "./protocol.ts"
 
 const WIN = process.platform === "win32"
 const SCROLLBACK = 10000
@@ -20,18 +21,9 @@ const HOLD = 1 << 20
  *  pours it goes on every BATCH ms, and at once in the TYPING ms after input (echoes). */
 const BATCH = 4, TYPING = 100
 
-const require = createRequire(import.meta.url)
-export const ptyDir = path.dirname(require.resolve("node-pty/package.json"))
-/** node-pty's prebuilt spawn-helper can arrive without the exec bit (npm skips install scripts): posix_spawnp fails. */
-export function fixHelper() {
-  if (!WIN) for (const sub of [`prebuilds/${process.platform}-${process.arch}`, "build/Release"]) {
-    const helper = path.join(ptyDir, sub, "spawn-helper")
-    try { if (!(fs.statSync(helper).mode & 0o111)) fs.chmodSync(helper, 0o755) } catch { /* not there */ }
-  }
-}
 fixHelper()
 
-export type Conn = { send: (m: Record<string, unknown>) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean
+export type Conn = { send: (m: Unasked | Reply) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean
   held?: { data: string[]; bytes: number; snapshots: number } }
 
 export type Driver = {
@@ -45,10 +37,9 @@ export type Driver = {
   via?: number
 }
 
-function metaOf(v: unknown): Record<string, string> {
+function metaOf(v: Record<string, string | null> = {}): Record<string, string> {
   const out: Record<string, string> = {}
-  if (!v || typeof v !== "object") return out
-  for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (/^[a-z][\w-]{0,31}$/i.test(k) && typeof x === "string" && x) out[k] = x.replace(/[\r\n]+/g, " ").slice(0, 500)
+  for (const [k, x] of Object.entries(v)) if (/^[a-z][\w-]{0,31}$/i.test(k) && typeof x === "string" && x) out[k] = x.replace(/[\r\n]+/g, " ").slice(0, 500)
   return out
 }
 
@@ -76,9 +67,17 @@ function reap(pgid: number) {
 function hangup(p: IPty, signal = "SIGHUP") { try { if (WIN) p.kill(); else p.kill(signal) } catch { /* ended */ } }
 
 /** On a Mac, usually all of them are taken (kern.tty.ptmx_max, 511). */
-const noPty = (e: unknown) => /posix_openpt|openpty|forkpty/.test(String((e as Error)?.message ?? e))
+const sized = (cols = 0, rows = 0) => ({ cols: Math.max(2, Math.min(1000, Math.trunc(cols) || 80)), rows: Math.max(1, Math.min(500, Math.trunc(rows) || 24)) })
+const why = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const noPty = (e: unknown) => /posix_openpt|openpty|forkpty/.test(why(e))
 
-const lineCount = (v: unknown, max: number) => (v === "all" || v === null ? null : Math.max(1, Math.min(max, Math.trunc(Number(v)) || 0)))
+const lineCount = (v: number | "all", max: number) => (v === "all" ? null : Math.max(1, Math.min(max, Math.trunc(v) || 0)))
+
+const Envelope = z.object({ op: z.string().optional().catch(undefined), re: z.number().optional().catch(undefined) })
+function refused(op: string | undefined, e: z.ZodError) {
+  if (!op || !Request.options.some((r) => r.shape.op.value === op)) return new Error(`unknown op '${op ?? ""}'`)
+  return new Error(`a ${op} request this server can't read: ${e.issues.map((i) => `${i.path.join(".") || "it"} ${i.message}`).join("; ")}`)
+}
 
 type Around = { emit(ev: Event): number; sessions: Map<string, Session>; keepEnded(s: Session, told: boolean): void; log(...a: unknown[]): void; changed?(): void
   trouble?(id: string, text: string): void }
@@ -182,12 +181,12 @@ export class Session {
     return this.term.capture(format, lines)
   }
 
-  snapshot(c: Conn, re: unknown) {
+  snapshot(c: Conn, re: number | undefined) {
     this.flush()
     c.held ??= { data: [], bytes: 0, snapshots: 0 }
     c.held.snapshots++
     const done = (data: string) => {
-      c.send({ re, data })
+      if (re !== undefined) c.send({ re, data })
       const h = c.held
       if (h && --h.snapshots <= 0) { c.held = undefined; for (const d of h.data) c.send({ t: "data", d }) }
       this.hold()
@@ -240,27 +239,26 @@ export function host(o: HostOptions) {
 
   function outOfPtys(id: string, e: unknown) {
     o.log("create", id, `failed: no pseudo-terminal left (this server holds ${sessions.size} terminals)`, e)
-    return new Error(`the machine has no pseudo-terminal left (the terminal server holds ${sessions.size}): end some terminals or tmux sessions (${(e as Error).message})`)
+    return new Error(`the machine has no pseudo-terminal left (the terminal server holds ${sessions.size}): end some terminals or tmux sessions (${why(e)})`)
   }
 
-  function create(m: Record<string, unknown>) {
-    const id = String(m.id ?? "")
-    if (!id) throw new Error("no id")
+  function create(m: Extract<Request, { op: "create" }>) {
+    const id = m.id
     if (sessions.has(id)) throw new Error(`there's already a terminal '${id}'`)
-    const cols = Number(m.cols) || 80, rows = Number(m.rows) || 24, cwd = String(m.cwd || os.homedir())
-    const spawn = () => pty.spawn(String(m.file), (m.args as string[] | string) ?? [], { name: "xterm-256color", cols, rows, cwd, env: (m.env as Record<string, string>) ?? {} })
+    const { cols, rows } = sized(m.cols, m.rows), cwd = m.cwd || os.homedir()
+    const spawn = () => pty.spawn(m.file, m.args, { name: "xterm-256color", cols, rows, cwd, env: m.env })
     let p: IPty
     try { p = spawn() } catch (e) {
       if (o.stale?.()) {
         o.log("create", id, "failed: this server's files are gone", e)
-        if (o.retire?.()) throw new Error(`RETIRING: this terminal server's files are gone (${o.file}): ask the next one`)
-        throw new Error(`this terminal server's files are gone (${o.file}), and it still holds terminals: ${(e as Error).message}`)
+        if (o.retire?.()) throw new Failure(`this terminal server's files are gone (${o.file}): ask the next one`, "retiring")
+        throw new Error(`this terminal server's files are gone (${o.file}), and it still holds terminals: ${why(e)}`)
       }
       if (noPty(e)) throw outOfPtys(id, e)
       fixHelper()
       try { p = spawn() } catch (e2) { throw noPty(e2) ? outOfPtys(id, e2) : e2 }
     }
-    const shell = String(m.shell || path.basename(String(m.file)))
+    const shell = m.shell || path.basename(m.file)
     const driver: Driver = {
       pid: p.pid,
       write: (d) => { try { p.write(d) } catch { /* ended */ } },
@@ -271,8 +269,8 @@ export function host(o: HostOptions) {
       // node-pty names it by its path on Linux (/proc), by its name on a Mac, and can't tell on Windows.
       process: () => (WIN ? shell : path.basename(p.process)),
     }
-    const s = new Session(around, { id, driver, shell, cwd, command: String(m.command ?? "").slice(0, 500), cols, rows, scrollback: Number(m.scrollback) || SCROLLBACK,
-      spare: !!m.spare, meta: metaOf(m.meta) })
+    const s = new Session(around, { id, driver, shell, cwd, command: (m.command ?? "").slice(0, 500), cols, rows, scrollback: m.scrollback || SCROLLBACK,
+      spare: m.spare, meta: metaOf(m.meta) })
     // Claude Code takes a primary DA answer before the probe's as "OSC 7501 isn't spoken here", and the screen or a
     // page answers DA later: the probe is answered as it's read.
     const st = watcher(() => {
@@ -296,14 +294,19 @@ export function host(o: HostOptions) {
 
   const adopt = adopter({ around, sessions, dropStatus })
 
-  function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | null | undefined {
-    const live = (id: unknown) => {
-      const s = sessions.get(String(id ?? ""))
+  function handle(c: Conn, m: Request): Answer<Op> | null | undefined {
+    const live = (id: string) => {
+      const s = sessions.get(id)
       if (!s) throw new Error(`there's no terminal '${id}'`)
       return s
     }
+    const later = <O extends Op>(work: Promise<Answer<O>>) => {
+      const re = m.re
+      work.then((a) => { if (re !== undefined) c.send({ re, ...a }) }, (e: unknown) => { if (re !== undefined) c.send({ re, error: why(e) }) })
+      return null
+    }
     switch (m.op) {
-      case "hello": return { v: PROTOCOL, pid: o.pid, file: o.file, stale: !!o.stale?.(), pictures: true } satisfies Answer<"hello">
+      case "hello": return { v: PROTOCOL, pid: o.pid, file: o.file, stale: !!o.stale?.(), pictures: true }
       case "subscribe": {
         c.events = true
         for (const e of endedOnes.values()) if (!e.told && e.info.exit) { e.told = true; c.send({ t: "event", type: "exited", id: e.info.id, exit: e.info.exit }) }
@@ -312,51 +315,47 @@ export function host(o: HostOptions) {
       case "status-drop": { dropStatus.get(live(m.id))?.(); return {} }
       // macOS grants folder access per app that started the process, and its prompt blocks the call meanwhile.
       case "access":
-        fs.promises.readdir(String(m.path)).then(() => c.send({ re: m.re, ok: true }), (e: NodeJS.ErrnoException) => c.send({ re: m.re, ok: false, code: e.code ?? "" }))
-        return null
-      case "create": return { info: create(m).info() } satisfies Answer<"create">
+        return later<"access">(fs.promises.readdir(m.path).then(() => ({ ok: true }), (e: NodeJS.ErrnoException) => ({ ok: false, code: e.code ?? "" })))
+      case "create": return { info: create(m).info() }
       case "rename": {
-        const s = live(m.id), to = String(m.to ?? "")
+        const s = live(m.id), to = m.to
         if (!to || sessions.has(to)) throw new Error(`can't rename to '${to}'`)
         const was = s.id, spare = s.spare
         sessions.delete(s.id); s.id = to; s.spare = false; sessions.set(to, s)
         s.meta = { ...s.meta, ...metaOf(m.meta) }
-        if (typeof m.command === "string") s.command = m.command.slice(0, 500)
+        if (m.command !== undefined) s.command = m.command.slice(0, 500)
         emit(spare ? { type: "started", id: to, info: s.info() } : { type: "renamed", id: was, to })
         return { info: s.info() }
       }
       case "set": {
-        const s = live(m.id), patch = (m.meta && typeof m.meta === "object" ? m.meta : {}) as Record<string, unknown>
-        const next = { ...s.meta }
-        for (const [k, v] of Object.entries(patch)) if (v === null || v === "") delete next[k]
-        Object.assign(next, metaOf(patch))
+        const s = live(m.id), next = { ...s.meta }
+        for (const [k, v] of Object.entries(m.meta)) if (v === null || v === "") delete next[k]
+        Object.assign(next, metaOf(m.meta))
         if (JSON.stringify(next) !== JSON.stringify(s.meta)) { s.meta = next; emit({ type: "meta", id: s.id, meta: next }) }
         return { info: s.info() }
       }
-      case "kill": { live(m.id).driver.kill(typeof m.signal === "string" ? m.signal : undefined); return {} }
+      case "kill": { live(m.id).driver.kill(m.signal); return {} }
       case "list": trimEnded(); return {
         sessions: [...sessions.values()].map((s) => s.info()),
         ...(m.ended ? { ended: [...endedOnes.values()].map((e) => e.info) } : {}),
-      } satisfies Answer<"list">
+      }
       case "get": {
-        const id = String(m.id ?? ""), s = sessions.get(id), e = endedOnes.get(id)
-        if (!s && !e) throw new Error(`there's no terminal '${id}'`)
-        return { info: s ? s.info() : e!.info } satisfies Answer<"get">
+        const s = sessions.get(m.id), info = s ? s.info() : endedOnes.get(m.id)?.info
+        if (!info) throw new Error(`there's no terminal '${m.id}'`)
+        return { info }
       }
       case "capture": {
-        const id = String(m.id ?? ""), format: CaptureFormat = m.format === "vt" || m.format === "html" ? m.format : "text"
-        const e = endedOnes.get(id), s = sessions.get(id) ?? e?.session
+        const { id, format } = m, e = endedOnes.get(id), s = sessions.get(id) ?? e?.session
         if (!s) {
           if (!e) throw new Error(`there's no terminal '${id}'`)
           if (format !== "text") throw new Error(`terminal '${id}' ended a while ago: only its last lines are kept, as text`)
           const n = lineCount(m.lines ?? e.info.rows, 200)
-          return { text: n === null ? e.text : e.text.split("\n").slice(-n).join("\n"), cols: e.info.cols, rows: e.info.rows, cursor: { x: 0, y: 0 }, alternate: false, ended: true } satisfies Answer<"capture">
+          return { text: n === null ? e.text : e.text.split("\n").slice(-n).join("\n"), cols: e.info.cols, rows: e.info.rows, cursor: { x: 0, y: 0 }, alternate: false, ended: true }
         }
         const n = lineCount(m.lines ?? s.term.rows, s.term.scrollback + s.term.rows)
-        s.capture(format, n).then((r) => c.send({ re: m.re, ...r, ...(s.exit ? { ended: true } : {}) }), (e: Error) => c.send({ re: m.re, error: `its screen couldn't be read: ${e.message}` }))
-        return null
+        return later<"capture">(s.capture(format, n).then((r) => (s.exit ? { ...r, ended: true } : r), (e: Error) => { throw new Error(`its screen couldn't be read: ${e.message}`) }))
       }
-      case "forget": endedOnes.delete(String(m.id ?? "")); return {}
+      case "forget": endedOnes.delete(m.id); return {}
       case "attach": {
         const s = live(m.id)
         if (c.session) { c.session.attached.delete(c); emit({ type: "clients", id: c.session.id, clients: c.session.attached.size }) }
@@ -364,7 +363,7 @@ export function host(o: HostOptions) {
         s.attached.add(c)
         emit({ type: "clients", id: s.id, clients: s.attached.size })
         c.ready = true
-        return { cols: s.term.cols, rows: s.term.rows } satisfies Answer<"attach">
+        return { cols: s.term.cols, rows: s.term.rows }
       }
       case "snapshot": {
         const s = c.session
@@ -376,21 +375,21 @@ export function host(o: HostOptions) {
         const s = m.id !== undefined ? live(m.id) : c.session
         if (!s) return undefined
         s.activity = Date.now(); s.typed = performance.now()
-        const text = Buffer.from(String(m.b64 ?? ""), "base64")
+        const text = Buffer.from(m.b64, "base64")
         s.driver.write(m.paste && s.term.mode(2004) ? `\x1b[200~${text.toString("utf8")}\x1b[201~` : text)
         return m.re !== undefined ? {} : undefined
       }
       case "keys": {
         const s = live(m.id)
         s.activity = Date.now(); s.typed = performance.now()
-        s.driver.write(keysBytes(Array.isArray(m.keys) ? m.keys.map(String) : [], { appCursor: s.term.mode(1) }))
+        s.driver.write(keysBytes(m.keys, { appCursor: s.term.mode(1) }))
         return {}
       }
       case "resize": {
         const s = c.session
         if (!s) return undefined
-        const cols = Math.max(2, Math.min(1000, Number(m.cols) || 80)), rows = Math.max(1, Math.min(500, Number(m.rows) || 24))
-        const px = (v: unknown, d: number) => Math.max(1, Math.min(200, Math.round(Number(v)) || d))
+        const { cols, rows } = sized(m.cols, m.rows)
+        const px = (v: number | undefined, d: number) => Math.max(1, Math.min(200, Math.round(v ?? d) || d))
         const cw = px(m.cw, s.cell.width), ch = px(m.ch, s.cell.height)
         if (cw !== s.cell.width || ch !== s.cell.height) { s.cell = { width: cw, height: ch }; s.term.resize(s.term.cols, s.term.rows, cw, ch) }
         if (cols === s.term.cols && rows === s.term.rows) return undefined
@@ -401,22 +400,29 @@ export function host(o: HostOptions) {
         return undefined
       }
       case "adopt":
-        adopt(String(m.socket ?? ""), Number(m.scrollback) || SCROLLBACK).then((ids) => c.send({ re: m.re, adopted: ids }), (e) => c.send({ re: m.re, error: (e as Error).message }))
-        return null
-      default: throw new Error(`unknown op '${m.op}'`)
+        return later<"adopt">(adopt(m.socket, m.scrollback || SCROLLBACK).then((adopted) => ({ adopted })))
     }
   }
 
   function connect(c: Conn) {
     conns.add(c)
+    const fail = (re: number | undefined, e: unknown) => {
+      if (re === undefined) return
+      const failed: Extract<Reply, { error: string }> = { re, error: why(e) }
+      if (e instanceof Failure && e.code) failed.code = e.code
+      c.send(failed)
+    }
     return {
-      take(m: Record<string, unknown>) {
-        try {
-          const out = handle(c, m)
-          if (m.re !== undefined && out) c.send({ re: m.re, ...out })
-        } catch (e) {
-          if (m.re !== undefined) c.send({ re: m.re, error: (e as Error).message })
+      take(raw: unknown) {
+        const m = Request.safeParse(raw)
+        if (!m.success) {
+          const head = Envelope.safeParse(raw).data
+          return fail(head?.re, refused(head?.op, m.error))
         }
+        try {
+          const out = handle(c, m.data)
+          if (m.data.re !== undefined && out) c.send({ re: m.data.re, ...out })
+        } catch (e) { fail(m.data.re, e) }
       },
       drained() { c.session?.hold() },
       gone() {

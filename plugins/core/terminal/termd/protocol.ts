@@ -1,3 +1,4 @@
+import { z } from "zod"
 import type { Said } from "../osc7501.ts"
 
 /** 1 ptyd.ts, the keeper before; 2 termd with xterm.js; 3 before pictures; 4 screens on its loop (one stuck froze all). */
@@ -25,38 +26,76 @@ export type Event =
   /** `id` "": the server's own. */
   | { type: "trouble"; id: string; text: string }
 
-export type CaptureFormat = "text" | "vt" | "html"
+const CaptureFormat = z.enum(["text", "vt", "html"])
+export type CaptureFormat = z.infer<typeof CaptureFormat>
 export type Capture = { text: string; cols: number; rows: number; cursor: { x: number; y: number }; alternate: boolean
   /** The cursor's line (an agent's input): `suggested` is what's dim or grey (a suggested reply). */
   input?: { line: string; typed: string; suggested: string } }
 
-export type Create = { id: string; file: string; args: string[] | string; cwd: string; env: Record<string, string>; shell: string; cols: number; rows: number
-  scrollback: number; spare: boolean; command?: string; meta?: Record<string, string> }
+const Meta = z.record(z.string(), z.string())
+const Id = z.string().min(1)
 
-/** Each request's fields and its answer: {re, ...answer}, or {re, error}. */
-export type Requests = {
-  hello: [{}, { v: number; pid: number; file: string; stale: boolean; pictures?: boolean }]
-  subscribe: [{}, {}]
-  "status-drop": [{ id: string }, {}]
-  access: [{ path: string }, { ok: boolean; code?: string }]
-  create: [Create, { info: Info }]
-  rename: [{ id: string; to: string; command?: string; meta?: Record<string, string> }, { info: Info }]
-  set: [{ id: string; meta: Record<string, string | null> }, { info: Info }]
-  kill: [{ id: string; signal?: string }, {}]
-  list: [{ ended?: boolean }, { sessions: Info[]; ended?: Info[] }]
-  get: [{ id: string }, { info: Info }]
-  capture: [{ id: string; format: CaptureFormat; lines?: number | "all" }, Capture & { ended?: boolean }]
-  forget: [{ id: string }, {}]
-  attach: [{ id: string }, { cols: number; rows: number }]
-  snapshot: [{}, { data: string }]
-  input: [{ id?: string; b64: string; paste?: boolean }, {}]
-  keys: [{ id: string; keys: string[] }, {}]
-  resize: [{ cols: number; rows: number; cw?: number; ch?: number }, never]
-  adopt: [{ socket: string; scrollback: number }, { adopted: string[] }]
+const request = <O extends string, F extends Record<string, z.ZodType>>(op: O, fields: F) => z.object({ op: z.literal(op), re: z.number().optional(), ...fields })
+
+export const Request = z.discriminatedUnion("op", [
+  request("hello", {}),
+  request("subscribe", {}),
+  request("status-drop", { id: Id }),
+  request("access", { path: z.string() }),
+  request("create", { id: Id, file: z.string(), args: z.union([z.array(z.string()), z.string()]).default([]), cwd: z.string().default(""),
+    env: z.record(z.string(), z.string()).default({}), shell: z.string().default(""), cols: z.number().optional(), rows: z.number().optional(),
+    scrollback: z.number().optional(), spare: z.boolean().default(false), command: z.string().optional(), meta: Meta.optional() }),
+  request("rename", { id: Id, to: z.string(), command: z.string().optional(), meta: Meta.optional() }),
+  request("set", { id: Id, meta: z.record(z.string(), z.string().nullable()) }),
+  request("kill", { id: Id, signal: z.string().optional() }),
+  request("list", { ended: z.boolean().optional() }),
+  request("get", { id: Id }),
+  request("capture", { id: Id, format: CaptureFormat.default("text"), lines: z.union([z.number(), z.literal("all")]).optional() }),
+  request("forget", { id: Id }),
+  request("attach", { id: Id }),
+  request("snapshot", {}),
+  request("input", { id: Id.optional(), b64: z.string(), paste: z.boolean().optional() }),
+  request("keys", { id: Id, keys: z.array(z.string()) }),
+  request("resize", { cols: z.number(), rows: z.number(), cw: z.number().optional(), ch: z.number().optional() }),
+  request("adopt", { socket: z.string(), scrollback: z.number() }),
+])
+export type Request = z.output<typeof Request>
+export type Op = Request["op"]
+export type Params<O extends Op> = Omit<Extract<z.input<typeof Request>, { op: O }>, "op" | "re">
+
+type Answers = {
+  hello: { v: number; pid: number; file: string; stale: boolean; pictures?: boolean }
+  subscribe: {}
+  "status-drop": {}
+  access: { ok: boolean; code?: string }
+  create: { info: Info }
+  rename: { info: Info }
+  set: { info: Info }
+  kill: {}
+  list: { sessions: Info[]; ended?: Info[] }
+  get: { info: Info }
+  capture: Capture & { ended?: boolean }
+  forget: {}
+  attach: { cols: number; rows: number }
+  snapshot: { data: string }
+  input: {}
+  keys: {}
+  resize: never
+  adopt: { adopted: string[] }
 }
-export type Op = keyof Requests
-export type Params<O extends Op> = Requests[O][0]
-export type Answer<O extends Op> = Requests[O][1]
+export type Answer<O extends Op> = Answers[O]
+
+/** `retiring`: this server's files are gone and it's ending, so the next one should be asked. */
+export type FailureCode = "retiring"
+export class Failure extends Error {
+  code?: FailureCode
+  constructor(message: string, code?: FailureCode) {
+    super(message)
+    this.code = code
+  }
+}
+
+export type Reply = { re: number } & (Answers[Op] | { error: string; code?: FailureCode })
 
 export type Unasked =
   | { t: "data"; d: string }

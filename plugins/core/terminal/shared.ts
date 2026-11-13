@@ -8,9 +8,6 @@ export const plugin = new Plugin(import.meta.url)
 export const scrollback = () => clamp(plugin.settings().scrollback, 100, 1_000_000, 10_000)
 limits.scrollback = scrollback
 export const WIN = process.platform === "win32"
-export const EXITED = 4000
-export const GONE = 4004
-export const REFUSED = 4003
 export const BLOCKED = JSON.stringify({ t: "blocked" })
 
 export type Session = {
