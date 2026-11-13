@@ -1,8 +1,5 @@
-// A dashboard edited as it's read (Dashboards' editGrid): editing keeps the reading width, title and two columns; text
-// between blocks is typed in place; a block's </> edits its options in its card; a card dragged moves its fence; Add a
-// block puts one in; remove and Full width write the file; source mode is its Markdown and back. Then on a phone: one
-// column, the bars showing, text typed and a card moved with a held finger. The file on disk is checked after each
-// step. A dashboard with nothing side by side reads at a note's width. WRITES to the vault: throwaway server only.
+// A dashboard edited as it's read: text typed in place, a block's options, drags, Add a block, remove, source mode, a phone.
+// WRITES the dashboard: throwaway server.
 //   node web/qa/dashboardedit.mjs <base url> [out dir]
 import { SHOTS, fingers, palette as run, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
@@ -13,14 +10,12 @@ const FM = "---\ntype: dashboard\n---\n\n"
 const START = `${FM}A line about the page.\n\n\`\`\`block-agenda\n\`\`\`\n\n\`\`\`block-week-goals\n\`\`\`\n\n\`\`\`block-people-wants\nstack: true\n\`\`\`\n\n## Notes\n\n| Thing | Value |\n| --- | --- |\n| One | 1 |\n\n\`\`\`block-inbox\n\`\`\`\n`
 const disk = async () => (await (await fetch(`${B}api/file?path=${enc(PAGE)}`)).json()).text
 const write = (text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: PAGE, text }) })
-/** The file once it's what `want` says (a string, or a test of the text), within a few seconds. */
 const saved = async (want) => (await until(async () => { const t = await disk(); return (typeof want === "string" ? t === want : want(t)) ? t : null }, 6000)) ?? await disk()
 const fences = (t) => [...t.matchAll(/```block-([\w-]+)/g)].map((m) => m[1]).join(",")
 
 await fetch(`${B}api/file?path=${enc(PAGE)}`, { method: "DELETE" })
 await fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: PAGE, text: START }) })
 
-// (tall enough for the whole page: a card is dragged from its end to its start)
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 1500 }, deviceScaleFactor: 1 })
 const page = watch(await ctx.newPage()), ui = app(page)
 const palette = async (pg, u, name) => { await run(pg, name, 0); await u.idle() }
@@ -43,7 +38,6 @@ check("a stacked block goes under the one before", Math.abs(bk.x - w.x) < 2 && b
 check("the text between blocks is the editor's", (await page.locator(".cm-content > .cm-line", { hasText: "A line about the page." }).count()) === 1)
 await page.screenshot({ path: `${OUT}dashboardedit-desktop.png` })
 
-// Text in its row, typed as in a note: saved, the cursor kept through the save and the file read again.
 await page.locator(".cm-content > .cm-line", { hasText: "A line about the page." }).click()
 await page.keyboard.press("End"); await page.keyboard.type(" More.")
 let t = await saved((x) => x.includes("A line about the page. More."))
@@ -55,7 +49,6 @@ check("typing goes on where it was after the save", t === START.replace("the pag
 check("the keyboard is still in the text", await page.evaluate(() => !!document.activeElement?.closest(".cm-content")))
 const base = t
 
-// A block's </>: its options in its card, written into its fence; the editor's undo takes it back.
 await card("week-goals").hover(); await card("week-goals").getByRole("button", { name: "Edit source" }).click(); await ui.idle()
 const field = card("week-goals").locator(".cm-card-source textarea")
 check("</> opens its source in its card", await field.isVisible() && await field.evaluate((e) => e === document.activeElement))
@@ -69,7 +62,6 @@ check("⌘Z in it is the file's undo", t === base, t)
 await card("week-goals").getByRole("button", { name: "Done" }).click(); await ui.idle()
 check("Done closes it", !(await field.count()))
 
-// Dragged by its grip: inbox before agenda (a stacked block goes along with the one it's under).
 await card("inbox").hover()
 const grip = await card("inbox").getByRole("button", { name: "Move", exact: true }).boundingBox()
 const target = await box('[data-cell] [data-card="agenda"]')
@@ -81,7 +73,6 @@ t = await saved((x) => fences(x).startsWith("inbox"))
 check(`a card dragged moves its fence (${fences(t)})`, fences(t) === "inbox,agenda,week-goals,people-wants" && t.replace(/\s+/g, "") === base.replace("```block-inbox\n```\n", "").replace("```block-agenda", "```block-inbox\n```\n\n```block-agenda").replace(/\s+/g, ""), t)
 await page.mouse.move(10, 10)
 const moved = t
-// …and back after week-goals' cell: people-wants (stacked under it) stays with it.
 const grip2 = await card("inbox").getByRole("button", { name: "Move", exact: true }).boundingBox().catch(() => null)
 await card("inbox").hover()
 const g = await card("inbox").getByRole("button", { name: "Move", exact: true }).boundingBox(), wk = await box('[data-card="week-goals"]')
@@ -92,7 +83,6 @@ t = await saved((x) => fences(x).startsWith("agenda"))
 check(`dropped beside a cell, it goes after the blocks stacked in it (${fences(t)})`, !!grip2 && fences(t) === "agenda,week-goals,people-wants,inbox" && t !== moved, t)
 await page.mouse.move(10, 10)
 
-// Add a block: picked from the list, its fence goes after the run.
 const before = await disk()
 await page.locator("[data-add-block]").first().click(); await ui.idle()
 await page.keyboard.type("errors"); await ui.idle()
@@ -101,7 +91,6 @@ await page.keyboard.press("Enter")
 t = await saved((x) => x.includes("```block-errors"))
 check(`the block picked is put after the run (${fences(t)})`, t === before.replace("```block-inbox\n```", "```block-inbox\n```\n\n```block-errors\n```"), t)
 
-// Remove, and its Undo; Full width.
 await card("errors").hover(); await card("errors").getByRole("button", { name: "Remove" }).click()
 t = await saved((x) => !x.includes("block-errors"))
 check("Remove takes its fence out", t === before, t)
@@ -115,8 +104,6 @@ await ui.idle()
 const wa = await box('[data-card="agenda"]'), ww = await box('[data-card="week-goals"]')
 check("…and it takes the row", wa.width > ww.width * 1.6 && ww.y > wa.y + 20)
 
-// A fence a plugin draws (its body the plugin's own, a chart's JSON): Full width and Under the one before go in its info
-// line, its body untouched.
 const CHART = '{"type": "bar", "data": [{"week": "W1", "pages": 120}, {"week": "W2", "pages": 80}]}'
 const withChart = (await disk()).replace("```block-inbox\n```", `\`\`\`block-inbox\n\`\`\`\n\n\`\`\`chart\n${CHART}\n\`\`\``)
 await ui.sees(PAGE, () => write(withChart))
@@ -136,7 +123,6 @@ check("Stacked, then not wide: ```chart stack, its body as it was", t === withCh
 await chart.hover(); await chart.getByRole("button", { name: "Remove" }).click()
 t = await saved((x) => !x.includes("```chart"))
 
-// Source mode is the file's Markdown; back to the grid.
 const was = await disk()
 await palette(page, ui, "Switch to source mode")
 check("source mode shows the fences as text, no grid", !(await page.locator(".cm-grid [data-card]").count()) && await page.locator(".cm-line", { hasText: "```block-agenda" }).count() > 0)
@@ -146,8 +132,6 @@ check("back to the grid", await page.locator(".cm-grid [data-card]").count() >= 
 check("switching views changed nothing on disk", (await disk()) === was)
 await ctx.close()
 
-// Nothing side by side (one block between text): read and edited at a note's width, centred, the card as wide as the
-// text; a callout after a table keeps its gap.
 await write(`${FM}A line about the page.\n\n\`\`\`block-agenda\n\`\`\`\n\n## Notes\n\n| Thing | Value |\n| --- | --- |\n| One | 1 |\n\n> [!note] After the table\n\nA last line.\n`)
 const lone = await browser.newContext({ viewport: { width: 1600, height: 1200 }, deviceScaleFactor: 1 })
 const lp = watch(await lone.newPage(), { label: "lone" }), lui = app(lp)
@@ -167,7 +151,6 @@ const le = await lbox(".file-view"), lec = await lbox('[data-card="agenda"]')
 check(`lone block: editing keeps the width and the card's (${Math.round(le.width)}, ${Math.round(lec.width)} / ${Math.round(lc.width)})`, Math.abs(le.width - lv.width) < 2 && Math.abs(lec.width - lc.width) < 40)
 await lone.close()
 
-// A phone: one column, bars showing at a finger's size, text typed, a card moved with a held finger.
 await write(START)
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const pp = watch(await phone.newPage(), { label: "phone" }), pui = app(pp)
@@ -184,7 +167,6 @@ await pp.locator(".cm-content > .cm-line", { hasText: "A line about the page." }
 await pp.keyboard.press("End"); await pp.keyboard.type(" Phone.")
 t = await saved((x) => x.includes("Phone."))
 check("phone: text typed in its row is saved", t === START.replace("the page.", "the page. Phone."), t)
-// (people-wants, stacked under week-goals, held by its grip and dragged onto agenda's upper half: its own cell before it)
 const { touch } = await fingers(pp)
 await pp.evaluate(() => document.querySelector('[data-card="week-goals"]')?.scrollIntoView({ block: "center" })); await pui.idle()
 const from = await pp.locator('[data-card="people-wants"] button[aria-label="Move"]').boundingBox(), to = await pp.locator('[data-cell] [data-card="agenda"]').boundingBox()

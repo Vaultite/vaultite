@@ -1,6 +1,7 @@
-// A .csv drawn as a table (plugins/core/tables): a cell edited in place rewrites only that field (its quotes and
-// separator kept), Enter and Tab go on, Escape cancels, Add row. WRITES "Qa csvtables/": throwaway only.
+// A .csv drawn as a table: a cell edited in place rewrites only that field; Enter, Tab, Escape, Add row.
+// WRITES "Qa csvtables/": throwaway server.
 //   node web/qa/csvtables.mjs <base url> [out dir]
+// Paths: plugins/core/tables
 import { SHOTS, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
@@ -29,7 +30,6 @@ check("a quoted field stays quoted; Tab goes to the next row's first cell", awai
   && await page.evaluate(() => document.activeElement?.value) === "Tide tables", await read(CSV))
 await page.keyboard.type("Nope"); await page.keyboard.press("Escape"); await ui.idle()
 check("Escape cancels", !(await read(CSV)).includes("Nope") && await view.locator("[data-csv-input]").count() === 0)
-// (after Enter, the next cell edited and left by a click elsewhere is saved too)
 await cell(1, 0).dblclick(); await ui.idle()
 await page.keyboard.type("Lighthouse keeper"); await page.keyboard.press("Enter"); await ui.idle()
 await page.keyboard.type("Tide charts"); await page.locator("h1, [data-pane]").first().click({ position: { x: 5, y: 5 } }); await ui.idle()
@@ -37,7 +37,6 @@ check("a cell left by a click after an Enter is saved", await saved(async () => 
 await view.locator("[data-csv-add-row]").click(); await ui.idle()
 await page.keyboard.type("Harbour lights"); await page.keyboard.press("Tab"); await page.keyboard.type("80"); await page.keyboard.press("Enter")
 check("Add row: a record at the end, edited from its first cell", await saved(async () => (await read(CSV)).endsWith("Tide charts;120;short\nHarbour lights;80;\n")), await read(CSV))
-// (one column: its new record is a blank line, shown and edited all the same)
 const ONE = "Qa csvtables/One.csv"
 await put(ONE, "name\nAlice Park\n")
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(ONE)}`)

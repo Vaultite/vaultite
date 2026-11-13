@@ -15,7 +15,6 @@ const AUDIO = path.join(TMP, "said.wav"), RAW = path.join(TMP, "said.aiff")
 execFileSync("say", ["-o", RAW, "Remember to call the plumber about the kitchen sink, and ask whether the part they ordered has come in yet, because the leak is getting worse and the landlord wants it fixed before the weekend."])
 execFileSync("afconvert", [RAW, AUDIO, "-f", "WAVE", "-d", "LEI16@16000", "-c", "1"])
 
-// ---------- its windows: a backdrop, so nothing else of the screen shows, and two fields, each saying its text to a file
 const SRC = path.join(TMP, "field.swift"), BIN = path.join(TMP, "Field.app", "Contents", "MacOS")
 fs.mkdirSync(BIN, { recursive: true })
 fs.writeFileSync(path.join(TMP, "Field.app", "Contents", "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.qa.field</string><key>CFBundleName</key><string>Field</string><key>CFBundleExecutable</key><string>Field</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`)
@@ -60,17 +59,14 @@ const pill = () => helper((h) => h.scene()?.pill ?? null)
 const words = () => until(async () => { await seen(); const p = await pill(); return p && !p.hint && (`${p.text} ${p.pending ?? ""}`).trim().split(" ").length >= 3 }, 30000, 50)
 const landed = () => until(async () => { const p = await pill(); return !p || p.hint }, 60000, 100)
 const hint = async () => { const p = await pill(); return p?.hint ? p.text : "" }
-/** The screen a few seconds, out of sight of no one: only its own windows show. */
 const SECS = 30
 const film = (name) => { if (!VIDEOS) return null; fs.mkdirSync(VIDEOS, { recursive: true }); const f = path.join(TMP, `${name}.mov`); const p = spawn("screencapture", ["-v", "-x", "-V", String(SECS), f], { stdio: "ignore" }); return { name, f, p, at: Date.now() } }
-/** Filmed till now: the recording runs its length, then only that much of it is kept. */
 const cut = async (v) => {
   if (!v) return
   const kept = (Date.now() - v.at) / 1000
   await new Promise((r) => (v.p.exitCode === null ? v.p.once("exit", r) : r()))
   if (fs.existsSync(v.f)) execFileSync("ffmpeg", ["-v", "error", "-y", "-i", v.f, "-t", kept.toFixed(1), "-an", "-vf", "scale=1280:-2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", path.join(VIDEOS, `${v.name}.mp4`)])
 }
-// (a scripted copy's windows are see-through, so no test shows; filmed, its overlay is what's shown)
 const seen = () => VIDEOS ? app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().endsWith("/screen.html")) w.setOpacity(1) }) : null
 
 try {
@@ -80,7 +76,6 @@ try {
   toFront(draft.p)
   await wait(500)
 
-  // ---------- begun in one app's field; moved to another's while talking: they land there
   let v = film("dictation-into-the-field-in-front")
   await wait(900)
   await tap()
@@ -93,7 +88,6 @@ try {
   await wait(2800)
   await cut(v)
 
-  // ---------- moved somewhere with no field: they go back where it began, that app left behind
   toFront(draft.p)
   await wait(500)
   v = film("dictation-back-where-it-began")
@@ -109,8 +103,6 @@ try {
   await wait(2800)
   await cut(v)
 
-  // ---------- begun in a note in Vaultite's own window, its words inline; another app, the same session in the box; stopped
-  // there, they land in that app's field
   mail.p.kill()
   const reply = await open("Reply", W - 620, 170, 560, 220)
   fs.writeFileSync(path.join(VAULT, "Trip.md"), "# Trip\n\nTo pack:\n")
@@ -121,7 +113,6 @@ try {
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: false })
   await app.evaluate(({ BaseWindow }, [x, y, w, h]) => {
     const b = BaseWindow.getAllWindows().find((o) => o.webContents && !o.webContents.getURL().includes("/screen.html"))
-    // (a scripted copy's window is see-through and never focused: this one is shown, for real)
     delete b.focus; delete b.show
     b.setOpacity(1); b.setIgnoreMouseEvents(false); b.setBounds({ x, y, width: w, height: h }); b.show(); b.focus(); b.webContents.focus()
   }, [20, 90, 560, 520])
@@ -146,7 +137,6 @@ try {
   await cut(v)
   await app.evaluate(({ BaseWindow }) => { const b = BaseWindow.getAllWindows().find((o) => o.webContents && !o.webContents.getURL().includes("/screen.html")); b.setOpacity(0); b.setIgnoreMouseEvents(true) })
 
-  // ---------- that field gone too: the inbox
   toFront(draft.p)
   await wait(500)
   const inbox = () => { const d = path.join(VAULT, "Inbox"); return fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.endsWith(".md")).length : 0 }, was = inbox()
@@ -159,7 +149,7 @@ try {
 } finally {
   for (const p of windows) p.kill()
   await app.close().catch(() => {})
-  try { osa(`tell application "${frontWas}" to activate`) } catch { /* it closed */ }
+  try { osa(`tell application "${frontWas}" to activate`) } catch {}
   fs.rmSync(TMP, { recursive: true, force: true })
 }
 await done()

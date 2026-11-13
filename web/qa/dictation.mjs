@@ -1,6 +1,7 @@
-// Dictation in the desktop app (a Mac's), end to end through the helper: speech from a file (`say -o`, never played)
-// stands in for the microphone; soniox: a stand-in Soniox (plugins/core/dictation/plugin.ts, electron/dictation.ts) hears it.
-// WRITES: throwaway vault only.   node web/qa/dictation.mjs <vault copy> [apple|parakeet|soniox]
+// Dictation in a Mac's desktop app end to end through the helper, speech from `say -o` (never played) as the microphone.
+// soniox: a stand-in Soniox hears it. WRITES only the throwaway vault.
+//   node web/qa/dictation.mjs <vault copy> [apple|parakeet|soniox]
+// Paths: plugins/core/dictation/plugin.ts, electron/dictation.ts
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -20,9 +21,7 @@ const LOCAL = path.join(TMP, "local")
 const cloud = ENGINE === "soniox" ? await standInSoniox() : null
 fs.writeFileSync(path.join(VAULT, "Dictated.md"), "# Dictated\n\nShopping:")
 fs.writeFileSync(path.join(VAULT, "Vim.md"), "# Vim\n\nList:")
-// (the dictionary: a word every recognizer expects, and what's written for what's said)
 fs.writeFileSync(path.join(VAULT, "Dictionary.md"), "---\ntype: dictionary\n---\n\n- Vorssaint\n- bread: brioche\n")
-// (Vim's keys on: ⌘J in normal mode dictates as in insert mode)
 const plugins = path.join(VAULT, ".vaultite", "plugins.json")
 const conf = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { disabled: [], enabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...conf, enabled: [...new Set([...(conf.enabled ?? []), "vim"])] }))
@@ -39,11 +38,9 @@ if (!cloud && !engines?.[ENGINE]) { await app.close(); await skip(`${ENGINE} doe
 await win.evaluate(() => { window.ends = []; window.vaultite.dictation.on((e) => { if (e.type === "end") window.ends.push(e) }) })
 const text = () => win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 const pending = () => win.evaluate(() => document.querySelector(".cm-dictation-pending")?.textContent ?? "")
-// (not the hint the pill's place shows when there's nowhere to dictate)
 const listening = () => win.evaluate(() => !!document.querySelector(".dictation-pill:not([data-hint])"))
 const normal = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim()
 
-// ---------- a tap: listens until the file ends (as if the user tapped again), the words dimmed, then in the note
 await win.evaluate(() => { location.hash = `#file/${encodeURIComponent("Dictated.md")}` })
 await win.waitForSelector("[data-pane] .cm-content")
 await wait(800)
@@ -74,16 +71,13 @@ if (cloud) check("soniox: the key from this machine's config, the socket closed 
 if (cloud) check("soniox: told the dictionary's words first", cloud.seen[0]?.terms?.[0] === "Vorssaint" && cloud.seen[0].terms.includes("brioche") && cloud.seen[0].terms.includes("at Claude"), cloud.seen[0]?.terms)
 check("the dictionary's replacement: \"bread\" is written brioche", /milk and brioche/i.test(after), after)
 
-// ---------- undo takes the dictated words out
 await win.keyboard.press("Meta+Z")
 await wait(300)
 check("undo takes them out", !normal(await text()).includes("milk"), await text())
 await win.keyboard.press("Meta+Shift+Z")
 await wait(300)
 
-// ---------- a word fixed right after it was said: it's learned, with a toast to undo it
 const dictionary = () => fs.readFileSync(path.join(VAULT, "Dictionary.md"), "utf8")
-// (the word selected as a double click would, then typed over)
 await win.evaluate(() => {
   const walk = document.createTreeWalker(document.querySelector("[data-pane] .cm-content"), NodeFilter.SHOW_TEXT)
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
@@ -92,7 +86,6 @@ await win.evaluate(() => {
   }
 })
 await wait(200)
-// (Vim's keys are on in this vault: c changes what's selected)
 await win.keyboard.press("c")
 await win.keyboard.type("Milkweed")
 await win.keyboard.press("Escape")
@@ -103,8 +96,6 @@ if (process.env.VAULTITE_QA_SHOT) await win.screenshot({ path: process.env.VAULT
 await win.locator("[data-sonner-toast] button", { hasText: "Undo" }).click()
 check("Undo takes it out", await until(() => !dictionary().includes("Milkweed"), 3000), dictionary())
 
-
-// ---------- held: push to talk, over when the key is let go
 await win.keyboard.down("Meta")
 await win.keyboard.down("J")
 await wait(1200)
@@ -112,7 +103,6 @@ await win.keyboard.up("J")
 await win.keyboard.up("Meta")
 check("held, it stops when the key is let go", await until(async () => !(await listening()), 4000), await listening())
 
-// ---------- Vim's normal mode: the words go in all the same, at the cursor
 await win.evaluate(() => { location.hash = `#file/${encodeURIComponent("Vim.md")}` })
 await until(() => win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].some((l) => l.textContent === "List:")), 10000)
 await win.locator("[data-pane] .cm-line", { hasText: "List:" }).click()
@@ -125,7 +115,6 @@ await until(async () => !(await listening()), 30000, 100)
 const vim = await text()
 check("in Vim's normal mode (the block cursor on the line's end) the words go after it", /List: @claude,? remember to buy milk/i.test(vim), vim)
 
-// ---------- nothing focused: it says so and hears nothing (talking to the companion is its Talk keys')
 await win.evaluate(() => document.activeElement?.blur())
 await win.keyboard.press("Escape")
 await win.keyboard.press("Meta+J")
@@ -136,7 +125,6 @@ await app.close()
 cloud?.close()
 await done()
 
-/** Soniox stood in: the words said, growing as the audio comes (pending), all final at the first finalize. */
 async function standInSoniox() {
   const { WebSocketServer } = await import("ws")
   fs.mkdirSync(LOCAL, { recursive: true })

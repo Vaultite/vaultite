@@ -1,6 +1,5 @@
-// Decisions in the inbox: a report's questions as their own items (inbox.report --decision, inbox.ask), answered with a
-// tap, Accept all defaults, the report quiet under Reports today, a session's progress on its row; desktop and 390px.
-// Writes Inbox/ and .vaultite/sidebars.json (put back): throwaway server only.
+// Decisions in the inbox: a report's questions as items, answered with a tap or Accept all defaults; desktop and 390px.
+// WRITES Inbox/ and .vaultite/sidebars.json (put back): throwaway server.
 //   node web/qa/decisions.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
@@ -14,7 +13,6 @@ const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
 const api = apiAt(B)
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 const enc = (p) => encodeURIComponent(p)
-// (no terminal or session: an answer has no agent to go to, so nothing starts)
 const vau = (...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args],
   { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: "", CLAUDE_CODE_SESSION_ID: "" }, encoding: "utf8" })
 
@@ -49,7 +47,6 @@ check("page: each option says what it causes, under its button, and the why unde
 await page.locator("[data-inbox-view]").screenshot({ path: `${OUT}1-page.png` })
 await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}2-panel.png` })
 
-// A tap answers: the row leaves, the file keeps the answer.
 const ship = page.locator("[data-inbox-view] [data-decision]", { hasText: "phone layout" })
 await ship.getByRole("button", { name: "Ship it" }).click()
 check("answer: the row leaves at once", await until(async () => (await ship.count()) === 0, 3000))
@@ -57,14 +54,12 @@ check("answer: kept in its file, archived", await until(() => /answer: Ship it/.
   readdirSync(path.join(VAULT, "Inbox/.archive")))
 check("answer: a toast with Undo", await until(async () => (await page.locator("[data-sonner-toast]").allInnerTexts()).some((t) => t.includes("Ship it") && t.includes("Undo")), 4000))
 
-// Its report: TL;DR, its decisions with their buttons, the details folded.
 await page.goto(`${B}#file/${enc(`Inbox/.archive/${report}`)}`)
 const block = page.locator("[data-decisions-block]")
 check("report: its decisions drawn, one answered", await until(async () => (await block.locator("[data-decided]").count()) === 1 && (await block.locator("[data-decision]").count()) === 3, 10000),
   await block.innerText().catch(() => ""))
 await page.locator("[data-pane]").first().screenshot({ path: `${OUT}3-report.png` })
 
-// Accept all defaults: a blocking one asks first.
 await page.goto(`${B}#view/inbox`)
 await until(async () => (await rows.count()) === 3, 10000)
 await page.locator("[data-inbox-view] [data-accept-all]").click()
@@ -79,7 +74,6 @@ await reports.locator("button").first().click()
 check("reports today: its TL;DR", (await reports.innerText()).includes("The Lighthouse page has its new header"), await reports.innerText())
 await page.locator("[data-inbox-view]").screenshot({ path: `${OUT}5-page-after.png` })
 
-// The phone: 44px buttons, 17px questions.
 vau("inbox", "decide", `Inbox/.archive/${readdirSync(path.join(VAULT, "Inbox/.archive")).find((f) => f.startsWith("Release Beacon"))}`, "--undo")
 vau("inbox", "decide", "Inbox/.archive/Ship the new header to the phone layout too.md", "--undo")
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })

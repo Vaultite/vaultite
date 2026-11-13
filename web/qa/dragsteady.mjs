@@ -1,17 +1,13 @@
-// Dragging moves only what's dragged, with scrollbars that take room (Linux's, Windows', a Mac's set to Always; headless
-// Chrome hides them, this run shows them): no scrollbar comes or goes during a drag (core/drag.ts, core/slide.ts), so
-// Pinned's tiles keep their columns when a file dragged in overflows their panel (plugins/core/pages), the tab strip's
-// own scrollbar stays hidden with more tabs than fit (components/Tabs.tsx), and a move that changes no drop redraws
-// nothing (useDrag's picks, useDropHit); a sheet's scrollbar takes its padding (components/DetailSheet.tsx). WRITES pins
-// and Pinned's Show as: throwaway server only.
+// Dragging moves only what's dragged, with scrollbars that take room: none comes or goes, and nothing else redraws.
+// WRITES pins and Pinned's Show as: throwaway server.
 //   node web/qa/dragsteady.mjs <base url> [out dir]
+// Paths: core/drag.ts, core/slide.ts, plugins/core/pages, components/Tabs.tsx, components/DetailSheet.tsx
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/dragsteady-shots/"], browser, check, watch, done } = await qa(import.meta.url, { chrome: { ignoreDefaultArgs: ["--hide-scrollbars"] } })
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 
-// Each frame of a drag: every scroller's scrollbar room (its width or height), and the components React drew.
 const WATCH = () => {
   const W = window.__drag = { changes: [], moves: 0, rendered: 0 }
   const COMP = new Set([0, 1, 11, 14, 15])
@@ -51,7 +47,6 @@ const WATCH = () => {
 }
 const reset = () => page.evaluate(() => Object.assign(window.__drag, { changes: [], moves: 0, rendered: 0 }))
 const read = () => page.evaluate(() => window.__drag)
-/** Press at `from`, move to each point in turn (`steps` moves each), then Escape: nothing dropped. */
 async function drag(from, points, steps = 12) {
   await page.mouse.move(...from); await page.mouse.down()
   let at = from
@@ -60,7 +55,6 @@ async function drag(from, points, steps = 12) {
     at = p
   }
 }
-/** A note's row in the file tree that a press lands on (the tree follows the open note: its first may be scrolled off). */
 const treeRow = () => page.evaluate(() => {
   for (const r of document.querySelectorAll("[data-tree-path$='.md']")) {
     const b = r.getBoundingClientRect()
@@ -77,7 +71,6 @@ await api("PATCH", "config/plugin/pages", { show: "tiles" })
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } })
 await ctx.addInitScript(WATCH)
-// (a sidebar just wide enough for four tiles a row: a scrollbar's room would leave three)
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); localStorage.setItem("vaultite.prefs", JSON.stringify({ sidebarWidth: 215 })); sessionStorage.setItem("qa", "1") } })
 const page = watch(await ctx.newPage(), { console: true })
 try {
@@ -86,8 +79,6 @@ try {
   await until(async () => (await page.locator("[data-pin-tiles] [data-pin]").count()) === PINS.length, 5000)
   await wait(800)
 
-  // Pinned squeezed (a full sidebar gives it no more room than its tiles): a file from the tree dragged in makes its gap
-  // a third row, and the panel scrolls.
   const tiles = () => page.evaluate(() => {
     const nav = document.querySelector("[data-pin-tiles]"), box = nav.closest("[data-panel-scroll]"), grid = nav.firstElementChild
     return { cols: getComputedStyle(grid).gridTemplateColumns.split(" ").length, over: box.scrollHeight > box.clientHeight,
@@ -108,7 +99,6 @@ try {
   check("Pinned: its tiles keep their four columns (no scrollbar's room taken mid-drag)", mid.cols === 4 && mid.xs.every((x) => rest.xs.some((r) => Math.abs(r - x) < 0.6)), { rest: rest.xs, mid: mid.xs })
   check("Pinned: no scrollbar came or went while dragging", !during.changes.length, during.changes)
 
-  // More tabs than fit: the strip scrolls sideways with its scrollbar hidden, and stays so while a file is dragged along it.
   for (let i = 2; i <= 31; i++) {
     await page.click("[data-tab-bar] button[aria-label='New tab']")
     await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, `Daily/2026-10-${String(i).padStart(2, "0")}.md`)
@@ -124,7 +114,6 @@ try {
   await drag([file.x + 40, file.y + file.height / 2], [[bar.x + 120, bar.y + 20], [bar.x + bar.width - 60, bar.y + 20], [bar.x + bar.width / 2, bar.y + 300]], 15)
   const s1 = await strip(), along = await read()
   await page.screenshot({ path: `${OUT}strip.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
-  // A move that changes no drop (the pointer within a pane's middle) redraws nothing.
   await reset()
   for (let i = 1; i <= 20; i++) { await page.mouse.move(bar.x + bar.width / 2 + i * 3, bar.y + 300 + i * 2); await wait(16) }
   const still = await read()
@@ -134,8 +123,6 @@ try {
   check("a move that changes no drop redraws (almost) nothing", still.moves >= 15 && still.rendered / still.moves < 2, still)
   check("the drag ended with Escape", !(await page.evaluate(() => document.documentElement.hasAttribute("data-dragging"))))
 
-  // A sheet that scrolls (Customize sidebars, whose lists grow under a drag) keeps its content as wide as without a
-  // scrollbar: lined up with its X, the scrollbar in its padding.
   await page.evaluate(() => { location.hash = `${location.hash.replace(/^#/, "")}/sidebars` })
   await page.waitForSelector("[data-customize-sidebars] [data-row]", { timeout: 10000 }); await wait(500)
   const sheet = await page.evaluate(() => {

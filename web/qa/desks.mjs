@@ -1,6 +1,7 @@
-// Workspaces as desks (plugins/core/workspaces, core/scope.ts): each its own pins, tabs, folders, terminals, heights.
-// Runs shells and WRITES its data.json, sidebars.json, pages.json and plugins.json: throwaway server only.
+// Workspaces as desks: each its own pins, tabs, folders, terminals and panel heights.
+// Runs shells; WRITES workspaces' data.json, sidebars.json, pages.json and plugins.json: throwaway server.
 //   node web/qa/desks.mjs <base url> <vault path> [out dir]
+// Paths: plugins/core/workspaces, core/scope.ts
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -12,7 +13,6 @@ mkdirSync(OUT, { recursive: true })
 const file = (p) => path.join(VAULT, p)
 const json = (p) => { try { return JSON.parse(readFileSync(file(p), "utf8")) } catch { return null } }
 const data = () => workspaces(B)
-// The files it works with, its own (written at the start, removed at the end).
 const PAGE = "Qa page.md", TOP = "Qa top.md", JOURNAL = "Notes/Qa journal.md", CHECKLIST = "Notes/Qa checklist.md"
 const OWN = { [PAGE]: "# Qa page\n", [TOP]: "# Qa top\n", [JOURNAL]: "A note to open first.\n", [CHECKLIST]: "- [ ] A note to pin.\n" }
 const pagesBefore = readFileSync(file(".vaultite/pages.json"), "utf8")
@@ -40,16 +40,12 @@ const pins = () => page.$$eval("aside [data-pin]", (els) => els.map((e) => e.get
 
 try {
   clearWorkspaces(B)
-  // (Workspaces is off by default)
   const had = JSON.parse(pluginsBefore)
   writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...had, disabled: ["backlinks"], enabled: [...(had.enabled ?? []).filter((x) => x !== "workspaces"), "workspaces"] }, null, 2) + "\n")
   writeFileSync(file(".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] }) + "\n")
-  // Its own files, whatever the vault holds: two pinned (at the top level, which the tree shows unfolded), a note to open
-  // and one to pin, in Notes. pinNew off: pages that arrive with the plugins turned on above aren't pinned meanwhile.
   for (const [p, text] of Object.entries(OWN)) { mkdirSync(path.dirname(file(p)), { recursive: true }); writeFileSync(file(p), text) }
   writeFileSync(file(".vaultite/pages.json"), JSON.stringify({ pinned: [PAGE, TOP], pinNew: false }, null, 2) + "\n")
 
-  // ---------- there always is a workspace: a new device is on 1, its tabs saved there ----------
   await page.goto(`${B}#file/${encodeURIComponent(JOURNAL)}`)
   await page.waitForSelector(SWITCHER)
   check("a new device is on workspace 1", (await lit()) === "1")
@@ -57,11 +53,9 @@ try {
   const ui = await until(async () => { const r = await api("GET", "ui"); return r.workspace === 1 ? r : null }, 6000)
   check("the window tells the server its workspace (GET /api/ui)", ui?.workspace === 1, ui)
 
-  // ---------- pinned pages: each workspace's own list, pages.json's until it changes one ----------
   const VAULT_PINS = JSON.stringify([PAGE, TOP])
   await page.waitForSelector("aside [data-pin]")
   check("the vault's pages show (pages.json: the default)", JSON.stringify(await pins()) === VAULT_PINS, await pins())
-  // (Notes is open by default.)
   if (!(await until(async () => (await treeRow(CHECKLIST).count()) > 0, 1500))) await treeRow("Notes").click()
   await until(async () => (await treeRow(CHECKLIST).count()) > 0, 6000)
   await treeRow(CHECKLIST).click({ button: "right" })
@@ -74,7 +68,6 @@ try {
 
   await pick(2)
   check("another workspace: the vault's pages (none of its own)", !!(await until(async () => JSON.stringify(await pins()) === VAULT_PINS, 6000)), await pins())
-  // The tree's folders are the workspace's own: close Notes here, and 1 still has it open.
   await treeRow("Notes").click()
   check("...closing a folder here", !!(await until(async () => (await treeRow(CHECKLIST).count()) === 0, 6000)))
   await treeRow(TOP).click({ button: "right" })
@@ -89,7 +82,6 @@ try {
   await treeRow("People").click()
   check("...a folder opened here is kept in the workspace (files:open)", !!(await until(() => ["Notes", "People"].every((f) => data()[0]?.state?.["files:open"]?.includes(f)), 6000)), data()[0]?.state)
 
-  // Reordered by dragging: the top-level page below the checklist.
   await page.locator("aside [data-panel='files:files'] [data-panel-handle]").first().click({ position: { x: 12, y: 10 } })
   await wait(600)
   const src = await page.locator(`aside [data-pin="${TOP}"]`).boundingBox()
@@ -104,7 +96,6 @@ try {
   await page.locator("aside [data-panel='files:files'] [data-panel-handle]").first().click({ position: { x: 12, y: 10 } })
   await wait(1000)
 
-  // A file dragged from the tree doesn't move the tree under it.
   await until(async () => (await treeRow(JOURNAL).count()) > 0, 6000)
   const row0 = await treeRow(JOURNAL).boundingBox()
   await page.mouse.move(row0.x + 30, row0.y + row0.height / 2)
@@ -116,12 +107,10 @@ try {
   await page.mouse.up()
   check("a tree drag: the tree stays put", Math.abs(row1.y - row0.y) < 1, [row0.y, row1.y])
 
-  // ---------- a new tab is blank (no home pages) ----------
   const before = (await tabs()).length
   await page.locator("[data-tab-strip] button[aria-label='New tab']").first().click()
   check("a new tab is blank", !!(await until(async () => { const t = await tabs(); return t.length === before + 1 }, 6000)) && !(await tabs()).some((x) => x.includes("Today")), await tabs())
 
-  // ---------- files opened lately, per workspace ----------
   await pick(1)
   await page.goto(`${B}#file/${encodeURIComponent("Notes/2026-09-27 journal.md")}`)
   check("opened files are kept in the workspace (core:recent)", !!(await until(() => data()[0]?.state?.["core:recent"]?.[0] === "Notes/2026-09-27 journal.md", 8000)), data()[0]?.state)
@@ -130,7 +119,6 @@ try {
   check("a blank new tab lists them: Recently opened here", !!(await until(() => page.getByText("Recently opened here").count(), 6000)))
   await page.screenshot({ path: `${OUT}2-newtab.png` })
 
-  // ---------- terminals: this workspace's first, then the others' ----------
   const t1 = `qadesk${Date.now().toString(36)}a`, t2 = `qadesk${Date.now().toString(36)}b`
   await page.goto(`${B}#view/${encodeURIComponent(`terminal/${t1}`)}`)
   await until(() => page.$(`aside [data-session="${t1}"]`), 6000)
@@ -145,13 +133,11 @@ try {
     return i1 >= 0 && bar > i1 && i2 > bar
   }, 6000)))
   const where = await page.getAttribute(`aside [data-session="${t2}"]`, "data-where")
-  // (Files folded for the picture: room for the whole panel.)
   await page.locator("aside [data-panel='files:files'] [data-panel-handle]").first().click().catch(() => {})
   await wait(400)
   check("...with the workspace it's in", where === "Workspace 2", where)
   await page.screenshot({ path: `${OUT}3-terminals.png`, clip: { x: 0, y: 0, width: 260, height: 500 } })
 
-  // ---------- vau panels changes the window's workspace ----------
   const out = vau("panels", "hide", "search")
   check("vau panels: says which workspace", /Workspace 1/.test(out), out)
   check("...hides it in this workspace's panels, sidebars.json untouched", !!(await until(async () => !(await page.$("aside [data-panel='search:search']")), 6000)) &&
@@ -162,19 +148,14 @@ try {
   await api("PUT", "workspaces/1", { sidebars: null })
   await until(async () => !!(await page.$("aside [data-panel='search:search']")), 6000)
 
-  // ---------- heights in proportion to the sidebar ----------
-  // (panels that don't all fit: never taller than what they draw, and one drawn shorter takes room back)
   const pinsBefore = await fetch(new URL("/api/config/pages", B)).then((r) => r.json())
   const many = (await fetch(new URL("/api/state", B)).then((r) => r.json())).files.files.filter((f) => f.path.endsWith(".md")).slice(0, 24).map((f) => f.path)
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pinsBefore, pinned: many }) })
-  // (Workspace 1 has a pinned list of its own by now: the same pages there.)
   const ownPinsBefore = data()[0]?.pinned ?? null
   await api("PUT", "workspaces/1", { pinned: many })
   await api("PUT", "workspaces/1", { sidebars: { left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [], heights: { "pages:pages": 160 }, heightsAt: 400 } })
   await page.waitForSelector("aside [data-panel='files:files'] [data-panel-handle]")
   if (await page.$("aside [aria-label='Expand all']")) await page.click("aside [aria-label='Expand all']", { force: true })
-  // The panel ends between two rows (components/panelLayout.ts snapToRows): its height in proportion, at the row end
-  // just above or below it.
   const pagesPanel = () => page.evaluate(() => {
     const body = document.querySelector("[data-sidebar-body=left]"), el = document.querySelector("aside [data-panel='pages:pages']")
     const scroll = el?.querySelector("[data-panel-scroll]"), inner = scroll?.firstElementChild
@@ -187,7 +168,6 @@ try {
     if (!r) return false
     const want = 160 * r.box / 400 - r.chrome
     const below = Math.max(0, ...r.ends.filter((e) => e <= want + 0.5)), above = Math.min(...r.ends.filter((e) => e > want + 0.5))
-    // (drawing more than that: not just as tall as what it draws)
     return r.ends.at(-1) > want + 0.5 && [below, above].some((e) => Math.abs(r.h - r.chrome - e) <= 1)
   }
   let seenTall = null, seenShort = null
@@ -200,7 +180,6 @@ try {
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pinsBefore) })
   await api("PUT", "workspaces/1", { pinned: ownPinsBefore })
 
-  // ---------- Workspaces' settings: This workspace (its settings sheet, from the command palette) ----------
   await api("PUT", "workspaces/1", { name: "Writing" })
   await wait(800)
   await page.keyboard.press("ControlOrMeta+p"); await wait(300); await page.keyboard.type("workspaces settings"); await wait(300); await page.keyboard.press("Enter")
@@ -213,9 +192,8 @@ try {
   await page.locator("[data-workspace-pins] button", { hasText: "Use for new workspaces" }).click()
   check("...Use for new workspaces: pages.json gets its list", !!(await until(() => json(".vaultite/pages.json").pinned.join() === data()[0]?.pinned?.join(), 6000)), json(".vaultite/pages.json"))
 
-  // Clean up the shells (this server's tmux socket: vaultite-<port>).
   const port = new URL(B).port
-  for (const t of [t1, t2].filter(Boolean)) { try { execFileSync("/opt/homebrew/bin/tmux", ["-L", `vaultite-${port}`, "kill-session", "-t", t], { stdio: "ignore" }) } catch { /* gone */ } }
+  for (const t of [t1, t2].filter(Boolean)) { try { execFileSync("/opt/homebrew/bin/tmux", ["-L", `vaultite-${port}`, "kill-session", "-t", t], { stdio: "ignore" }) } catch {} }
   noErrors()
 } finally {
   writeFileSync(file(".vaultite/pages.json"), pagesBefore)

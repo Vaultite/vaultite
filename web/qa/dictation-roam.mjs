@@ -1,7 +1,7 @@
-// Dictation that follows you, through the helper with the screen helper stood in: the words in a box over the screen
-// while the user moves between apps and tabs, landing in the field in front, else where it began, else the clipboard and
-// the inbox. Speech: a kept press's audio (the app's talk/*.wav, looped) with speech in it, else `say -o`; nothing is played.
-// WRITES: throwaway vault only.   node web/qa/dictation-roam.mjs <vault copy> [shots dir]
+// Dictation that follows you: its words in a box while the user moves between apps and tabs, landing where they should.
+// Needs the desktop app (the screen helper stood in); speech from a kept press's audio or `say -o`, never played.
+// WRITES only the throwaway vault.
+//   node web/qa/dictation-roam.mjs <vault copy> [shots dir]
 import { _electron } from "playwright-core"
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -14,8 +14,6 @@ if (process.platform !== "darwin") await skip("dictation is a Mac's")
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-roam-"))
 const secs = (f) => { try { return Number(/estimated duration: ([\d.]+)/.exec(execFileSync("afinfo", [f], { encoding: "utf8" }))?.[1] ?? 0) } catch { return 0 } }
 const peak = (f) => { const m = /max_volume: (-?[\d.]+) dB/.exec(spawnSync("ffmpeg", ["-hide_banner", "-i", f, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" }).stderr ?? ""); return m ? Number(m[1]) : -99 }
-/** The longest of the app's kept presses with speech in it, by how loud (each of its words is real: never printed); a
- *  press kept because it went nowhere is mostly a moment of room noise. */
 function keptAudio() {
   const app = process.env.ROAM_APP ?? "Vaultite Main", dir = path.join(os.homedir(), "Library", "Application Support", app, "talk")
   const all = [path.join(os.homedir(), "Library", "Logs", app, "dictation-last.wav"), ...(fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".wav")).map((f) => path.join(dir, f)) : [])]
@@ -23,7 +21,6 @@ function keptAudio() {
 }
 const AUDIO = path.join(TMP, "said.wav")
 const kept = process.env.ROAM_SAY ? null : keptAudio()
-// (played over and over: each session long enough to move around in)
 if (kept) execFileSync("ffmpeg", ["-v", "error", "-stream_loop", String(Math.ceil(16 / kept.s)), "-i", kept.f, "-ar", "16000", "-ac", "1", AUDIO])
 else {
   const said = path.join(TMP, "said.aiff")
@@ -47,7 +44,7 @@ const helper = (fn, arg) => app.evaluate((_e, [f, a]) => globalThis.vaultiteHelp
 check("the helper runs with the app", await helper(() => true))
 const engines = await win.evaluate((l) => window.vaultite?.dictation?.engines(l), "en-US")
 if (!engines?.apple) { await app.close(); await skip(`Apple's recognizer doesn't dictate here (${JSON.stringify(engines)})`) }
-await wait(1500) // (its settings, read as it starts)
+await wait(1500)
 
 const stub = (op, v) => helper((h, [o, x]) => h.stub(o, x), [op, v])
 const chord = (on) => helper((h, o) => h.heard({ event: "chord", name: "fn_control", on: o }), on)
@@ -57,10 +54,8 @@ const box = async () => { const p = await pill(); return p && !p.hint ? `${p.tex
 const hint = () => helper((h) => { const p = h.scene()?.pill; return p?.hint ? p.text : "" })
 const asked = () => helper((h) => h.screenAsked())
 let seen = 0
-/** What was asked of the screen helper since the last look. */
 const fresh = async () => { const all = await asked(); const out = all.slice(seen); seen = all.length; return out }
 const typed = (l, op = "insert") => l.filter((m) => m.op === op && m.text).map((m) => m.text)
-/** Listening ended (the file ran out, as if the user stopped) and its words landed. */
 const landed = () => until(async () => !(await pill()) || !!(await hint()), 60000, 100)
 const words = async () => { await until(async () => (await box()).split(" ").length >= 3, 30000, 50); return box() }
 const inboxFiles = () => { const d = path.join(VAULT, "Inbox"); return fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.endsWith(".md")) : [] }
@@ -70,7 +65,6 @@ const Finder = { bundle: "com.example.finder", name: "Example Finder", pid: 3, w
 const overlay = () => app.windows().find((p) => p.url().endsWith("/screen.html"))
 const shot = async (name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await overlay()?.screenshot({ path: path.join(SHOTS, name), omitBackground: true }).catch(() => {}) } }
 
-// ---------- begun in another app's field, moved to another's: they land in the one in front
 await stub("focus", { ...Notes, field: true, before: "So:" })
 await stub("insert", { ok: true, how: "ax" })
 await stub("kept", { ok: false, why: "gone" })
@@ -88,7 +82,6 @@ check("stopped in another app: into the field in front then", typed(got).length 
 check("…and it says where", (await hint()) === "In Example Mail", await hint())
 await wait(2500)
 
-// ---------- nothing has the keyboard now: where it began
 await stub("focus", { ...Notes, field: true, before: "" })
 await stub("kept", { ok: true, before: "So:", name: "Example Notes", how: "ax" })
 await tap()
@@ -100,7 +93,6 @@ check("no field in front: into the one it began in, where it is", got.some((m) =
 check("…and it says so", (await hint()) === "Back in Example Notes", await hint())
 await wait(2500)
 
-// ---------- that field is gone too: the clipboard and the inbox
 await stub("focus", { ...Notes, field: true, before: "" })
 await stub("kept", { ok: false, why: "gone" })
 const before = inboxFiles().length
@@ -115,7 +107,6 @@ check("…from dictation, only kept", fs.readFileSync(path.join(VAULT, "Inbox", 
 check("…and it says so", (await hint()) === "Copied, and in your inbox", await hint())
 await wait(2500)
 
-// ---------- begun with no field: it listens, for what has the keyboard when it stops
 await stub("focus", { ...Finder, field: false })
 await tap()
 check("no field at the start: it still listens", !!(await words()))
@@ -125,14 +116,12 @@ got = await fresh()
 check("…landing in the field clicked meanwhile", typed(got).length === 1, got.map((m) => m.op))
 await wait(2500)
 
-// ---------- a password field: nothing heard
 await stub("focus", { ...Notes, field: true, secure: true })
 await tap()
 await wait(800)
 check("a password field at the start: nothing heard", !(await pill()))
 await wait(300)
 
-// ---------- a double tap: hands-free, the same box, the next press stops
 await stub("focus", { ...Notes, field: true, before: "" })
 await fresh()
 await tap()
@@ -148,7 +137,6 @@ got = await fresh()
 check("…and its words land the same way", typed(got).length === 1, got.map((m) => m.op))
 await wait(2500)
 
-// ---------- begun in a note in the window: inline while it stays there; out of the window, the box; back where it began
 await win.evaluate(() => { location.hash = `#file/${encodeURIComponent("Roam one.md")}` })
 const line = (t) => win.locator("[data-pane] .cm-line", { hasText: t })
 await line("First:").click()
@@ -171,7 +159,6 @@ got = await fresh()
 check("stopped with no field: back in the note it began in", (await until(async () => (await note()).length > inNote.length, 5000)) && !typed(got, "copy").length && !typed(got).length, { copied: typed(got, "copy").length })
 await wait(2500)
 
-// ---------- another tab: the words wait in the box, and land in what has the keyboard
 const started = await note()
 await line("First:").click()
 await win.keyboard.press("Control+End").catch(() => {})
@@ -191,7 +178,6 @@ const backNote = await note()
 check("…not in the note it began in, past what was settled before it left", backNote.length < started.length + 400, { was: started.length, now: backNote.length })
 await wait(2500)
 
-// ---------- a press in the window while it roams stops it, starting nothing
 await line("First:").click()
 await fn({ down: true }); await wait(60); await fn({ down: false })
 await until(pagePill, 5000)
@@ -201,7 +187,6 @@ const again = await win.evaluate(() => window.vaultite.dictation.start({ engine:
 check("⌘J while it roams stops it rather than starting another", again?.code === "roaming", again)
 check("…the box goes", await landed())
 
-// ---------- in the window: a double tap is hands-free, and stays so once it leaves
 await wait(2500)
 await line("First:").click()
 await fn({ down: true }); await wait(60); await fn({ down: false }); await wait(100); await fn({ down: true }); await wait(60); await fn({ down: false })
@@ -211,7 +196,6 @@ check("…out of the window, still hands-free in the box", await until(async () 
 await tap()
 check("…the next press stops it", await landed())
 
-// ---------- held as it leaves the window: letting go stops it, wherever that is
 await wait(2500)
 await line("First:").click()
 await fn({ down: true })
@@ -222,7 +206,6 @@ const letGo = Date.now()
 await chord(false)
 check("…let go, it stops", await landed() && Date.now() - letGo < 5000, Date.now() - letGo)
 
-// ---------- ⌃⌥ held while it roams: its words land first
 await stub("page", {})
 await stub("focus", { ...Notes, field: true, before: "" })
 await wait(2500)
@@ -234,7 +217,6 @@ check("a Talk key while dictating: the words said so far land, not lost", await 
 await helper((h) => h.heard({ event: "chord", name: "control_option", on: false }))
 await helper((h) => h.heard({ event: "esc" }))
 
-// ---------- the Dictations list (this Mac's, the app's data): each kept, saying where it went; not the Talk key's ask
 await wait(2000)
 const list = await win.evaluate(() => fetch("/api/ops/dictation.history", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.json()))
 const ways = (list.items ?? []).filter((x) => x.kind === "dictation").map((x) => x.landing)

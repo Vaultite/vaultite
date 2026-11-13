@@ -1,6 +1,6 @@
-// Control as the dictation key, through the helper with the screen helper stood in (a stand-in Soniox hears it):
-// a double tap goes hands-free and the next double tap ends it, whether or not the window was dictated in before.
-// WRITES: throwaway vault only.   node web/qa/controlkey.mjs <vault copy>
+// Control as the dictation key: a double tap goes hands-free and the next ends it, dictated in the window before or not.
+// Needs the desktop app (the screen helper and Soniox stood in); WRITES only the throwaway vault.
+//   node web/qa/controlkey.mjs <vault copy>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -49,7 +49,6 @@ async function handsFree(label) {
 }
 await handsFree("in another app")
 
-// ---------- fn dictated in the window first (its page took the press): Control's double tap elsewhere is still the helper's
 await win.evaluate(() => { location.hash = `#file/${encodeURIComponent("Said.md")}` })
 await win.locator("[data-pane] .cm-line", { hasText: "Asked:" }).click()
 await helper((h) => h.stub("keyboard", {}))
@@ -58,7 +57,6 @@ check("held while the window has the keyboard, the window dictates, as ⌘J", aw
 await wait(700)
 await control(false)
 await until(() => win.evaluate(() => !document.querySelector(".dictation-pill")), 20000, 200)
-// (another app in front now)
 await helper((h) => h.stub("keyboard", null))
 await wait(1000)
 await handsFree("after the window dictated")
@@ -68,7 +66,6 @@ cloud.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 await done()
 
-/** Soniox stood in: every session hears `said`, its words growing as audio comes, final at its finalize. */
 async function standInSoniox(said) {
   const { WebSocketServer } = await import("ws")
   fs.mkdirSync(LOCAL, { recursive: true })

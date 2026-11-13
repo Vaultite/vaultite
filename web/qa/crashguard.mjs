@@ -1,6 +1,7 @@
-// A tab that fails to draw fails alone (components/Guard.tsx); a chunk that didn't load reconnects and reloads; the
-// crash screen's Reload with a new tab. Writes nothing but its tabs: a throwaway server.
+// A tab that fails to draw fails alone; a chunk that didn't load reconnects and reloads; the crash screen's Reload.
+// WRITES only its tabs: throwaway server.
 //   node web/qa/crashguard.mjs <base url> [out dir]
+// Paths: components/Guard.tsx
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/crashguard-shots/"], browser, check, done } = await qa(import.meta.url)
@@ -15,7 +16,6 @@ const go = (hash) => page.evaluate((h) => { location.hash = h }, hash)
 try {
   await page.goto(B); await wait(2500)
 
-  // 1. A tab whose code throws: the error in its place, the rest goes on.
   await page.route(/\/assets\/Setup-[^/]+\.js$/, (r) => r.fulfill({ contentType: "text/javascript", body: 'throw new Error("qa: the Setup page broke")' }))
   await go("#plugins")
   const failed = await until(() => page.$('[data-guard-failed="This tab"]'), 8000)
@@ -31,7 +31,6 @@ try {
   check("Close tab closes it", !!(await until(async () => !(await page.$('[data-guard-failed="This tab"]')) && (await tabs()).length <= Math.max(1, n - 1), 8000)), await tabs())
   await page.unroute(/\/assets\/Setup-[^/]+\.js$/)
 
-  // 2. A chunk that didn't load while the server was away: reconnects, reloads, draws.
   let refused = 0, away = true
   await page.route(/\/assets\/Settings-[^/]+\.js$/, (r) => (r.request().resourceType() === "script" && refused++ === 0 ? r.abort("connectionrefused") : r.continue()))
   await page.route((u) => u.pathname === "/" && !u.hash, (r) => (r.request().resourceType() === "fetch" && away ? r.abort("connectionrefused") : r.continue()))
@@ -46,7 +45,6 @@ try {
   check("...and Settings draws", !(await stopped()) && !(await page.$("[data-guard-failed]")) && (await tabs()).some((t) => /Settings/.test(t)), await tabs())
   await page.unrouteAll({ behavior: "ignoreErrors" })
 
-  // 3. The crash screen's Reload with a new tab: a new tab shown, the others still there.
   await go("#plugins")
   const kept = async () => (await apiAt(B.endsWith("/") ? B : `${B}/`)("POST", "ops/tabs.list", {})).tabs?.find((t) => t.active)?.panes?.find((p) => p.focused)?.to
   check("...the server keeps its tab at Plugins", await until(async () => (await kept()) === "plugins", 15000), await kept())

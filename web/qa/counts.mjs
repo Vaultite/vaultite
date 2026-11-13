@@ -1,8 +1,7 @@
-// Counts that only go down (React renders per keystroke, palette, outside change), against counts.json's limits;
-// --ratchet lowers a limit a win beat (commit it). WRITES: types into notes: throwaway server.
+// Counts that only go down (React renders per keystroke, palette, outside change), against counts.json's limits.
+// --ratchet lowers a limit a win beat (commit it). WRITES: types into notes on a throwaway server.
 //   node web/qa/counts.mjs <base url> [--ratchet] [--census]
-// What moves it most, so verify runs it on them: web/src/App.tsx, web/src/core/plugins.ts (plugins' backgrounds, redrawn on
-// every change), web/src/core/data.ts, web/src/editor/Editor.tsx; the nightly run has the rest.
+// Paths: web/src/App.tsx, web/src/core/plugins.ts, web/src/core/data.ts, web/src/editor/Editor.tsx
 import fs from "node:fs"
 import { qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
@@ -14,7 +13,7 @@ const NOTE = "Notes/How this vault works.md", OTHER = "Notes/Counted elsewhere.m
 
 const HOOK = () => {
   const P = window.__counts = { commits: 0, rendered: 0, byName: {} }
-  const COMP = new Set([0, 1, 11, 14, 15]) // function, class, forwardRef, memo, simple memo
+  const COMP = new Set([0, 1, 11, 14, 15]) // (React's fiber tags: function, class, forwardRef, memo, simple memo)
   const nameOf = (f) => { const t = f.type; return (t && (t.displayName || t.name || t.type?.displayName || t.type?.name || t.render?.name)) || "anonymous" }
   const count = (f) => { P.rendered++; const n = nameOf(f); P.byName[n] = (P.byName[n] || 0) + 1 }
   const mount = (f) => { for (let c = f; c; c = c.sibling) { if (COMP.has(c.tag)) count(c); if (c.child) mount(c.child) } }
@@ -53,8 +52,6 @@ await page.keyboard.press("End")
 await ui.idle()
 
 const now = {}, why = {}
-// Per keystroke, the components rendered before the autosave (held till the keys are counted), keys 200 ms apart so
-// each one's deferred renders finish; the fewer of two rounds, as a late refresh in one isn't the keys'.
 const typeCounted = async (name, typed) => {
   for (const words of [typed, typed.split("").reverse().join("")]) {
     const saves = []
@@ -72,7 +69,6 @@ const typeCounted = async (name, typed) => {
 }
 await typeCounted("typing", " the quick brown fox jumps")
 
-// Typing with the companion in the note: its agent's cursor on a line above and a comment in the margin by it.
 const op = (id, params = {}) => fetch(new URL(`/api/ops/${id}`, B), { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) }).then((r) => r.json())
 const SPOT = "Where this vault keeps things"
 await op("companion.look", { path: NOTE, find: SPOT })
@@ -87,8 +83,6 @@ await page.waitForFunction(() => !document.querySelector("[data-companion-note],
 await ui.idle()
 let c
 
-// A note no tab shows, changed behind the app: what redraws for it. The fewest of three (what else the page was doing
-// only adds: the least is the change's own).
 for (let i = 0; i < 3; i++) {
   await reset()
   await ui.sees(OTHER, () => put(OTHER, `A note no tab shows, changed ${Date.now()}.\n`))
@@ -96,11 +90,9 @@ for (let i = 0; i < 3; i++) {
   if (!(c.rendered >= now["elsewhere.rendered"])) { now["elsewhere.rendered"] = c.rendered; why.elsewhere = busiest(c) }
 }
 
-// The quick switcher, then a name typed into it: per keystroke.
 await page.keyboard.press("ControlOrMeta+o")
 await until(() => page.evaluate(() => !!document.querySelector("[role=dialog] input[role=combobox]")), 5000)
 await ui.idle()
-// (words inside files held till the keys are counted: on a busy machine they'd land between two keys, or not)
 const query = "vault", found = []
 await page.route("**/api/search?*", (r) => found.push(r))
 await reset()
@@ -113,7 +105,6 @@ await page.unroute("**/api/search?*")
 for (const r of found) await r.continue().catch(() => {})
 await page.keyboard.press("Escape")
 
-// The command palette opened: it draws the rows near the screen, not one per command (~700 on a big vault).
 await ui.idle()
 await reset()
 await page.keyboard.press("ControlOrMeta+p")

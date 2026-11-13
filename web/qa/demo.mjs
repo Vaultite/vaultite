@@ -1,5 +1,5 @@
-// The web demo (npm run build:demo) in Chrome and WebKit, served under /demo/ or at <demo url> (not "base url", which
-// tools/qa.ts fills with an app server's). WRITES: only the browser profile it makes.
+// The web demo (npm run build:demo) in Chrome and WebKit, under /demo/ or at <demo url>, not the base url tools/qa.ts fills.
+// WRITES only the browser profile it makes.
 //   node web/qa/demo.mjs [<demo url>]
 import fs from "node:fs"
 import http from "node:http"
@@ -23,7 +23,6 @@ if (!base) {
   base = `http://127.0.0.1:${server.address().port}/demo/`
 }
 
-/** The whole visit in one engine: WebKit too, since Safari runs the demo's workers its own way. */
 async function visit(name, browser) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await ctx.newPage()
@@ -39,11 +38,9 @@ async function visit(name, browser) {
   }, [method, p, body])
   const drawn = () => page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root [data-pane]"), null, { timeout: 30000 })
     .then(() => page.evaluate(() => document.getElementById("vau-boot-error")?.innerText ?? "")).catch(() => "nothing drawn in 30 s")
-  // (what a check needs drawn there, it waits for: WebKit on a busy runner takes seconds)
   const open = async (file) => { await leave(); await page.goto(`${base}#view/files/file/${encodeURIComponent(file)}`); await drawn() }
   const shown = () => page.evaluate(() => document.querySelector("[data-pane]")?.innerText ?? "")
   const is = (what, ok, got) => check(`${name}: ${what}`, ok, got)
-  /** How many of the sample's notes were last edited on each day (a calendar by `updated`). */
   const editDays = async () => {
     const days = {}
     for (const f of (await api("GET", "files")).json?.files ?? []) {
@@ -64,7 +61,6 @@ async function visit(name, browser) {
   await open("Notes/Lisbon trip.md")
   is("a note opens in the editor", await until(async () => (await page.locator(".cm-content").count()) > 0 && (await shown()).includes("Lisbon"), 15000), (await shown()).slice(0, 200))
 
-  // (the pages of Vaultite's own plugins the sample turns on, built in here)
   for (const name of ["Today", "Health", "Learning", "Projects"]) {
     const at = (await api("GET", "files")).json?.files?.find((f) => f.plugin === name.toLowerCase() && f.type === "dashboard")?.path
     await open(at)
@@ -87,7 +83,6 @@ async function visit(name, browser) {
   is("?bundle= starts on that bundle", bundles?.previous?.bundle === "zen" && !plugins?.enabled?.includes("dispatch"),
     { previous: bundles?.previous, enabled: plugins?.enabled })
 
-  // The coding agents of Vaultite's own plugins (built in here) draw their made-up sessions and limits, as the app's do.
   const AGENTS = ["cursor", "opencode", "openclaw", "hermes"]
   await api("PATCH", "config/plugins", { enabled: [...new Set([...plugins?.enabled ?? [], ...AGENTS])] })
   const nowOn = (await api("GET", "config/plugins")).json?.enabled ?? []
@@ -101,7 +96,6 @@ async function visit(name, browser) {
   const drew = await page.waitForFunction((ts) => ts.every((t) => document.querySelector("[data-pane]")?.innerText.includes(t)), titles, { timeout: 15000 }).then(() => true, () => false)
   is("the Agents page draws them", drew, (await shown()).slice(0, 600))
 
-  // Browser: on the web the new tab is the quick switcher, its panels and guide there, nothing broken.
   await leave()
   await page.goto(`${base}?bundle=browser`)
   is("?bundle=browser starts", !(await drawn()))
@@ -109,12 +103,11 @@ async function visit(name, browser) {
   is("...on Browser: its panels, the switcher for a new tab", (await api("GET", "bundles")).json?.previous?.bundle === "browser" && nt?.opens === "switcher" &&
     await page.locator("aside[data-side=left] [data-panel]").count() > 0 && !web?.problems?.length, { web, nt })
 
-  // Vaultite's own plugins are built in (vite.demo.config.ts): Days (as the directory's Life OS) installs Books in the app; here it's there.
   const DAYS = path.join(ROOT, "tools/fixtures/bundles/days")
   const daysFiles = Object.fromEntries(fs.readdirSync(DAYS, { recursive: true }).filter((f) => fs.statSync(path.join(DAYS, f)).isFile())
     .map((f) => [f, f.endsWith(".json") ? JSON.parse(fs.readFileSync(path.join(DAYS, f), "utf8")) : fs.readFileSync(path.join(DAYS, f), "utf8")]))
   const imported = await api("POST", "bundles/import", { file: { vaultite: "bundle", format: 1, id: "days", files: daysFiles } })
-  await wait(1000) // (the demo keeps its files a moment later)
+  await wait(1000)
   await leave()
   await page.goto(`${base}?bundle=days`)
   await drawn()
@@ -150,7 +143,6 @@ async function visit(name, browser) {
   await open("Notes/Lisbon trip.md")
   is("Reset brings the sample back", await until(async () => { const t = await shown(); return !t.includes(MARK) && t.includes("Lisbon") }, 15000), (await shown()).slice(-300))
 
-  // A bundle's page (vaultite.com/b/...) has a demo of its own: what one leaves never shows on another's.
   const pageOf = async (id, hash = "") => { await leave(); await page.goto(`${base}?desk=page&bundle=gh:Vaultite/vaultite/bundles/${id}${hash}`); await drawn() }
   const NOTE = "Only on Zen's page.md", has = async () => (await api("GET", `file?path=${encodeURIComponent(NOTE)}`)).status === 200
   const on = async () => (await api("GET", "bundles")).json?.previous?.bundle

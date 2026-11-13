@@ -1,8 +1,8 @@
-// Dictation that learns in other apps (electron/dictationfix.ts): words dictated into another app's field, the field
-// followed a while (screen.swift `follow`, stood in: its text told as the user edits), a misheard word fixed there goes
-// into the dictionary, said in the dictation box's place. Speech: the app's kept audio (talk/*.wav, the last dictation's)
-// with speech in it, its first 15 s, else `say -o`; nothing is played, and its words are never printed. WRITES: throwaway vault only.
+// Dictation that learns in other apps: a misheard word fixed in another app's field goes into the dictionary.
+// Needs a Mac's desktop app (the screen helper stood in); speech from kept audio or `say -o`, never played or printed.
+// WRITES only the throwaway vault.
 //   node web/qa/dictation-learn-apps.mjs <vault copy>
+// Paths: electron/dictationfix.ts
 import { _electron } from "playwright-core"
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -15,7 +15,6 @@ if (process.platform !== "darwin") await skip("dictation is a Mac's")
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-learn-apps-"))
 const secs = (f) => { try { return Number(/estimated duration: ([\d.]+)/.exec(execFileSync("afinfo", [f], { encoding: "utf8" }))?.[1] ?? 0) } catch { return 0 } }
 const peak = (f) => { const m = /max_volume: (-?[\d.]+) dB/.exec(spawnSync("ffmpeg", ["-hide_banner", "-i", f, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" }).stderr ?? ""); return m ? Number(m[1]) : -99 }
-/** The longest of the app's kept audio with speech in it (a missed press's is mostly room noise). */
 function keptAudio() {
   const app = process.env.ROAM_APP ?? "Vaultite Main", dir = path.join(os.homedir(), "Library", "Application Support", app, "talk")
   const all = [path.join(os.homedir(), "Library", "Logs", app, "dictation-last.wav"), ...(fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".wav")).map((f) => path.join(dir, f)) : [])]
@@ -46,7 +45,7 @@ const helper = (fn, arg) => app.evaluate((_e, [f, a]) => globalThis.vaultiteHelp
 check("the helper runs with the app", await helper(() => true))
 const engines = await win.evaluate((l) => window.vaultite?.dictation?.engines(l), "en-US")
 if (!engines?.apple) { await app.close(); await skip(`Apple's recognizer doesn't dictate here (${JSON.stringify(engines)})`) }
-await wait(1500) // (its settings, read as it starts)
+await wait(1500)
 
 const stub = (op, v) => helper((h, [o, x]) => h.stub(o, x), [op, v])
 const heard = (m) => helper((h, x) => h.heard(x), m)
@@ -59,7 +58,6 @@ let seen = 0
 const fresh = async () => { const all = await asked(); const out = all.slice(seen); seen = all.length; return out }
 const dict = () => (fs.existsSync(DICT) ? fs.readFileSync(DICT, "utf8") : "")
 const COMMON = new Set("about after again because before being could would should their there these those which while where other things really maybe something anything nothing".split(" "))
-/** A word to "fix" in what was heard (not a sentence's first), as a name it was misheard for: one vowel changed, capitalized. */
 function misheard(text, not = []) {
   const ws = [...text.matchAll(/\p{L}{5,}/gu)].filter((m) => m.index > 0 && !/[.!?]\s*$/.test(text.slice(0, m.index)) && !COMMON.has(m[0].toLowerCase()) && !not.includes(m[0].toLowerCase()))
   const m = ws.sort((a, b) => b[0].length - a[0].length)[0]
@@ -68,15 +66,12 @@ function misheard(text, not = []) {
   const to = (w[0].toUpperCase() + w.slice(1, v) + (w[v].toLowerCase() === "o" ? "a" : "o") + w.slice(v + 1))
   return { from: w, to, at: m.index, fixed: text.slice(0, m.index) + to + text.slice(m.index + w.length) }
 }
-/** Dictate into the stood-in field (its text `before` then the words): what went in, and the field followed then. */
 async function dictateInto(app, before = "Notes:", says = true) {
   await stub("focus", { ...app, field: true, before })
   await stub("insert", { ok: true, how: "paste" })
-  // (a paste lands a moment later: till then the field's text hasn't the words)
   await stub("follow", says ? { ok: true, value: before, caret: before.length, ...app } : { ok: false, why: "no-text" })
   await fresh()
   await tap()
-  // (the file runs out, as if the user stopped: the words land, then the field's text is told as it is)
   const text = await until(async () => (await asked()).slice(seen).find((m) => m.op === "insert" && m.text)?.text, 60000, 30)
   if (text && says) await stub("follow", { ok: true, value: before + text, caret: (before + text).length, ...app })
   return text
@@ -84,7 +79,6 @@ async function dictateInto(app, before = "Notes:", says = true) {
 const followed = () => until(async () => (await asked()).slice(seen).some((m) => m.op === "follow" && m.do === "start" && m.from === "front"), 3000, 30)
 
 const Slack = { bundle: "com.example.chat", name: "Example Chat", pid: 4, window: 11, title: "general" }
-// ---------- a misheard word fixed in another app's field: learned, said where the dictation box was
 const text = await dictateInto(Slack)
 check("the words land in the other app's field", !!text && text.split(" ").length >= 3, text?.length)
 check("…and that field is followed, its text read where they went", await followed())
@@ -99,10 +93,8 @@ await fresh()
 await heard({ event: "follow", over: "left" })
 check("its window left: no longer followed", await until(async () => (await asked()).slice(seen).some((m) => m.op === "follow" && m.do === "stop"), 3000, 50))
 
-// ---------- fixed, then the message sent at once (the field cleared): the fix still counts
 await wait(4500)
 const again = await dictateInto(Slack, "")
-// (another word if there's one; the same one again teaches what it's misheard as)
 const fix2 = again && (misheard(again, [fix.from.toLowerCase()]) ?? misheard(again))
 check("dictated again into the field, followed", !!fix2 && await followed())
 if (fix2) {
@@ -112,7 +104,6 @@ if (fix2) {
   check("fixed and sent right away: still learned", await until(() => dict().includes(line), 5000, 100), { len: dict().length, same: fix2.to === fix.to })
 }
 
-// ---------- a private app's field: never followed, nor one that doesn't say its text
 await wait(4500)
 const before = dict()
 await dictateInto({ bundle: "com.example.vault", name: "1Password", pid: 5, window: 13, title: "Note" })

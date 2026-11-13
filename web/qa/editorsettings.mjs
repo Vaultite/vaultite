@@ -1,5 +1,5 @@
-// The editor as Obsidian's: live preview's Markdown under the cursor only, Settings > Editor (editor.json, defaults
-// never written), aliases, ⌘E. WRITES a "Qa editor" folder and editor.json: throwaway server only.
+// The editor as Obsidian's: live preview's Markdown under the cursor only, Settings > Editor, aliases, ⌘E.
+// WRITES a "Qa editor" folder and editor.json: throwaway server.
 //   node web/qa/editorsettings.mjs <base url> <vault path>
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { palette, qa, until } from "./lib/qa.mjs"
@@ -11,7 +11,6 @@ const read = async (path) => (await (await fetch(`${B}api/file?path=${encodeURIC
 const EDITOR_JSON = `${VAULT}/.vaultite/editor.json`
 const editorJson = () => (existsSync(EDITOR_JSON) ? JSON.parse(readFileSync(EDITOR_JSON, "utf8")) : null)
 rmSync(EDITOR_JSON, { force: true })
-// A fresh desk: workspaces are the server's, so a last run's split would still be open.
 const freshDesk = () => fetch(`${B}api/workspaces/1`, { method: "DELETE" }).catch(() => {})
 await freshDesk()
 
@@ -36,7 +35,6 @@ const flip = async () => {
   await until(async () => await viewNow() !== from); await page.locator("article.file-view:visible").first().waitFor(); await ui.idle()
 }
 const docText = () => page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].currentEditor().view.state.doc.toString())
-/** Put the cursor (or a selection) at the first `find` (+ `off`), focused. */
 const cursor = async (find, off = 0, len = 0) => {
   await page.evaluate(([find, off, len]) => {
     const { view } = globalThis.__vaultite.modules["@vaultite"].currentEditor()
@@ -55,7 +53,6 @@ const lineHas = (has, sel) => page.evaluate(([has, sel]) => {
 }, [has, sel])
 void ed
 
-// ---------- live preview: only the element under the cursor ----------
 await open(NOTE)
 const DRAWN = "Some bold and em then Linked note and code and site end."
 await cursor("end.", 1)
@@ -91,7 +88,6 @@ await page.evaluate(() => document.activeElement.blur()); await ui.idle()
 check("unfocused: everything drawn", await lineText("then") === DRAWN && await lineText("Heading one") === "Heading one")
 await page.screenshot({ path: "/tmp/editorsettings-reveal.png" })
 
-// ---------- Properties: folded until opened, then open for that file while reading too ----------
 const props = page.locator(".file-view section[aria-label='Properties']")
 check("properties folded by default", await props.count() === 1 && await props.locator("button[aria-expanded=false]").count() === 1)
 await props.locator("button[aria-expanded]").click()
@@ -100,9 +96,6 @@ await page.keyboard.press("ControlOrMeta+e"); await until(async () => !(await pa
 check("reading view shows the properties, read-only", await props.count() === 1 && await props.locator("input, textarea").count() === 0 && (await props.textContent()).includes("draft"))
 await flip()
 
-// ---------- Settings > Editor ----------
-/** A click in Settings from outside its rows: a row's preview card (aimed at, as a jumping pointer seems to) would be
- *  over the next row. */
 const tap = async (loc) => { await page.mouse.move(2, 2); await until(async () => !(await page.locator("[data-setting-preview] .preview-card:visible").count())); await loc.click() }
 const set = (loc) => ui.sees(".vaultite/editor.json", () => tap(loc))
 const settings = async () => { await page.goto("about:blank"); await page.goto(`${B}#settings`); await page.locator('[data-settings-nav="editor"]').click(); await page.locator("[data-settings-row=spellcheck]").waitFor({ timeout: 15000 }); await ui.idle() }
@@ -111,7 +104,6 @@ check("Settings has an Editor panel", await page.getByText("Editor", { exact: tr
 check("nothing written before a change", editorJson() === null, editorJson())
 await page.screenshot({ path: "/tmp/editorsettings-panel.png", fullPage: true })
 
-// Defaults: spellcheck on, Tab is a tab, brackets pair, readable lines.
 await open(TYPING)
 check("spellcheck on by default", await page.locator(".file-view .cm-content").first().getAttribute("spellcheck") === "true")
 const article = page.locator("article.file-view").first()
@@ -142,7 +134,6 @@ await fresh(); await page.keyboard.type("don't 2 * 3")
 check("quotes and * don't pair inside words or arithmetic", (await body()) === "don't 2 * 3", await body())
 await fresh()
 
-// Changed in Settings: written key by key; the editor follows.
 await settings()
 await set(page.locator("[data-settings-row=spellcheck] [role=switch]"))
 await set(page.locator("[data-settings-row=indent] [role=radio]", { hasText: "2 spaces" }))
@@ -155,7 +146,6 @@ check("spellcheck off", await page.locator(".file-view .cm-content").first().get
 check(`readable line length off: the pane's width (${(await article.boundingBox()).width})`, (await article.boundingBox()).width > w0 + 100)
 await fresh(); await page.keyboard.type("- a"); await page.keyboard.press("Enter"); await page.keyboard.press("Tab"); await page.keyboard.type("b")
 check("Tab indents with 2 spaces", (await body()) === "- a\n  - b", await body())
-// A note already indented keeps its own indent, as VS Code does: the setting is for one that isn't.
 for (const [indent, name] of [["    ", "4 spaces"], ["\t", "a tab"]]) {
   const OWN = `Qa editor/Own indent ${name}.md`
   await write(OWN, `---\ntype: note\ntags:\n  - x\n---\n\n- a\n${indent}- b\n- c\n`)
@@ -183,7 +173,6 @@ for (const row of ["spellcheck", "indent", "auto-pair-brackets", "readable-line-
 }
 check("reset takes the keys out again", JSON.stringify(editorJson() ?? {}) === "{}", editorJson())
 
-// ---------- ⌘E: only the tab in front ----------
 await open(NOTE)
 const panes = page.locator("[data-pane] article.file-view")
 await page.keyboard.press("ControlOrMeta+Alt+\\"); await panes.nth(1).waitFor(); await ui.idle()
@@ -193,9 +182,7 @@ const modes = await page.evaluate(() => [...document.querySelectorAll("[data-pan
 check("⌘E switched only the focused pane to reading", modes.filter((x) => !x).length === 1 && modes.filter(Boolean).length === 1, modes)
 await page.screenshot({ path: "/tmp/editorsettings-panes.png" })
 
-// ---------- Default view and editing mode: Settings', for every device; each tab its own after ----------
 await freshDesk()
-// (in the focused pane: the split above may still be there)
 const sourceShown = async () => (await page.locator("[data-focused] .file-view:not([data-kept] *) .vau-editor.is-source").count()) > 0
 const editing = async () => (await page.locator("[data-focused] .file-view:not([data-kept] *) .cm-content[contenteditable=true]").count()) > 0
 await settings()
@@ -219,7 +206,6 @@ check("…⌘E edits in the default editing mode", await sourceShown())
 await settings()
 for (const row of ["default-view", "editing-mode"]) { await set(page.locator(`[data-settings-row=${row}] [data-reset-default]`)) }
 check("…reset takes them out again", JSON.stringify(editorJson() ?? {}) === "{}", editorJson())
-// Unset here, Obsidian's: livePreview false is source mode.
 const hadObsidian = existsSync(`${VAULT}/.obsidian`)
 mkdirSync(`${VAULT}/.obsidian`, { recursive: true })
 const appJson = `${VAULT}/.obsidian/app.json`, hadApp = existsSync(appJson) ? readFileSync(appJson, "utf8") : null

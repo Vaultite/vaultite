@@ -1,6 +1,7 @@
-// The desktop app end to end: window and server, menus, zoom, drops from Finder (CDP drag events with real files),
-// outside files, vaults' windows, vau dev screenshot. WRITES: throwaway vault only.
+// The desktop app end to end: window and server, menus, zoom, Finder drops, outside files, vaults' windows, vau dev screenshot.
+// Needs the desktop app; WRITES only the throwaway vault.
 //   node web/qa/desktop.mjs <vault copy> [packaged app binary]
+// Paths: core/coreops/dev.ts, electron/menu.ts, plugins/core/editing/menu.ts, core/filedrop.ts, core/zoom.ts
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -14,12 +15,10 @@ import { gitEnv } from "../../core/gitenv.ts"
 const { args: [VAULT, BIN], check, errs, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-desktop-"))
 const OUT = path.join(TMP, "shots")
-// A Mac hides the title bar for the traffic lights and has Look up; elsewhere the window keeps its own frame.
 const MAC = process.platform === "darwin"
 const CMD = MAC ? "Cmd" : "Ctrl" // (accelerators: Electron's Cmd is Super on Linux, so the menu says Ctrl there)
 fs.mkdirSync(OUT)
 
-// (VAULTITE_QA_SHELL=dev: through the packaged Vaultite Dev shell, lib/qa.mjs)
 const DESKTOP = BIN ? { executablePath: BIN, args: [], env: {} } : await desktopApp()
 const app = await _electron.launch({
   executablePath: DESKTOP.executablePath, args: [...DESKTOP.args, "--vault", VAULT],
@@ -34,12 +33,10 @@ check("the window serves the vault from its own server", /^http:\/\/127\.0\.0\.1
 {
   const app_ = (await (await fetch(`${origin}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json()).app
   let built = null
-  try { built = JSON.parse(fs.readFileSync(path.join(ROOT, "electron/build.json"), "utf8")).commit ?? null } catch { /* not a build */ }
-  // (through the Dev shell, VAULTITE_QA_SHELL=dev: the worktree's own commit, branch and folder)
+  try { built = JSON.parse(fs.readFileSync(path.join(ROOT, "electron/build.json"), "utf8")).commit ?? null } catch {}
   const head = execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv() }).trim()
   check("vau version: the app's own commit (its build's, null from source; a Dev instance's worktree's)", app_ && "commit" in app_
     && (app_.worktree ? app_.commit === head && app_.worktree.worktree === path.basename(ROOT) : BIN ? /^[0-9a-f]{40}$/.test(app_.commit) : app_.commit === built), app_)
-  // Settings > About's App row (web/src/components/Running.tsx): the short hash and the update state; a tap copies it whole.
   await win.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t) }; location.hash = "settings" })
   await until(async () => { await win.locator('[data-settings-nav="about"]').click().catch(() => {}); return (await win.locator('[data-settings-row="running"]').count()) === 1 }, 8000)
   const row = win.locator('[data-settings-row="running-app"]')
@@ -63,7 +60,6 @@ if (MAC) check("the sidebar toggle sits right of the traffic lights", toggle && 
 else check("the sidebar toggle sits at the window's edge (its own title bar, no lights)", toggle && toggle.x < 40, toggle)
 check("the sidebar's top row drags the window", await win.evaluate(() => getComputedStyle(document.querySelector("[data-titlebar]")).getPropertyValue("-webkit-app-region") === "drag"))
 await win.screenshot({ path: path.join(OUT, "window.png") })
-// vau dev screenshot: the page captured through the preload's bridge (core/coreops/dev.ts), a PNG where asked.
 {
   const shot = path.join(TMP, "dev-shot.png"), el = path.join(TMP, "dev-el.png")
   const vau = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin/vau"), ...a], { encoding: "utf8", env: { ...process.env, VAULTITE_URL: origin }, stdio: ["ignore", "pipe", "pipe"] })
@@ -77,13 +73,12 @@ await win.screenshot({ path: path.join(OUT, "window.png") })
 const bounds = await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].getBounds())
 if (process.env.SHOW) try { execFileSync("screencapture", ["-x", "-o", `-R${bounds.x},${bounds.y},${bounds.width},120`, path.join(OUT, "titlebar.png")], { stdio: "ignore" }) } catch { /* no screen recording permission */ }
 
-// The menu runs the app's commands.
 const tabs = () => win.locator("[role=tablist] [role=tab]").count()
 const menuClick = (label) => app.evaluate(({ Menu, BaseWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
   find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows()[0])
 }, label)
-if (process.env.SHOW) await win.bringToFront() // (quiet, it would take the user's front window)
+if (process.env.SHOW) await win.bringToFront()
 await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 const before = await tabs()
 await menuClick("New tab")
@@ -97,8 +92,6 @@ const listed = await win.evaluate(() => document.querySelector("[role=dialog], [
 check(`the palette shows ${MAC ? "⌘W" : "Ctrl W"} on Close current tab`, (MAC ? /Close current tab\s*⌘\s*W/ : /Close current tab\s*Ctrl\s*W/).test(listed), listed.slice(0, 200))
 await win.keyboard.press("Escape")
 
-// A pop-out window (Move current tab to new window): a window of the vault's own, title bar hidden, no sidebars, its
-// own tabs; the menu's commands go to it while it's in front; closing its last tab closes it.
 {
   const note = fs.readdirSync(path.join(VAULT, "Notes")).find((f) => f.endsWith(".md"))
   await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await ui.idle()
@@ -124,13 +117,11 @@ await win.keyboard.press("Escape")
   const gone = pop.waitForEvent("close", { timeout: 15000 }).then(() => true, () => false)
   await pop.keyboard.press("ControlOrMeta+W")
   check("pop-out: ⌘W closes a tab there", await until(async () => (await popTabs()) === 1, 10000), await popTabs())
-  // (the window goes while the key is down)
   await pop.keyboard.press("ControlOrMeta+W").catch(() => {})
   check("pop-out: closing its last tab closes it", await gone)
-  if (process.env.SHOW) await win.bringToFront() // (quiet, it would take the user's front window)
+  if (process.env.SHOW) await win.bringToFront()
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 
-  // A pop-out closed as a window (its tabs in it): ⇧⌘T opens it again, as a browser's closed window.
   await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await ui.idle()
   const made2 = app.waitForEvent("window")
   await win.keyboard.press("ControlOrMeta+P"); await win.keyboard.type("Move current tab to new window"); await ui.idle(); await win.keyboard.press("Enter")
@@ -150,8 +141,6 @@ await win.keyboard.press("Escape")
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 }
 
-// The editor's menu (plugins/core/editing/menu.ts): the page leaves the right-click to the system, Electron reports
-// the spell checker's word under it, then the app's menu opens, with Look up for a selection (macOS's popover).
 {
   fs.writeFileSync(path.join(VAULT, "Notes/Qa spelling.md"), "Look this up please.\n")
   await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent("Notes/Qa spelling.md")}`)
@@ -170,18 +159,14 @@ await win.keyboard.press("Escape")
     const looked = () => app.evaluate(() => globalThis.vaultiteQuiet?.lookUps ?? 0)
     const was = await looked()
     await win.getByRole("menuitem", { name: /^Look up/ }).click()
-    // (quiet, macOS's popover isn't shown over the user's work: noted instead, quiet.ts)
     if (!process.env.SHOW) check("editor: … and a quiet copy doesn't show macOS's popover", await until(async () => (await looked()) === was + 1, 4000), await looked())
     else await ui.idle()
     check("editor: Look up asks the window without an error", !errs.length, errs)
   } else check("editor: no Look up off a Mac", !items.some((i) => i.startsWith("Look up")), items)
   await win.keyboard.press("Escape")
-  // (what follows drops files on a blank pane)
   await menuClick("Close tab"); await ui.idle()
 }
 
-// Zoom (web/src/core/zoom.ts): View > Zoom in / out / Actual size, on ⌘= and ⌘+ (⇧⌘=) alike, zoom what's focused; with
-// nothing of its own there (a blank tab), the interface size, kept for next time. View > Interface size has keys of its own.
 const zoomKeys = await app.evaluate(({ Menu }) => {
   const all = []; const walk = (items, at) => { for (const i of items) { if (/^(Zoom in|Zoom out|Actual size|Bigger|Smaller)$/.test(i.label)) all.push(`${at}${i.label}:${i.accelerator}`); if (i.submenu) walk(i.submenu.items, i.label === "Interface size" ? "Interface size > " : at) } }
   walk(Menu.getApplicationMenu().items, ""); return all
@@ -209,8 +194,6 @@ check("Actual size", await until(async () => (await factor()) === 1, 4000), awai
 await win.evaluate(() => { history.back() })
 await ui.idle()
 
-// The menu bar is the window's commands (electron/menu.ts): its menus, their icons, the keys in effect (hotkeys.json's
-// too, live), the pinned pages.
 const menuInfo = () => app.evaluate(({ Menu }) => {
   const out = {}
   const walk = (items, at) => { for (const i of items) {
@@ -240,13 +223,11 @@ if (menu["View > Graph view"]) {
 const pins = await (await fetch(`${origin}/api/state`)).json().then((s) => s.pinned ?? [])
 if (pins.length) check("Go > Pinned lists the pinned pages", await until(async () => Object.keys(await menuInfo()).filter((k) => k.startsWith("Go > Pinned > ")).length > 0, 10000), pins)
 
-// The sidebar folded to its rail: the top-left tab bar makes room for the traffic lights and the toggle.
 await menuClick("Hide left sidebar")
 const tabAt = () => win.locator("[data-corner] [role=tablist] [role=tab]").first().boundingBox()
 const firstTab = await until(async () => { const b = await tabAt(); return b && b.x >= (MAC ? 110 : 40) ? b : null }, 4000) ?? await tabAt()
 check("folded sidebar: the first tab clears the traffic lights (a Mac's) and the toggle", firstTab && firstTab.x >= (MAC ? 110 : 40), firstTab)
 await win.screenshot({ path: path.join(OUT, "rail.png") })
-// ...and without a tab bar or pane tab bars, a note's bar is the pane's title row: no strip above it, clear of the toggle.
 const look = await (await fetch(`${origin}/api/config/appearance`)).json()
 const setLook = (body) => fetch(`${origin}/api/config/appearance`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 await setLook({ tabBar: false, paneTabBars: false })
@@ -262,17 +243,14 @@ await win.screenshot({ path: path.join(OUT, "rail-title-row.png") })
 await setLook({ tabBar: look.tabBar ?? true, paneTabBars: look.paneTabBars ?? true })
 await menuClick("Show left sidebar")
 
-// Finder drops, as CDP drag events with real files.
 const cdp = await win.context().newCDPSession(win)
 async function drop(files, x, y, modifiers = 0) {
   const data = { items: [], files, dragOperationsMask: 1 | 16 }
   for (const type of ["dragEnter", "dragOver", "drop"]) { await cdp.send("Input.dispatchDragEvent", { type, x, y, data, modifiers }); await ui.idle() }
 }
 const blank = async () => { await win.locator("#main-scroll [data-newtab-section]").first().waitFor(); await ui.idle() }
-// A 1×1 PNG, for image drops.
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
 
-// Terminal: a login shell in the vault's folder.
 await win.keyboard.press("ControlOrMeta+P")
 await win.keyboard.type("Open terminal")
 await win.keyboard.press("Enter")
@@ -282,13 +260,11 @@ await until(async () => PROMPT.test(await terminalText(win)), 10000)
 await win.locator("[data-term]").first().click()
 await win.keyboard.type("echo vau-$((6*7)) && pwd\n")
 check("the terminal runs a shell in the vault", await until(async () => (await term()).includes("vau-42") && (await term()).includes(path.basename(VAULT)), 15000), (await term()).slice(-300))
-// An image dropped on it is sent to the server and its path typed (Claude Code attaches it), not opened in a tab.
 const shot = path.join(TMP, "Screenshot.png")
 fs.writeFileSync(shot, png)
 const xb = await win.locator("[data-term]").first().boundingBox()
 const termUrl = win.url()
 await drop([shot], xb.x + xb.width / 2, xb.y + xb.height / 2)
-// (in its own folder; a long path wraps)
 check("an image dropped on the terminal types its uploaded path", await until(async () => /uploads\/\w+\/\w+-Screenshot\.png/.test((await term()).replaceAll("\n", "")), 5000), (await term()).slice(-300))
 check("…and doesn't open it in a tab", win.url() === termUrl, win.url())
 await win.keyboard.press("Control+C")
@@ -300,11 +276,10 @@ fs.writeFileSync(path.join(src, "Dropped note.md"), "Dropped from Finder.\n")
 fs.writeFileSync(path.join(src, "Folder in", "Inside.md"), "Inside a folder.\n")
 fs.writeFileSync(path.join(src, "Moved.md"), "Moved with option.\n")
 const folderRow = win.locator('[data-tree-path="Notes"]').first()
-// Measured before each drop: the tree scrolls to what came in (and the row may be below the fold to start with).
 const at = async () => {
   await folderRow.scrollIntoViewIfNeeded()
   let b = await folderRow.boundingBox(), prev = null
-  for (let i = 0; i < 20 && JSON.stringify(b) !== JSON.stringify(prev); i++) { await new Promise((r) => setTimeout(r, 100)); prev = b; b = await folderRow.boundingBox() } // settled
+  for (let i = 0; i < 20 && JSON.stringify(b) !== JSON.stringify(prev); i++) { await new Promise((r) => setTimeout(r, 100)); prev = b; b = await folderRow.boundingBox() }
   return [b.x + 40, b.y + b.height / 2]
 }
 await drop([path.join(src, "Dropped note.md"), path.join(src, "Folder in")], ...await at())
@@ -316,7 +291,6 @@ await drop([path.join(src, "Moved.md")], ...await at(), MAC ? 1 /* Alt */ : 8 /*
 check("⌥ moves", await until(() => fs.existsSync(path.join(VAULT, "Notes/Moved.md")) && !fs.existsSync(path.join(src, "Moved.md")), 10000))
 check("the tree shows what came in", await until(async () => (await win.locator('[data-tree-path="Notes/Dropped note.md"]').count()) > 0, 10000))
 
-// A file dropped on the editor opens from outside the vault, and saves in place.
 const outside = path.join(TMP, "Outside note.md")
 fs.writeFileSync(outside, "Written outside the vault.\n")
 const main = await win.locator("#main-scroll").boundingBox()
@@ -330,22 +304,19 @@ await win.keyboard.type("Edited in the app.")
 check("editing saves it in place", await until(() => fs.readFileSync(outside, "utf8").includes("Edited in the app."), 5000), fs.readFileSync(outside, "utf8"))
 check("the server refuses outside files nobody allowed", (await fetch(`${origin}/api/file?path=${encodeURIComponent("/etc/hosts")}`)).status === 404)
 await win.screenshot({ path: path.join(OUT, "outside.png") })
-// Its tab's menu copies it into the vault, and the tab shows the copy.
 await win.locator('[role="tab"][aria-selected="true"]').first().click({ button: "right" })
 await win.getByRole("menuitem", { name: "Copy to vault" }).click()
 check("Copy to vault copies it in", await until(() => fs.existsSync(path.join(VAULT, "Outside note.md")) && fs.readFileSync(path.join(VAULT, "Outside note.md"), "utf8").includes("Edited in the app."), 10000))
 check("…and the tab shows the vault's copy", await until(async () => decodeURIComponent(win.url()).endsWith("#file/Outside note.md"), 10000), win.url())
-await menuClick("New tab") // (a vault note takes drops: attachments)
+await menuClick("New tab")
 await blank()
 
-// Any file dropped from outside opens in its viewer (a PDF), or drawn by its plugin (a workbook), its bytes served.
 const pdfOut = path.join(TMP, "Outside statement.pdf")
 fs.writeFileSync(pdfOut, "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n")
 await drop([pdfOut], main.x + main.width / 2, main.y + 200)
 check("a PDF dropped from outside opens in a tab", await until(async () => decodeURIComponent(win.url()).includes(`#file/${pdfOut}`), 10000), win.url())
 check("in the PDF viewer, its bytes served", await until(async () => (await win.locator("article iframe[src*='api/raw']").count()) > 0, 10000) &&
   (await fetch(`${origin}/api/raw?path=${encodeURIComponent(pdfOut)}`)).status === 200)
-// An image from outside: right-click it for its menu (Copy to vault), or the path bar's button.
 const imgOut = path.join(TMP, "Outside photo.png")
 fs.writeFileSync(imgOut, png)
 await menuClick("New tab")
@@ -373,7 +344,6 @@ check("a workbook dropped from outside opens as a grid", await until(async () =>
 check("the server refuses bytes nobody allowed", (await fetch(`${origin}/api/raw?path=${encodeURIComponent("/etc/hosts")}`)).status === 404)
 await win.screenshot({ path: path.join(OUT, "outside-workbook.png") })
 
-// An HTML page from outside runs, sandboxed, and gets nothing of the vault.
 const htmlOut = path.join(TMP, "Outside chart.html")
 fs.writeFileSync(htmlOut, `<!doctype html><html><head><title>Outside chart</title></head><body><p id="out">ran</p><script>
   document.getElementById("out").textContent = "script ran";
@@ -382,13 +352,11 @@ fs.writeFileSync(htmlOut, `<!doctype html><html><head><title>Outside chart</titl
 await menuClick("New tab")
 await blank()
 await drop([htmlOut], main.x + main.width / 2, main.y + 200)
-const htmlText = async () => { for (const f of win.frames()) { try { const t = await f.evaluate(() => document.getElementById("out")?.textContent ?? ""); if (t) return t } catch { /* not it */ } } return "" }
+const htmlText = async () => { for (const f of win.frames()) { try { const t = await f.evaluate(() => document.getElementById("out")?.textContent ?? ""); if (t) return t } catch {} } return "" }
 check("an HTML page dropped from outside runs", await until(async () => (await htmlText()).startsWith("script ran"), 15000), await htmlText())
 check("and can't read the vault", await until(async () => (await htmlText()) === "script ran, vault refused", 10000), await htmlText())
 await win.screenshot({ path: path.join(OUT, "outside-html.png") })
 
-// A screenshot's thumbnail (any file from Finder) dropped on a vault note, the empty space below its text too: saved as
-// its attachment and embedded there, not opened beside the vault (core/filedrop.ts).
 const dropNote = path.join(VAULT, "Notes/Qa drop.md")
 fs.writeFileSync(dropNote, "Dropped onto.\n")
 await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent("Notes/Qa drop.md")}`)
@@ -398,14 +366,12 @@ await drop([shot], notePane.x + notePane.width / 2, notePane.y + notePane.height
 check("a screenshot dropped below a note's text goes into the note", await until(() => /Dropped onto\.\n!\[\[Screenshot( \d+)?\.png\]\]/.test(fs.readFileSync(dropNote, "utf8")), 10000), fs.readFileSync(dropNote, "utf8"))
 check("…not opened in a tab", win.url() === noteUrl, win.url())
 
-// Finder's Open with (the open-file event): a .txt opens as its text in the vault window.
 const txt = path.join(TMP, "Plain.txt")
 fs.writeFileSync(txt, "Just text.\n")
 await app.evaluate(({ app }, p) => app.emit("open-file", { preventDefault() {} }, p), txt)
 check("Open with: a file opens in a tab", await until(async () => decodeURIComponent(win.url()).includes(`#file/${txt}`), 10000), win.url())
 check("a .txt shows as its text", await until(async () => (await win.locator("[data-pane] .cm-content").first().textContent()).includes("Just text."), 10000))
 
-// Manage vaults: its own window; creating a vault opens a second window with its own server.
 await win.evaluate(() => window.vaultite.manageVaults())
 const mgr = await until(() => app.windows().some((w) => w.url().endsWith("vaults.html")), 10000) && app.windows().find((w) => w.url().endsWith("vaults.html"))
 await mgr.waitForSelector("nav[aria-label=Vaults] button")
@@ -413,15 +379,12 @@ check("the manager lists the vault", (await mgr.locator("nav[aria-label=Vaults]"
 await mgr.screenshot({ path: path.join(OUT, "manager.png") })
 const parent = path.join(TMP, "vaults")
 fs.mkdirSync(parent)
-mgr.evaluate((p) => window.vaultite.createVault(p, "Second vault"), parent).catch(() => {}) // (the manager closes)
+mgr.evaluate((p) => window.vaultite.createVault(p, "Second vault"), parent).catch(() => {})
 const second = await until(() => app.windows().some((w) => w.url().startsWith("http") && w.url() !== win.url() && !w.url().startsWith(origin)), 60000)
   && app.windows().find((w) => w.url().startsWith("http") && !w.url().startsWith(origin))
-// (The server answers before it has opened the vault: its rules come a moment after the window.)
 check("a new vault opens in its own window, on its own server", !!second && await until(() => fs.existsSync(path.join(parent, "Second vault", ".vaultite", "AGENTS.md")), 10000), app.windows().map((w) => w.url()))
 check("opening a vault closes the manager", await until(() => !app.windows().some((w) => w.url().endsWith("vaults.html")), 10000))
-// A file of a known vault, dropped on the other vault's window: opens in its own vault's window.
 fs.writeFileSync(path.join(VAULT, "Notes", "Cross vault.md"), "In the first vault.\n")
-// (A new vault opens on a pinned page, which may take a drop as an attachment: dropped on a blank tab.)
 await second.waitForSelector("#main-scroll")
 await second.keyboard.press("ControlOrMeta+t")
 await second.locator("#main-scroll [data-newtab-section]").first().waitFor()
@@ -440,7 +403,6 @@ noErrors()
 const port1 = new URL(origin).port
 await app.close()
 check("quitting stops the servers", await until(async () => { try { await fetch(`http://127.0.0.1:${port1}/api/vault`); return false } catch { return true } }, 10000))
-// No vaults, set up before (userData/setup.json): the manager. (A first launch shows Set up Vaultite: onboarding.mjs.)
 fs.mkdirSync(path.join(TMP, "userData-fresh"), { recursive: true })
 fs.writeFileSync(path.join(TMP, "userData-fresh", "setup.json"), JSON.stringify({ done: new Date().toISOString() }))
 const fresh = await _electron.launch({

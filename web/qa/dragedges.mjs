@@ -1,6 +1,7 @@
-// Drags at their edges (core/drag.ts' edgeScroller and pastEnd, components/Resizer.tsx): Escape, gaps, scrolling
-// panels, the wheel mid-drag. WRITES pins and Pinned's Show as: throwaway server.
+// Drags at their edges: Escape, gaps, scrolling panels, the wheel mid-drag.
+// WRITES pins and Pinned's Show as: throwaway server.
 //   node web/qa/dragedges.mjs <base url>
+// Paths: core/drag.ts, components/Resizer.tsx
 import { apiAt, palette, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url, { chrome: { ignoreDefaultArgs: ["--hide-scrollbars"] } })
@@ -15,7 +16,6 @@ const page = watch(await ctx.newPage(), { console: true }), ui = app(page)
 const pinnedBefore = (await api("GET", "config/pages")).pinned
 const showBefore = (await api("GET", "config/plugin/pages")).show ?? null
 try {
-  // A canvas card moved, then Escape: back where it was, and letting go after moves nothing.
   await page.goto(`${B}#file/${encodeURIComponent("Projects/Lighthouse/Launch plan.canvas")}`)
   await page.waitForSelector("[data-canvas-node]", { timeout: 15000 })
   await ui.idle()
@@ -33,20 +33,17 @@ try {
   check("canvas: a card follows the pointer", c1[0] - c0[0] > 60, { c0, c1 })
   check("canvas: Escape puts it back, and the release after moves nothing", c2.join() === c0.join() && c3.join() === c0.join(), { c0, c2, c3 })
 
-  // The sidebar's width dragged, then Escape: back to its width.
   const aside = () => page.evaluate(() => Math.round(document.querySelector("aside").getBoundingClientRect().width))
   const w0 = await aside()
   const edge = await page.locator("[role=separator][aria-label='Resize the sidebar']").boundingBox()
   await page.mouse.move(edge.x + edge.width / 2, edge.y + 300); await page.mouse.down()
   await glide(page, [edge.x + edge.width / 2, edge.y + 300], [edge.x + 90, edge.y + 300], 6)
   const w1 = await aside()
-  // (it glides back: measured once there)
   await page.keyboard.press("Escape"); await ui.idle()
   const w2 = await aside()
   await page.mouse.up(); await ui.idle()
   check("sidebar: Escape mid-resize puts its width back", w1 > w0 + 40 && w2 === w0 && (await aside()) === w0, { w0, w1, w2 })
 
-  // The status bar: an item dragged along it, the items past where the kinds meet stay put (the line keeps its room).
   await page.goto(`${B}#file/${encodeURIComponent("Notes/Lisbon trip.md")}`)
   await page.waitForSelector("[data-status-items] > [data-status-key]", { timeout: 15000, state: "attached" })
   await ui.idle()
@@ -60,14 +57,12 @@ try {
   await letGo(page)
   check("status bar: an item dragged along leaves the last one where it was", !hasSep || (Math.abs(s1 - s0) <= 1 && !faded), { hasSep, s0, s1, faded })
 
-  // A dashboard being edited: a card held over the gap between two cells still has a place (the line drawn there).
   await page.goto(`${B}#file/${encodeURIComponent("Dashboards/People.md")}`)
   await page.waitForSelector("[data-pane] .cm-content, [data-pane] article", { timeout: 15000 })
   await ui.idle()
   await page.locator("[data-pane] .cm-content, [data-pane] article").first().click().catch(() => {})
   await page.keyboard.press("ControlOrMeta+e"); await page.locator("[data-dashboard-grid] .cm-card-grip").first().waitFor({ state: "attached" }); await ui.idle()
   const cells = await page.evaluate(() => [...document.querySelectorAll("[data-dashboard-grid] [data-cell]")].map((c) => { const r = c.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom } }))
-  // (two side by side other than the first card's own, which is the one dragged: beside it is where it is already)
   const pair = cells.findLastIndex((c, i) => i > 1 && Math.abs(c.t - cells[i - 1].t) < 2 && c.l - cells[i - 1].r > 4)
   if (pair > 1) {
     await page.locator("[data-dashboard-grid] [data-card]").first().hover(); await ui.idle()
@@ -81,7 +76,6 @@ try {
     check("dashboard: a card held over the gap between cells has a place there", line === 1, { line, gapX })
   } else check("dashboard: two cells side by side to drag between", false, cells)
 
-  // Pinned as tiles, in a panel too short for them; and a file held at the Files panel's top.
   await api("PATCH", "config/pages", { pinned: ["Start here.md", "Notes/How this vault works.md", "Notes/Lisbon trip.md", "Projects/Lighthouse.md", "Dashboards/People.md", "Dashboards/Design.md", "Dashboards/Queue.md", "ME.md", "Projects/Garden planner.md"] })
   await api("PATCH", "config/plugin/pages", { show: "tiles" })
   await page.goto(`${B}#new`)
@@ -107,14 +101,11 @@ try {
   const sq1 = await until(async () => { const b = await pinBox(); return b.scroll > sq.scroll && b }, 3000) || await pinBox()
   await letGo(page)
   check("Pinned: a tile held near the bottom of a short panel scrolls it", sq1.scroll > sq.scroll, { sq, sq1 })
-  // Pinned's menu moves a tile, as a drag would (from the keyboard too).
   await ui.menu.context(page.locator("[data-pin-tiles] [data-pin]").first())
   if ((await ui.menu.items()).includes("Move right")) await ui.menu.pick("Move right"); else await ui.menu.close()
   const order = await page.locator("[data-pin-tiles] [data-pin]").evaluateAll((ts) => ts.slice(0, 2).map((t) => t.dataset.pin))
   check("Pinned: Move right in a tile's menu swaps it with the next", order.join() === "Notes/How this vault works.md,Start here.md", order)
 
-  // A wheel under a still pointer mid-drag: the drop goes where the pointer is now, not where it was. A Dashboards
-  // file held over Daily's files (Daily lit), then the tree scrolled down under it.
   await page.goto(`${B}#new`)
   await page.waitForSelector("[data-tree-path='Daily']", { timeout: 15000 }); await ui.idle()
   for (const f of ["Daily", "Dashboards"]) if (!(await page.locator(`[data-tree-path^='${f}/']`).count())) { await page.locator(`[data-tree-path='${f}']`).first().click(); await page.locator(`[data-tree-path^='${f}/']`).first().waitFor(); await ui.idle() }
@@ -141,7 +132,6 @@ try {
   await letGo(page)
   check("a wheel mid-drag: the folder under the still pointer takes the drop", before === "Daily" && !under?.startsWith("Daily/") && after !== "Daily", { before, under, after })
 
-  // A tab moved from the keyboard (the palette here; ⌃⇧PgUp and PgDn in the desktop app), as a drag along the bar would.
   for (const p of ["ME.md", "Start here.md"]) {
     await page.click("[data-tab-bar] button[aria-label='New tab']"); await ui.idle()
     await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await page.locator(`article.file-view[data-path="${p}"]:visible`).waitFor(); await ui.idle()

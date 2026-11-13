@@ -1,7 +1,7 @@
-// Editing: find and replace (plugins/core/find: a card at the pane's top right, a strip on a phone), folding, page
-// preview and All properties, light and dark.
-// WRITES a "Qa editing" folder and renames a property in it: throwaway server only.
+// Editing: find and replace (a card, on a phone a strip), folding, page preview and All properties, light and dark.
+// WRITES a "Qa editing" folder and renames a property in it: throwaway server.
 //   node web/qa/editing.mjs <base url> [out dir]
+// Paths: plugins/core/find
 import { mkdirSync } from "node:fs"
 import { SHOTS, command, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
@@ -59,13 +59,11 @@ const shot = async (name) => { await page.screenshot({ path: `${OUT}editing-${na
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await ed.waitFor(); await ui.idle()
 await palette("Switch to live preview")
 
-// ---------- find and replace ----------
 await line("Banana bread").click(); await ui.idle()
 const textAt = async () => (await line("Banana bread").boundingBox()).y
 const textWas = await textAt()
 await page.keyboard.press("ControlOrMeta+f"); await ui.idle()
 check("⌘F opens the find bar", await page.locator("[data-find-bar]").count() === 1)
-// A computer: a card at the pane's top right, over the text (which doesn't move), not a strip across it.
 const spot = () => page.evaluate(() => {
   const c = document.querySelector("[data-find-bar]").getBoundingClientRect(), p = document.querySelector("#main-scroll").getBoundingClientRect()
   return { right: Math.round(p.right - c.right), top: Math.round(c.top - p.top), width: Math.round(c.width) }
@@ -89,7 +87,6 @@ await page.locator("button[aria-label='Whole word']").click(); await page.locato
 await shot("find-light")
 await page.keyboard.press("Escape"); await ui.idle()
 check("Escape closes it", await page.locator("[data-find-bar]").count() === 0)
-// Replace
 await line("Banana bread").click(); await ui.idle()
 await page.keyboard.press("ControlOrMeta+Alt+f"); await ui.idle()
 check("⌥⌘F opens it with replace", await page.locator("input[aria-label=Replace]").count() === 1)
@@ -100,7 +97,6 @@ check("replace all writes every match", await until(async () => (await read(NOTE
 await page.keyboard.press("Escape"); await ui.idle()
 await page.keyboard.press("ControlOrMeta+z")
 check("⌘Z undoes the replace all", await until(async () => (await read(NOTE)).includes("Banana bread")))
-// Reading: find only
 await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 await page.keyboard.press("ControlOrMeta+f"); await ui.idle()
 check("reading view: ⌘F finds, without replace", await page.locator("[data-find-bar]").count() === 1 && await page.locator("input[aria-label=Replace]").count() === 0
@@ -110,8 +106,6 @@ check(`reading view finds (${await count()})`, /1/.test(await count()))
 await page.keyboard.press("Escape"); await ui.idle()
 await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 
-// In drawn blocks (a table, a callout, a closed <details>): lit where they're drawn and taken into view; outside source
-// mode, not what isn't shown (the frontmatter, a link's address).
 await write(BLOCKS, `---\ntype: note\nqa_word: zebra\n---\n\nA zebra up top, and a [link](https://zebra.example).\n\n${Array.from({ length: 40 }, (_, i) => `Filler ${i}.`).join("\n\n")}
 \n| Animal | Note |\n| --- | --- |\n${Array.from({ length: 20 }, (_, i) => `| ${i === 14 ? "zebra" : "horse"} | row ${i} |`).join("\n")}\n\n> [!note] A callout\n> With a zebra.\n\n<details><summary>More</summary>\n\nA zebra folded away.\n\n</details>\n\nEnd.\n`)
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(BLOCKS)}`); await ed.waitFor(); await ui.idle()
@@ -147,7 +141,6 @@ await page.keyboard.press("Escape"); await ui.idle()
 await palette("Switch to live preview")
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await ed.waitFor(); await ui.idle()
 
-// ---------- folding ----------
 const apples = line("Apples")
 await apples.hover(); await ui.idle()
 const chev = page.locator(".cm-vau-fold.is-hover")
@@ -161,7 +154,6 @@ check("folding a heading hides its section, subheadings included, not the next h
   await line("Apple pie").count() === 0 && await line("Crab apple").count() === 0 && await line("Banana bread").count() === 1)
 check("a … marks the fold", await ed.locator(".cm-foldPlaceholder").count() === 1)
 await shot("folded")
-// remembered
 await ui.saved()
 check("the fold is kept", await page.evaluate((p) => !!JSON.parse(localStorage.getItem("vaultite.folds") ?? "{}")[p], NOTE))
 await page.reload()
@@ -184,8 +176,7 @@ await line("## Apples").hover(); await ui.idle()
 check("source mode folds too", await page.locator(".cm-vau-fold.is-hover").count() === 1)
 await palette("Switch to live preview")
 
-// ---------- page preview ----------
-await page.keyboard.press("ControlOrMeta+e"); await ui.idle() // reading
+await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 const link = ed.locator("[data-wiki='Linked note']").first()
 const pop = page.locator("[data-preview-level='0']")
 await link.hover(); await until(async () => await pop.count() === 1); await ui.idle()
@@ -200,7 +191,6 @@ const scrolled = await page.locator("[data-preview-body]").evaluate((b) => {
   return h ? Math.round(h.getBoundingClientRect().top - b.getBoundingClientRect().top) : null
 }).catch(() => null)
 check(`a heading link previews at that heading (${scrolled})`, scrolled !== null && scrolled < 40)
-// a link inside the preview previews too, and a click follows it
 await page.locator("[data-preview-level='0'] [data-wiki='Alice Martin']").hover()
 check("a link in a preview previews in turn", await until(async () => await page.locator("[data-preview-level='1']").count() === 1))
 await page.locator("[data-preview-level='0'] [data-wiki='Alice Martin']").click()
@@ -213,7 +203,6 @@ await page.keyboard.down("ControlOrMeta"); await ui.idle()
 check("editing: with ⌘ held it does", await page.locator("[data-preview-level]").count() === 1)
 await page.keyboard.up("ControlOrMeta"); await page.mouse.move(5, 500); await until(async () => await page.locator("[data-preview-level]").count() === 0); await ui.idle()
 
-// ---------- all properties ----------
 const before = (await props()).find((p) => p.key === "qa_stage")
 check(`GET /api/properties counts a key and its type (${JSON.stringify(before)})`, before?.count === 2 && before.type === "text")
 await page.evaluate(() => fetch("api/config/sidebars", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: ["properties:properties"] }) }))
@@ -231,7 +220,6 @@ check("the list follows the vault", await until(async () => await page.locator("
 await page.getByRole("button", { name: "Undo" }).click()
 check("Undo renames it back", await until(async () => (await read(NOTE)).includes("qa_stage: draft # a comment that stays")))
 
-// dark
 await page.emulateMedia({ colorScheme: "dark" })
 await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(NOTE)}`); await line("Banana bread").waitFor(); await ui.idle()
 await line("Banana bread").click(); await page.keyboard.press("ControlOrMeta+Alt+f"); await ui.idle(); await page.keyboard.type("apple"); await ui.idle()
@@ -239,7 +227,6 @@ await line("Apples").hover(); await ui.idle()
 await shot("find-dark")
 await page.keyboard.press("Escape")
 
-// A page that isn't a text file (a dashboard): ⌘F finds in what it draws.
 await write(DASH, `---\ntype: dashboard\n---\n\nA marmot up top.\n\n${Array.from({ length: 60 }, (_, i) => (i % 15 === 14 ? `Line ${i}, a marmot.` : `Line ${i}.`)).join("\n\n")}\n`)
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(DASH)}`); await page.locator("#main-scroll", { hasText: "A marmot up top" }).waitFor(); await ui.idle()
 await page.locator("#main-scroll").click({ position: { x: 400, y: 300 } }); await ui.idle()
@@ -257,7 +244,6 @@ await page.keyboard.press("Escape"); await ui.idle()
 check("Escape closes it and puts the highlights away", await page.locator("[data-page-find]").count() === 0 && await page.evaluate(() => !CSS.highlights.has("vau-find")))
 await ctx.close()
 
-// A phone: no previews, the find bar fits.
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = await ctx.newPage(), ui = app(page)

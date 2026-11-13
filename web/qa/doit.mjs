@@ -1,6 +1,5 @@
-// Do it: an open task line's button in a note hands it over (its op answered here: the delegate test has the server's side),
-// done lines have none; a suggestion in the inbox has one on its row and settles when it's handed over.
-// WRITES fixtures (QA/ in the vault): throwaway server only.
+// Do it: an open task line's button hands it over (the delegate test has the server's side); an inbox suggestion's too.
+// WRITES fixtures in QA/: throwaway server.
 //   node web/qa/doit.mjs <base url> <vault path>
 import { mkdirSync, writeFileSync } from "node:fs"
 import { apiAt, qa, until, wait, SHOTS as OUT } from "./lib/qa.mjs"
@@ -27,7 +26,6 @@ await buttons.click()
 check("a click hands over its note, line and words", await until(() => asked.length === 1, 3000) && asked[0].path === "QA/Errands.md" && asked[0].text === "Compare the two flights" && /^\d+$/.test(String(asked[0].line)), asked)
 check("the toast says so", await until(() => page.getByText("Handed off: Compare the two flights").count().then((n) => n > 0), 3000))
 
-// A drawn note (embedded): the same.
 asked.length = 0
 await page.goto(`${B}#file/${encodeURIComponent("QA/Hub.md")}`)
 const read = page.locator(".md-do-it")
@@ -36,8 +34,7 @@ check("drawn: hidden until hovered", await read.evaluate((b) => getComputedStyle
 await page.locator("[data-embed] li", { hasText: "Compare the two flights" }).first().hover()
 check("drawn: shown on hover", await until(() => read.evaluate((b) => getComputedStyle(b).opacity === "1"), 2000))
 await page.screenshot({ path: `${OUT}doit-read.png` })
-// (the same task tapped again within moments is taken for one tap)
-await wait(3100)
+await wait(3100) // (the same task tapped again within moments is taken for one tap)
 await read.click()
 check("drawn: a click hands over its note, line and words", await until(() => asked.length === 1, 3000) && asked[0].path === "QA/Errands.md" && asked[0].text === "Compare the two flights" && asked[0].line === 6, asked)
 asked.length = 1
@@ -52,7 +49,6 @@ check("a click hands over its words", await until(() => asked.length === 2, 3000
 check("and settles it", await until(() => row.count().then((n) => n === 0), 5000))
 await page.close()
 
-// A phone: no hover, so only the caret's line shows it, and a tap hands it over.
 const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage()
 watch(phone)
 const tapped = []

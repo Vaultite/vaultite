@@ -1,12 +1,12 @@
-// The desktop app's drag strip (index.css): nothing clickable in the top 40px without no-drag, or the window swallows
-// the click; in Chrome with data-electron set. Turns Workspaces on (plugins.json put back): throwaway server only.
+// The desktop app's drag strip, in Chrome with data-electron set: nothing clickable in its top 40px without no-drag.
+// Turns Workspaces on (plugins.json put back): throwaway server.
 //   node web/qa/dragstrip.mjs <base url>
+// Paths: index.css
 import { execFileSync } from "node:child_process"
 import path from "node:path"
 import { qa, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 
-// Workspaces on, whatever the vault turned off (the sandbox starts calm); plugins.json's lists put back at the end.
 const pluginsBefore = await (await fetch(`${B}api/config/plugins`)).json()
 execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, "plugin", "on", "workspaces"], { encoding: "utf8" })
 const putBack = () => fetch(`${B}api/config/plugins`, { method: "PUT", headers: { "Content-Type": "application/json" },
@@ -21,7 +21,6 @@ await page.evaluate(() => document.documentElement.setAttribute("data-electron",
 await wait(200)
 
 const STRIP = 40
-/** What takes clicks in the strip, over a drag element, without no-drag: the window would take those clicks. */
 const swallowed = () => page.evaluate((STRIP) => {
   const reg = (e) => getComputedStyle(e).webkitAppRegion
   const drags = [...document.querySelectorAll("*")].filter((e) => reg(e) === "drag" && reg(e.parentElement) !== "drag").map((e) => e.getBoundingClientRect())
@@ -46,7 +45,6 @@ await page.mouse.click(p.x, p.y, { button: "right" }); await wait(250)
 check("a tab's menu: all clickable", !(await swallowed()).length, await swallowed()); await esc()
 await page.keyboard.press("ControlOrMeta+p"); await wait(300)
 check("the palette (its backdrop): all clickable", !(await swallowed()).length, await swallowed()); await esc()
-// Folded to the rail: the switcher under the toggle, its list beside the rail, level with the tab bar.
 await page.keyboard.press("ControlOrMeta+\\"); await wait(400)
 p = await at(SWITCHER)
 await page.mouse.click(p.x, p.y); await wait(250)

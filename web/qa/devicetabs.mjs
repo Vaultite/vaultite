@@ -1,6 +1,7 @@
-// The Tabs panel's other devices (plugins/core/tabs), a desktop and a phone context: each's tabs, opened, closed and
-// forgotten from the other. Writes sidebars.json (put back) and forgets every device: throwaway server only.
+// The Tabs panel's other devices, from a desktop and a phone: each's tabs opened, closed and forgotten from the other.
+// WRITES sidebars.json (put back) and forgets every device: throwaway server.
 //   node web/qa/devicetabs.mjs <base url> <vault path> [out dir]
+// Paths: plugins/core/tabs
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -20,7 +21,6 @@ try {
   const desk = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" })
-  // (automated browsers aren't devices: these stand for a person's)
   for (const c of [desk, phone]) await c.addInitScript(() => Object.defineProperty(Navigator.prototype, "webdriver", { get: () => false }))
   const A = await desk.newPage(), P = await phone.newPage()
   for (const p of [A, P]) watch(p)
@@ -35,7 +35,6 @@ try {
   check("each device's tabs are kept by the server, nothing in the vault", (await until(async () => (await listed()).length === 2 ? true : null, 8000)) === true &&
     (!existsSync(tabsDir) || !readdirSync(tabsDir).some((f) => f.startsWith("device-"))), await listed())
 
-  // The phone's tabs list (its drawer has the same panel): the desktop's tabs, named by its browser.
   await P.goto(`${B}/#view/tabs`)
   const theirs = (page) => page.$$eval("[data-device-tabs] [data-device]", (els) => els.map((d) => ({
     name: d.firstElementChild.textContent, rows: [...d.querySelectorAll("a")].map((a) => a.textContent.trim()) })))
@@ -45,11 +44,9 @@ try {
   check("named by its browser", new RegExp(`Chrom(e|ium) on ${os}`).test(seen?.[0]?.name ?? ""), seen?.[0]?.name)
   await P.screenshot({ path: `${OUT}phone.png` })
 
-  // The desktop never lists itself.
   const mine = await theirs(A)
   check("a device doesn't list itself", !mine.some((d) => /Chrom(e|ium) on/.test(d.name)), mine)
 
-  // A click opens it here.
   await P.click(`[data-device-tabs] a:has-text("${stem(notes[1])}")`)
   const opened = await until(() => P.evaluate(() => decodeURIComponent(location.hash)).then((h) => h.includes(stem(notes[1])) ? h : null), 8000)
   check("a click opens it on this device", !!opened, opened)
@@ -57,14 +54,12 @@ try {
   check("now the desktop lists the phone's tab", back?.[0]?.rows?.includes(stem(notes[1])) && /Safari on iPhone/.test(back[0].name), back)
   await A.screenshot({ path: `${OUT}desktop.png` })
 
-  // A tab closed on the desktop goes from the phone's list.
   await A.hover("[data-open-tabs] [data-open-tab] >> nth=0")
   await A.click("[data-open-tabs] [data-open-tab] >> nth=0 >> button[aria-label^=Close]")
   await P.goto(`${B}/#view/tabs`)
   const after = await until(async () => { const x = await theirs(P); return x[0]?.rows.length === 1 ? x : null }, 8000)
   check("a closed tab goes from the other device's list", after?.[0]?.rows?.[0] === stem(notes[1]), after)
 
-  // Right-clicking the Tabs heading hides other devices' tabs, and shows them again.
   const others = async (on) => {
     await A.click("[data-tabs-panel] [data-heading=Tabs]", { button: "right" })
     await A.click("text=Other devices' tabs")
@@ -73,7 +68,6 @@ try {
   check("the Tabs heading's menu hides other devices' tabs", (await others(false)) === true, await theirs(A))
   check("and shows them again", (await others(true)) === true, await theirs(A))
 
-  // The phone is open: from the desktop, a tab closes there, and one moves here.
   const phoneOn = (page) => page.$eval("[data-device-tabs] [data-device]", (d) => d.hasAttribute("data-live")).catch(() => false)
   check("the phone shows as open now", (await until(async () => ((await phoneOn(A)) ? true : null), 20000)) === true, await theirs(A))
   const rowMenu = async (name, item) => {
@@ -90,7 +84,6 @@ try {
   const left = await until(async () => ((await theirs(A))[0]?.rows.includes(stem(notes[0])) ? null : true), 8000)
   check("Move here opens it here and closes it there", !!moved && left === true, [moved, await theirs(A)])
 
-  // Renamed, it keeps the name (with a tab open again: a device with none isn't listed).
   await P.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, notes[1])
   await until(async () => ((await theirs(A))[0]?.rows.includes(stem(notes[1])) ? true : null), 8000)
   await A.click("[data-device-tabs] [data-device] > div:first-child", { button: "right" })
@@ -101,7 +94,6 @@ try {
   check("a device renamed keeps its name", renamed === true, await theirs(A))
   await A.screenshot({ path: `${OUT}desktop-live.png` })
 
-  // Devices lists both, this one marked.
   const D = await desk.newPage()
   watch(D)
   await D.goto(`${B}/#view/devices`)
@@ -110,11 +102,9 @@ try {
   await D.screenshot({ path: `${OUT}devices.png` })
   await D.close()
 
-  // Closed, the phone is no longer open.
   await P.close()
   check("a device whose windows closed isn't open", (await until(async () => ((await phoneOn(A)) ? null : true), 30000)) === true, await theirs(A))
 
-  // Forgetting a device.
   await A.click("[data-device-tabs] [data-device] > div:first-child", { button: "right" })
   await A.click("text=Forget this device")
   const gone = await until(async () => ((await theirs(A)).length === 0 ? true : null), 8000)

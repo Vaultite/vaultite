@@ -1,8 +1,7 @@
-// Dictation into a terminal in the desktop app (a Mac's), by fn as the helper hands it to the window, the recognizer
-// stood in (its events sent as electron/dictation.ts sends them, so any Mac runs it): the words not settled dimmed at
-// the cursor, each settled chunk a bracketed paste with no Enter (plugins/core/dictation/terminal.ts), and with nowhere
-// to dictate, the hint in the pill's place (web/src/core/dictation.ts). WRITES: throwaway vault only.
+// Dictation into a terminal in a Mac's desktop app: pending words dimmed, settled ones bracketed pastes, the hint with nowhere to dictate.
+// The recognizer stood in. WRITES only the throwaway vault.
 //   node web/qa/dictationterm.mjs <vault copy>
+// Paths: electron/dictation.ts, plugins/core/dictation/terminal.ts, web/src/core/dictation.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
@@ -19,7 +18,6 @@ const app = await _electron.launch({
 const win = watch(await app.firstWindow(), { console: true })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 
-// The recognizer stood in: it opens at once, then says what the script tells it; stopped, it ends.
 await app.evaluate(({ ipcMain }) => {
   const g = globalThis
   for (const n of ["dictation:engines", "dictation:start", "dictation:stop", "dictation:cancel"]) ipcMain.removeHandler(n)
@@ -41,7 +39,6 @@ const listening = () => win.evaluate(() => !!document.querySelector(".dictation-
 const dimmed = () => win.evaluate(() => document.querySelector("[data-term-pending]")?.textContent ?? "")
 const flat = async () => (await terminalText(win)).replace(/\n/g, "")
 
-// ---------- a program that shows what it's sent: its bytes echoed, an Enter would print the line again
 await win.evaluate(() => { location.hash = `#view/terminal%2Fqadictation${Date.now().toString(36)}` })
 await until(async () => PROMPT.test(await terminalText(win)), 20000)
 await win.locator("[data-term]").click()
@@ -53,7 +50,6 @@ await fnKey()
 check("fn in a terminal listens", await until(listening, 3000))
 await until(() => win.evaluate(() => document.querySelector(".dictation-pill")?.hasAttribute("data-ready")), 3000)
 await say({ type: "speech" })
-// (words come replaced from the main process, electron/dictation.ts: this page gets them as said there)
 await say({ type: "pending", text: "@claude, remember to" })
 check("words not settled show dimmed at the terminal's cursor", await until(async () => (await dimmed()) === "@claude, remember to", 3000), await dimmed())
 const at = await win.evaluate(() => {
@@ -76,11 +72,9 @@ check("nothing dimmed is left as words settle", (await dimmed()) === "")
 await fnKey()
 check("fn again stops", await until(async () => !(await listening()), 3000))
 await win.keyboard.press("Control+C")
-// (the shell ended, its terminal server goes once idle: none left behind)
 await win.keyboard.type("exit")
 await win.keyboard.press("Enter")
 
-// ---------- nowhere to dictate: the hint where they look, never a silent key
 await win.evaluate(() => { location.hash = "" ; document.activeElement?.blur() })
 await wait(500)
 await win.evaluate(() => document.activeElement?.blur())

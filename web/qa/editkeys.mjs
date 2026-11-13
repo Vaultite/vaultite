@@ -1,6 +1,7 @@
-// The editing keys and commands (plugins/core/editing): the app's keys win over the editor's, file tree row keys too.
-// WRITES a note: throwaway only.
+// The editing keys and commands: the app's keys win over the editor's, file tree row keys too.
+// WRITES a note: throwaway server.
 //   node web/qa/editkeys.mjs <base url> <vault path>
+// Paths: plugins/core/editing
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { command, qa, until, wait } from "./lib/qa.mjs"
@@ -15,7 +16,6 @@ await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await page.waitForSelector("[data-pane] .cm-content", { timeout: 30000 })
 await wait(800)
 await page.click("[data-pane] .cm-content")
-/** The cursor to the start of line n (1-based). */
 const line = async (n) => { await page.keyboard.press("ControlOrMeta+Home"); for (let i = 1; i < n; i++) await page.keyboard.press("ArrowDown"); await page.keyboard.press("Home") }
 const lines = () => disk().split("\n")
 const saved = (n, want) => until(() => lines()[n - 1] === want, 4000)
@@ -75,7 +75,6 @@ await command(page, "Insert current date")
 const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
 check("Insert current date", await until(() => disk().includes(ymd)), disk())
 
-// Google Docs' keys: a mark on the word at the cursor, a heading, the lists; ⌥↑ / ⌥↓ move the line.
 await page.click("[data-pane] .cm-content")
 await line(3); await page.keyboard.press("ArrowRight")
 for (const [keys, want, what] of [["Shift+X", "~~delta~~", "strikethrough"], ["Shift+H", "==delta==", "highlight"], ["Shift+C", "`delta`", "code"]]) {
@@ -100,7 +99,6 @@ check("⌥↑: the line moves up", await saved(2, "delta") && lines()[2] === sec
 await page.keyboard.press("Alt+ArrowDown")
 check("⌥↓: and back down", await saved(3, "delta"), lines())
 
-// A note's keys stay in the note: ⌘D on its file tree row duplicates the file, F2 renames it there, ? the hotkeys.
 const before = disk()
 const row = `[data-sidebar-body] [data-tree-path="${NOTE}"] > button`
 await until(() => page.$(row))
@@ -113,14 +111,12 @@ await page.keyboard.press("ControlOrMeta+D")
 const copy = file.replace(/\.md$/, " 1.md")
 check("⌘D on a tree row: the file duplicated", await until(() => existsSync(copy)), copy)
 check("⌘D on a tree row: the note left alone", disk() === before, disk())
-// (the copy opens to be named, taking the keyboard, later than its file on a slow machine: then back to the row)
 await until(() => page.evaluate((p) => decodeURIComponent(location.hash) === `#file/${p}` && !!document.activeElement?.closest("[data-pane]"), NOTE.replace(/\.md$/, " 1.md")), 8000)
 await page.focus(row)
 await page.keyboard.press("Shift+/")
 check("? opens the hotkeys", !!(await until(() => page.$("[data-hotkeys]"))))
 await page.keyboard.press("Escape"); await wait(300)
 if (existsSync(copy)) unlinkSync(copy)
-// (Duplicate opened the copy, gone now: back to the note)
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await page.waitForSelector("[data-pane] .cm-content", { timeout: 30000 })
 

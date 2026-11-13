@@ -1,6 +1,7 @@
-// The Daily note panel (plugins/core/daily-notes/Day.tsx): edited beside a note, stepping days, the rail's flyout.
-// WRITES today's note, the first missing day after it and sidebars.json: throwaway only.
+// The Daily note panel: edited beside a note, stepping days, the rail's flyout.
+// WRITES today's note, the next missing day and sidebars.json: throwaway server.
 //   node web/qa/dailypanel.mjs <base url> [screenshot]
+// Paths: plugins/core/daily-notes/Day.tsx
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, SHOT = "/tmp/dailypanel.png"], browser, check, watch, done } = await qa(import.meta.url)
 const api = (p) => fetch(new URL(`/api/${p}`, B)).then((r) => r.json())
@@ -18,7 +19,6 @@ const toToday = async () => { if (await page.$(`${P} [aria-label='Today']`)) awa
 const menuItems = () => page.$$eval("[role=menu] [role^=menuitem]", (els) => els.map((e) => e.textContent.trim()))
 const closeMenus = async () => { while (await page.$("[role=menu]")) { await page.keyboard.press("Escape"); await wait(100) } }
 
-// (hidden again, as a vault starts: an earlier run showed it)
 const KEY = "daily-notes:daily", JSON_PUT = { method: "PUT", headers: { "Content-Type": "application/json" } }
 const without = (s) => ({ ...s, left: (s.left ?? []).filter((k) => k !== KEY), right: (s.right ?? []).filter((k) => k !== KEY) })
 await fetch(new URL("/api/config/sidebars", B), { ...JSON_PUT, body: JSON.stringify(without(await api("config/sidebars"))) })
@@ -30,7 +30,6 @@ try {
   const note = `${(await api("state")).notes.find((n) => !/journal/i.test(n.id)).id}.md`
   await page.goto(`${B}#file/${encodeURIComponent(note)}`); await page.waitForSelector("[data-pane] .cm-content", { timeout: 20_000 }); await wait(800)
 
-  // ---------- shown from the sidebar's menu (hidden by default) ----------
   check("hidden by default", !(await page.$(P)))
   await page.click("aside[data-side=left] [data-titlebar]", { button: "right" })
   await page.locator("[role=menu]").first().locator(":scope > button", { hasText: /^More$/ }).hover(); await wait(300)
@@ -38,7 +37,6 @@ try {
   await closeMenus()
   check("shown from More ▸", !!(await until(() => page.$(P))))
 
-  // ---------- today's note, edited in place beside the open note ----------
   const today = await until(() => shownDay())
   check("it shows today, headed Today", today === iso(new Date()) && (await heading()) === "Today", [today, await heading()])
   const todayPath = (await dayOf(today)).path
@@ -49,7 +47,6 @@ try {
   check("typed in today's note saves it", !!(await until(async () => (await text(todayPath)).includes("Sidebar scratch: ask Alice"), 6000)))
   check("the open note stays in its tab", decodeURIComponent(await page.evaluate(() => location.hash)).includes(note))
 
-  // ---------- stepping days ----------
   await button("Day before")
   check("Day before: yesterday", (await shownDay()) === plus(today, -1) && (await heading()) === "Yesterday", [await shownDay(), await heading()])
   await button("Day before")
@@ -62,7 +59,6 @@ try {
   check("the day shown is kept over a reload", (await until(() => shownDay())) === plus(today, -1), await shownDay())
   await button("Today")
 
-  // ---------- a missing day: shown, not made, started on asking ----------
   let missing = plus(today, 1), steps = 1
   while ((await dayOf(missing)).exists && steps < 10) { missing = plus(missing, 1); steps++ }
   for (let i = 0; i < steps; i++) await button("Day after")
@@ -77,14 +73,12 @@ try {
   await page.keyboard.type("Started from the sidebar")
   check("...and what's typed saves in it", !!(await until(async () => (await text(missingPath)).includes("Started from the sidebar"), 6000)))
 
-  // ---------- the menu ----------
   await page.click(`${P} [data-panel-handle]`, { button: "right", position: { x: 12, y: 14 } })
   const items = await menuItems()
   check("its menu: one Open … in a tab, the shown day's note", items.filter((t) => /^Open .* in a tab$/.test(t)).length === 1 && items.some((t) => /^Open .*'s note in a tab$/.test(t)), items)
   await page.getByRole("menuitem", { name: /'s note in a tab$/ }).click()
   check("...which opens that note's file", !!(await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(missingPath))), await page.evaluate(() => location.hash))
 
-  // ---------- the rail: a flyout to jot in ----------
   await toToday()
   await page.click("[data-sidebar-toggle='']"); await wait(400)
   const F = "[data-flyout='daily-notes:daily']"
@@ -104,7 +98,6 @@ try {
   check("...a click outside closes it", !(await page.$(F)))
   await page.click("[data-sidebar-toggle='']"); await wait(400)
 
-  // ---------- the look, beside the open note ----------
   await page.goto(`${B}#file/${encodeURIComponent(note)}`); await page.waitForSelector(P); await wait(300)
   await toToday(); await page.mouse.move(700, 400); await wait(800)
   await page.screenshot({ path: SHOT })

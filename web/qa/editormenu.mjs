@@ -1,6 +1,7 @@
-// The editor's right-click menu (plugins/core/editing/menu.ts): each item does what its command does; no app menu on
-// Shift+right-click or a held finger. WRITES a "Qa editor menu" folder: throwaway server only.
+// The editor's right-click menu: each item does what its command does; none on Shift+right-click or a held finger.
+// WRITES a "Qa editor menu" folder: throwaway server.
 //   node web/qa/editormenu.mjs <base url> <vault path> [out dir]
+// Paths: plugins/core/editing/menu.ts
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, SELECT_WORD, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
@@ -11,7 +12,6 @@ rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 mkdirSync(`${VAULT}/${DIR}`, { recursive: true })
 const START = "alpha beta\ngamma\ndelta\nepsilon\nzeta\n"
 writeFileSync(NOTE, START)
-// (the pasted picture's name starts with the minute it was pasted in: removed at the end)
 const stamp = `Pasted image ${new Date().getFullYear()}`
 const disk = () => readFileSync(NOTE, "utf8")
 try {
@@ -21,7 +21,6 @@ try {
   await page.waitForSelector("[data-pane] .cm-content", { timeout: 15000 })
   await ui.idle()
   const line = (n) => page.locator("[data-pane] .cm-content .cm-line").nth(n - 1)
-  /** Select line n's text (or `from`..`to` of it: the keyboard). */
   const select = async (n, word) => {
     await line(n).click(); await page.keyboard.press("Home")
     if (word) { await page.keyboard.press(SELECT_WORD) } else await page.keyboard.press("Shift+End")
@@ -29,7 +28,6 @@ try {
   }
   const items = () => page.locator("[role=menu]").first().locator(":scope > [role=menuitem]").allTextContents()
   const open = (n, opts = {}) => ui.menu.context(line(n), opts)
-  /** Right-click line n, then a submenu's item. */
   const pick = async (n, path, at) => {
     await open(n, at ? { position: at } : {})
     for (const [i, name] of path.entries()) {
@@ -39,12 +37,9 @@ try {
   }
   const lines = () => disk().split("\n")
   const saved = async (want) => { await ui.saved(); return typeof want === "function" ? want(disk()) : disk().includes(want) }
-  /** Once the editor holds `text` (a write to disk reaches it through the server). */
   const shows = (text) => until(() => page.evaluate((t) => { const el = document.querySelector("[data-pane] .cm-content"); return (el?.cmView?.view ?? el?.cmTile?.view)?.state.doc.toString() === t }, text), 15_000)
-  /** The note as it started (the editor merges it in from the disk). */
   const reset = async (text = START) => { writeFileSync(NOTE, text); await shows(text) }
 
-  // ---- with a selection ----
   await select(1)
   await open(1)
   let got = await items()
@@ -64,7 +59,6 @@ try {
     await reset()
   }
   writeFileSync(NOTE, "**alpha** ==beta== `x`\n" + START.split("\n").slice(1).join("\n")); await shows(disk())
-  // (right-clicked on its text: the line's middle is past it, outside a selection that stops at the hidden last `)
   await select(1); await pick(1, ["Format", "Clear formatting"], { x: 30, y: 10 })
   check("Format ▸ Clear formatting", await saved((t) => t.startsWith("alpha beta x\n")), lines()[0])
   await reset()
@@ -93,7 +87,6 @@ try {
   check("Add external link: [selection]()", await saved("[alpha beta]()"), lines()[0])
   await reset()
 
-  // ---- the clipboard ----
   await select(3); await pick(3, ["Copy"])
   check("Copy", (await page.evaluate(() => navigator.clipboard.readText())) === "delta")
   await select(4); await pick(4, ["Cut"])
@@ -116,7 +109,6 @@ try {
   check("Select all: everything selected (the menu offers Cut)", got.includes("Cut" + "⌘X") || got.some((i) => i.startsWith("Cut")), got)
   await ui.menu.close()
 
-  // ---- a right-click elsewhere moves the cursor; no selection: no Cut, Copy or Search ----
   await select(1)
   await open(4)
   got = await items()
@@ -126,16 +118,13 @@ try {
   check("…and the cursor went where the click was", await saved("epsilon\n\n---\n"), disk())
   await reset()
 
-  // ---- Search for ----
   await select(1); await pick(1, ["Search for"])
   check("Search for: a search tab with the selection", await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("view/search/alpha beta")), 4000), await page.evaluate(() => location.hash))
   await page.goto(`${B}#file/${enc(`${DIR}/Menu.md`)}`); await page.waitForSelector("[data-pane] .cm-content"); await ui.idle()
 
-  // ---- Shift+right-click: the browser's own ----
   await line(1).click({ button: "right", modifiers: ["Shift"] }); await ui.idle()
   check("Shift+right-click: no app menu", await page.locator("[role=menu]").count() === 0)
 
-  // ---- the palette has the new commands ----
   for (const name of ["Toggle inline math", "Clear formatting", "Insert footnote", "Toggle task list", "Paste as plain text", "Search for selected text"]) {
     await select(1)
     await page.keyboard.press("ControlOrMeta+P"); await page.waitForSelector("[role=option]"); await page.keyboard.type(name); await ui.idle()
@@ -144,7 +133,6 @@ try {
     await page.keyboard.press("Escape"); await ui.idle()
   }
 
-  // ---- reading view: Copy, Select all, Search for ----
   await page.keyboard.press("ControlOrMeta+E"); await ui.idle()
   await page.evaluate(() => {
     const l = document.querySelector("[data-pane] .cm-content .cm-line")
@@ -159,7 +147,6 @@ try {
   check("reading view: Copy", (await page.evaluate(() => navigator.clipboard.readText())).startsWith("alpha beta"))
   await ctx.close()
 
-  // ---- a phone: a held finger keeps the system's own (no app menu on text) ----
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" })
   const p = await phone.newPage(), pui = app(p)
   await p.goto(`${B}#view/files/file/${enc(`${DIR}/Menu.md`)}`)

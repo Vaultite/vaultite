@@ -1,5 +1,5 @@
-// The phone's left drawer opens at its top, even with Files' auto-reveal on (set {"autoReveal": true} in the throwaway
-// vault's .vaultite/files.json first); reads only:
+// The phone's left drawer opens at its top, even with Files' auto-reveal on.
+// Needs {"autoReveal": true} in the throwaway vault's .vaultite/files.json; reads only.
 //   node web/qa/drawerscroll.mjs <base url> [shots dir]
 import { SHOTS, qa } from "./lib/qa.mjs"
 const { args: [B, dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)
@@ -13,7 +13,6 @@ await open()
 r.before = await top()
 const pins = page.locator("[data-phone-drawer] [data-pin]")
 r.pins = await pins.count()
-// The second pin, then the first: each a page other than the one open (the start page is the first).
 for (const [k, i] of [[0, 1], [1, 0]]) {
   if (i >= r.pins) continue
   await pins.nth(i).tap(); await page.waitForTimeout(900)
@@ -22,7 +21,6 @@ for (const [k, i] of [[0, 1], [1, 0]]) {
   await page.screenshot({ path: `${dir}drawerscroll-${k}.png` })
 }
 console.log(JSON.stringify({ ...r, errs }, null, 1))
-// With Files' auto-reveal on (the sandbox's files.json), and a drawer taller than the screen: else it proves nothing.
 const ok = r.pins > 1 && r.before?.room > 0 && [r.before, r.after0, r.after1].every((x) => x?.top === 0) && !errs.length
 await browser.close()
 process.exit(ok ? 0 : 1)

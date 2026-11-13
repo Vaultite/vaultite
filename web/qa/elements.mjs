@@ -1,5 +1,5 @@
-// Block an element in the desktop app, against a site and a filter list of its own on 127.0.0.1 (no network): the
-// picker, the blocked list, an agent's web-viewer.block, and site styles. WRITES: the throwaway vault only.
+// Block an element in the desktop app's Browser: the picker, the blocked list, an agent's web-viewer.block, site styles.
+// Needs the desktop app; serves its own site and filter list locally. WRITES only the throwaway vault.
 //   node web/qa/elements.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -12,7 +12,6 @@ const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-elements-"))
 keepAwake(600)
 
-// ---------- a made-up site: cards (two sponsored), a banner ----------
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(`<!doctype html><title>Feed</title>
@@ -41,7 +40,6 @@ const STYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/127.0.0.1.css
 const SETTINGS = path.join(VAULT, ".vaultite/plugins/web-viewer/data.json")
 const note = () => (fs.existsSync(NOTE) ? fs.readFileSync(NOTE, "utf8") : "")
 
-// ---------- the app ----------
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local"),
@@ -55,14 +53,12 @@ await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]
 const ui = (body) => uiAt(origin)(body)
 const runOp = (id, params) => fetch(`${origin}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) }).then((r) => r.json())
 
-/** Run `code` in the visible page: in its own world, or (`world`) another, as the picker's (1020). */
 const inPage = (code, world = 0) => app.evaluate(({ BaseWindow }, [code, world]) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   if (!v) return null
   return world ? v.webContents.executeJavaScriptInIsolatedWorld(world, [{ code }]) : v.webContents.executeJavaScript(code)
 }, [code, world])
-/** Real input into the visible page (its own coordinates). */
 const input = (events) => app.evaluate(({ BaseWindow }, events) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -73,7 +69,6 @@ const point = async (sel) => { const { x, y } = await centre(sel); await input([
 const click = async (sel) => { const { x, y } = await point(sel); await input([{ type: "mouseDown", x, y, button: "left", clickCount: 1 }, { type: "mouseUp", x, y, button: "left", clickCount: 1 }]) }
 const key = (keyCode) => input([{ type: "keyDown", keyCode }, { type: "keyUp", keyCode }])
 const picker = () => inPage("globalThis.__vaultitePicker?.state?.() ?? null", 1020)
-/** Which of the page's parts show. */
 const seen = () => inPage(`(() => { const shown = (id) => getComputedStyle(document.getElementById(id)).display !== "none"
   return { s1: shown("s1"), s2: shown("s2"), story: shown("story"), banner: shown("banner") } })()`)
 const button = win.locator("[data-web-shields]")
@@ -88,14 +83,12 @@ await ui({ action: "open", path: `view:web/${SITE}` })
 check("a page opens", await until(async () => (await inPage("location.href")) === SITE, 20000), await inPage("location.href"))
 await until(() => button.count(), 10000)
 
-// ---------- Esc cancels ----------
 check("Block an element… starts the picker in the page", await startPicker(), await picker())
 await key("Escape")
 check("Esc: the picker's gone, nothing hidden, nothing kept", await until(async () => (await picker()) === null, 5000)
   && JSON.stringify(await seen()) === JSON.stringify({ s1: true, s2: true, story: true, banner: true }) && !note(), [await picker(), await seen(), note()])
 
-// ---------- the page's right-click menu: Block element… starts on what was right-clicked ----------
-// (a native menu Playwright can't click: what its item tells the window, with the page's id and the right-click's point)
+// (a native menu Playwright can't click: what its item tells the window, sent instead)
 const pageId = Number(await win.locator("[data-web-page]").first().getAttribute("data-web-page"))
 const at = await centre("#s1 .label")
 await app.evaluate(({ BaseWindow }, msg) => BaseWindow.getAllWindows()[0].webContents.send("vaultite:web", msg), { type: "block", id: pageId, ...at })
@@ -103,7 +96,6 @@ check("right-click, Block element…: the picker starts with that element picked
 await key("Escape")
 await until(async () => (await picker()) === null, 5000)
 
-// ---------- pick, widen, narrow, block ----------
 await startPicker()
 await point("#s1 .label")
 check("pointing outlines it", await until(async () => (await picker())?.hovered, 5000), await picker())
@@ -132,7 +124,6 @@ await inPage("location.reload()")
 await wait(1500)
 check("a reload: still hidden", await until(async () => JSON.stringify(await seen()) === JSON.stringify({ s1: false, s2: false, story: true, banner: true }), 10000), await seen())
 
-// ---------- the menu's list: show it again ----------
 await button.click()
 await menuItem(/^Hidden on 127\.0\.0\.1/).hover()
 const row = menuItem("my-card[is-sponsored]")
@@ -141,7 +132,6 @@ await row.click()
 check("a click shows it again, without a reload", await until(async () => (await seen())?.s1 === true && (await seen())?.s2 === true, 10000), await seen())
 check("… and takes it out of the list", await until(() => !note().includes(RULE), 10000), note())
 
-// ---------- agents ----------
 await runOp("web-viewer.block", { rule: ".promo-banner", site: "127.0.0.1" })
 check("an agent's rule (web-viewer.block) hides at once", await until(async () => (await seen())?.banner === false, 10000) && note().includes("127.0.0.1##.promo-banner"), [await seen(), note()])
 await runOp("web-viewer.unblock", { rule: "127.0.0.1##.promo-banner" })
@@ -151,8 +141,6 @@ check("a rule for every site (a class's, matched by what the page has) hides at 
 await runOp("web-viewer.unblock", { rule: "##.promo-banner" })
 check("… and is taken back", await until(async () => (await seen())?.banner === true, 10000), await seen())
 
-// ---------- site styles ----------
-/** How the page's parts look, and the vault's look as the page has it. */
 const looks = () => inPage(`(() => { const css = (sel, p) => getComputedStyle(document.querySelector(sel))[p]
   const v = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
   return { card: css("#story .inner", "backgroundColor"), banner: css("#banner", "color"), bg: v("--vault-background"), scheme: v("--vault-color-scheme") } })()`)
@@ -188,7 +176,6 @@ await menuItem("Style this site…").click()
 check("Style this site…: its file made from the template, opened beside the page", await until(() => fs.existsSync(STYLE) && fs.readFileSync(STYLE, "utf8").includes("--vault-background"), 10000)
   && await until(() => win.getByText("127.0.0.1.css").first().isVisible().catch(() => false), 10000), fs.existsSync(STYLE))
 
-// ---------- a subdomain's own style: the Shields menu names the style the page gets, and makes one for its host ----------
 const SUB = `http://docs.localhost:${server.address().port}/`
 const SUBSTYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/docs.localhost.css")
 const unstyled = () => JSON.parse(fs.existsSync(SETTINGS) ? fs.readFileSync(SETTINGS, "utf8") : "{}").unstyled ?? []
@@ -201,14 +188,12 @@ check("… the Shields menu has its style, by its host, on", await until(() => m
 await menuItem("Style for docs.localhost").click()
 check("… turned off there: kept by its host", await until(async () => (await looks())?.banner !== "rgb(4, 5, 6)", 10000) && unstyled().includes("docs.localhost"), unstyled())
 fs.rmSync(SUBSTYLE)
-// (till the app has heard the file's gone: its menu offers to make one again)
 await until(async () => {
   await button.click()
   if (await until(() => menuItem("Style this site…").count(), 1000)) return true
   await win.keyboard.press("Escape")
 }, 10000)
 await menuItem("Style this site…").click()
-// (its file is made first, then its style turned on again: two writes)
 check("Style this site… on a subdomain makes its host's file, not its parent site's", await until(() => fs.existsSync(SUBSTYLE) && !unstyled().includes("docs.localhost"), 10000)
   && !fs.existsSync(path.join(VAULT, ".vaultite/plugins/web-viewer/sites/localhost.css")), [fs.existsSync(SUBSTYLE), unstyled()])
 

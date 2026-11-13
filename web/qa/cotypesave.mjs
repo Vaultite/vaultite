@@ -1,8 +1,7 @@
-// A note open in two windows (typed in together: plugins/core/companion/cotype.ts) while something else writes it (an
-// agent, vau): when one window goes and the other saves alone again, nothing the others typed or the write added is
-// saved over (editor/Editor.tsx's onChange, components/FileView.tsx, core/autosave.ts). Two of the owner's windows, the
-// owner's and a guest's (plugins/core/share), and a guest's alone. Starts its own server on a copy of the vault.
+// A note typed in from two windows while an agent writes it: when one window goes, the other's saves lose nothing.
+// The owner's two windows, the owner's and a guest's, a guest's alone. Starts its own server on a copy of the vault.
 //   node web/qa/cotypesave.mjs <vault copy>
+// Paths: plugins/core/companion/cotype.ts, editor/Editor.tsx, components/FileView.tsx, core/autosave.ts, plugins/core/share
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -32,14 +31,10 @@ const stop = () => {
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 })
 }
 const op = async (id, body) => { const j = await (await fetch(`${B}api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli" }, body: JSON.stringify(body) })).json(); return j.result ?? j }
-/** vau's write of the whole file with a line added at its end, as an agent appends. */
 const append = (n, line) => op("file.write", { path: `${F}/${n}.md`, text: `${read(n)}\n${line}\n` })
-/** A line typed at the top of the note's body, away from where the write lands. */
 const typeTop = async (p, s) => { await p.locator(".cm-line", { hasText: "The keeper's log." }).click(); await p.keyboard.press("Home"); await p.keyboard.type(s) }
 const shows = (p, s) => until(() => p.evaluate((s) => !!document.querySelector(".cm-content")?.textContent?.includes(s), s), 15_000)
-/** Both lines stay in the file a while after a window goes (a stale save comes within a moment of it). */
 const kept = async (n, ...lines) => !(await until(() => !lines.every((l) => read(n).includes(l)), 3000))
-/** Pages whose room sent them the doc to type into (the server's `y-state` with it): they type together. */
 const bound = new WeakSet()
 const opened = async (ctx, url, label) => {
   const p = watch(await ctx.newPage(), { label })
@@ -55,7 +50,6 @@ try {
   const ownerCtx = await browser.newContext({ viewport: { width: 1200, height: 850 } })
   const at = (n) => `${B}#file/${encodeURIComponent(`${F}/${n}.md`)}`
 
-  // Two of the owner's windows: one only watches, the other types; an agent appends; the typing one goes.
   let n = "Two windows"
   const watcher = await opened(ownerCtx, at(n), "watcher")
   let typist = await opened(ownerCtx, at(n), "typist")
@@ -70,7 +64,6 @@ try {
   await watcher.close({ runBeforeUnload: true })
   check("...nor once it goes too", await kept(n, "Fog at dawn.", "Lamp checked by the agent."), read(n))
 
-  // The owner's window and a guest's (edit): the guest types, an agent appends, the guest goes, then the owner.
   const { link } = await op("share.create", { folder: F, guest: "Ada Park", role: "edit", days: 1 })
   const guestCtx = await browser.newContext({ viewport: { width: 1200, height: 850 } })
   const landing = watch(await guestCtx.newPage(), { label: "guest" })
@@ -91,7 +84,6 @@ try {
   await owner.close({ runBeforeUnload: true })
   check("...nor once it goes too", await kept(n, "Ada saw a ship.", "Lamp checked by the agent."), read(n))
 
-  // A guest alone in a note (saving as ever): a write while it's open, typed after, then the page goes at once.
   n = "Guest alone"
   guest = await opened(guestCtx, gat(n), "guest-alone")
   await append(n, "Lamp checked by the agent.")

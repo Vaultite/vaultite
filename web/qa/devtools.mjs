@@ -1,6 +1,7 @@
-// vau's dev tools against an open app window (core/coreops/dev.ts, web/src/core/dev.ts), and the owner check.
-// Headless Chrome; WRITES nothing in the vault (the window's console is cleared).
+// vau's dev tools against an open app window in headless Chrome, and the owner check.
+// WRITES nothing in the vault; clears the window's console.
 //   node web/qa/devtools.mjs <base url>
+// Paths: core/coreops/dev.ts, web/src/core/dev.ts
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -72,7 +73,6 @@ r = vau(["command", "palette:open"])
 const open = await page.waitForFunction(() => !!document.querySelector("[role=dialog], [cmdk-root]"), null, { timeout: 3000 }).then(() => true, () => false)
 check("vau command: runs it in the window", r.status === 0 && open, r)
 
-// Not the owner: through another proxy, or someone else on the tailnet.
 for (const h of [{ "X-Forwarded-For": "100.64.0.9" }, { "Tailscale-User-Login": "mallory@example.com" }]) {
   const res = await fetch(`${base}api/ops/dev.eval`, { method: "POST", headers: { "Content-Type": "application/json", ...h }, body: JSON.stringify({ code: "1" }) })
   check(`dev eval: refused (${Object.keys(h)[0]})`, res.status === 403, [res.status, await res.text()])

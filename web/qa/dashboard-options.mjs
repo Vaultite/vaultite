@@ -1,5 +1,5 @@
-// A block on a dashboard (the user's file, read, not edited): its menu lists its live data's folders, Options writes
-// its fence. WRITES to the vault: throwaway server only.
+// A block on a dashboard: its menu lists its live data's folders, Options writes its fence.
+// WRITES the dashboard: throwaway server.
 //   node web/qa/dashboard-options.mjs <base url> [out dir]
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"

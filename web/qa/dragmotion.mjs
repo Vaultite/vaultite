@@ -1,10 +1,7 @@
-// Dragging tabs and panes moves like moving them (components/Tabs.tsx DragGhost, core/tabfold.ts, Workspace's DropZone):
-// a pane of a split lifts out as a card of itself (a copy nothing else finds) while it recedes, springs back on Escape
-// and lands where it's dropped (in another's middle: they swap); a tab lifts out of the tab bar leaving its slot open,
-// pulled off it is a card with a copy of its pages, its slot showing it goes back there, and on a pane's edge its pane
-// grows from the card; the drop zone shows the pane's outline beside it; a closed tab shrinks away and leaves nothing
-// behind; with animations off, nothing lingers. Sets appearance.json's animation (then unsets it), opens tabs: throwaway server only.
+// Dragging tabs and panes moves like moving them: lifted cards, open slots, springing back, swaps, closing, animations off.
+// Sets appearance.json's animation (then unsets it) and opens tabs: throwaway server.
 //   node web/qa/dragmotion.mjs <base url> [out dir]
+// Paths: components/Tabs.tsx, core/tabfold.ts
 import { mkdirSync } from "node:fs"
 import { apiAt, command, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
@@ -19,21 +16,17 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true }), ui = app(page)
 const nextFrame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
 const cmd = async (name) => { await command(page, name, 0); await ui.idle() }
-/** The panes on screen, left to right: each with what it shows. */
 const ON = "[data-pane-area] > section[data-pane-frame]:not([data-away])"
 const panes = () => page.$$eval(ON, (s) => s.map((e) => { const r = e.getBoundingClientRect(); return { id: e.dataset.paneFrame, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), name: e.getAttribute("aria-label") } })
   .sort((a, b) => a.x - b.x || a.y - b.y))
-/** The tab bar's tabs, in order. */
 const chips = () => page.$$eval("[data-tab-strip] [data-tab-id]", (c) => c.map((e) => e.dataset.tabId))
 const file = (f) => page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`)
 const files = await fetch(`${B}api/state`).then((r) => r.json()).then((s) => s.files.files.filter((f) => f.path.endsWith(".md")).map((f) => f.path).slice(0, 4))
 const name = (f) => f.split("/").pop().replace(/\.md$/, "")
 await page.goto(`${B}#file/${encodeURIComponent(files[0])}`)
 await page.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 30000 }); await ui.idle()
-// (from one tab of one pane, whatever an earlier run left)
 for (let i = 0; i < 16 && (await page.locator(ON).count()) > 1; i++) await cmd("Close pane")
 await cmd("Close all other tabs")
-// Two more tabs, then the first split in two: its right pane shows the second file.
 for (const f of files.slice(2)) {
   const n = await chips().then((c) => c.length)
   await page.locator("[data-tab-strip] [aria-label='New tab']").click(); await until(async () => (await chips()).length > n, 3000)
@@ -56,7 +49,6 @@ const ghost = () => page.evaluate(() => {
 })
 const grip = async (id) => { await page.hover(`[data-pane-bar="${id}"]`); return box(`[data-pane-handle="${id}"]`) }
 
-// ---------- a pane by its handle ----------
 let h = await grip(right.id)
 await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await page.mouse.down()
 await page.mouse.move(h.x - 30, h.y + 40, { steps: 4 }); await ui.idle()
@@ -80,7 +72,6 @@ check("Escape: the card springs back (still there a moment), the pane is back at
 check("...then it's gone", await until(async () => !(await page.$("[data-drag-ghost]")), 2000))
 check("...nothing moved", JSON.stringify(await panes()) === JSON.stringify([left, right]), await panes())
 
-// Dropped on the left edge: it lands there, growing from its card.
 h = await grip(right.id)
 await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await page.mouse.down()
 await page.mouse.move(lb.x + lb.width * 0.06, lb.y + lb.height / 2, { steps: 12 }); await ui.idle()
@@ -93,7 +84,6 @@ check("...and is there, the other beside it, nothing left of the drag", after[0]
   && await page.$eval(`section[data-pane-frame="${right.id}"]`, (s) => !s.getAnimations().length && !s.style.transform), after)
 ;[right, left] = after
 
-// ---------- a tab ----------
 const [, t0, t1] = await chips()
 const a = await box(`[data-tab-id="${t0}"]`), z = await box(`[data-tab-id="${t1}"]`)
 await page.mouse.move(a.x + 20, a.y + a.height / 2); await page.mouse.down()
@@ -114,7 +104,6 @@ await page.mouse.move(z.x + z.width - 8, z.y + z.height / 2, { steps: 10 }); awa
 await page.mouse.up(); await ui.idle()
 check("dropped after the next tab: they've swapped, nothing left of the drag", JSON.stringify((await chips()).slice(1, 3)) === JSON.stringify([t1, t0]) && !(await page.$("[data-drag-ghost]")), await chips())
 
-// ---------- closing a tab ----------
 const n = (await chips()).length
 await page.hover(`[data-tab-id="${t0}"]`)
 await page.click(`[data-tab-id="${t0}"] [data-tab-close]`)
@@ -124,7 +113,6 @@ check("closed: the tab shrinks away where it was", going === 1 && (await chips()
 await ui.idle()
 check("...and leaves nothing behind", !(await page.$("[data-tab-strip] [inert]")))
 
-// ---------- a pane into another's middle: they swap, the one dropped growing from its card ----------
 h = await grip(left.id)
 const rb = await box(`[data-pane-body="${right.id}"]`)
 await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await page.mouse.down()
@@ -136,7 +124,6 @@ await ui.idle()
 check("...they've swapped, nothing left of the drag", !(await found("[data-drag-ghost]")) && JSON.stringify((await panes()).map((p) => p.id)) === JSON.stringify([left.id, right.id]), await panes())
 ;[left, right] = await panes()
 
-// ---------- a tab onto a pane's edge: its pane grows from its card ----------
 const [, k0] = await chips()
 const k0pane = await page.evaluate((id) => JSON.parse(localStorage.getItem("vaultite.tabs")).tabs.find((t) => t.id === id)?.focus, k0)
 const kb = await box(`[data-tab-id="${k0}"]`), pb = await box(`[data-pane-body="${right.id}"]`)
@@ -149,10 +136,8 @@ await ui.idle()
 check("...three panes, its pane the right one, the tab gone into the split", (await panes()).length === 3 && (await panes()).at(-1)?.id === k0pane && !(await chips()).includes(k0), { panes: await panes(), chips: await chips() })
 ;[left, , right] = await panes()
 
-// ---------- animations off ----------
 await api("PATCH", "config/appearance", { animation: "off" })
 await until(() => page.evaluate(() => document.documentElement.dataset.animation === "off"), 3000)
-// (a file open nowhere else: one open already would be shown where it is)
 await page.locator("[data-tab-strip] [aria-label='New tab']").click(); await ui.idle()
 await file(files[2]); await ui.idle()
 const c0 = (await chips()).at(-1)

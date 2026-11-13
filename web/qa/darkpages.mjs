@@ -1,9 +1,5 @@
-// Dark pages in the desktop app, against made-up sites on this machine (no network): a light site darkened in the
-// theme's colours (pictures and video as they are, canvases with the page), also after a load in a new process (a link
-// to another site, a page asking for a process of its own, a new tab), a site dark of itself left alone, a site
-// the vault styles judged as it looks with its style (its styled page left to it, its other pages darkened, again as the
-// style changes), no white first frame, the Shields menu's switch, and the look changing live.
-// Pictures of each case go to web/qa/shots/darkpages-*.png. WRITES: the throwaway vault only.
+// Dark pages in the desktop app's Browser: light sites darkened across loads and processes, dark and styled ones left be.
+// Needs the desktop app; serves made-up sites locally, shots to web/qa/shots/darkpages-*.png. WRITES only the throwaway vault.
 //   node web/qa/darkpages.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -16,7 +12,6 @@ const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-darkpages-"))
 keepAwake(600)
 
-// ---------- made-up sites: light, dark of itself, styled (another host), slow to send its body ----------
 const PICTURE = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="60" height="60" fill="#ff0000"/><rect x="60" width="60" height="60" fill="#ffffff"/></svg>`)
 const LIGHT = `<!doctype html><title>Light</title>
 <style>body { margin: 0; font: 16px sans-serif; color: #222; background: #fff } header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #f6f8fa }
@@ -29,9 +24,7 @@ const NATIVE = `<!doctype html><title>Dark itself</title><meta name="color-schem
 <main style="padding: 60px 20px"><h1>Dark of itself</h1><img id="pic" width="120" height="60" src="data:image/svg+xml,${PICTURE}"></main>`
 const SLOW_HEAD = `<!doctype html><title>Slow</title><style>body { margin: 0; background: #fff; color: #222; font: 16px sans-serif }</style>`
 const server = http.createServer((req, res) => {
-  // (as a site far away answers: the page left has heard every override before the new one's process takes over)
   if (req.url.startsWith("/late")) return void setTimeout(() => { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); res.end(LIGHT) }, 600)
-  // (a page of the same site that asks for a process of its own, as LinkedIn's and X's do: its response swaps it)
   if (req.url.startsWith("/isolated")) return void (res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
     "Cross-Origin-Opener-Policy": "same-origin" }), res.end(LIGHT))
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" })
@@ -47,7 +40,6 @@ await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, o
 const PORT = server.address().port
 const SITE = `http://127.0.0.1:${PORT}/`, STYLED = `http://localhost:${PORT}/`
 
-// ---------- the vault: the Browser on, a dark gruvbox look, a style for localhost ----------
 const pluginsFile = path.join(VAULT, ".vaultite/plugins.json")
 const plugins = fs.existsSync(pluginsFile) ? JSON.parse(fs.readFileSync(pluginsFile, "utf8")) : {}
 fs.mkdirSync(path.dirname(pluginsFile), { recursive: true })
@@ -59,14 +51,12 @@ const setLook = (l) => fs.writeFileSync(APPEARANCE, JSON.stringify({ ...look, ..
 setLook({ theme: "dark", scheme: "gruvbox" })
 const STYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/localhost.css")
 fs.mkdirSync(path.dirname(STYLE), { recursive: true })
-// (as docs.google.com.css: only its editor, its other pages as the site makes them)
 const EDITOR_ONLY = "body.editor { background: rgb(10, 80, 10) }\n"
 fs.writeFileSync(STYLE, EDITOR_ONLY)
 const SETTINGS = path.join(VAULT, ".vaultite/plugins/web-viewer/data.json")
 const settings = () => (fs.existsSync(SETTINGS) ? JSON.parse(fs.readFileSync(SETTINGS, "utf8")) : {})
 { const { darkPages, darkPagesLook, darkPagesOff, unstyled, ...rest } = settings(); fs.writeFileSync(SETTINGS, JSON.stringify(rest, null, 2) + "\n") }
 
-// ---------- the app ----------
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
@@ -83,7 +73,6 @@ await app.evaluate(({ WebContentsView }) => {
 })
 const ui = (body) => uiAt(origin)(body)
 
-/** The visible page's view: `fn` runs on it in the main process. */
 const onView = (fn, arg) => app.evaluate(({ BaseWindow }, [fn, arg]) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -91,7 +80,6 @@ const onView = (fn, arg) => app.evaluate(({ BaseWindow }, [fn, arg]) => {
   return v ? new Function("v", "arg", `return (${fn})(v, arg)`)(v, arg) : null
 }, [String(fn), arg])
 const inPage = (code) => onView((v, code) => v.webContents.executeJavaScript(code), code)
-/** Colours at points of the page as drawn, [r, g, b] each (`shot`: the picture kept too). */
 const pixels = async (points, shot) => {
   const got = await onView(async (v, [points, shot]) => {
     const img = await v.webContents.capturePage()
@@ -114,7 +102,6 @@ const open = async (url) => {
   await ui({ action: "open", path: `view:web/${url}` })
   return until(async () => (await inPage("location.href")) === url && (await inPage("document.readyState")) === "complete", 20000)
 }
-/** The light page's parts as drawn: its background, the picture's red half, the canvas's white half. */
 const light = async (shot) => {
   const [px, py] = await rect("#pic"), [cx, cy] = await rect("#cv")
   const [bg, red, canvasWhite, canvasBlack] = await pixels([[900, 300], [px + 20, py + 30], [cx + 90, cy + 30], [cx + 20, cy + 30]], shot && shotOf(shot)) ?? []
@@ -137,26 +124,22 @@ check("… its fixed header stays at the top as it scrolls", await (async () => 
 const viewColor = () => onView((v) => v.qaColor ?? null)
 check("its view's colour (under what it leaves unpainted) is the theme's, not white", /^#1d2021$/i.test(await viewColor() ?? ""), await viewColor())
 
-// ---------- another site's frame in it: its own process, darkened too ----------
 check("a light site framing another opens", await open(`${SITE}framed`))
 const inner = async (shot) => (await pixels([[300, 250]], shot && shotOf(shot)))?.[0]
 check("… the other site's frame is darkened too", await until(async () => near(await inner(), GRUVBOX), 10000), await inner())
 await inner("frame")
 
-// ---------- a site dark of itself ----------
 check("a site with a dark look of its own opens", await open(`${SITE}native`))
 const nativeBg = async (shot) => (await pixels([[900, 300]], shot && shotOf(shot)))?.[0]
 check("… shows its own dark, untinted", await until(async () => near(await nativeBg(), hex("#0d1117"), 4), 10000), await nativeBg())
 await nativeBg("native")
 check("… and takes no filter", (await filter()) === "none", await filter())
 
-// ---------- the next loads in a tab, which Chromium's commit can undo auto dark for: told again, never tinted light ----------
 const OTHER = `http://[::1]:${PORT}/late`
 const goes = async (url) => {
   await inPage(`location.href = ${JSON.stringify(url)}`)
   return until(async () => (await inPage("location.href").catch(() => "")) === url && (await inPage("document.readyState").catch(() => "")) === "complete", 20000)
 }
-// (the same site's next pages, by a link and by their address)
 await open(SITE)
 for (let i = 0; i < 3; i++) {
   check(`a link to the same site's next page loads (${i + 1})`, await goes(`${SITE}?next=${i}`))
@@ -164,7 +147,6 @@ for (let i = 0; i < 3; i++) {
   check(`its address typed in loads (${i + 1})`, await open(`${SITE}?typed=${i}`))
   check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light())
 }
-// (another site, from one dark of itself and from a light one)
 for (const [from, what] of [[`${SITE}native`, "a site dark of itself"], [SITE, "a light site"]]) {
   for (let i = 0; i < 3; i++) {
     await open(from)
@@ -173,14 +155,12 @@ for (const [from, what] of [[`${SITE}native`, "a site dark of itself"], [SITE, "
     check(`… the page says it prefers dark (${i + 1})`, await inPage("matchMedia('(prefers-color-scheme: dark)').matches"))
   }
 }
-// (a page of the same site in a process of its own: told again there too)
 for (let i = 0; i < 2; i++) {
   await open(SITE)
   const url = `${SITE}isolated?${i}`
   check(`a page of the same site with a process of its own loads (${i + 1})`, await goes(url))
   check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light(i ? "" : "isolated"))
 }
-// (a new tab is told as it's made, then loads in another process: told again there)
 for (let i = 0; i < 3; i++) {
   await open(SITE)
   const url = `${OTHER}?tab=${i}`
@@ -194,7 +174,6 @@ for (let i = 0; i < 3; i++) {
   check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light(i ? "" : "newtab"))
 }
 
-// ---------- a site the vault styles, in part ----------
 const styledBg = async (shot) => (await pixels([[900, 300]], shot && shotOf(shot)))?.[0]
 check("a styled site's styled page opens", await open(`${STYLED}editor`))
 check("… shows its style alone, no dark pages", await until(async () => near(await styledBg(), [10, 80, 10], 4) && (await filter()) === "none", 10000), [await styledBg(), await filter()])
@@ -208,7 +187,6 @@ check("… a style now making it dark: its style alone, no reload", await until(
 fs.writeFileSync(STYLE, EDITOR_ONLY)
 check("… light again as the style goes: darkened again", await until(async () => near(await styledBg(), GRUVBOX) && (await filter()) !== "none", 10000), [await styledBg(), await filter()])
 
-// ---------- no white first frame: a site slow to send its body ----------
 // (from its own site: leaving another's, Chromium drops the left page's auto dark a moment before the new one commits)
 await open(SITE)
 const frames = []
@@ -224,7 +202,6 @@ const bright = frames.filter((f) => f.some((p) => p[0] + p[1] + p[2] > 600))
 check("a slow site never shows a white frame while it loads", frames.length > 3 && !bright.length, { frames: frames.length, bright: bright.slice(0, 3) })
 check("… and loaded, it's dark", near((await pixels([[600, 300]]))?.[0], GRUVBOX), await pixels([[600, 300]]))
 
-// ---------- the Shields menu's switch ----------
 check("the light site again", await open(SITE))
 await until(async () => near((await light())?.bg, GRUVBOX), 10000)
 const button = win.locator("[data-web-shields]")
@@ -242,7 +219,6 @@ await button.click()
 await item.click()
 check("… and on again, no reload", await until(async () => near((await light())?.bg, GRUVBOX), 10000) && (await inPage("window.__kept")) === 1, await light())
 
-// ---------- the look changing, live ----------
 setLook({ theme: "dark", scheme: "nord" })
 check("another colour scheme: the page follows at once, no reload", await until(async () => near((await light())?.bg, NORD), 10000) && (await inPage("window.__kept")) === 1, await light())
 await light("nord")
@@ -252,7 +228,6 @@ check("… the page's prefers-color-scheme left to the system", await inPage(`ma
 setLook({ theme: "dark", scheme: "gruvbox" })
 check("dark again: darkened again", await until(async () => near((await light())?.bg, GRUVBOX), 10000))
 
-// ---------- plain dark ----------
 fs.writeFileSync(SETTINGS, JSON.stringify({ ...settings(), darkPagesLook: "dark" }, null, 2) + "\n")
 check("plain dark: Chromium's dark, no tint", await until(async () => (await filter()) === "none" && near((await light())?.bg, [18, 18, 18], 10), 10000), [await filter(), await light()])
 await light("dark")
