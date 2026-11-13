@@ -3,6 +3,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 import { HTTPError, LOCAL, localDate, localTime, merge3, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -50,8 +51,16 @@ async function run(args: string[], timeout = 120_000) {
   return r.out
 }
 
-const isVersion = (v: unknown): v is Version => !!v && typeof (v as Version).id === "string" && Number.isFinite((v as Version).at)
-const versionsOf = (list: unknown): Version[] => (Array.isArray(list) ? list.filter(isVersion).map((v) => ({ id: v.id, at: v.at, from: String(v.from ?? "") })) : [])
+const VersionOut = z.object({ id: z.string(), at: z.number(), from: z.unknown().optional(), text: z.unknown().optional() })
+const valid = <T>(one: z.ZodType<T>) => z.array(z.unknown()).catch([]).transform((list) => list.flatMap((v) => {
+  const r = one.safeParse(v)
+  return r.success ? [r.data] : []
+}))
+const Versions = valid(VersionOut.transform((v): Version => ({ id: v.id, at: v.at, from: String(v.from ?? "") })))
+const VersionTexts = valid(VersionOut.transform((v): VersionText => ({ id: v.id, at: v.at, from: String(v.from ?? ""), text: typeof v.text === "string" ? v.text.replace(/\r\n?/g, "\n") : null })))
+const ScanLine = z.object({ path: z.string(), versions: Versions })
+const ReadOut = z.object({ versions: VersionTexts })
+const ResolveOut = z.object({ resolved: z.number().catch(0) })
 
 export const store = {
   on(vault: string) {
@@ -64,19 +73,17 @@ export const store = {
     for (const line of (await run(["scan", ...paths])).split("\n")) {
       if (!line.trim()) continue
       try {
-        const o = JSON.parse(line) as { path?: unknown; versions?: unknown }
-        const vs = versionsOf(o.versions)
-        if (typeof o.path === "string" && vs.length) out.set(o.path, vs)
+        const o = ScanLine.safeParse(JSON.parse(line))
+        if (o.success && o.data.versions.length) out.set(o.data.path, o.data.versions)
       } catch {}
     }
     return out
   },
   async read(abs: string): Promise<VersionText[]> {
-    const o = JSON.parse(await run(["read", abs], 30_000)) as { versions?: { text?: unknown }[] }
-    return (o.versions ?? []).filter(isVersion).map((v) => ({ ...versionsOf([v])[0], text: typeof v.text === "string" ? v.text.replace(/\r\n?/g, "\n") : null }))
+    return ReadOut.parse(JSON.parse(await run(["read", abs], 30_000))).versions
   },
   async resolve(abs: string, ids: string[]): Promise<number> {
-    return Number((JSON.parse(await run(["resolve", abs, ...ids], 30_000)) as { resolved?: unknown }).resolved) || 0
+    return ResolveOut.parse(JSON.parse(await run(["resolve", abs, ...ids], 30_000))).resolved
   },
 }
 
@@ -103,7 +110,7 @@ function scanAll(fresh = false): Promise<void> {
       for (const [abs, vs] of await store.scan([from])) { const rel = relOf(abs, from); if (!skipped(rel)) next[rel] = vs }
       plugin.keep("found", Object.keys(next).length ? next : null)
       lastScan = Date.now()
-    } catch (e) { console.warn(`sync-conflicts: ${(e as Error).message}`) }
+    } catch (e) { console.warn(`sync-conflicts: ${e instanceof Error ? e.message : String(e)}`) }
   })()
   void s.finally(() => { if (scanning === s) scanning = null })
   return s
@@ -129,7 +136,7 @@ plugin.onChange((paths) => {
     pending = new Set()
     if (rels.length > MANY) return void scanAll()
     recheck(rels.filter((r) => fs.statSync(plugin.vault.abs(r), { throwIfNoEntry: false })?.isFile() || found()[r]))
-      .catch((e) => console.warn(`sync-conflicts: ${(e as Error).message}`))
+      .catch((e) => console.warn(`sync-conflicts: ${e instanceof Error ? e.message : String(e)}`))
   }, RECHECK_MS)
   timer.unref?.()
 })
@@ -193,11 +200,12 @@ plugin.route("GET", "sync-conflicts/versions", async (req) => {
   return { path: rel, versions: [...versions, ...fromSync] }
 }, { lock: false })
 
+const ResolveBody = z.object({ path: z.unknown().optional(), id: z.string().catch("") }).catch({ path: undefined, id: "" })
 plugin.route("POST", "sync-conflicts/resolve", async (req) => {
   await plugin.ownerOnly(req, "Other versions of a file")
-  const b = (req.body ?? {}) as { path?: unknown; id?: unknown }
+  const b = ResolveBody.parse(req.body ?? {})
   const { rel, abs } = fileOf(b.path)
-  if (typeof b.id !== "string" || !b.id) throw new HTTPError(400, "which version? {path, id} (from GET sync-conflicts/versions)")
+  if (!b.id) throw new HTTPError(400, "which version? {path, id} (from GET sync-conflicts/versions)")
   if (b.id.startsWith("sync:")) return { resolved: await plugin.ask<number>("sync:settle", 0, rel, b.id) }
   const resolved = await store.resolve(abs, [b.id])
   await recheck([rel])
