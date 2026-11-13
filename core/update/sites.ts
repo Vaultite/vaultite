@@ -78,7 +78,7 @@ export const SITES: Site[] = [
   { file: "plugins/core/claude-code/chat.ts", why: "the chat keeper", spawns: ["chatd"] },
   // ---------- the keepers
   { file: "plugins/core/terminal/termd/termd.ts", why: "its own file: retires once it's gone (a moved checkout)", anchors: true },
-  { file: "plugins/core/claude-code/chatd.ts", why: "its own file: retires once it's gone; hashes its three files as its code (chathost.ts codeOf)", anchors: true },
+  { file: "plugins/core/claude-code/chatd.ts", why: "its own file: retires once it's gone; hashes its files as its code (chathost.ts codeOf)", anchors: true },
   // ---------- the desktop app (its windows load web/dist: the web entry's)
   { file: "electron/shell/boot.mjs", why: "the shell: the bundle's stamps, and the code root it picks (roots.mjs), whose electron/boot.ts it imports",
     at: ['import(pathToFileURL(path.join(picked.root, "electron", "boot.ts")).href)'], anchors: true, loads: ["electron/boot.ts"] },

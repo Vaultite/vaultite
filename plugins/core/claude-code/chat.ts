@@ -5,6 +5,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import type { WebSocket } from "ws"
+import { z } from "zod"
 import { type Asking, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
 import { agentLines, OpError, outliving, type Plugin } from "../../../core/plugins.ts"
 import { byUser as asUser } from "../../../core/writegate.ts"
@@ -12,13 +13,18 @@ import { merge, PAGE } from "./chatentries.ts"
 import { chatInbox } from "./chatinbox.ts"
 import { type Entry, Reader } from "./chatlog.ts"
 import { chatOps } from "./chatops.ts"
-import { type Answer, codeOf, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { type Answer, codeOf, type Effort, effortOf, type Event, type Mode, modeOf, type Spec, type Summary, type ToolDef } from "./chathost.ts"
 import { chatTab } from "./chatsocket.ts"
 import { CHAT_SOCKET, FILES, NAME, port, SESSION, WIN, Wire } from "./chatwire.ts"
 import { modelId, notAModel } from "./models.ts"
 import { memoryLines, unsaid } from "./memory.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
+const Settings = z.looseObject({
+  permissions: z.looseObject({ defaultMode: z.string().optional().catch(undefined) }).optional().catch(undefined), model: z.unknown().optional(),
+  effortLevel: z.unknown().optional(), modelSettings: z.record(z.string(), z.looseObject({ effortLevel: z.unknown().optional() }).catch({})).optional().catch(undefined),
+}).catch({})
+
 export type ChatDeps = {
   accounts: () => Account[]
   sessionFile: (id: string, all?: boolean) => { file: string; account: Account } | null
@@ -180,7 +186,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
       if (times.length >= 3) continue
       revived.set(k.id, [...times, Date.now()])
       try {
-        await send(k.id, "Continue where you left off.", { model: k.model || undefined, effort: (k.effort || undefined) as Effort | undefined, mode: k.mode, by: k.by })
+        await send(k.id, "Continue where you left off.", { model: k.model || undefined, effort: effortOf(k.effort), mode: k.mode, by: k.by })
         console.error(`chat: took ${k.id} up again after its keeper ended`)
       } catch (e) { console.error(`chat: couldn't take ${k.id} up again:`, e); kept[k.id] = { ...k, state: "closed" }; save() }
     }
@@ -255,7 +261,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     try {
       result = t ? await t.run(args, use) : { isError: true, content: [{ type: "text", text: `Vaultite serves no tool ${name} to this session now: the plugin that started it is off` }] }
     } catch (err) {
-      result = { isError: true, content: [{ type: "text", text: String((err as Error)?.message ?? err) }] }
+      result = { isError: true, content: [{ type: "text", text: (err instanceof Error ? err.message : String(err)) }] }
     }
     await ask("tool-result", { call, result }).catch(() => {})
   }
@@ -359,7 +365,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
         if (Object.keys(change).length) await ask("set", { id, ...change })
         return await ask("send", { id, text: said, ...pics }) as { uuid: string; answered?: string }
       } catch (e) {
-        if (!/^no session \S+ runs here$/.test((e as Error).message)) throw e
+        if (!/^no session \S+ runs here$/.test(e instanceof Error ? e.message : String(e))) throw e
         lost = hosted.get(id)
         hosted.delete(id)
       }
@@ -372,7 +378,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     const t = await readTitle(id)
     const before = hosted.get(id), was = before ?? lost
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: true, cwd: o.cwd || t?.cwd || "",
-      model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said,
+      model: o.model || was?.model || undefined, effort: o.effort || effortOf(was?.effort), mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said,
       ...pics }) as { s: Summary }
     if (hosted.get(id) === before) hosted.set(id, s)
     return { uuid: "", resumed: true }
@@ -427,23 +433,22 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
   function modeDefault(account: string): Mode {
     const a = d.accounts().find((x) => x.id === account)
     try {
-      const st = a ? JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")) as { permissions?: { defaultMode?: unknown } } : null
-      const m = st?.permissions?.defaultMode
-      if (MODES.includes(m as Mode)) return m as Mode
+      const m = a ? modeOf(Settings.parse(JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8"))).permissions?.defaultMode) : undefined
+      if (m) return m
     } catch {}
     return "auto"
   }
 
   function modelDefault(account: string) {
     const a = d.accounts().find((x) => x.id === account)
-    try { const m = a ? (JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")) as { model?: unknown }).model : ""; return typeof m === "string" ? m : "" } catch { return "" }
+    try { const m = a ? Settings.parse(JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8"))).model : ""; return typeof m === "string" ? m : "" } catch { return "" }
   }
 
   function effortDefault(account: string, model = "") {
     const a = d.accounts().find((x) => x.id === account)
     if (!a) return ""
     try {
-      const st = JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")) as { effortLevel?: unknown; modelSettings?: Record<string, { effortLevel?: unknown }> }
+      const st = Settings.parse(JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")))
       const v = st.modelSettings?.[model]?.effortLevel ?? st.effortLevel
       return typeof v === "string" ? v : ""
     } catch { return "" }

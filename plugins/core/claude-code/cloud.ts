@@ -2,6 +2,7 @@ import { type ChildProcessByStdio, execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { Readable, Writable } from "node:stream"
+import { z } from "zod"
 import { lastTurn } from "../../../core/agents.ts"
 import { gitEnv, OpError, type Plugin, whoOf } from "../../../core/plugins.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
@@ -9,6 +10,12 @@ import { askingIn, Conversation, WANTED } from "./transcript.ts"
 type Account = { id: string; dir: string; label: string; private: boolean }
 const SESSION = /^session_\w{4,80}$/, REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/, BRANCH = /^[\w./-]{1,200}$/, COMMIT = /^[0-9a-f]{7,64}$/
 /** A cloud session as its list says: running, idle, requires_action, archived, pending or failed. */
+const said = z.string().nullish().catch(undefined)
+const SUBMITTED = z.object({ ok: z.boolean().optional().catch(undefined), error: said }).nullable().catch(null)
+const LISTED = z.object({ status: said, message: said, sessions: z.array(z.object({ id: z.string(), title: said, status: said, updated_at: said, branch: said })).nullish().catch(undefined) }).catch({})
+const OUTPUT = z.object({ output: z.string().optional() }).catch({})
+const TRANSCRIPT = z.object({ status: said, entries: z.array(z.unknown()).nullish().catch(undefined), next_cursor: said }).catch({})
+
 export type CloudSeen = { status: string; title: string; updated: number; branch?: string }
 export type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; background?: number; asks?: { question: string; choices: string[] }[] }
 
@@ -25,7 +32,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
   function unready(account: string) {
     if (process.platform === "win32") return "not from Windows yet"
     if (!o.bin()) return "Claude Code isn't installed here"
-    try { accountOf(account) } catch (e) { return (e as Error).message }
+    try { accountOf(account) } catch (e) { return e instanceof Error ? e.message : String(e) }
     return ""
   }
 
@@ -63,7 +70,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
       const p = execFile(bin, ["-p", "--cloud", session, "--output-format", "json"], { env: o.envOf(a), timeout: 60_000, maxBuffer: 1 << 20 }, (_e, so, se) => ok(`${so}\n${se}`))
       p.stdin?.end(text)
     })
-    const r = (() => { try { return JSON.parse(out.trim().split("\n").find((l) => l.startsWith("{")) ?? "") } catch { return null } })() as { ok?: boolean; error?: string } | null
+    const r = SUBMITTED.parse((() => { try { return JSON.parse(out.trim().split("\n").find((l) => l.startsWith("{")) ?? "") } catch { return null } })())
     if (!r?.ok) throw new OpError(`the cloud session didn't take it: ${r?.error ?? plainText(out).trim().split("\n").pop() ?? "no answer"}`, 502)
     return { submitted: true }
   }
@@ -83,7 +90,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     if (why) throw new OpError(why, 409)
     const r = readerOf(accountOf(account))
     if (!listed || listed.account !== account || Date.now() - listed.at > 4000) {
-      const got = await r.ask({ subtype: "list_cloud_sessions" }) as { status?: string; message?: string; sessions?: { id: string; title?: string; status?: string; updated_at?: string; branch?: string }[] }
+      const got = LISTED.parse(await r.ask({ subtype: "list_cloud_sessions" }))
       if (got?.status !== "ok") throw new OpError(got?.message ?? "Claude Code didn't list its cloud sessions", 502)
       listed = { at: Date.now(), account, got: Object.fromEntries((got.sessions ?? []).map((s) => [s.id, { status: s.status ?? "idle", title: s.title ?? "", updated: Date.parse(s.updated_at ?? "") || 0,
         ...(s.branch && BRANCH.test(s.branch) ? { branch: s.branch } : {}) }])) }
@@ -97,7 +104,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     const had = pages.get(id) ?? { lines: [] }
     let cursor = had.cursor, lines = had.lines, last: string[] = []
     for (let i = 0; i < 40; i++) {
-      const got = await r.ask({ subtype: "get_cloud_session_transcript", session_id: id, ...(cursor ? { cursor } : {}) }) as { status?: string; entries?: unknown[]; next_cursor?: string }
+      const got = TRANSCRIPT.parse(await r.ask({ subtype: "get_cloud_session_transcript", session_id: id, ...(cursor ? { cursor } : {}) }))
       if (got?.status !== "ok") return null
       const page = (got.entries ?? []).map((e) => JSON.stringify(e)).filter((l) => WANTED.slice(0, 2).some((w) => l.includes(w)))
       if (!got.next_cursor) { last = page; break }
@@ -125,7 +132,7 @@ async function cloudStart(plugin: Plugin, bin: string, config: string | undefine
   try {
     const command = `${config ? `CLAUDE_CONFIG_DIR=${sh(config)}` : "unset CLAUDE_CONFIG_DIR;"} ${sh(bin)} --cloud "$(cat ${sh(task)})"`
     const r = await plugin.runOp("terminal.start", { command, cwd, name: "Starting a cloud job", wait: true, timeout: 120 }, whoOf("app/claude-code", null))
-    const text = plainText(String((r.result as { output?: string }).output ?? "")), m = /View:\s*(https:\/\/claude\.ai\/code\/(session_\w{4,80})\S*)/.exec(text)
+    const text = plainText(OUTPUT.parse(r.result).output ?? ""), m = /View:\s*(https:\/\/claude\.ai\/code\/(session_\w{4,80})\S*)/.exec(text)
     if (!m) throw new OpError(`claude --cloud started no session: ${text.trim().split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 400) || "it said nothing"}`, 502)
     const note = /Branch \S+ is not on GitHub[^\n]*/.exec(text)?.[0]
     return { session: m[2], url: m[1].replace(/\?.*$/, ""), title: /Created cloud session:\s*(.+)/.exec(text)?.[1]?.trim() ?? "", ...(note ? { note } : {}) }

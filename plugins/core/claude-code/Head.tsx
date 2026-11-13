@@ -12,7 +12,7 @@ import { chatMenu, terminalOk, toTerminal } from "./chatmenu"
 function whereOf(c: ReturnType<typeof useChat>, o: Options | null, last: Seen | null) {
   const model = c.s?.model || c.model || last?.model, cwd = c.cwd || last?.cwd
   const background = c.s?.background ? plural(c.s.background, "background task") : ""
-  return [cwd && folderName(cwd, o), model && modelLabel(model, o), o && o.accounts.length > 1 && o.accounts.find((a) => a.id === c.account)?.label, background].filter(Boolean) as string[]
+  return [cwd && folderName(cwd, o), model && modelLabel(model, o), o && o.accounts.length > 1 && o.accounts.find((a) => a.id === c.account)?.label, background].flatMap((x) => (x ? [x] : []))
 }
 
 function useLastSeen(id: string, c: ReturnType<typeof useChat>, title: string, known: boolean) {

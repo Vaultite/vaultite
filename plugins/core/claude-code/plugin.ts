@@ -45,7 +45,7 @@ type Account = { id: string; dir: string; label: string; private: boolean }
 const ACCOUNT_ID = /^[a-z0-9]{1,32}$/
 
 function accounts(): Account[] {
-  const set = plugin.loaded ? (plugin.settings({}).accounts ?? {}) as Item : {}
+  const set: Item = plugin.loaded ? plugin.settings({}).accounts ?? {} : {}
   const byDir = new Map<string, string>([[DEFAULT_DIR, "default"]])
   const parent = path.dirname(DEFAULT_DIR), base = path.basename(DEFAULT_DIR)
   let names: string[] = []
@@ -59,7 +59,7 @@ function accounts(): Account[] {
   }
   const out: Account[] = []
   for (const [dir, id] of byDir) {
-    const o = (set[id] && typeof set[id] === "object" ? set[id] : {}) as Item
+    const o: Item = set[id] && typeof set[id] === "object" ? set[id] : {}
     if (o.hidden === true || out.some((a) => a.id === id)) continue
     out.push({ id, dir, label: typeof o.label === "string" && o.label ? o.label : cap(id), private: o.private === true })
   }
@@ -131,7 +131,7 @@ class Scan extends JsonlScan<Resp> {
     // A streamed reply is logged once per content block; the largest counts are the final ones.
     const key = m.id ? `${m.id}:${d.requestId ?? "None"}` : String(d.uuid)
     const old = this.resp.get(key)
-    if (old) row.n = old.n.map((a, i) => Math.max(a, row.n[i])) as Resp["n"]
+    if (old) row.n = [Math.max(old.n[0], row.n[0]), Math.max(old.n[1], row.n[1]), Math.max(old.n[2], row.n[2]), Math.max(old.n[3], row.n[3]), Math.max(old.n[4], row.n[4])]
     this.resp.set(key, old ? { ...old, n: row.n } : row)
   }
 }
@@ -204,7 +204,7 @@ function alive(pid: number, start: unknown) {
   try {
     process.kill(pid, 0)
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "EPERM") { started.delete(pid); return false }
+    if (!(e instanceof Error && "code" in e && e.code === "EPERM")) { started.delete(pid); return false }
   }
   if (!start) return true
   // A pid can be reused: the process must be the one that wrote the file (its start in UTC; ps says local time).
@@ -214,7 +214,7 @@ function alive(pid: number, start: unknown) {
   try {
     out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 3000 })
   } catch (e) {
-    return (e as { status?: number }).status === undefined
+    return !(e instanceof Error && "status" in e && e.status !== undefined)
   }
   if (!out.trim()) return false
   const ran = lstart(out), wrote = lstart(String(start), true)
@@ -328,8 +328,9 @@ function appLimits(now: number, org: string | null, scan: Scan) {
   for (const e of data.samples || []) {
     if (!e || typeof e !== "object" || typeof e.t !== "number" || (org && e.org !== undefined && e.org !== null && e.org !== org)) continue
     const u = data.version === 1 ? e : (e.u || {})
-    samples.push([e.t / 1000, Object.fromEntries(Object.entries(u as Item)
-      .filter(([k, v]) => ["fh", "sd", "so", "sn"].includes(k) && typeof v === "number")) as Record<string, number>])
+    const kept: Record<string, number> = {}
+    for (const [k, v] of Object.entries(u)) if (["fh", "sd", "so", "sn"].includes(k) && typeof v === "number") kept[k] = v
+    samples.push([e.t / 1000, kept])
   }
   samples.sort((a, b) => a[0] - b[0])
   if (!samples.length || now - samples[samples.length - 1][0] > 7 * 86400) return null

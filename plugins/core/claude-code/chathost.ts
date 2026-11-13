@@ -4,11 +4,14 @@ import net from "node:net"
 import path from "node:path"
 import type { CanUseTool, McpServerConfig, Options, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { type AskKind, type Entry, IMAGE_MAX, IMAGES_MAX, imageType, questionsOf, Reader, summarize } from "./chatlog.ts"
+import { isRecord } from "./inputs.ts"
 
 export type Mode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
 export const MODES: Mode[] = ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]
 export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"]
+export const modeOf = (x: string | undefined) => MODES.find((m) => m === x)
+export const effortOf = (x: string | undefined) => EFFORTS.find((e) => e === x)
 
 /** `streams`: its input told as it's written; `ends`: a turn may end after it with no words; `endsTurn`: it ends one. */
 export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; streams?: boolean; ends?: boolean
@@ -77,7 +80,7 @@ const toolUseIdOf = (extra: unknown) => {
 }
 export function codeOf(dir: string) {
   const h = crypto.createHash("sha256")
-  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
+  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts", "inputs.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
   return h.digest("hex").slice(0, 16)
 }
 
@@ -85,7 +88,7 @@ const APP = "mcp__vaultite-app__"
 
 const NO = "Not run: the user said no to it (or moved on from it). Tell them you left it, in a few words (it was their no: no hooks or blocks), and don't try it another way."
 const SECRET = "That reads keys or secrets (Keychains, ~/.ssh, tokens, Vaultite's own secrets): never, whoever asks. Say you may not."
-const shellOf = (tool: string, input: unknown) => (tool === "Bash" && typeof (input as { command?: unknown })?.command === "string" ? (input as { command: string }).command : null)
+const shellOf = (tool: string, input: unknown) => (tool === "Bash" && isRecord(input) && typeof input.command === "string" ? input.command : null)
 export function callKey(tool: string, input: unknown) {
   const cmd = shellOf(tool, input)
   return `${tool}\0${cmd !== null ? cmd.trim().replace(/\s+/g, " ") : JSON.stringify(input)}`
@@ -193,7 +196,7 @@ export class Host {
     }
     const shown = spec.tools?.filter((t) => !t.hidden)
     const tools = shown?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", shown.map((t) => ({ ...t, run: async (args: unknown, use?: string) => {
-      const r = await this.relay(spec.id, t.name, args, use) as { endsTurn?: unknown } | null
+      const r = await this.relay(spec.id, t.name, args, use)
       if (!r || typeof r !== "object" || !("endsTurn" in r)) return r
       const { endsTurn, ...rest } = r
       if (endsTurn === true && use) x.ending.add(use)
@@ -283,12 +286,13 @@ export class Host {
         : { behavior: "deny", message: a.message ? `The user said no, and to do this instead: ${a.message}` : "The user said no." }
       said = a.allow ? (a.always ? "Always allowed" : "Allowed") : a.message ? `Denied: ${a.message}` : "Denied"
     } else if (p.kind === "question") {
-      const qs = questionsOf(p.input), raw = Array.isArray(p.input.questions) ? p.input.questions as { question?: string; options?: { label?: string }[] }[] : []
+      const qs = questionsOf(p.input), raw: unknown[] = Array.isArray(p.input.questions) ? p.input.questions : []
       if (a.answers) {
         if (a.answers.length !== qs.length) throw new Error(`an answer for each of its ${qs.length} questions`)
         const answers = Object.fromEntries(raw.map((q, i) => {
           const c = a.answers![i], [ns, text] = typeof c === "string" ? [[], c] : Array.isArray(c) ? [c, ""] : [c.options, c.text]
-          return [String(q.question ?? ""), [...ns.map((n) => String(q.options?.[n - 1]?.label ?? "")), text].filter(Boolean).join(", ")]
+          const labels = (isRecord(q) && Array.isArray(q.options) ? q.options : []).map((o) => (isRecord(o) ? o.label : undefined))
+          return [String((isRecord(q) ? q.question : undefined) ?? ""), [...ns.map((n) => String(labels[n - 1] ?? "")), text].filter(Boolean).join(", ")]
         }))
         r = { behavior: "allow", updatedInput: { ...p.input, answers } }
         said = `Answered: ${Object.values(answers).join("; ")}`
@@ -361,8 +365,8 @@ export class Host {
 
   private async confirmed(x: Session, tool: string, input: unknown, reason: string, blocked: boolean, use?: string): Promise<{ yes: boolean; message?: string }> {
     if (x.declined) return { yes: false }
-    const r = await this.relay(x.spec.id, x.spec.confirm!, { tool, input, reason, blocked }, use, CONFIRM_MS) as { yes?: unknown; message?: unknown } | null
-    const a = { yes: r?.yes === true, ...(typeof r?.message === "string" ? { message: r.message } : {}) }
+    const r = await this.relay(x.spec.id, x.spec.confirm!, { tool, input, reason, blocked }, use, CONFIRM_MS)
+    const a = { yes: isRecord(r) && r.yes === true, ...(isRecord(r) && typeof r.message === "string" ? { message: r.message } : {}) }
     if (!a.yes) x.declined = true
     return a
   }
@@ -403,7 +407,7 @@ export class Host {
       for await (const m of x.q!) this.message(x, m)
       if (!x.ended) this.fail(x, lastLines(x.stderr) || "Claude Code ended")
     } catch (e) {
-      if (!x.ended) this.fail(x, lastLines(x.stderr) || String((e as Error)?.message ?? e))
+      if (!x.ended) this.fail(x, lastLines(x.stderr) || (e instanceof Error ? e.message : String(e)))
     }
   }
 
@@ -411,12 +415,12 @@ export class Host {
     x.s.at = Date.now()
     if (m.type === "system" && m.subtype === "init") {
       x.s.model = m.model || x.s.model
-      x.s.mode = (m.permissionMode as Mode) || x.s.mode
+      x.s.mode = m.permissionMode || x.s.mode
       x.s.cwd = m.cwd || x.s.cwd
       if (m.effort && !x.spec.effort) x.s.effort = m.effort
       this.emit({ t: "state", s: x.s })
     } else if (m.type === "system" && m.subtype === "status" && m.permissionMode && m.permissionMode !== x.s.mode) {
-      x.s.mode = m.permissionMode as Mode
+      x.s.mode = m.permissionMode
       this.emit({ t: "state", s: x.s })
     } else if (m.type === "system" && m.subtype === "background_tasks_changed") {
       const was = x.background
@@ -425,12 +429,12 @@ export class Host {
       if (was && !x.background && x.s.state === "idle") this.idleTimer(x, true)
     }
     if (m.type === "assistant" && !m.parent_tool_use_id) {
-      const u = m.message.usage as { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined
+      const u = m.message.usage
       const n = (u?.input_tokens ?? 0) + (u?.cache_read_input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
       if (n) x.s.context = n
     }
     // the SDK sends a queued message at once: only a new answer starting says a turn runs
-    const begun = m.type === "assistant" || (m.type === "stream_event" && (m.event as { type?: string }).type === "message_start")
+    const begun = m.type === "assistant" || (m.type === "stream_event" && m.event.type === "message_start")
     if (begun && !m.parent_tool_use_id && x.s.state === "idle") this.state(x, "working", true)
     this.streamed(x, m)
     const stopped = m.type === "result" && x.stopping
@@ -442,7 +446,7 @@ export class Host {
     if (m.type === "result") {
       x.stopping = false
       for (const e of [...x.reader.entries.values()]) if ("live" in e && e.live) this.put(x, { ...e, live: undefined })
-      const error = stopped || (m.subtype === "success" && !m.is_error) ? undefined : (x.reader.entries.get(String(m.uuid)) as { error?: string } | undefined)?.error
+      const error = stopped || (m.subtype === "success" && !m.is_error) ? undefined : resultError(x.reader.entries.get(String(m.uuid)))
       x.s.turn = { prompt: x.reader.prompt, text: x.reader.text, ...(error ? { error } : {}) }
       if (!x.asks.size) this.state(x, "idle", true)
     }
@@ -456,11 +460,10 @@ export class Host {
     const ended = (end: "tool" | "stop") => { if (x.spec.texts) this.emit({ t: "partial", id: x.s.id, use: "", name: "", json: "", end }) }
     if (m.type === "result") { stop(); return ended("stop") }
     if (m.type !== "stream_event" || m.parent_tool_use_id) return
-    const ev = m.event as { type: string; index?: number; message?: { id?: string }; content_block?: { type?: string; id?: string; name?: string }
-      delta?: { type?: string; partial_json?: string; text?: string; stop_reason?: string } }
+    const ev = m.event
     if (ev.type === "message_start") { x.message = String(ev.message?.id ?? ""); return stop() }
     if (ev.type === "message_delta" && ev.delta?.stop_reason) return ended(ev.delta.stop_reason === "tool_use" ? "tool" : "stop")
-    if (typeof ev.index !== "number") return
+    if (ev.type === "message_delta" || ev.type === "message_stop" || typeof ev.index !== "number") return
     if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
       const name = String(ev.content_block.name ?? ""), short = name.startsWith(APP) ? name.slice(APP.length) : ""
       if (short && x.spec.tools?.some((t) => t.name === short && t.streams)) x.streams.set(ev.index, { use: String(ev.content_block.id ?? ""), name: short, json: "" })
@@ -556,11 +559,14 @@ function alwaysText(ups: PermissionUpdate[]) {
   return said.length ? said.join(", ").slice(0, 200) : "this from now on"
 }
 
+const resultError = (e: Entry | undefined) => (e?.k === "result" ? e.error : undefined)
+
 const PICTURES = "The user answered with a message and pictures: it's their next message, read it."
 function interrupted(es: Entry[]) {
   for (let i = es.length - 1; i >= 0; i--) {
     if (es[i].k === "user") return false
-    if (es[i].k === "note" && (es[i] as { text: string }).text === "Interrupted") return true
+    const e = es[i]
+    if (e.k === "note" && e.text === "Interrupted") return true
   }
   return false
 }
@@ -623,7 +629,7 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
   const server = net.createServer((c) => {
     conns.add(c)
     eachMessage(c, (m) => handle(c, m).then((out) => { if (m.re !== undefined) send(c, { re: m.re, ...out }) },
-      (e) => { if (m.re !== undefined) send(c, { re: m.re, error: String((e as Error)?.message ?? e) }) }))
+      (e) => { if (m.re !== undefined) send(c, { re: m.re, error: (e instanceof Error ? e.message : String(e)) }) }))
     const gone = () => { conns.delete(c); followers.delete(c) }
     c.on("close", gone)
     c.on("error", gone)

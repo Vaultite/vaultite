@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { byUser, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { resumeTerminalId } from "../../../core/agents.ts"
 import { gitEnv } from "../../../core/gitenv.ts"
-import { type Item } from "../../../core/vault.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 const SESSION = /^session_\w{4,80}$/
@@ -14,8 +14,10 @@ const BRANCH = /^[\w./-]{1,200}$/
 const git = (cwd: string, ...args: string[]) => new Promise<string>((ok, fail) =>
   execFile("git", ["-C", cwd, ...args], { env: gitEnv(), timeout: 30_000, maxBuffer: 4 << 20 }, (e, out, err) => (e ? fail(new Error(String(err || e.message).trim())) : ok(String(out)))))
 
+const ACCOUNT_JSON = z.object({ oauthAccount: z.object({ organizationUuid: z.unknown() }).partial().optional() })
+
 function orgOf(a: Account, json: (a: Account) => string) {
-  try { return String((JSON.parse(fs.readFileSync(json(a), "utf8")) as Item).oauthAccount?.organizationUuid ?? "") } catch { return "" }
+  try { return String(ACCOUNT_JSON.parse(JSON.parse(fs.readFileSync(json(a), "utf8"))).oauthAccount?.organizationUuid ?? "") } catch { return "" }
 }
 
 const names = (remotes: string, repo: string) => remotes.split("\n").some((l) => {
@@ -97,7 +99,7 @@ cwd instead names the folder. title names the terminal.
         if (!root) throw new OpError(`there's no checkout of ${p.repo} on this machine: clone it, then continue the session again`, 404)
         try { cwd = await worktreeFor(root, sid, p.branch && BRANCH.test(String(p.branch)) ? String(p.branch) : undefined) } catch (e) {
           if (e instanceof OpError) throw e
-          throw new OpError(`couldn't make a worktree of ${path.basename(root)}: ${(e as Error).message.slice(0, 200)}`, 409)
+          throw new OpError(`couldn't make a worktree of ${path.basename(root)}: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`, 409)
         }
       }
       const id = resumeTerminalId("claude", sid, a?.id)

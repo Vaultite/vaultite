@@ -76,7 +76,7 @@ export function chatTab(plugin: Plugin, c: Needs) {
       if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify(h)); for (const text of held) ws.send(text) }
     } catch (e) {
       console.error(`chat: hello for ${id}:`, e)
-      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: String((e as Error)?.message ?? e) })); ws.close(1011, "hello failed") }
+      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: (e instanceof Error ? e.message : String(e)) })); ws.close(1011, "hello failed") }
     } finally { holding.delete(ws) }
   })
 

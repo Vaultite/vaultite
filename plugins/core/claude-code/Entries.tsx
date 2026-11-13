@@ -4,7 +4,8 @@ import { cn, Markdown, moves, plural } from "@vaultite"
 import type { Entry } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { type Driven } from "./driven"
-import { type Ask, type Tool, TINT, str, home } from "./chatbits"
+import { type Ask, type Tool, TINT, home } from "./chatbits"
+import { rec, recs, str } from "./inputs"
 import { AskCard } from "./Asks"
 import { EditDiff } from "./chatbits"
 
@@ -106,8 +107,7 @@ export function layout(entries: Entry[], away: Set<string>): { turns: Turn[]; ki
 }
 
 export function askOf(t: Tool): Ask {
-  const i = (t.input ?? {}) as { questions?: { question?: string }[] }
-  const question = t.name === "AskUserQuestion" ? i.questions?.map((q) => q.question).filter(Boolean).join(" ") || "Claude asked" : "Claude had a plan"
+  const question = t.name === "AskUserQuestion" ? recs(rec(t.input).questions).map((q) => str(q.question)).filter(Boolean).join(" ") || "Claude asked" : "Claude had a plan"
   const answers = [...(t.result ?? "").matchAll(/"[^"]*"="([^"]*)"/g)].map((m) => m[1])
   const answer = t.error ? (t.name === "ExitPlanMode" ? "Kept planning" : "Not answered") : t.name === "ExitPlanMode" ? "Approved" : answers.length ? `Answered: ${answers.join("; ")}` : "Answered"
   return { k: "ask", id: `ask:${t.id}`, kind: t.name === "ExitPlanMode" ? "plan" : "question", tool: t.name, title: question, answer, at: t.at }
@@ -317,7 +317,7 @@ const rel = (p: string, cwd: string, h?: string) => (cwd && p.startsWith(`${cwd}
 const lineCount = (s: string) => (s ? s.replace(/\n$/, "").split("\n").length : 0)
 
 function target(t: Tool, cwd: string, h?: string, brief = false): string {
-  const i = (t.input ?? {}) as Record<string, unknown>
+  const i = rec(t.input)
   const path = str(i.file_path) || str(i.notebook_path) || str(i.path)
   if (t.name === "Bash" || t.name === "PowerShell") return brief ? str(i.command).split("\n")[0].slice(0, 48) || t.summary : str(i.description) || str(i.command).split("\n")[0] || t.summary
   if (t.name === "Grep") return brief ? str(i.pattern) : [str(i.pattern), str(i.path) && `in ${rel(str(i.path), cwd, h)}`, str(i.glob) && `(${str(i.glob)})`].filter(Boolean).join(" ")
@@ -328,14 +328,14 @@ function target(t: Tool, cwd: string, h?: string, brief = false): string {
   if (path) return brief ? (rel(path, cwd, h).split("/").pop() ?? path) : rel(path, cwd, h)
   return t.summary
 }
-const isCommand = (t: Tool) => (t.name === "Bash" || t.name === "PowerShell") && !str((t.input as Record<string, unknown>)?.description)
+const isCommand = (t: Tool) => (t.name === "Bash" || t.name === "PowerShell") && !str(rec(t.input).description)
 const isPathy = (t: Tool) => !!["Read", "Edit", "MultiEdit", "Write", "NotebookEdit", "Grep", "Glob", "LS"].includes(t.name)
 
 function changed(t: Tool): [number, number] | null {
-  const i = (t.input ?? {}) as Record<string, unknown>
+  const i = rec(t.input)
   if (t.name === "Write" && typeof i.content === "string") return [lineCount(i.content), 0]
   if (t.name !== "Edit" && t.name !== "MultiEdit") return null
-  const edits = Array.isArray(i.edits) ? (i.edits as Record<string, unknown>[]) : [i]
+  const edits = Array.isArray(i.edits) ? recs(i.edits) : [i]
   let plus = 0, minus = 0
   for (const x of edits) {
     const a = str(x.old_string).split("\n"), b = str(x.new_string).split("\n")
@@ -374,7 +374,7 @@ function outcome(t: Tool, kids: Entry[]): { text: string; tone?: "red" } | { plu
   if (t.name === "Glob") return /^No files found/i.test(r) || !r.trim() ? { text: "no files" } : { text: plural(lineCount(r), "file") }
   if (t.name === "Agent" || t.name === "Task") { const n = kids.filter((k) => k.k === "tool").length; return n ? { text: plural(n, "step") } : null }
   if (t.name === "TodoWrite") {
-    const todos = ((t.input as { todos?: { status?: string }[] })?.todos ?? [])
+    const todos = recs(rec(t.input).todos)
     return todos.length ? { text: `${todos.filter((x) => x.status === "completed").length} of ${todos.length} done` } : null
   }
   return null
@@ -461,7 +461,7 @@ function Numbered({ text, from = 1 }: { text: string; from?: number }) {
 
 function ToolBody({ t, kids, live }: { t: Tool; kids: Entry[]; live: boolean }) {
   const x = useContext(TranscriptOf)
-  const i = (t.input ?? {}) as Record<string, unknown>
+  const i = rec(t.input)
   const r = t.result
   const failure = t.error && r !== undefined ? <Box><pre className="px-3 py-2 whitespace-pre-wrap text-ink-(--red)">{r || "It failed"}</pre></Box> : null
   if ((t.name === "Bash" || t.name === "PowerShell") && str(i.command)) return (
@@ -471,15 +471,15 @@ function ToolBody({ t, kids, live }: { t: Tool; kids: Entry[]; live: boolean }) 
     </Box>
   )
   if ((t.name === "Edit" || t.name === "MultiEdit") && (str(i.old_string) || str(i.new_string) || Array.isArray(i.edits))) {
-    const edits = Array.isArray(i.edits) ? i.edits as { old_string?: string; new_string?: string }[] : [{ old_string: str(i.old_string), new_string: str(i.new_string) }]
+    const edits = (Array.isArray(i.edits) ? recs(i.edits) : [i]).map((x) => ({ old_string: str(x.old_string), new_string: str(x.new_string) }))
     return <><EditDiff file="" edits={edits} />{failure}</>
   }
   if (t.name === "Write" && str(i.content)) return <><Numbered text={str(i.content).slice(0, 6000)} />{failure}</>
   if (t.name === "Read" && r && !t.error && r !== "(image)") return <Numbered text={r} />
   if (t.name === "TodoWrite" && Array.isArray(i.todos)) return (
-    <ul className="chat-small space-y-1">{(i.todos as { content?: string; status?: string }[]).map((td, n) => (
-      <li key={n} className="flex items-start gap-2"><span className="chat-todo size-3 shrink-0 rounded-full" data-status={td.status} />
-        <span className={cn(td.status === "completed" && "text-muted-foreground line-through")}>{td.content}</span></li>))}</ul>
+    <ul className="chat-small space-y-1">{recs(i.todos).map((td, n) => (
+      <li key={n} className="flex items-start gap-2"><span className="chat-todo size-3 shrink-0 rounded-full" data-status={str(td.status) || undefined} />
+        <span className={cn(td.status === "completed" && "text-muted-foreground line-through")}>{str(td.content)}</span></li>))}</ul>
   )
   if (t.name === "Agent" || t.name === "Task") {
     const steps = kids.filter((k): k is Tool => k.k === "tool")

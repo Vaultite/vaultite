@@ -3,7 +3,8 @@ import { Check, X } from "lucide-react"
 import { Button, cn, haptic, Markdown, notify, notifyError, op, ink, useCommandKeys, useCommands, usePane } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { QuestionPicker } from "@plugins/inbox/Questions"
-import { type Ask, TINT, STRONG, str } from "./chatbits"
+import { type Ask, TINT, STRONG } from "./chatbits"
+import { rec, str } from "./inputs"
 import { EditDiff } from "./chatbits"
 
 export type AskKeys = { yes?: () => void; no?: () => void; also?: () => void; pick?: (n: number) => void }
@@ -52,7 +53,7 @@ export function AskCard({ e, id, pending, docked, of, bind }: { e: Ask; id: stri
         <ClaudeIcon className="mt-[3px] size-4 shrink-0" style={{ color: ink(TINT) }} />
         <div className="min-w-0 flex-1">
           <p data-ask-head className={cn("break-words", e.kind === "question" ? "text-[13px] leading-[22px] font-medium text-muted-foreground max-md:text-[15px]" : "text-[15px] leading-[22px] font-semibold max-md:text-[17px] max-md:leading-[24px]")}>{head}</p>
-          {e.kind === "permission" && e.detail && e.detail !== str((e.input as Record<string, unknown> | undefined)?.command) && <p className="text-[13px] leading-[19px] break-words text-muted-foreground max-md:text-[15px] max-md:leading-[21px]">{e.detail}</p>}
+          {e.kind === "permission" && e.detail && e.detail !== str(rec(e.input).command) && <p className="text-[13px] leading-[19px] break-words text-muted-foreground max-md:text-[15px] max-md:leading-[21px]">{e.detail}</p>}
         </div>
         {of && of[1] > 1 && <span className="shrink-0 pt-0.5 text-[12px] text-tertiary tabular-nums">{of[0]} of {of[1]}</span>}
       </div>
@@ -119,7 +120,7 @@ function Actions({ children }: { children: ReactNode }) {
 }
 
 function Permission({ e, busy, acts }: { e: Ask } & Answering) {
-  const i = (e.input ?? {}) as Record<string, unknown>
+  const i = rec(e.input)
   const body = str(i.command) ? <pre className="max-h-[30dvh] overflow-auto rounded-control bg-muted px-3 py-2 font-mono text-[12px] leading-[17px] whitespace-pre-wrap break-words max-md:text-[13px] max-md:leading-[18px]">{str(i.command)}</pre>
     : (e.tool === "Edit" || e.tool === "MultiEdit") && (str(i.old_string) || str(i.new_string)) ? <div className="max-h-[30dvh] overflow-y-auto"><EditDiff file={str(i.file_path)} edits={[{ old_string: str(i.old_string), new_string: str(i.new_string) }]} /></div>
     : null

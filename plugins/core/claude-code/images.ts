@@ -6,7 +6,8 @@ export const MAX_PICTURES = 10
 const EDGE = 2000
 // (5 MB as base64, the API's limit per image: 3/4 of it in bytes)
 const BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4)
-const TAKEN = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+const TYPES: Picture["type"][] = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+const TAKEN = new Set<string>(TYPES)
 
 const drafts = new Map<string, Picture[]>()
 export const draftPictures = (key: string) => drafts.get(key) ?? []
@@ -21,7 +22,8 @@ export async function readPicture(file: File, pasted = false): Promise<Picture> 
   const id = crypto.randomUUID(), name = (!pasted && file.name) || "Pasted image"
   let blob: Blob = file
   if (!TAKEN.has(file.type) || file.size > BYTES || (file.type !== "image/gif" && (await longEdge(file)) > EDGE)) blob = await shrink(file)
-  const type = blob.type as Picture["type"]
+  const type = TYPES.find((t) => t === blob.type)
+  if (!type) throw new Error(`Claude takes PNG, JPEG, GIF or WebP pictures, not ${blob.type || "this file"}`)
   return { id, data: await base64(blob), type, url: URL.createObjectURL(blob), name, size: blob.size }
 }
 

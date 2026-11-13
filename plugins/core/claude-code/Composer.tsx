@@ -129,7 +129,7 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
     void op("claude-code.chat-set", { id, ...p }).catch((e) => notifyError(e, "Couldn't change it"))
   }
   const menu = (e: MouseEvent, items: MenuItem[]) => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const r = e.currentTarget.getBoundingClientRect()
     const refocus = (it: MenuItem): MenuItem => ({ ...it, run: () => { it.run(); setTimeout(() => field.current?.focus({ preventScroll: true }), 0) } })
     openMenu({ x: r.left, y: r.top - 4, flip: r.bottom + 4 }, items.map(refocus), true)
   }

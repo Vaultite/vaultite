@@ -2,6 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import readline from "node:readline"
+import { z } from "zod"
 import { OpError, type Param } from "../../../core/plugins.ts"
 import { IMAGE_MAX, IMAGE_TYPES, IMAGES_MAX, type ImageType, imageType } from "./chatlog.ts"
 import { NAME } from "./chatwire.ts"
@@ -13,13 +14,15 @@ export const IMAGES = path.join(os.tmpdir(), `vaultite-chat-images-${NAME}`)
 const IMAGE_DAYS = 1
 export const KEEP_IMAGE = { "Cache-Control": "private, max-age=31536000, immutable" }
 
+const BASE64_IMAGE = z.object({ source: z.object({ type: z.literal("base64"), data: z.string() }) })
+
 export function picturesFor(uuid: string, given: unknown): string[] {
   if (given === undefined || given === null) return []
   if (!Array.isArray(given)) throw new OpError("`images`: a list of {data, type}")
   if (given.length > IMAGES_MAX) throw new OpError(`\`images\`: at most ${IMAGES_MAX} a message (${given.length} given)`)
   const pics = given.map((g: { data?: unknown; type?: unknown } | null, i) => {
-    const data = typeof g?.data === "string" ? g.data.replace(/\s+/g, "") : "", type = g?.type as ImageType
-    if (!IMAGE_TYPES.includes(type)) throw new OpError(`\`images\`: picture ${i + 1}'s type is ${IMAGE_TYPES.join(", ")}`)
+    const data = typeof g?.data === "string" ? g.data.replace(/\s+/g, "") : "", type = IMAGE_TYPES.find((t) => t === g?.type)
+    if (!type) throw new OpError(`\`images\`: picture ${i + 1}'s type is ${IMAGE_TYPES.join(", ")}`)
     if (data.startsWith("data:")) throw new OpError(`\`images\`: picture ${i + 1}'s data is base64 alone, without its data: prefix`)
     if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) throw new OpError(`\`images\`: picture ${i + 1}'s data isn't base64`)
     if (Math.floor(data.length * 3 / 4) - (data.match(/=+$/)?.[0].length ?? 0) > IMAGE_MAX) throw new OpError(`\`images\`: picture ${i + 1} is over ${IMAGE_MAX >> 20} MB`)
@@ -51,8 +54,8 @@ export async function pictureIn(file: string | undefined, entry: string, n: numb
       try { d = JSON.parse(line) } catch { continue }
       const content = d.uuid === entry ? d.message?.content : d.attachment?.source_uuid === entry ? d.attachment.prompt : null
       if (!Array.isArray(content)) continue
-      const img = content.filter((c) => c?.type === "image")[n] as { source?: { type?: string; data?: unknown } } | undefined
-      return img?.source?.type === "base64" && typeof img.source.data === "string" ? Buffer.from(img.source.data, "base64") : null
+      const img = BASE64_IMAGE.safeParse(content.filter((c) => c?.type === "image")[n]).data
+      return img ? Buffer.from(img.source.data, "base64") : null
     }
   } catch {} finally { lines.close() }
   return null

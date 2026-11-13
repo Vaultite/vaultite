@@ -1,3 +1,4 @@
+import { isRecord, rec, str } from "./inputs.ts"
 
 /** A question as AskUserQuestion asks it (core/agents.ts' Question). */
 export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
@@ -24,7 +25,7 @@ export const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}\n
 const PICK = ["description", "command", "file_path", "path", "pattern", "url", "query", "prompt", "skill", "notebook_path", "subject", "task_id"]
 /** One line saying what a tool call does: "git status", "src/app.ts", "TODO in *.ts". */
 export function summarize(name: string, input: unknown) {
-  const o = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {}
+  const o = isRecord(input) ? input : {}
   const text = (v: unknown): v is string => typeof v === "string" && !!v
   let s = typeof input === "string" ? input : PICK.map((k) => o[k]).find(text) ?? Object.values(o).find(text) ?? ""
   if (name === "Grep" && typeof o.pattern === "string") {
@@ -73,19 +74,19 @@ const picturesOf = (id: string, content: unknown) => {
   return n ? { images: Array.from({ length: n }, (_, i) => ({ src: imageSrc(id, i) })) } : {}
 }
 
-const words = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "")
+const words = (v: string, n: number) => v.replace(/\s+/g, " ").trim().slice(0, n)
 
 /** AskUserQuestion's input as questions (at most 4, of 2 to 6 options each), or none when it isn't one. */
 export function questionsOf(input: unknown): Question[] {
-  const qs = (input as { questions?: unknown })?.questions
+  const qs = isRecord(input) ? input.questions : undefined
   if (!Array.isArray(qs)) return []
   return qs.slice(0, 4).flatMap((q): Question[] => {
-    const question = words(q?.question, 500)
+    const question = words(str(q?.question), 500)
     const options = (Array.isArray(q?.options) ? q.options : []).slice(0, 6).flatMap((o: unknown) => {
-      const label = words((o as Json)?.label, 120), description = words((o as Json)?.description, 300)
+      const label = words(str(rec(o).label), 120), description = words(str(rec(o).description), 300)
       return label ? [{ label, ...(description && description.toLowerCase() !== label.toLowerCase() ? { description } : {}) }] : []
     })
-    const header = words(q?.header, 40)
+    const header = words(str(q?.header), 40)
     return question && options.length ? [{ question, ...(header ? { header } : {}), ...(q?.multiSelect === true ? { multi: true } : {}), options }] : []
   })
 }

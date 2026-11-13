@@ -21,8 +21,8 @@ export class Wire {
   constructor(sock: net.Socket, hear: (m: Record<string, unknown>) => void, gone: () => void) {
     this.sock = sock
     eachMessage(sock, (m) => {
-      const w = typeof m.re === "number" ? this.waiting.get(m.re) : undefined
-      if (w) { this.waiting.delete(m.re as number); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m) } else hear(m)
+      const re = typeof m.re === "number" ? m.re : NaN, w = this.waiting.get(re)
+      if (w) { this.waiting.delete(re); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m) } else hear(m)
     })
     const end = () => {
       if (this.closed) return

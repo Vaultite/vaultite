@@ -37,7 +37,6 @@ export const EFFORT: Record<string, string> = { low: "Low", medium: "Medium", hi
 export const MODE_SHORT: Partial<Record<Mode, string>> = { default: "Ask", acceptEdits: "Edits", plan: "Plan", auto: "Auto", bypassPermissions: "Bypass" }
 export const seconds = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`)
 
-export const str = (v: unknown) => (typeof v === "string" ? v : "")
 
 export function EditDiff({ file, edits }: { file: string; edits: { old_string?: string; new_string?: string }[] }) {
   const [lines, setLines] = useState<DiffLine[] | null>(null)

@@ -1,11 +1,12 @@
 import crypto from "node:crypto"
 import path from "node:path"
+import { z } from "zod"
 import { choiceOf, HOME, repoName } from "../../../core/agents.ts"
 import { byUser, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, type Plugin, splitMachine, userSurface } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
 import { entryText } from "./chatentries.ts"
 import type { Entry } from "./chatlog.ts"
-import { EFFORTS, type Mode, MODES, type Summary } from "./chathost.ts"
+import { EFFORTS, modeOf, MODES, type Summary } from "./chathost.ts"
 import { IMAGES_PARAM, picturesFor } from "./chatpictures.ts"
 import { MODE_LABELS } from "./chatsocket.ts"
 
@@ -16,7 +17,9 @@ export function chatOps(plugin: Plugin, c: Needs) {
 
   const ID = { type: "string", required: true, description: "the session's id (vau chat list; <id>@<machine>: another machine's)" } as const
 
-  function onMachines(def: Op) {
+  const ANSWER = z.record(z.string(), z.unknown()).catch({})
+
+function onMachines(def: Op) {
     plugin.op({ ...def, run: async (p, ctx) => {
       const [sid, at] = splitMachine(String(p.id ?? ""))
       const m = at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
@@ -34,12 +37,12 @@ export function chatOps(plugin: Plugin, c: Needs) {
       r = await fetch(`${m.url}/api/ops/${op}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
         body: JSON.stringify(body), signal: AbortSignal.timeout(30000) })
     } catch { throw new OpError(`${m.label} doesn't answer`, 502) }
-    const out = await r.json().catch(() => ({})) as Record<string, unknown>
+    const out = ANSWER.parse(await r.json().catch(() => ({})))
     if (!r.ok) throw new OpError(`${m.label}: ${String(out.error ?? `answered ${r.status}`)}`, r.status)
     return out
   }
   const OWNER = "Claude Code's chat"
-  type Listed = Summary & { title?: string }
+  type Listed = Summary & { title?: string; project?: string }
   const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${MODE_LABELS[s.mode] ?? s.mode}${s.account ? ` · ${s.account}` : ""}`
   const theUser = (ctx: OpCtx) => { if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403) }
 
@@ -143,9 +146,9 @@ after an approved plan (acceptEdits, default...).`,
     run: async (p, ctx) => {
       theUser(ctx)
       const qs = [...(asking.get(p.id)?.values() ?? [])].find((e) => !p.ask || e.id === p.ask)?.questions ?? []
-      const typed = (p.typed ?? []) as string[]
-      if (p.picks?.length && p.picks.length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`)
-      const answers = p.picks?.length ? (p.picks as string[]).map((x, i) => choiceOf(qs[i], x, typed[i] ?? "")) : undefined
+      const typed: string[] = p.typed ?? [], picks: string[] | undefined = p.picks
+      if (picks?.length && picks.length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`)
+      const answers = picks?.length ? picks.map((x, i) => choiceOf(qs[i], x, typed[i] ?? "")) : undefined
       const s = await answer(p.id, { ...(p.allow !== undefined ? { allow: p.allow } : {}), ...(p.always ? { always: true } : {}), ...(p.chat ? { chat: true } : {}),
         ...(answers ? { answers } : {}), ...(p.message ? { message: p.message } : {}), ...(p.mode ? { mode: p.mode } : {}) }, p.ask)
       return { id: p.id, state: s.state }
@@ -165,7 +168,7 @@ after an approved plan (acceptEdits, default...).`,
       const { s } = await ask("set", { id: p.id, ...(p.model ? { model: runsAs(p.model) } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
       return { id: p.id, model: s.model, effort: s.effort, mode: s.mode }
     },
-    text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${MODE_LABELS[r.mode as Mode] ?? r.mode}.`,
+    text: (r) => { const m = modeOf(r.mode); return `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${m ? MODE_LABELS[m] : r.mode}.` },
   })
 
   async function chatList(at: string, ctx: { who: { client: string | null } }): Promise<{ sessions: Listed[]; away?: Record<string, string> }> {
@@ -197,7 +200,7 @@ after an approved plan (acceptEdits, default...).`,
     const progress = plugin.service("inbox:progress") as ((t: string, s: string) => string | null) | null
     return { ...r, sessions: r.sessions.map((s) => {
       const said = progress?.("", splitMachine(s.id)[0]) ?? null
-      const project = (s as { project?: string }).project ?? (s.id.includes("@") ? "" : repoName(s.cwd))
+      const project = s.project ?? (s.id.includes("@") ? "" : repoName(s.cwd))
       return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}), ...(project ? { project } : {}) }
     }) }
   }, { sync: false })
@@ -214,7 +217,7 @@ Machines (its sessions are <id>@<machine>), all every machine's.
     params: { machine: { type: "string", description: "another of the Machines, by its id (studio), or all: every machine's" } },
     run: ({ machine }, ctx) => chatList(String(machine ?? ""), ctx),
     text: (r) => (r.sessions.length ? r.sessions.map(line).join("\n") : "No chat sessions are running.") +
-      Object.entries((r.away ?? {}) as Record<string, string>).map(([k, v]) => `\n${k}: ${v}`).join(""),
+      Object.entries(r.away ?? {}).map(([k, v]) => `\n${k}: ${v}`).join(""),
   })
 
   onMachines({
