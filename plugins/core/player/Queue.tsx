@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { z } from "zod"
 import { BookOpen, Check, CheckCheck, Globe, ListVideo, Pause, Play, RotateCcw } from "lucide-react"
 import { cn, Empty, fmtAgo, isArchived, List, menuFor, op, openFile, optimistic, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type BlockCtx, type SwipeAction } from "@vaultite"
 import { leftText, shelfOf, type Place, type Shelf } from "./shelves"
@@ -19,12 +18,12 @@ function entries(store: Store): Entry[] {
   })
 }
 
-const Books = z.array(z.looseObject({ id: z.string(), title: z.string().catch(""), author: z.string().optional().catch(undefined), status: z.unknown(),
-  current_page: z.number().nullish().catch(null), total_pages: z.number().nullish().catch(null) })).catch([])
-
-function books(store: Store) {
-  return ("books" in store ? Books.parse(store.books) : []).filter((b) => b.status === "reading" && !isArchived(b))
+type Book = { id: string; title: string; author?: string; status: string; current_page: number | null; total_pages: number | null; archived?: boolean }
+declare module "@vaultite" {
+  interface PluginState { books?: Book[] }
 }
+
+const books = (store: Store) => (store.books ?? []).filter((b) => b.status === "reading" && !isArchived(b))
 
 const SHELVES: Shelf[] = ["watch", "listen", "read"]
 const LABELS: Record<Show, string> = { all: "All", watch: "Watch", listen: "Listen", read: "Read" }

@@ -54,6 +54,8 @@ for (const f of NEVER_IN_MAIN) {
 if (web && fs.existsSync(path.join(DIST, "index.html"))) {
   const html = fs.readFileSync(path.join(DIST, "index.html"), "utf8"), eager = new Set(eagerOf("index.html"))
   const late = [...html.matchAll(/"\.\/assets\/(?:app|vendor)-[^"]+\.js":"\.\/(assets\/[^"]+)"/g)].flatMap((m) => (eager.has(m[1]) ? [] : [m[1]]))
+  const zod = [...eager].filter((f) => f.endsWith(".js") && fs.readFileSync(path.join(DIST, f), "utf8").includes("ZodError"))
+  say(!zod.length, `zod isn't in what the app loads before drawing${zod.length ? ` (${zod.join(", ")}: about 90 KB; parse in a file loaded later, or type the state through PluginState)` : ""}`)
   say(!late.length, `every app-/vendor- file is one index.html loads before drawing (vite.config.ts indexBoot leaves them out of preloads)${late.length ? `: not ${late.join(", ")}` : ""}`)
 }
 for (const [k, v] of Object.entries(now)) say(!(k in limits) || v <= limits[k], `${k}: ${v} (limit ${limits[k] ?? "none"})`)
