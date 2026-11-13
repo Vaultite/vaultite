@@ -11,7 +11,8 @@ import { tags } from "@lezer/highlight"
 import { Annotation, Compartment, EditorSelection, EditorState, Prec, Text, Transaction, type Extension, type SelectionRange } from "@codemirror/state"
 import { EditorView, keymap, placeholder, tooltips, type ViewUpdate } from "@codemirror/view"
 import { codeStyle, indentOf, languageFor, ownIndent } from "./languages"
-import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, previewConfig, textStart, textStartIn, type PreviewConfig } from "./livePreview"
+import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, previewConfig, type PreviewConfig } from "./livePreview"
+import { textStart, textStartIn } from "./scan"
 import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, shownStart, titled, titleEnd, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
 import { followReader, sightMargins } from "./sight"
@@ -20,6 +21,7 @@ import { highlightSource, optionDot } from "./highlights"
 import { optionGlyph, optionTrail, PICK_DELAY, pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
 import { tagSource } from "./tags"
 import { numberGutter } from "./numbers"
+import { cursors } from "./cursors"
 import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
 import { ink } from "@/lib/ink"
@@ -36,6 +38,7 @@ import { pastedFiles } from "@/core/files"
 import { droppedFrom, fromOutside, type Dropped } from "@/core/filedrop"
 import { dropInto, fileDrops, markDrop, spotAt } from "./filedrop"
 import { pasteTable } from "./tables"
+import { pasteHtml, pasteLink } from "./paste"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { usePane } from "@/core/pane"
@@ -309,17 +312,17 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         selection: hides ? EditorSelection.cursor(((t) => textStartIn(t, titleEnd(t, bodyStart(t), title ?? "")))(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
         extensions: language !== undefined ? [
           Prec.highest(plugged.current.of([])),
-          leaving, sight, history(), conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
+          leaving, sight, history(), cursors, conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
           lang.current.of([]), syntaxHighlighting(codeStyle),
           plain,
         ] : code ? [
           Prec.highest(plugged.current.of([])),
-          leaving, sight, history(), conflicts, indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
+          leaving, sight, history(), cursors, conflicts, indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
           code === "json" ? [jsonLang(), syntaxHighlighting(jsonStyle)] : code === "html" ? [htmlLang(), syntaxHighlighting(htmlStyle)] : [],
           plain,
         ] : [
           Prec.highest(fenceMenu), Prec.highest(plugged.current.of([])),
-          leaving, sight, history(), conflicts,
+          leaving, sight, history(), cursors, conflicts,
           EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged(u) }),
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
           prose.current.of(writing(settings, doc)),
@@ -330,7 +333,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           linkHandler((l, t) => cb.current.onOpen(l, t)),
           fileDrops,
           EditorView.domEventHandlers({
-            paste: (e, view) => pasteFiles(e, view, pastedFiles(e.clipboardData), cb.current.onAttach) || pasteTable(e, view),
+            paste: (e, view) => pasteFiles(e, view, pastedFiles(e.clipboardData), cb.current.onAttach) || pasteTable(e, view) || pasteLink(e, view) || pasteHtml(e, view),
             dragover(e, view) {
               if (!takesDrops(view) || !fromOutside(e.dataTransfer)) return false
               e.preventDefault()

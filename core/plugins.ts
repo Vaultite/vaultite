@@ -55,6 +55,10 @@ export { contentType, isTextKind, kindOf } from "./filetypes.ts"
 /** How long ago a time was, as the app says it ("5 min ago"; core/dates.ts). */
 export { fmtAgo, stampMs } from "./dates.ts"
 export { COLORS, isColor, type Color } from "./colors.ts"
+import type { HtmlMedia } from "./htmlmd.ts"
+export type { HtmlMedia } from "./htmlmd.ts"
+/** HTML as Markdown, as a paste into a note makes it (core/htmlmd.ts); loaded when first asked, as turndown is heavy. */
+export const htmlToMarkdown = async (html: string, media?: HtmlMedia) => (await import("./htmlmd.ts")).htmlToMarkdown(html, media)
 export { record as recordSpan, span, spans, type Span } from "./spans.ts"
 /** The app's version and the plugin API's (core/version.ts). */
 export { API_VERSION, APP_VERSION } from "./version.ts"

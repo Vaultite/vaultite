@@ -1,7 +1,7 @@
 // Evernote's .enex: one notebook's notes as XML, attachments inside as base64, <en-media> naming one by its MD5
 import crypto from "node:crypto"
-import { xmlDecode } from "../../../core/plugins.ts"
-import { fromEnml, toMarkdown } from "./html.ts"
+import { htmlToMarkdown, xmlDecode } from "../../../core/plugins.ts"
+import { fromEnml } from "./html.ts"
 
 export type Resource = { name: string; mime: string; data: Buffer; hash: string }
 export type EnNote = { title: string; created: number | null; updated: number | null; tags: string[]; source: string; author: string; html: string; resources: Resource[] }
@@ -50,10 +50,10 @@ export function* readEnex(xml: string): Generator<EnNote> {
   }
 }
 
-export function noteBody(note: EnNote, link: (r: Resource) => string) {
+export async function noteBody(note: EnNote, link: (r: Resource) => string) {
   const shown = new Set<string>()
   const byHash = new Map(note.resources.map((r) => [r.hash, r]))
-  const md = toMarkdown(fromEnml(note.html), (hash) => {
+  const md = await htmlToMarkdown(fromEnml(note.html), (hash) => {
     const r = byHash.get(hash.toLowerCase())
     if (!r) return null
     shown.add(r.hash)

@@ -10,14 +10,15 @@ export default async ($: VaultTest) => {
   // Importer (plugins/core/importer): Notion's Markdown & CSV zip and Evernote's .enex (made up here) into notes.
   const { zipFiles } = await import("../../../core/zipfile.ts")
   const notion = await import("../../../plugins/core/importer/notion.ts")
-  const { fromEnml, toMarkdown } = await import("../../../plugins/core/importer/html.ts")
+  const { fromEnml } = await import("../../../plugins/core/importer/html.ts")
+  const { htmlToMarkdown } = await import("../../../core/htmlmd.ts")
   const { readEnex } = await import("../../../plugins/core/importer/evernote.ts")
 
   check("importer notion: names without ids", notion.bareName(`Plans ${ID(1)}.md`).name === "Plans.md" && notion.bareName(`Plans ${ID(1)}.md`).id === ID(1) &&
     notion.barePath(`Home ${ID(1)}/Tasks ${ID(2)}_all.csv`) === "Home/Tasks.csv" && notion.bareName("plain.png").id === null)
   check("importer notion: dates", notion.notionDate("October 5, 2026") === "2026-10-05" && notion.notionDate("October 5, 2026 3:04 PM") === "2026-10-05 15:04" &&
     notion.notionDate("Not a date") === null)
-  const md = toMarkdown(fromEnml(`<en-note><div><en-todo checked="true"/>Buy flour</div><div><en-todo/>Bake</div><table><tr><td>a</td><td>b</td></tr></table><div style="--en-codeblock:true;"><div>  x = 1</div></div><en-media hash="ab12" type="image/png"/></en-note>`),
+  const md = htmlToMarkdown(fromEnml(`<en-note><div><en-todo checked="true"/>Buy flour</div><div><en-todo/>Bake</div><table><tr><td>a</td><td>b</td></tr></table><div style="--en-codeblock:true;"><div>  x = 1</div></div><en-media hash="ab12" type="image/png"/></en-note>`),
     (h) => `![[A/${h}.png]]`)
   check("importer evernote: to-dos as tasks, tables, code keeps its spaces, media embedded", md.startsWith("- [x] Buy flour\n- [ ] Bake") && md.includes("| a | b |\n| --- | --- |") &&
     md.includes("```\n  x = 1\n```") && md.includes("![[A/ab12.png]]"), md)
@@ -125,7 +126,7 @@ export default async ($: VaultTest) => {
 
   // HTML pages: a zip of another app's pages, and one page alone.
   const { pageMarkdown } = await import("../../../plugins/core/importer/importer.ts")
-  check("importer html: a page's body as Markdown, its title heading off", pageMarkdown("<html><head><title>T</title><style>x{}</style></head><body><h1>Trip</h1><p>Go <b>now</b>.</p></body></html>", "Trip") === "Go **now**.")
+  check("importer html: a page's body as Markdown, its title heading off", await pageMarkdown("<html><head><title>T</title><style>x{}</style></head><body><h1>Trip</h1><p>Go <b>now</b>.</p></body></html>", "Trip") === "Go **now**.")
   fs.writeFileSync(path.join(VAULT, "Imports/Old wiki.zip"), zipFiles({
     "site/index.html": '<html><body><h1>Home</h1><p>See <a href="pages/Garden%20plan.html">the plan</a> and <a href="https://example.com">a site</a>.</p><img src="img/rose.png" alt="Rose"></body></html>',
     "site/pages/Garden plan.html": '<html><body><p>Back <a href="../index.html">home</a>.</p><ul><li>Roses</li><li>Tulips</li></ul></body></html>',

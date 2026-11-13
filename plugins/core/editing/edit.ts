@@ -1,6 +1,7 @@
 import { startCompletion } from "@codemirror/autocomplete"
 import { deleteLine, moveLineDown, moveLineUp } from "@codemirror/commands"
-export { indentLess, indentMore } from "@codemirror/commands"
+export { addCursorAbove, addCursorBelow, indentLess, indentMore } from "@codemirror/commands"
+export { selectNextOccurrence } from "@codemirror/search"
 import { EditorSelection, type EditorState, type Line } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import { blockPieces, paragraphAt } from "@vaultite"

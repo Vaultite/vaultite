@@ -1,5 +1,5 @@
-import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state"
-import { EditorView, ViewPlugin, drawSelection } from "@codemirror/view"
+import { Compartment, Prec, type Extension } from "@codemirror/state"
+import { EditorView, ViewPlugin } from "@codemirror/view"
 import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirror/language"
 import { beginKeys, followLink, getStore, isMac, linksIn, logError, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
 import { EX } from "./ex"
@@ -246,8 +246,6 @@ async function vimParts(): Promise<Extension> {
       e.preventDefault(); return true
     } })),
     vim({ status: false }),
-    EditorState.allowMultipleSelections.of(true),
-    drawSelection(),
     theme,
     ViewPlugin.define((view) => {
       const cm = getCM(view)

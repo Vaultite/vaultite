@@ -1,4 +1,4 @@
-// Markdown's extras (code fences, callouts, footnotes, math, mermaid, <details>) in reading, live preview and source,
+// Markdown's extras (code fences, callouts, custom ones too, footnotes, inline ones too, math, mermaid, <details>) in reading, live preview and source,
 // what's inside code left alone, and a phone. WRITES a "Qa markdown" folder: throwaway only.
 //   node web/qa/markdown.mjs <base url> [out dir]
 import { SHOTS, apiAt, command, qa, until } from "./lib/qa.mjs"
@@ -134,7 +134,7 @@ check("Design: code block with its label", await dash.locator(".md-code .md-code
 check("Design: callouts", await dash.locator('.callout[data-callout="tip"]').count() === 1 && await dash.locator("details.callout").count() === 1)
 check("Design: math", await dash.locator(".katex").count() >= 2)
 check("Design: mermaid", await dash.locator(".mermaid-diagram svg").count() === 1)
-check("Design: footnote and its list", await dash.locator(".footnote-ref").count() === 1 && await dash.locator("section.footnotes li").count() === 1)
+check("Design: footnotes, an inline one too, and their list", await dash.locator(".footnote-ref").count() === 2 && await dash.locator("section.footnotes li").count() === 2)
 check("Design: <details>", await dash.locator("details:not(.callout) summary", { hasText: "A toggle" }).count() === 1)
 const tsCode = dash.locator(".md-code", { has: page.locator(".md-code-lang", { hasText: "ts" }) })
 await tsCode.hover()
@@ -192,6 +192,30 @@ const trashed = (await (await fetch(`${B}api/file?path=${encodeURIComponent("Qa 
 await page.goto(`${B}#file/${encodeURIComponent(trashed)}`)
 check(`a checkbox in the trash is disabled (${trashed})`, await until(async () => await ed.locator("input.cm-task[disabled]").count() === 1))
 await api("PATCH", "config/files", { showHidden: hiddenBefore })
+
+const PARITY = "Qa markdown/Inline notes.md"
+await put(PARITY, "A labelled one[^a], an inline one^[with **bold** and [[Rich]] in it] and a third^[plain].\n\n> [!recipe] Leek soup\n> A type of its own.\n\n> [!note] A note\n> For its look.\n\n[^a]: The labelled one.\n")
+await page.goto(`${B}#file/${encodeURIComponent(PARITY)}`); await editorOf(PARITY).waitFor(); await ui.idle()
+await switchTo("Switch to reading view")
+const refs = ed.locator(".cm-footnote-ref")
+check("reading: inline footnotes numbered with the labelled one", (await refs.allInnerTexts()).join(",") === "1,2,3", await refs.allInnerTexts())
+check("reading: an inline footnote's text is its tip", await refs.nth(1).getAttribute("data-tip") === "with bold and Rich in it")
+check("reading: none of it shown raw", !(await ed.locator(".cm-line", { hasText: "^[" }).count()))
+const recipe = ed.locator('.callout[data-callout="recipe"]'), noteCallout = ed.locator('.callout[data-callout="note"]')
+const look = (l) => l.evaluate((c) => [getComputedStyle(c).backgroundColor, getComputedStyle(c.querySelector(".callout-title")).color, c.querySelector(".callout-icon").innerHTML])
+check("reading: a custom callout keeps its type and looks like a note", await recipe.count() === 1 && JSON.stringify(await look(recipe)) === JSON.stringify(await look(noteCallout)))
+await refs.nth(1).hover()
+const tipShown = await until(async () => await page.locator(".tooltip").count() > 0, 3000)
+const box = await ed.locator(".cm-line", { hasText: "labelled one" }).first().boundingBox()
+await page.screenshot({ path: `${OUT}inline-footnote.png`, clip: { x: box.x - 8, y: box.y - 70, width: 640, height: box.height + 140 } })
+check("reading: hovering an inline footnote shows its text", tipShown)
+await recipe.screenshot({ path: `${OUT}custom-callout.png` })
+await page.addStyleTag({ content: '.callout[data-callout="recipe"] { --callout-color: 200, 40, 40; }' }); await ui.idle()
+check("reading: a snippet's --callout-color colours it", (await look(recipe))[1] === "rgb(200, 40, 40)", await look(recipe))
+await recipe.screenshot({ path: `${OUT}custom-callout-snippet.png` })
+await switchTo("Switch to live preview")
+await ed.locator(".cm-line", { hasText: "labelled one" }).first().click({ position: { x: 2, y: 8 } }); await page.keyboard.press("End"); await page.keyboard.press("ArrowLeft"); await ui.idle()
+check("live: the cursor on it shows its Markdown", await ed.locator(".cm-line", { hasText: "^[plain]" }).count() === 1)
 
 // Phone.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })

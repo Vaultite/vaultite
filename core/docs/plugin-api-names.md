@@ -917,6 +917,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Handler`
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).
+- `htmlToMarkdown(html, media?)`: HTML as Markdown, as a paste into a note makes it (core/htmlmd.ts); loaded when first asked, as turndown is heavy.
 - `HTTPError`
 - `inDesktop()`
 - `isColor(c)`

@@ -2,11 +2,10 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
-import { csvRecords, entryBytes, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
+import { csvRecords, entryBytes, htmlToMarkdown, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
 import { frontmatter, safeName, stamp, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { bearInfo, bearNote } from "./bear.ts"
 import { noteBody, readEnex, type Resource } from "./evernote.ts"
-import { toMarkdown } from "./html.ts"
 import { readKeep } from "./keep.ts"
 import { roamNotes } from "./roam.ts"
 import { barePath, hrefPath, idOf, links, notionNote } from "./notion.ts"
@@ -220,7 +219,7 @@ async function evernote(vault: Vault, xml: string, notebook: string, base: strin
       saved.set(r, p.rel)
       if (!p.exists) pending.push({ rel: p.rel, note: false, data: async () => r.data })
     }
-    const body = noteBody(n, (r) => `${EMBEDS.test(r.mime) ? "!" : ""}[[${saved.get(r)}]]`)
+    const body = await noteBody(n, (r) => `${EMBEDS.test(r.mime) ? "!" : ""}[[${saved.get(r)}]]`)
     const fm: Record<string, unknown> = {}
     if (n.tags.length) fm.tags = n.tags.map((t) => t.replace(/[\s#,]+/g, "-"))
     if (n.source) fm.source = n.source
@@ -286,9 +285,9 @@ async function keep(vault: Vault, parts: Zip[], dir: string, job: Job) {
   await flush(vault, pending, job)
 }
 
-export function pageMarkdown(html: string, name: string) {
+export async function pageMarkdown(html: string, name: string) {
   const body = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(html)?.[1] ?? html.replace(/<head\b[\s\S]*?<\/head>/i, "")
-  const md = toMarkdown(body)
+  const md = await htmlToMarkdown(body)
   const first = /^# (.+)\n*/.exec(md)
   return first && first[1].trim() === name ? md.slice(first[0].length) : md
 }
@@ -324,7 +323,7 @@ async function htmlPages(vault: Vault, parts: Zip[], dir: string, job: Job) {
           return hit ? { rel: hit.rel, md: hit.md } : null
         }
         const name = t.rel.split("/").pop()!.replace(/\.md$/, "")
-        return frontmatter({ ext_id: t.ext }, links(pageMarkdown((await read(z, e)).toString("utf8"), name), resolve))
+        return frontmatter({ ext_id: t.ext }, links(await pageMarkdown((await read(z, e)).toString("utf8"), name), resolve))
       },
     })
     if (pending.length >= BATCH) await flush(vault, pending, job)

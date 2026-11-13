@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
-import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, keysInEditor, notifyError, unhighlight, type PluginCommand } from "@vaultite"
+import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, isMac, keysInEditor, notifyError, unhighlight, type PluginCommand } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { NoteKeys, ToolbarSettings } from "./keys"
 import { addPhotos } from "./photo"
@@ -50,6 +50,9 @@ export default definePlugin({
     { id: "editor:delete-paragraph", name: "Delete paragraph", keys: ["Mod+Shift+Backspace"], when, run: run((e) => e.deleteParagraph), icon: Delete },
     { id: "editor:swap-line-up", name: "Move line up", keys: ["Alt+ArrowUp"], when, run: run((e) => e.lineUp), icon: ArrowUp },
     { id: "editor:swap-line-down", name: "Move line down", keys: ["Alt+ArrowDown"], when, run: run((e) => e.lineDown), icon: ArrowDown },
+    { id: "editor:add-cursor-above", name: "Add cursor above", keys: isMac ? ["Mod+Alt+ArrowUp"] : undefined, when, run: run((e) => e.addCursorAbove) },
+    { id: "editor:add-cursor-below", name: "Add cursor below", keys: isMac ? ["Mod+Alt+ArrowDown"] : undefined, when, run: run((e) => e.addCursorBelow) },
+    { id: "editor:select-next-occurrence", name: "Select next occurrence", when, run: run((e) => e.selectNextOccurrence) },
     ...blocks.map(([id, name, text]) => ({ id: `editor:${id}`, name, when, run: run((e) => e.insertBlock(text)) })),
     { id: "editor:insert-footnote", name: "Insert footnote", when, run: run((e) => e.insertFootnote), icon: Superscript },
     // (not through `run`: the picker opens only while the tap or key is being handled)

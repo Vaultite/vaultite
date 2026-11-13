@@ -2,7 +2,8 @@ import { EditorSelection } from "@codemirror/state"
 import { EditorView, ViewPlugin } from "@codemirror/view"
 import { lineInSight, sightOf, wholly } from "@/core/sight"
 import { scrollingBox } from "@/lib/utils"
-import { offBlocks, textStart } from "./livePreview"
+import { offBlocks } from "./livePreview"
+import { textStart } from "./scan"
 
 // CodeMirror sees only its scroller, not the bars drawn over the text.
 export const sightMargins = EditorView.scrollMargins.of((view) => {

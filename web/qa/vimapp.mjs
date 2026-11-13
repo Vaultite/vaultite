@@ -151,7 +151,7 @@ await page.keyboard.press("i"); await ui.idle()
 check("i switches to editing", await page.locator(".cm-content[contenteditable=true]").count() > 0)
 const caret = await page.evaluate(() => {
   const s = document.getElementById("main-scroll").getBoundingClientRect()
-  const c = document.querySelector(".cm-fat-cursor, .cm-cursor-primary")
+  const c = [...document.querySelectorAll(".cm-fat-cursor, .cm-cursor-primary")].find((e) => e.getClientRects().length)
   const h = [...document.querySelectorAll(".cm-line")].find((l) => /Section 3/.test(l.textContent))
   return { y: c ? Math.round(c.getBoundingClientRect().top - s.top) : null, h: h ? Math.round(h.getBoundingClientRect().top - s.top) : null }
 })

@@ -1084,16 +1084,17 @@ body[data-resizing] [data-status-bar] { transition: none; }
 .vau-editor .cm-block-math, .vau-editor .cm-block-mermaid { padding: 8px 0; }
 /* Callouts: > [!type] Title (core/markdown.ts); each type's colour from the scheme */
 /* The bar is drawn inside the box, so the rounded corners don't bend it. */
-.callout { --callout: var(--blue); position: relative; margin: 0 0 14px; padding: 10px 14px 10px 22px; border-radius: 10px;
-  background: color-mix(in srgb, var(--callout) 9%, transparent); }
-.callout::before { content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--callout); }
+/* An Obsidian snippet's --callout-color (r, g, b) wins over the type's; unset, --callout-tint is invalid and falls back. */
+.callout { --callout: var(--blue); --callout-tint: rgb(var(--callout-color)); position: relative; margin: 0 0 14px; padding: 10px 14px 10px 22px;
+  border-radius: 10px; background: color-mix(in srgb, var(--callout-tint, var(--callout)) 9%, transparent); }
+.callout::before { content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--callout-tint, var(--callout)); }
 .callout[data-callout="abstract"], .callout[data-callout="tip"] { --callout: var(--teal); }
 .callout[data-callout="success"] { --callout: var(--green); }
 .callout[data-callout="question"], .callout[data-callout="warning"] { --callout: var(--orange); }
 .callout[data-callout="failure"], .callout[data-callout="danger"], .callout[data-callout="bug"] { --callout: var(--red); }
 .callout[data-callout="example"] { --callout: var(--purple); }
 .callout[data-callout="quote"] { --callout: var(--gray); }
-.callout-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--callout); list-style: none; }
+.callout-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--callout-tint, var(--callout)); list-style: none; }
 .callout-title::-webkit-details-marker { display: none; }
 summary.callout-title { cursor: pointer; user-select: none; }
 .callout-icon { display: inline-flex; flex: none; }

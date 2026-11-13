@@ -1,8 +1,6 @@
 import { isolateHistory, redo, undo } from "@codemirror/commands"
-import { syntaxTree } from "@codemirror/language"
 import { EditorSelection } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
-import type { SyntaxNode } from "@lezer/common"
 import { ArrowDown, ArrowDownAZ, ArrowDownZA, ArrowLeft, ArrowRight, ArrowUp, BetweenHorizontalEnd, BetweenHorizontalStart,
   BetweenVerticalEnd, BetweenVerticalStart, Code, Columns3, CopyPlus, Eraser, FoldHorizontal, Rows3, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react"
 import { menuShowing, openMenu, type MenuItem } from "@/components/ContextMenu"
@@ -12,6 +10,7 @@ import { blockLines, markdownDrawn } from "@/core/richmd"
 import { elementOf } from "@/core/dom"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
+import { pastesRaw } from "./paste"
 import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, fillDown, insertColumn, insertRow, moveColumn, moveRow,
   NARROWEST, parseTable, setWidths, sharedMinWidth, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
@@ -669,15 +668,13 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   }
 }
 
-const NOT_HERE = /^(FencedCode|CodeBlock|InlineCode|Frontmatter|Table)$/
-
 export function pasteTable(e: ClipboardEvent, view: EditorView) {
   const d = e.clipboardData
   if (!d || !view.state.facet(EditorView.editable)) return false
   const rows = pastedTable(d.getData("text/plain"), d.getData("text/html"))
   if (!rows) return false
   const { state } = view, r = state.selection.main
-  for (let n: SyntaxNode | null = syntaxTree(state).resolveInner(r.from, -1); n; n = n.parent) if (NOT_HERE.test(n.name)) return false
+  if (pastesRaw(state, r.from)) return false
   e.preventDefault()
   const doc = state.doc, line = doc.lineAt(r.from), end = doc.lineAt(r.to)
   const before = state.sliceDoc(line.from, r.from), after = state.sliceDoc(r.to, end.to)

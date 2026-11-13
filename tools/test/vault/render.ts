@@ -12,9 +12,9 @@ export default async ($: VaultTest) => {
   check("render fills a dashboard's blocks in", code === 200 && txt.includes("## Reach out") && txt.includes("## Friends") && !txt.includes("```block-"), txt.slice(0, 300))
   check("render doesn't touch the file", read("Dashboards/People.md") === before)
   check("render of a person file", (await api("GET", "render?path=People/Block Person.md"))[1].includes("Last in touch"))
-  // Markdown's extras (callouts, footnotes, math, mermaid, code fences, <details>) are plain Markdown: render passes it through.
+  // Markdown's extras (callouts, custom ones too, footnotes, inline ones too, math, mermaid, code fences, <details>) are plain Markdown: render passes it through.
   {
-    const rich = "> [!tip]- Title\n> Body [^1]\n\n$$\nx^2\n$$\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```ts\nconst a = 1\n```\n\n<details>\n<summary>More</summary>\n\nInside\n\n</details>\n\n[^1]: A note, $y$.\n"
+    const rich = "> [!tip]- Title\n> Body [^1] and ^[an inline one]\n\n> [!recipe] Soup\n> Leeks\n\n$$\nx^2\n$$\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```ts\nconst a = 1\n```\n\n<details>\n<summary>More</summary>\n\nInside\n\n</details>\n\n[^1]: A note, $y$.\n"
     write("Notes/Rich markdown.md", rich)
     const [c2, out] = await api("GET", "render?path=Notes/Rich markdown.md")
     check("render keeps Markdown's extras as they are", c2 === 200 && out.includes(rich.trim()), out)

@@ -1,5 +1,5 @@
 import { check } from "../lib.ts"
-import { plugin, web } from "./lib.ts"
+import { plugin, same, web } from "./lib.ts"
 
 // ---------- Clear formatting (plugins/core/editing/edit.ts) ----------
 {
@@ -163,4 +163,48 @@ import { plugin, web } from "./lib.ts"
   check("query suggest: #wo is a tag, as tag:#work", ask("#wo|")?.texts.join() === "tag:#work,tag:#wor", ask("#wo|")?.texts)
   check("query suggest: nothing inside a word, after a space, for a whole value typed, or other operators' values",
     ask("ta|g") === null && ask("work |") === null && ask("type:person|") === null && ask("path:No|") === null && ask("zz|") === null, [ask("type:person|"), ask("work |")])
+}
+
+{
+  const { EditorState, EditorSelection } = await import("@codemirror/state")
+  const { markdown } = await import("@codemirror/lang-markdown")
+  const { ensureSyntaxTree } = await import("@codemirror/language")
+  const paste: typeof import("../../../web/src/editor/paste.ts") = await web("editor/paste.ts")
+  const { htmlToMarkdown } = await import("../../../core/htmlmd.ts")
+  type View = { state: import("@codemirror/state").EditorState; dispatch(tr: import("@codemirror/state").TransactionSpec): void }
+  const view = (doc: string, from: number, to = from, more?: [number, number]): View => {
+    const ranges = [EditorSelection.range(from, to), ...(more ? [EditorSelection.range(...more)] : [])]
+    const state = EditorState.create({ doc, selection: EditorSelection.create(ranges), extensions: [markdown(), EditorState.allowMultipleSelections.of(true)] })
+    ensureSyntaxTree(state, state.doc.length, 5000)
+    return { state, dispatch(tr) { this.state = this.state.update(tr).state } }
+  }
+  const clip = (data: Record<string, string>) => {
+    let prevented = false
+    const e = { clipboardData: { types: Object.keys(data), getData: (t: string) => data[t] ?? "" }, preventDefault: () => { prevented = true } }
+    return { e, prevented: () => prevented }
+  }
+  const linked = (v: View, url: string) => { const c = clip({ "text/plain": url }); const took = paste.pasteLink(c.e, v); return { took, text: v.state.doc.toString() } }
+  check("paste a link over a selection: [text](url), every range", same(linked(view("see the docs here", 8, 12), "https://x.test/a"), { took: true, text: "see the [docs](https://x.test/a) here" }) &&
+    linked(view("a b c", 0, 1, [4, 5]), " https://x.test ").text === "[a](https://x.test) b [c](https://x.test)")
+  check("paste a link: not with nothing selected, a URL selected, text that isn't one, lines, or in code",
+    [view("docs", 2), view("https://old.test", 0, 16), view("a\nb", 0, 3), view("`code`", 1, 5)].every((v) => !linked(v, "https://x.test").took) &&
+    !linked(view("docs", 0, 4), "not a url").took)
+  await import("../../../core/htmlmd.ts")
+  const pasted = async (v: View, data: Record<string, string>) => {
+    const c = clip(data), took = paste.pasteHtml(c.e, v), was = v.state.doc
+    for (let i = 0; took && v.state.doc === was && i < 50; i++) await new Promise((r) => setImmediate(r))
+    return { took, prevented: c.prevented(), text: v.state.doc.toString() }
+  }
+  const page = { "text/html": '<meta charset="utf-8"><h2>Plan</h2><p>Go <b>now</b>, see <a href="https://x.test">this</a>.</p><ul><li>one</li><li>two</li></ul>', "text/plain": "Plan\nGo now, see this.\none\ntwo" }
+  check("paste HTML: Markdown at the cursor", same(await pasted(view("A\n\nB", 1), page), { took: true, prevented: true, text: "A## Plan\n\nGo **now**, see [this](https://x.test).\n\n- one\n- two\n\nB" }),
+    await pasted(view("A\n\nB", 1), page))
+  check("paste HTML: plain paragraphs, code editors' colours, inside code and with several cursors go in as text",
+    !(await pasted(view("x", 1), { "text/html": "<p>Just text</p>", "text/plain": "Just text" })).took &&
+    !(await pasted(view("x", 1), { "text/html": '<div style="white-space: pre;"><span style="font-style: italic;">// c</span></div>', "text/plain": "// c" })).took &&
+    !(await pasted(view("x", 1), { "vscode-editor-data": "{}", ...page })).took &&
+    !(await pasted(view("```\nx\n```", 5), page)).took && !(await pasted(view("ab", 0, 0, [1, 1]), page)).took)
+  check("html to Markdown: Google Docs' wrapper isn't bold, the app's own links come back as wikilinks",
+    htmlToMarkdown('<b style="font-weight:normal;" id="docs-internal-guid-1"><p>Hi <span style="font-weight:700">there</span></p></b>') === "Hi **there**" &&
+    htmlToMarkdown('<a class="wikilink" data-wiki="Idea#Plans">Idea › Plans</a> and <a data-wiki="Idea">the idea</a>') === "[[Idea#Plans]] and [[Idea|the idea]]",
+    [htmlToMarkdown('<b style="font-weight:normal;"><p>Hi <span style="font-weight:700">there</span></p></b>'), htmlToMarkdown('<a class="wikilink" data-wiki="Idea#Plans">Idea › Plans</a> and <a data-wiki="Idea">the idea</a>')])
 }

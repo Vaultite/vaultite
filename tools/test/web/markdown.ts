@@ -301,3 +301,18 @@ check("sections: a block (its id taken off), a list item with what's under it", 
 check("sections: tags from the frontmatter and the text", same(sec.tagsOf({ tags: ["a"] }, note), ["a", "intro"]), sec.tagsOf({ tags: ["a"] }, note))
 check("sections: nested tags count for their parents", sec.hasTag(["project/lighthouse"], "project") && !sec.hasTag(["projects"], "project"))
 check("sections: reading hides comments and ids", sec.stripHidden("a %%x%% b ^id\n%%\ngone\n%%\nc") === "a  b\nc", sec.stripHidden("a %%x%% b ^id\n%%\ngone\n%%\nc"))
+{
+  const notes: { inlineNoteEnd(text: string, i: number): number } = await web("core/markdown.ts")
+  const out = md.renderMarkdown("One[^a] two^[an *inline* [[Idea]] note] three^[x [y] z] and `^[code]`, ^[] alone.\n\n[^a]: Labelled.\n")
+  const refs = [...out.matchAll(/<sup class="footnote-ref[^"]*" data-footnote="([^"]+)"[^>]*>(\d+)<\/sup>/g)].map((m) => `${m[1]}=${m[2]}`)
+  check("inline footnotes: numbered in one count with the labelled ones", same(refs, ["a=1", "inline 2=2", "inline 3=3"]), refs)
+  check("inline footnotes: listed at the end, their Markdown drawn", out.includes('<li data-footnote-def="inline 2">an <em>inline</em> <a class="wikilink" data-wiki="Idea">Idea</a> note') &&
+    out.includes('data-footnote-def="inline 3">x [y] z') && out.includes("<code>^[code]</code>") && out.includes("^[] alone"), out)
+  check("inline footnotes: where one ends, brackets inside paired, on its line",
+    same(["^[a]", "^[a [b] c] d", "^[a", "^[]", "^[a\nb]", "x^[a]"].map((t, i) => notes.inlineNoteEnd(t, i === 5 ? 1 : 0)), [4, 10, -1, -1, -1, 5]))
+}
+{
+  const own = md.renderMarkdown("> [!Recipe] Soup\n> Leeks\n\n> [!hint]\n> Try\n\n> [!my-faq]- Folded\n> x\n")
+  check("callouts: a custom type keeps its name, with the note's icon", own.includes('<div class="callout" data-callout="recipe">') && own.includes('data-callout="tip"') &&
+    own.includes('<details class="callout" data-callout="my-faq">') && own.split('<span class="callout-icon">')[1].split("</span>")[0] === md.renderMarkdown("> [!note]\n> a").split('<span class="callout-icon">')[1].split("</span>")[0], own)
+}

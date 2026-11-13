@@ -68,12 +68,12 @@ const greet = (name: string) => `Hello, ${name}`
 ```
 
 > [!tip] A callout
-> A quote whose first line is `[!type]` and a title: note, tip, info, warning, danger, question, quote, example, success, failure, bug, abstract, todo.
+> A quote whose first line is `[!type]` and a title: note, tip, info, warning, danger, question, quote, example, success, failure, bug, abstract, todo. A type of your own looks like a note until a snippet styles it (`.callout[data-callout="recipe"]`).
 
 > [!warning]- A folded callout
 > A `-` after the type starts it folded, a `+` open; click its title to toggle it.
 
-A footnote goes after a word[^1], its text anywhere in the file.
+A footnote goes after a word[^1], its text anywhere in the file; a short one can be written where it goes^[An inline footnote, numbered with the others.].
 
 Marks: ==a highlight== (a colour emoji first colours it: ==🔴red==, ==🟠orange==, ==🟡yellow==, ==🟢green==, ==🔵blue==, ==🟣purple==), a tag like #design/markdown (click it for the files that have it; it nests under #design, and this page is the one file that has it), `%%a comment%%` that reading hides, and `^an-id` at the end of a paragraph or list item, hidden too, so a link can go to it. ^design-marks
 

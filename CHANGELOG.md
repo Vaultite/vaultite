@@ -9,6 +9,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Notes dragged into a sidebar become panels**: a file dragged between a sidebar's panels (onto a heading), from the file tree, a
   pinned page, Recent files, links, search or a tab, is drawn there as a panel, the panels making way for it; a tab
   moves there and closes, as in Obsidian. A sidebar's toggle takes one too, at its end.
+- **Notes take several cursors, HTML pastes as Markdown, and inline footnotes and custom callouts draw**: ⌥-click
+  adds a cursor, ⌘⌥↑ and ⌘⌥↓ one above or below, ⌥-drag a column (⇧⌥-drag one alone), and Select next occurrence is
+  in the palette; a web page's formatting pastes as Markdown (⇧⌘V keeps the text) and an address pasted over selected
+  text links it; `^[text]` is a footnote; a callout type of your own keeps its name for snippets to style.
 - **An app on the internet asking to allow a vault plugin reaches the owner again**: the ask, which names the plugin
   and what it discloses, failed before it was sent, so the app was only told it couldn't.
 - **Errors the app catches are kept in Errors, and a base's failed edit says so**: a Vim command that couldn't be set up

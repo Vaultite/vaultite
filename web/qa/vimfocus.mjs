@@ -37,7 +37,7 @@ const keys = () => page.evaluate(() => {
   const inText = !!a?.classList.contains("cm-content") && a.contentEditable === "true"
   const file = a?.closest("[data-path]")?.getAttribute("data-path") ?? null
   const s = document.getElementById("main-scroll")?.getBoundingClientRect()
-  const c = document.querySelector(".cm-focused .cm-fat-cursor, .cm-focused .cm-cursor-primary")
+  const c = [...document.querySelectorAll(".cm-focused .cm-fat-cursor, .cm-focused .cm-cursor-primary")].find((e) => e.getClientRects().length)
   const sel = getSelection()
   const line = sel?.anchorNode ? (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest(".cm-line")?.textContent ?? null : null
   const y = c && s ? c.getBoundingClientRect().top : null

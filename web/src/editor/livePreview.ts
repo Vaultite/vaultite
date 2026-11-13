@@ -5,14 +5,17 @@ import { Decoration, EditorView, keymap, ViewPlugin, WidgetType, type Decoration
 import type { SyntaxNode } from "@lezer/common"
 import { embedOf, fenceBlock } from "@/core/formats"
 import { innerOf, setProp } from "@/core/frontmatter"
-import { CALLOUT, footnoteText, WIKI_LINK } from "@/core/markdown"
+import { footnoteText, WIKI_LINK } from "@/core/markdown"
+import { CALLOUT } from "@/core/callouts"
 import { haptic } from "@/core/haptics"
 import { isMac } from "@/core/platform"
 import { keepOnScreen } from "@/core/anchor"
 import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
-import { BLOCK_ID, blockName, FENCE, scan, TAG } from "../../../core/sections.ts"
+import { BLOCK_ID, blockName, FENCE, TAG } from "../../../core/sections.ts"
 import { fenceLayout, infoWithLayout, type LayoutKey } from "../../../core/blocks.ts"
 import { frontmatter, shownStart } from "./frontmatter"
+import { FN_DEF, FN_REF, FootnoteLabel, FootnoteRef, footnotes, inlineNotes } from "./footnotes"
+import { scanOf } from "./scan"
 import { blockLines, COPY_ICON, copyCode, drawEmbeds, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
@@ -103,14 +106,6 @@ function touchedLines(state: EditorState, from: number, to: number) {
   if (!editing(state)) return false
   const a = state.doc.lineAt(from).from, b = state.doc.lineAt(to).to
   return state.selection.ranges.some((r) => r.to >= a && r.from <= b)
-}
-
-// CodeMirror can't measure a hidden-Markdown line's very start (it has no size): scroll to its text.
-export const textStart = (state: EditorState, pos: number) => textStartIn(state.doc, pos)
-export function textStartIn(doc: Text, pos: number) {
-  const l = doc.lineAt(pos)
-  const m = /^(?:[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+[.)][ \t]+|\[\^[^\]\s]+\]:[ \t]?))*/.exec(l.text)
-  return l.from + (m ? m[0].length : 0)
 }
 
 const reading = (state: EditorState) => !state.facet(EditorView.editable)
@@ -355,34 +350,6 @@ class MathInline extends WidgetType {
   eq(o: MathInline) { return o.tex === this.tex }
   toDOM() { const s = document.createElement("span"); renderMath(this.tex, s, false); return s }
   ignoreEvent() { return false }
-}
-
-// No position stored, as with Check: eq would fail for every reference below an edit.
-class FootnoteRef extends WidgetType {
-  label: string; n: number; tip: string; found: boolean
-  constructor(label: string, n: number, tip: string, found: boolean) { super(); this.label = label; this.n = n; this.tip = tip; this.found = found }
-  eq(o: FootnoteRef) { return o.label === this.label && o.n === this.n && o.tip === this.tip && o.found === this.found }
-  toDOM(view: EditorView) {
-    const s = document.createElement("sup")
-    s.className = `cm-footnote-ref${this.found ? "" : " is-missing"}`
-    s.textContent = String(this.n || this.label)
-    if (this.tip) s.dataset.tip = this.tip
-    s.addEventListener("mousedown", (e) => {
-      const at = footnotes(view.state.doc).defs.get(this.label)?.at
-      if (at === undefined) return
-      e.preventDefault()
-      view.dispatch({ effects: EditorView.scrollIntoView(textStart(view.state, at), { y: "center" }) })
-    })
-    return s
-  }
-  ignoreEvent() { return true }
-}
-
-class FootnoteLabel extends WidgetType {
-  text: string
-  constructor(text: string) { super(); this.text = text }
-  eq(o: FootnoteLabel) { return o.text === this.text }
-  toDOM() { const s = document.createElement("span"); s.className = "cm-footnote-label"; s.textContent = this.text; return s }
 }
 
 class Block extends WidgetType {
@@ -726,26 +693,6 @@ function measurer(view: EditorView) {
   }
 }
 
-type Notes = { defs: Map<string, { at: number; text: string }>; num: Map<string, number> }
-const notesOf = new WeakMap<Text, Notes>()
-const FN_DEF = /^\[\^([^\]\s]+)\]:[ \t]?/
-const FN_REF = /\[\^([^\]\s]+)\](?!:)/g
-function footnotes(doc: Text): Notes {
-  let n = notesOf.get(doc)
-  if (n) return n
-  n = { defs: new Map(), num: new Map() }
-  const { code } = scanOf(doc)
-  for (let k = 1; k <= doc.lines; k++) {
-    const l = doc.line(k)
-    if (code[k - 1] || !l.text.includes("[^")) continue
-    const d = FN_DEF.exec(l.text)
-    if (d && !n.defs.has(d[1])) n.defs.set(d[1], { at: l.from, text: footnoteText(l.text.slice(d[0].length)).trim() })
-    FN_REF.lastIndex = d ? d[0].length : 0
-    for (let m; (m = FN_REF.exec(l.text));) if (!n.num.has(m[1])) n.num.set(m[1], n.num.size + 1)
-  }
-  notesOf.set(doc, n)
-  return n
-}
 // Pandoc's $TeX$ rule: no space inside the dollars, no digit right after the closing one ($5 and $10 is text).
 const MATH = /(?<![\\$])\$(?![\s$])((?:\\.|[^\\$\n])+?)(?<![\s\\$])\$(?![\d$])/g
 
@@ -953,7 +900,7 @@ function inline(view: EditorView): DecorationSet {
       },
     })
     for (let pos = from; pos <= to;) {
-      const l = state.doc.lineAt(pos)
+      const l = state.doc.lineAt(pos), lineStart = out.length
       WIKI.lastIndex = 0
       for (let m; (m = WIKI.exec(l.text));) {
         const a = l.from + m.index, b = a + m[0].length
@@ -1014,6 +961,7 @@ function inline(view: EditorView): DecorationSet {
         }
       }
       if (live) inlineMarks(state, l, tree, out, pcache)
+      if (l.text.includes("^[")) drawInlineNotes(state, l, tree, out, lineStart, live, inHtml)
       pos = l.to + 1
     }
   }
@@ -1074,6 +1022,20 @@ class HighlightSwatch extends WidgetType {
   ignoreEvent() { return true }
 }
 
+function drawInlineNotes(state: EditorState, l: { from: number; text: string }, tree: ReturnType<typeof syntaxTree>, out: Range<Decoration>[], lineStart: number, live: boolean,
+  inHtml: (a: number, b: number) => boolean) {
+  const notes = footnotes(state.doc), math: [number, number][] = []
+  if (l.text.includes("$")) { MATH.lastIndex = 0; for (let m; (m = MATH.exec(l.text));) math.push([m.index, m.index + m[0].length]) }
+  for (const [i, j] of inlineNotes(l.text)) {
+    const a = l.from + i, b = l.from + j
+    if (tree.resolveInner(a + 1, 1).name.includes("Code") || inHtml(a, b) || math.some(([x, y]) => i >= x && i < y)) continue
+    if (!live || touched(state, a, b)) { out.push(mark("cm-footnote-mark").range(a, a + 2), mark("cm-footnote-mark").range(b - 1, b)); continue }
+    for (let k = out.length - 1; k >= lineStart; k--) if (out[k].from >= a && out[k].to <= b && out[k].from < out[k].to) out.splice(k, 1)
+    const tip = footnoteText(l.text.slice(i + 2, j - 1)).trim().slice(0, 300)
+    out.push(Decoration.replace({ widget: new FootnoteRef("", notes.inlineAt.get(a) ?? 0, tip, true) }).range(a, b))
+  }
+}
+
 function inlineMarks(state: EditorState, l: { from: number; to: number; text: string }, tree: ReturnType<typeof syntaxTree>, out: Range<Decoration>[], cache: { p?: Para }) {
   const t = l.text
   const para = paragraphMarks(state, l, tree, cache)
@@ -1126,19 +1088,6 @@ const inlinePlugin = ViewPlugin.fromClass(class {
 
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/
 
-type Scan = ReturnType<typeof scan> & { starts: number[]; text: string }
-const scans = new WeakMap<Text, Scan>()
-function scanOf(doc: Text): Scan {
-  let s = scans.get(doc)
-  if (!s) {
-    const text = doc.toString(), r = scan(text)
-    const starts: number[] = new Array(r.lines.length)
-    for (let i = 0, at = 0; i < r.lines.length; i++) { starts[i] = at; at += r.lines[i].length + 1 }
-    s = { ...r, starts, text }
-    scans.set(doc, s)
-  }
-  return s
-}
 const commentMarks = (t: string) => t.includes("%%") ? (t.replace(/`+[^`]*`+/g, "").match(/%%/g) ?? []).length : 0
 
 type Cand = { from: number; to: number; a: number; b: number; decos: Range<Decoration>[]
