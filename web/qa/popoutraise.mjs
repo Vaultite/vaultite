@@ -29,7 +29,7 @@ try {
     const pages = BaseWindow.getAllWindows().map((w) => [w, w.contentView?.children?.[0]?.webContents?.getURL?.() ?? ""])
     for (const [w, url] of pages) {
       const name = /popout=/.test(url) ? "popout" : "main"
-      for (const m of ["moveTop", "focus"]) { const f = w[m].bind(w); w[m] = (...a) => { globalThis.__log.push({ m, name }); return f(...a) } }
+      for (const m of ["moveTop", "focus"]) { const f = w[m].bind(w); w[m] = (...a) => { globalThis.__log.push({ m, name, at: Date.now() }); return f(...a) } }
     }
     const main = pages.find(([, u]) => u.startsWith("http") && !/popout=/.test(u))[0], p = pages.find(([, u]) => /popout=/.test(u))[0]
     main.setBounds({ x: 40, y: 40, width: 1100, height: 760 }); p.setBounds({ x: 900, y: 140, width: 900, height: 600 })
@@ -44,18 +44,16 @@ try {
   const body = await win.locator("[data-pane-body]:visible").first().boundingBox()
   const sx = mb.x + body.x + body.width / 3, sy = mb.y + mb.top + body.y + body.height / 2
   const px = sx - pb.x, py = sy - pb.y - pb.top
-  await app.evaluate(() => { globalThis.__log = [] })
-  const t0 = Date.now()
+  const t0 = await app.evaluate(() => { globalThis.__log = []; return Date.now() })
   await pop.mouse.move(px, py, { steps: 6 })
   await wait(150)
-  const early = await app.evaluate(() => globalThis.__log.filter((x) => x.m === "moveTop" && x.name === "main").length)
-  check("not raised at once (a drag passing over doesn't shuffle windows)", early === 0, early)
+  const early = await app.evaluate((t0) => globalThis.__log.filter((x) => x.m === "moveTop" && x.name === "main" && x.at < t0 + 300), t0)
+  check("not raised at once (a drag passing over doesn't shuffle windows)", early.length === 0, early)
   check("the main window shows where it would land", await until(() => win.locator("[data-drop-zone]").count(), 3000))
   await wait(450)
   const log = await app.evaluate(() => globalThis.__log)
   check("held a moment over the main window, it comes to the front", log.some((x) => x.m === "moveTop" && x.name === "main"), log)
   check("…without taking the keyboard (the drag goes on in the pop-out)", !log.some((x) => x.m === "focus"), log)
-  // back over the pop-out: it comes forward again
   const back = await pop.locator("[data-pane-body]:visible").first().boundingBox()
   await pop.mouse.move(back.x + back.width - 120, back.y + 100, { steps: 4 }); await wait(500)
   const log2 = await app.evaluate(() => globalThis.__log)
