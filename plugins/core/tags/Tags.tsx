@@ -1,5 +1,3 @@
-// The vault's tags: nested ones under their parents, each with its file count; a tag opens
-// its sheet, where it's renamed (right-click: Rename).
 import { useMemo, useState } from "react"
 import { ChevronRight, FileText, Hash, Pencil } from "lucide-react"
 import { cn, detailPath, Empty, hasTag, List, notify, notifyError, op, openDetail, openFile, openMenu, plural, Row, SheetHead, SidebarHeading, snippet, type SidebarCtx, type Store } from "@vaultite"
@@ -8,7 +6,6 @@ export const TINT = "var(--primary)"
 
 type Node = { name: string; full: string; count: number; kids: Node[] }
 
-/** Every tag as a tree: counts are files with the tag or one nested under it; case-insensitive, first spelling kept. */
 export function tagTree(store: Store): Node[] {
   const roots: Node[] = []
   const byKey = new Map<string, Node>()
@@ -34,7 +31,6 @@ export function tagTree(store: Store): Node[] {
   return roots
 }
 
-/** Files with a tag (or one nested under it), newest first. */
 export const filesWith = (store: Store, tag: string) =>
   store.files.files.filter((f) => hasTag(f.tags ?? [], tag)).sort((a, b) => b.mtime - a.mtime)
 
@@ -44,7 +40,7 @@ function useOpened(): [Set<string>, (k: string) => void] {
   const toggle = (k: string) => setOpen((o) => {
     const n = new Set(o)
     if (n.has(k)) n.delete(k); else n.add(k)
-    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...n])) } catch { /* private mode */ }
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify([...n])) } catch { /* Safari's private mode throws */ }
     return n
   })
   return [open, toggle]
@@ -79,7 +75,6 @@ function TagRow({ node, depth, open, toggle }: { node: Node; depth: number; open
   )
 }
 
-/** The sidebar's Tags panel (desktop). Nothing in the icon rail. */
 export function TagsPanel({ store, open }: SidebarCtx) {
   const tree = useMemo(() => tagTree(store), [store])
   const [opened, toggle] = useOpened()
@@ -94,7 +89,6 @@ export function TagsPanel({ store, open }: SidebarCtx) {
   )
 }
 
-/** The tab (view:tags): the same tree, a size up (`data-size-up`). */
 export function TagsView({ store }: { store: Store }) {
   const tree = useMemo(() => tagTree(store), [store])
   const [opened, toggle] = useOpened()
@@ -109,7 +103,6 @@ export function TagsView({ store }: { store: Store }) {
   )
 }
 
-/** The tag whose sheet opens with its rename field (right-click, Rename). */
 let renaming: string | null = null
 
 function Rename({ tag, done }: { tag: string; done: () => void }) {
@@ -137,7 +130,6 @@ function Rename({ tag, done }: { tag: string; done: () => void }) {
   )
 }
 
-/** A tag's sheet: the files that have it (or a tag nested under it), the tags under it, and Rename. */
 export function TagDetail({ store, tag }: { store: Store; tag: string }) {
   const [editing, setEditing] = useState(() => { const now = renaming === tag; renaming = null; return now })
   const files = filesWith(store, tag)

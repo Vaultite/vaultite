@@ -1,4 +1,3 @@
-// Records while it's mounted (the plugin on), as long as its settings say.
 import { useEffect } from "react"
 import { usePluginSettings } from "@vaultite"
 import { setKeep, startRecording } from "./record"

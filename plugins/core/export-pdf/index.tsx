@@ -1,5 +1,3 @@
-// Export to PDF and Print: the note as it reads, on white in light colours, alone in #vau-print while
-// printing. The desktop app saves with printToPDF; a browser uses its print dialog.
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { FileDown, Printer } from "lucide-react"
@@ -27,8 +25,6 @@ const CSS = `
   #vau-print :is(audio, video, iframe) { display: none; }
 }`
 
-/** Images loaded (or failed), fonts in, math and diagrams drawn. Slow images are waited for, never dropped by a timer:
- *  after a moment a toast counts them, and its button goes on without the rest. */
 async function settled(root: HTMLElement) {
   const started = Date.now(), id = "export-pdf-images"
   let skip = false, said = "", saidAt = 0
@@ -37,11 +33,10 @@ async function settled(root: HTMLElement) {
   try {
     for (;;) {
       const imgs = [...root.querySelectorAll("img")]
-      for (const img of imgs) img.loading = "eager" // (note embeds drawn since)
+      for (const img of imgs) img.loading = "eager"
       const left = imgs.filter((i) => !i.complete).length
       if (!left || skip) break
       const text = `Waiting for ${left} of ${plural(imgs.length, "image")}…`
-      // (said again each second: a toast swiped away comes back, or the export would wait unseen)
       if (Date.now() - started > 1500 && (text !== said || Date.now() - saidAt > 1000)) {
         said = text; saidAt = Date.now()
         notify(text, { id, duration: Infinity, action: { label: "Go on without", run: () => { skip = true } } })
@@ -49,7 +44,7 @@ async function settled(root: HTMLElement) {
       await new Promise((r) => setTimeout(r, 100))
     }
   } finally { if (said) dismissNotice(id) }
-  await new Promise((r) => setTimeout(r, 400)) // (note embeds read their files; mermaid draws late)
+  await new Promise((r) => setTimeout(r, 400))
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 }
 
@@ -74,7 +69,6 @@ function Background() {
   return j ? <PrintRoot key={j.path + j.how} j={j} /> : null
 }
 
-/** Print the note (or save it as a PDF in the desktop app). */
 export async function printNote(path: string, how: "pdf" | "print") {
   if (!path) { notify("Open a note to print it."); return }
   if (job.get()) return
@@ -86,7 +80,7 @@ export async function printNote(path: string, how: "pdf" | "print") {
   const ready = new Promise<void>((r) => setJob({ path, text, how, ready: r }))
   await ready
   const title = document.title
-  document.title = stem(path) // (the PDF's name in a browser's Save as PDF)
+  document.title = stem(path) // a browser's Save as PDF names the file after the page's title
   const done = () => { document.title = title; setJob(null) }
   try {
     if (how === "pdf") {
@@ -96,7 +90,7 @@ export async function printNote(path: string, how: "pdf" | "print") {
     }
     addEventListener("afterprint", done, { once: true })
     window.print()
-    // (a browser whose print() doesn't wait and never says afterprint: put things back after a while)
+    // some browsers' print() returns at once and never fires afterprint
     setTimeout(() => { if (job.get()?.path === path) done() }, 60_000)
   } catch (e) {
     done()
@@ -109,7 +103,6 @@ export default definePlugin({
     { id: "export-pdf:pdf", name: "Export to PDF", when: () => !!here(), run: () => void printNote(here(), "pdf") },
     { id: "export-pdf:print", name: "Print note", when: () => !!here(), run: () => void printNote(here(), "print"), icon: Printer },
   ],
-  // (Print is in the palette only: the menu is long enough, and a browser's Export to PDF is its print dialog anyway)
   fileMenu: (path) => (isNote(path) ? [{ label: "Export to PDF", icon: FileDown, section: "more", run: () => void printNote(path, "pdf") }] : []),
   background: () => <Background />,
   preview: () => (

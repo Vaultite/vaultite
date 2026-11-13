@@ -1,5 +1,3 @@
-// Tags for AIs (/api/tags): every tag with its count, or the files with one; frontmatter and inline #tags read like
-// the app's (core/sections.ts). A rename edits only the tags' own text in each file.
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
 import { hasTag, readText, renameTagText, sortBy, tagName, writeAtomic } from "../../../core/vault.ts"
 

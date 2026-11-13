@@ -1,9 +1,6 @@
-// A Word document drawn with docx-preview in a shadow root, so its styles and the app's don't touch. The file is
-// untrusted: embedded HTML isn't drawn and links never run (web links open like any other).
 import { useEffect, useRef, useState } from "react"
 import { linkClick, Loading, openWebLink } from "@vaultite"
 
-/** Pages are drawn at their size (in CSS pixels) and scaled to the box's width when it's narrower. */
 const STYLE = `
   :host { display: block; }
   .docx-wrapper { background: transparent !important; padding: 8px 0 24px !important; align-items: center; }
@@ -45,7 +42,6 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     })().catch((e) => { if (on) setState(String(e?.message ?? e)) })
     return () => { on = false }
   }, [url])
-  // Narrower than its pages: scaled to fit.
   useEffect(() => {
     const el = host.current
     if (!el) return
@@ -53,7 +49,6 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  // Links: web ones open like the app's, the document's own scroll to their place, nothing else runs.
   const click = (e: React.MouseEvent) => {
     const a = (e.nativeEvent.composedPath().find((n) => n instanceof HTMLAnchorElement) as HTMLAnchorElement | undefined)
     if (!a) return
@@ -72,13 +67,11 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
   )
 }
 
-/** Word's bullets are Symbol and Wingdings letters (private-use code points, U+F0B7 for •), which only those fonts
- *  draw: as the Unicode bullets they stand for. */
+// Word's bullets are Symbol and Wingdings private-use code points (U+F0B7 for •) that only those fonts draw
 const SYMBOLS: Record<string, string> = { "\uf0b7": "•", "\uf0a7": "▪", "\uf0d8": "➢", "\uf076": "❖", "\uf0fc": "✓", "\uf0a8": "□", "\uf06e": "■", "\uf075": "◆", "\uf0e0": "➔" }
 const bullets = (css: string) => css.replace(/content:\s*"([^"]*)"/g, (all, text: string) =>
   /[\uf020-\uf0ff]/.test(text) ? `content: "${text.replace(/[\uf020-\uf0ff]/g, (c) => SYMBOLS[c] ?? "•")}"` : all)
 
-/** Scale the pages to the host's width (never up). */
 function fit(host: HTMLElement, body: HTMLElement) {
   const page = body.querySelector<HTMLElement>("section.docx")
   const wrapper = body.querySelector<HTMLElement>(".docx-wrapper")

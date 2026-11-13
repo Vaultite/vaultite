@@ -1,15 +1,11 @@
-// Archive: archiving moves a file or folder into `.archive/` in its folder (core/fileprops.ts), a file also `archived: true`;
-// unarchiving moves it back and removes the key. Moves go through file.move, so links follow.
 import fs from "node:fs"
 import { type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 import { ARCHIVE_DIR, archiveTwin, dirOf, inArchive, isArchived, isHiddenPath, readText, setPropertyText, unarchived, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-// An item archived or unarchived through the API (PUT /api/<collection>/<id>, item.update) moves too.
 plugin.onArchive((rel, archived) => (archived === inArchive(rel) ? null : dirOf(archiveTwin(rel))))
 
-/** `rel`, or "Name 1.md" ("Name 1" for a folder) and on when that's taken. */
 function free(vault: Vault, rel: string, folder = false) {
   const dot = rel.lastIndexOf("."), cut = !folder && dot > rel.lastIndexOf("/") + 1 ? dot : rel.length
   let out = rel
@@ -17,7 +13,6 @@ function free(vault: Vault, rel: string, folder = false) {
   return out
 }
 
-/** Set or remove `archived` in a Markdown file, as a small edit. */
 async function mark(ctx: OpCtx, rel: string, on: boolean) {
   if (!/\.md$/i.test(rel)) return
   const e = ctx.vault.entries.get(rel)
@@ -27,8 +22,6 @@ async function mark(ctx: OpCtx, rel: string, on: boolean) {
   if (next !== null && next !== text) await ctx.api("PUT", "file", { path: rel, text: next, base: text })
 }
 
-/** A vault file or folder that can be archived: one that's there, not hidden (an archive folder isn't), not an archive
- *  folder itself. */
 function target(ctx: OpCtx, path: unknown) {
   const rel = String(path ?? "").replace(/^\/+|\/+$/g, "")
   if (!rel || !fs.existsSync(ctx.vault.abs(rel))) throw new OpError(`no file or folder '${rel}'`, 404)
@@ -41,8 +34,6 @@ type Moved = { from: string; path: string; updated: string[] }
 
 const isFolder = (ctx: OpCtx, rel: string) => fs.statSync(ctx.vault.abs(rel)).isDirectory()
 
-/** Archive a file or folder: into its folder's `.archive/`, then a file gets `archived: true` (in the archive it counts
- *  as archived already). */
 export async function archive(ctx: OpCtx, rel: string): Promise<Moved> {
   let at = rel, updated: string[] = []
   const folder = isFolder(ctx, rel)
@@ -51,7 +42,6 @@ export async function archive(ctx: OpCtx, rel: string): Promise<Moved> {
   return { from: rel, path: at, updated }
 }
 
-/** Unarchive a file or folder: back out of `.archive/` (a free name if one took its place), then a file's key removed. */
 export async function unarchive(ctx: OpCtx, rel: string): Promise<Moved> {
   let at = rel, updated: string[] = []
   const folder = isFolder(ctx, rel)

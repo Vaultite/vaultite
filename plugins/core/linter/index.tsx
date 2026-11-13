@@ -1,5 +1,3 @@
-// Linter's frontend: Format note formats the editor's text in place, one change the editor's undo takes back; a note
-// that isn't open is formatted on the server (the op).
 import { Sparkles } from "lucide-react"
 import { currentEditor, definePlugin, notify, notifyError, Panel, pluginSettings, post } from "@vaultite"
 import { formatMarkdown, rulesOf } from "./format"
@@ -12,7 +10,6 @@ async function formatOpen() {
   const view = ed.view, text = view.state.doc.toString()
   const next = formatMarkdown(text, rulesOf(s.get()))
   if (next === text) return notify("Already formatted")
-  // Only the part that changed is replaced, so the cursor and what's around it stay put.
   let a = 0
   while (a < text.length && a < next.length && text[a] === next[a]) a++
   let b = 0

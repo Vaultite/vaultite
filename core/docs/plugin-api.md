@@ -261,7 +261,7 @@ by its path.
 - `machines:fs` (machines)
 - `mcp:<…>` (tool, app-host, guest-urls, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)
-- `note-dates:stamps` (note-dates): The dates it keeps in a file (path, fm): any edit moves them, so they're no one's change (Review leaves them out).
+- `note-dates:stamps` (note-dates): The dates it keeps in a file (path, fm): any edit moves them, so Review leaves them out.
 - `now:file` (now)
 - `obsidian:stand-ins` (other-apps)
 - `pages:installed` (pages)
@@ -274,7 +274,7 @@ by its path.
 - `provenance:by-guest` (provenance): Whether a shared folder's guest wrote line `line` (1-based, frontmatter counted) of a note as it is now.
 - `provenance:authored` (provenance): Lines agents wrote in a note between two times that are still there, by who (the day's recap).
 - `sample` (claude-code)
-- `screen:front` (screen): For pair mode's awareness: what's in front now, or null when no desktop app said.
+- `screen:front` (screen): What's in front now, or null when no desktop app said.
 - `setting-defaults` (other-apps)
 - `share:public` (share)
 - `share:upgrade` (share)

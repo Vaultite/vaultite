@@ -1,18 +1,12 @@
 import { ListTree } from "lucide-react"
 import { Bar, cn, definePlugin, dropHighlightEmoji, openView, SidebarHeading, stem, useFocusedFile, useKeptCount, useOutline, type SidebarCtx } from "@vaultite"
 
-// Outline: the focused file's headings, following scrolling and typing (the editor's text, not the
-// saved file: core/anchors.ts). A hidden sidebar panel and a tab.
-
-/** A heading as it reads: links by their text, without Markdown's marks. */
 const plain = (t: string) => dropHighlightEmoji(t).replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, "$2").replace(/[*_`=]/g, "") || "Untitled"
 
 function OutlineList({ path }: { path: string }) {
   const md = /\.md$/i.test(path)
   const { headings, loading, current, go } = useOutline(md ? path : "")
   const top = headings.length ? Math.min(...headings.map((h) => h.level)) : 1
-  // While its text comes, as many rows as it had last time (the empty line's one: never seen), so the panels below it
-  // don't move when it does.
   const rows = useKeptCount(md ? `outline:${path}` : null, loading ? undefined : Math.max(1, headings.length), 1, 40)
   if (loading) {
     return (
@@ -50,14 +44,12 @@ function OutlinePanel({ open, file: focused }: SidebarCtx) {
   )
 }
 
-/** The tab (view:outline): the headings of the file in the pane focused last. */
 function OutlineView() {
   const { path } = useFocusedFile()
   return (
     <div className="pb-10" data-outline-view>
       <h1 className="mb-1 truncate text-[22px] leading-[28px] font-bold max-md:hidden">{path ? stem(path) : "Outline"}</h1>
       <p className="mb-4 text-[13px] text-muted-foreground max-md:text-[15px]">Its headings: click one to go there. Follows the file you're on.</p>
-      {/* The panel's list, a size up (`data-size-up`). */}
       <div className="size-up-bleed"><div data-size-up><OutlineList path={path} /></div></div>
     </div>
   )

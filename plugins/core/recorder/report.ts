@@ -1,5 +1,3 @@
-// Report a bug: the recorded minutes as a note (what the user says went wrong, a screenshot, the timeline as text), in
-// the folder its settings name. The screenshot and the events are taken first, before the question covers the window.
 import { APP_VERSION, appDevice, captureWindow, choose, createFile, currentFile, getStore, notify, notifyError, offeredCommand, openFile, pasteAttachments, pluginSettings, runCommandById } from "@vaultite"
 import { recorded, type Ev } from "./record"
 
@@ -9,7 +7,6 @@ const clock = (t: number) => { const d = new Date(t); return `${p2(d.getHours())
 const value = (v: unknown) => (typeof v === "string" ? (/[\s"=]/.test(v) || !v ? JSON.stringify(v) : v) : JSON.stringify(v))
 const fields = (e: Ev, skip: string[] = []) => Object.entries(e).filter(([k, v]) => v !== undefined && !["at", "topic", ...skip].includes(k)).map(([k, v]) => `${k}=${value(v)}`).join(" ")
 
-/** One line per event, oldest first; a run of the same edit (typing, deleting) in one file is one line. */
 export function timeline(events: Ev[]): string[] {
   const out: string[] = []
   for (let i = 0; i < events.length; i++) {

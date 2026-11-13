@@ -1,5 +1,3 @@
-// The window's last minutes, in memory only: what the user did (keys, clicks, wheel, focus, moving around) and what the
-// app did (the trace's topics, files changed, scrolling nobody asked for). Started while the plugin is on.
 import { onTrace, onVaultChange } from "@vaultite"
 
 export type Ev = { at: number; topic: string; [k: string]: unknown }
@@ -11,7 +9,6 @@ let typedText = false
 
 export const setKeep = (minutes: number, text: boolean) => { keepMs = Math.max(1, minutes) * 60_000; typedText = text }
 
-/** What was recorded in the minutes kept, oldest first. */
 export const recorded = (): Ev[] => events.filter((e) => e.at >= Date.now() - keepMs)
 
 function push(e: Ev) {
@@ -20,7 +17,6 @@ function push(e: Ev) {
 }
 const add = (topic: string, fields: Record<string, unknown>) => push({ at: Date.now(), topic, ...fields })
 
-/** An element as a person would point at it: its name (label, tip, path) and the area it's in. */
 export function where(t: EventTarget | null): string {
   const el = t instanceof Element ? t : t instanceof Node ? t.parentElement : null
   if (!el) return t === window ? "window" : t === document ? "document" : ""
@@ -42,9 +38,7 @@ function combo(e: KeyboardEvent) {
 }
 
 let lastInput = 0
-/** The run each kind is adding to (the app's events come in between: a key's editor change). */
 const runs = new Map<string, { ev: Ev; last: number }>()
-/** Add to the run of `kind` when `same` says it's one, within `ms` of its last; else start one (at its first's time). */
 function into(kind: string, same: (run: Ev) => boolean, grow: (run: Ev) => void, start: () => Record<string, unknown>, ms = 2000) {
   const run = runs.get(kind), now = Date.now()
   if (run && now - run.last < ms && same(run.ev)) { grow(run.ev); run.last = now; return }
@@ -52,7 +46,6 @@ function into(kind: string, same: (run: Ev) => boolean, grow: (run: Ev) => void,
   push(ev)
   runs.set(kind, { ev, last: now })
 }
-/** Start recording; returns how to stop. */
 export function startRecording(): () => void {
   const offs: (() => void)[] = []
   const on = <K extends keyof WindowEventMap>(type: K, fn: (e: WindowEventMap[K]) => void) => {
@@ -60,7 +53,6 @@ export function startRecording(): () => void {
     offs.push(() => removeEventListener(type, fn, { capture: true }))
   }
 
-  // Keys: shortcuts as they are; letters as a count (or the letters, when asked), a run of them one event.
   on("keydown", (e) => {
     lastInput = Date.now()
     if (MODS.has(e.key)) return
@@ -87,7 +79,6 @@ export function startRecording(): () => void {
   document.addEventListener("visibilitychange", visible)
   offs.push(() => document.removeEventListener("visibilitychange", visible))
 
-  // Scrolling: where each scroller went, and whether the user moved it or the app did (nothing typed, wheeled or touched).
   const tops = new WeakMap<Element, { top: number; ev: Ev; last: number }>()
   const scrolled = (e: Event) => {
     const el = e.target instanceof Element ? e.target : document.scrollingElement
@@ -102,7 +93,6 @@ export function startRecording(): () => void {
   document.addEventListener("scroll", scrolled, { capture: true, passive: true })
   offs.push(() => document.removeEventListener("scroll", scrolled, { capture: true }))
 
-  // What the app traced (editor changes, scroll restores, commands, console warnings) and files changing on disk.
   offs.push(onTrace((topic, e) => push({ ...e, t: undefined, at: Date.parse(e.at), topic })))
   offs.push(onVaultChange((paths) => add("files", paths ? { changed: paths.slice(0, 5), n: paths.length } : { changed: "everything" })))
 

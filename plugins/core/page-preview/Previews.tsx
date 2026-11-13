@@ -1,5 +1,3 @@
-// The popovers: a resting pointer on a link previews its note, links inside stack more. While editing, ⌘ must be held
-// (`trigger: auto`); computers only, and never inside a sheet (it's drawn above everything).
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { SquareArrowOutUpRight } from "lucide-react"
@@ -10,7 +8,6 @@ type Pop = { id: number; target: string; from: string; path: string; anchor: Ele
 
 const WIDTH = 460, HEIGHT = 400, GAP = 6, LINGER = 300
 
-/** What an element previews: the link's target and the file it's in (for [[#Heading]] and relative names). */
 function targetOf(store: Store, el: Element): { target: string; from: string; path: string } | null {
   const from = el.closest<HTMLElement>("[data-preview-path]")?.dataset.previewPath
     ?? el.closest<HTMLElement>("[data-embed]")?.dataset.embed ?? el.closest<HTMLElement>(".file-view[data-path]")?.dataset.path ?? ""
@@ -21,7 +18,6 @@ function targetOf(store: Store, el: Element): { target: string; from: string; pa
   return path ? { target, from, path } : null
 }
 
-/** How deep in the stack a link is: 0 on the page, n inside the n-th popover. */
 const levelOf = (el: Element) => Number(el.closest<HTMLElement>("[data-preview-level]")?.dataset.previewLevel ?? -1) + 1
 
 const previewSettings = pluginSettings<Settings>("page-preview")
@@ -46,7 +42,6 @@ export function Previews({ store }: { store: Store }) {
     }
     const disarm = () => { if (armed?.timer) clearTimeout(armed.timer); armed = null }
     const closeAll = () => { disarm(); setPops((ps) => (ps.length ? [] : ps)) }
-    /** A moment after the pointer moves, keep the popovers it's in (or whose link it's on) and those under them. */
     const check = () => {
       if (closing) clearTimeout(closing)
       if (!live.current.pops.length) return
@@ -84,12 +79,10 @@ export function Previews({ store }: { store: Store }) {
     const move = (e: PointerEvent) => { x = e.clientX; y = e.clientY }
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape" && live.current.pops.length) { closeAll(); return }
-      // ⌘ pressed while pointing at a link that needs it: at once.
       if ((e.key === "Meta" || e.key === "Control") && armed && !armed.timer && armed.mod) show(armed)
     }
     const down = (e: Event) => { if (!(e.target as Element).closest?.("[data-preview-level]")) closeAll() }
     const click = (e: Event) => {
-      // A link followed from inside a popover: it opened somewhere else.
       if ((e.target as Element).closest?.("[data-preview-level] :is([data-wiki], a[href], [data-tag])")) setTimeout(closeAll, 0)
     }
     document.addEventListener("pointerover", over, true)

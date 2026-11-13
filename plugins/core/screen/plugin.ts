@@ -1,11 +1,8 @@
-// What agents see of the user's Mac outside Vaultite, through this machine's desktop app (electron/helper.ts): the app in
-// front (told unasked, metadata only), a window's text and its picture (asked). Private apps never reach them.
 import { inDesktop, OpError, Plugin, privateApp } from "../../../core/plugins.ts"
 import { type Happened, KINDS, offWhy, timelineLines } from "../../../core/desktop/screentimeline.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The app in front and its window, as the desktop app last told; `private`: one of the private apps (nothing more). */
 export type Front = { app: string; name: string; title: string; window: number; at: number; vaultite?: boolean } | { private: true; at: number }
 let front: Front | null = null
 
@@ -19,7 +16,7 @@ plugin.onDesktopEvent((name, data) => {
   const a = { app: String(d.bundle ?? ""), name: String(d.name ?? ""), title: String(d.title ?? "").slice(0, 300), window: Number(d.window) || 0, at: Date.now() }
   front = hidden(a) ? { private: true, at: a.at } : { ...a, ...(d.vaultite === true ? { vaultite: true } : {}) }
 })
-/** For pair mode's awareness: what's in front now, or null when no desktop app said. */
+/** What's in front now, or null when no desktop app said. */
 plugin.provide("screen:front", () => front)
 
 async function ask(name: string, args: Record<string, unknown>) {

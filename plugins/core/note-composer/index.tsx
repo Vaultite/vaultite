@@ -1,10 +1,6 @@
 import { Merge, Scissors } from "lucide-react"
 import { choose, createFile, currentEditor, currentFile, definePlugin, deleteFile, folderOf, freeName, getStore, isHidden, linkTo, notify, notifyError, openFile, pluginSettings, put, readFile, restoreFile, splitFm, stem, type Choice } from "@vaultite"
 
-// Note composer: extract the selection into another note (leaving a link), or merge this note into
-// another (this one to the trash; Undo puts both back).
-
-/** The notes that can take text: Markdown, not hidden, not this one. */
 const settings = pluginSettings<{ afterExtract?: string }>("note-composer")
 
 function notes(except: string) {
@@ -14,7 +10,6 @@ function notes(except: string) {
     .map((f): Choice => ({ id: f.path, label: stem(f.path).replace(/^.*\//, ""), detail: folderOf(f.path) || undefined }))
 }
 
-/** `text` at the end of `path`, a blank line before it; answers the file's text before. */
 async function append(path: string, text: string) {
   const f = await readFile(path)
   const next = `${f.text.replace(/\s*$/, "")}${f.text.trim() ? "\n\n" : ""}${text.replace(/\s*$/, "")}\n`
@@ -22,7 +17,6 @@ async function append(path: string, text: string) {
   return { before: f.text, after: next }
 }
 
-/** The note the editor shows, and its editor, when there's text selected in it that can be moved. */
 function selection() {
   const ed = currentEditor()
   if (!ed || ed.kind !== "markdown" || ed.view.state.readOnly || !ed.path) return null
@@ -53,7 +47,6 @@ function extract() {
         await settings.ready()
         const after = settings.get().afterExtract ?? "link"
         const insert = after === "none" ? "" : `${after === "embed" ? "!" : ""}${linkTo(to, sel.path)}`
-        // Where the selection is now (typing meanwhile moved it).
         const doc = sel.view.state.doc
         const from = Math.min(sel.from, doc.length), end = Math.min(sel.to, doc.length)
         if (doc.sliceString(from, end) === text) sel.view.dispatch({ changes: { from, to: end, insert }, selection: { anchor: from + insert.length }, userEvent: "input" })

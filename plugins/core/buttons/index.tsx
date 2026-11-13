@@ -1,8 +1,6 @@
 import { MousePointerClick } from "lucide-react"
 import { ActionButtons, AddButton, definePlugin } from "@vaultite"
 
-// Buttons: the new tab's buttons (newtab.json's `actions`, one list) as a sidebar panel, under Pinned by default; icons in the
-// rail, and in a phone drawer's dock when docked. Its tab is the same list a size up.
 function ButtonsView() {
   return (
     <div className="pb-10" data-buttons-view>

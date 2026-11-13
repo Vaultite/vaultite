@@ -1,34 +1,22 @@
-// Markdown made tidy by rules, for both sides: only prose lines change; frontmatter, code and math stay as written.
-
 export type Rules = {
-  /** Spaces and tabs at line ends off. */
   trailingSpaces: boolean
-  /** Two or more blank lines in a row made one. */
   blankLines: boolean
-  /** A blank line before and after each heading. */
   headingSpacing: boolean
-  /** `##Title` made `## Title` (not one `#`: that's a tag). */
   headingSpace: boolean
-  /** `>quote` made `> quote`. */
   quoteSpace: boolean
-  /** `## Title ##` made `## Title`. */
   headingMarks: boolean
-  /** `*` and `+` bullets made `-`. */
   listMarkers: boolean
-  /** The text ends in exactly one line break. */
   finalNewline: boolean
 }
 
 export const RULES: Rules = { trailingSpaces: true, blankLines: true, headingSpacing: true, headingSpace: true, quoteSpace: true, headingMarks: true, listMarkers: true, finalNewline: true }
 
-/** The rules from settings (a value that isn't a boolean keeps the default). */
 export const rulesOf = (s: Record<string, unknown>): Rules =>
   Object.fromEntries(Object.entries(RULES).map(([k, d]) => [k, typeof s[k] === "boolean" ? s[k] : d])) as Rules
 
 const HEADING = /^#{1,6}(\s|$)/
 const HR = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/
 
-/** Which lines are prose (false: frontmatter, a fenced block with its fences, a $$ math block). */
 function proseLines(lines: string[]) {
   const prose = lines.map(() => true)
   let i = 0
@@ -37,7 +25,7 @@ function proseLines(lines: string[]) {
     if (end > 0) { for (; i <= end; i++) prose[i] = false }
   }
   for (; i < lines.length; i++) {
-    // (a fence at any indent: one in a list item is code too; it closes on its own mark, at least as long, alone)
+    // CommonMark: a fence at any indent opens code (in a list item too); it closes on its own mark, at least as long, alone
     const f = /^\s*(`{3,}|~{3,})/.exec(lines[i])
     const t = lines[i].trim()
     const math = t.startsWith("$$") && (t === "$$" || !t.slice(2).includes("$$"))
@@ -51,7 +39,6 @@ function proseLines(lines: string[]) {
   return prose
 }
 
-/** `text` with the rules applied. */
 export function formatMarkdown(text: string, rules: Rules = RULES): string {
   const src = text.replace(/\r\n?/g, "\n").split("\n")
   const prose = proseLines(src)

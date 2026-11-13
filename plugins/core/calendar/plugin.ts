@@ -1,5 +1,3 @@
-// Calendar: events from private iCal links, fetched live and cached 10 minutes; nothing is written to the vault. The
-// links are secrets (anyone with one can read the calendar), so they live in data/config.json only.
 import ICAL from "ical.js"
 import { addDays, bullets, OpError, Plugin, section, today as todayIso } from "../../../core/plugins.ts"
 import { type Item, sortBy, str } from "../../../core/vault.ts"
@@ -21,8 +19,6 @@ class HTTPStatusError extends Error {
 
 const pad = (n: number) => String(n).padStart(2, "0")
 
-/** An event time as the app shows it: a date "YYYY-MM-DD", a time in this machine's zone with its offset, or a
- *  floating time as written. */
 function iso(t: ICAL.Time) {
   if (t.isDate) return `${t.year}-${pad(t.month)}-${pad(t.day)}`
   if (t.zone === ICAL.Timezone.localTimezone) return `${t.year}-${pad(t.month)}-${pad(t.day)}T${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`
@@ -33,13 +29,11 @@ function iso(t: ICAL.Time) {
     `${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`
 }
 
-/** When a time is, for comparing with the range (dates and floating times are this machine's local time). */
 function ms(t: ICAL.Time) {
   if (t.isDate || t.zone === ICAL.Timezone.localTimezone) return +new Date(t.year, t.month - 1, t.day, t.hour, t.minute, t.second)
   return +t.toJSDate()
 }
 
-/** Every occurrence of the calendar's events that overlaps [start, end) (local days). */
 function occurrences(cal: ICAL.Component, start: string, end: string) {
   const from = +new Date(`${start}T00:00:00`), to = +new Date(`${end}T00:00:00`)
   const events = cal.getAllSubcomponents("vevent")
@@ -80,7 +74,7 @@ async function events(start: string, end: string) {
     try {
       cal = await plugin.memo(TTL, fetchCalendar, c.ics)
     } catch (e) {
-      errors.push(`${c.name ?? "None"}: ${(e as Error).name}`) // never echo the URL
+      errors.push(`${c.name ?? "None"}: ${(e as Error).name}`)
       continue
     }
     for (const o of occurrences(cal, start, addDays(end, 1))) {
@@ -88,7 +82,6 @@ async function events(start: string, end: string) {
         start: iso(o.start), end: iso(o.end), all_day: o.start.isDate })
     }
   }
-  // (other plugins' own items, a focus block: the service "agenda:items", (first day, last day) -> events like these)
   for (const items of plugin.allServices("agenda:items")) {
     try { for (const e of await (items as AgendaItems)(start, end) ?? []) out.push({ calendar: str(e.calendar), title: str(e.title), location: str(e.location), start: str(e.start), end: e.end ? str(e.end) : null, all_day: !!e.all_day }) }
     catch (e) { errors.push(`${(e as Error).name}`) }
@@ -97,18 +90,16 @@ async function events(start: string, end: string) {
 }
 type AgendaItems = (from: string, to: string) => Promise<Item[]> | Item[]
 
-/** ?from=YYYY-MM-DD&to=YYYY-MM-DD (default: the next 7 days) */
 plugin.route("GET", "calendar", async (req) => {
   const start = req.query.from || todayIso()
   const end = req.query.to || addDays(todayIso(), 7)
   try {
     return await events(start, end)
-  } catch (e) { // feed down: the page just shows no events
+  } catch (e) {
     return { events: [], errors: [String((e as Error).message ?? e)], configured: true }
   }
 })
 
-/** Forget the cached feeds (after editing the calendar), so the next load fetches them again. */
 plugin.route("POST", "calendar/refresh", () => {
   plugin.forget()
   return { ok: true }
@@ -148,7 +139,6 @@ zone. What matters from one goes where it belongs (a person's timeline, a log), 
   },
 })
 
-/** Today's and tomorrow's events. */
 plugin.block("agenda", async (ctx) => {
   const today = ctx.today, tomorrow = addDays(today, 1)
   let res: Item

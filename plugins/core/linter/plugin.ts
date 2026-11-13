@@ -1,4 +1,3 @@
-// Linter: notes formatted by the rules in its settings (format.ts), as small edits through the API.
 import fs from "node:fs"
 import { OpError, Plugin, vaultPath } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
@@ -6,7 +5,6 @@ import { formatMarkdown, rulesOf } from "./format.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The Markdown files `rel` names: itself, or every one under it when it's a folder (hidden ones left out). */
 function notesIn(rel: string) {
   const abs = plugin.vault.abs(rel)
   if (!fs.existsSync(abs)) throw new OpError(`no file or folder '${rel}'`, 404)

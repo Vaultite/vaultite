@@ -2,7 +2,6 @@ import { definePlugin, today } from "@vaultite"
 import { AgendaPanel } from "./Agenda"
 
 export default definePlugin({
-  // ```block-agenda: today's and the coming days' events (on Today).
   blocks: { agenda: () => <AgendaPanel /> },
   preview: () => <AgendaPanel />,
   mockLive: () => {

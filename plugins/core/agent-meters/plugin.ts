@@ -1,14 +1,11 @@
-/** Agent meters: each agent's terminal's context and prompt cache (from its plugin's service "agent-meters:<name>",
- *  which Terminal asks), as the settings say to draw them, for the Terminals list (the service "terminal:meters"). */
 import type { AgentMeter } from "../../../core/agents.ts"
 import { Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** What a terminal's row and icon show (plugins/core/terminal/sessions.ts draws it). */
+/** What a terminal's row and icon show. */
 export type Meter = { context?: { tokens: number; window: number; as: "bar" | "percent" | "tokens" }; cache?: { until: number; ttl: number; as: "icon" | "bar" } }
 
-/** These agents' sessions' meters, drawn as the settings say: terminal id -> Meter. */
 plugin.provide("terminal:meters", (list: AgentMeter[]): Record<string, Meter> => {
   const set = plugin.settings()
   const cache = set.cache === "bar" || set.cache === "off" ? set.cache : "icon"

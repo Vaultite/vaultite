@@ -1,5 +1,3 @@
-// Glance: ⌥-click (Alt-click off a Mac) a link, a file in the tree or a search result, and it opens over the page in a
-// wide sheet, live; from there it becomes a tab or goes to the side. A listener on the whole page, as Page preview's.
 import { useEffect, useRef } from "react"
 import { Columns2, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import {
@@ -7,7 +5,6 @@ import {
   TargetView, viewInfo, viewShown, webPages, type Store,
 } from "@vaultite"
 
-/** What a click on `el` glances at, as the sheet's path (`glance/<tab target>[/<heading>]`), or null: not something to glance at. */
 function glanceOf(s: Store, el: Element): string | null {
   if (el.closest("input, textarea, select, [data-canvas-node], [data-no-glance]")) return null
   const at = el.closest<HTMLElement>("[data-wiki], [data-url], a[href], [data-preview], [data-tree-path]:not([data-tree-folder])")
@@ -20,7 +17,6 @@ function glanceOf(s: Store, el: Element): string | null {
   const url = d.url ?? (at instanceof HTMLAnchorElement && at.origin !== location.origin ? at.href : undefined)
   const place = d.wiki ? linkPlace(s, { wiki: d.wiki }, from) : url ? linkPlace(s, { url }, from) : null
   if (place?.file) return detailPath("glance", `file:${place.file}`, ...(place.anchor ? [place.anchor] : []))
-  // (a web page only where the Web viewer can show one: the desktop app)
   if (place?.url && webPages && viewShown(`view:web/${place.url}`)) return detailPath("glance", `view:web/${place.url}`)
   return null
 }
@@ -33,7 +29,6 @@ function Clicks() {
       if (e.button !== 0 || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey || !s || !(e.target instanceof Element)) return null
       return glanceOf(s, e.target)
     }
-    // The press too: the editor follows a link on it, and would move its cursor into this one.
     const down = (e: MouseEvent) => { if (hit(e)) { e.preventDefault(); e.stopPropagation() } }
     const click = (e: MouseEvent) => {
       const to = hit(e)
@@ -52,8 +47,6 @@ function Clicks() {
   return null
 }
 
-/** Keep what's glanced at: in a new tab of the focused pane (of its own, though another shows it), or in the pane beside
- *  it. A web page goes on as it is, handed to that tab before the sheet lets go of it (its `data-web-page`, WebPage). */
 function keep(to: string, anchor: string, side: boolean, box: HTMLElement | null) {
   const page = Number(box?.querySelector<HTMLElement>("[data-web-page]")?.dataset.webPage) || 0
   const id = newTabId()
@@ -80,7 +73,6 @@ function Action({ icon: Icon, label, run }: { icon: LucideIcon; label: string; r
 
 function Glance({ store, to, anchor }: { store: Store; to: string; anchor: string }) {
   const box = useRef<HTMLDivElement>(null)
-  // Where it is now: a web page that followed a link changed its address, not the sheet's (that would load it again).
   const now = useRef(to)
   const file = to.startsWith("file:") ? to.slice(5) : null
   useEffect(() => { if (file && anchor && box.current) showAnchorIn(box.current, file, anchor) }, [file, anchor])

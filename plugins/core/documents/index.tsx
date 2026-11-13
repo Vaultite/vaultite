@@ -1,5 +1,3 @@
-// Documents: .docx files drawn read-only like Word (Docx.tsx, its own chunk), embedded in a scrolling box. Off, a
-// .docx is a file card.
 import { lazy, Suspense } from "react"
 import { FileText } from "lucide-react"
 import { definePlugin, Loading, type FileFormat } from "@vaultite"

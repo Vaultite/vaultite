@@ -1,5 +1,3 @@
-// Documents' server side: a .docx's paragraphs, headings, lists and tables as Markdown for /api/render and search
-// (no comments, headers, footers or tracked deletions).
 import { Plugin, unzip, xmlDecode, zipText } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -7,14 +5,12 @@ export const plugin = new Plugin(import.meta.url)
 const PARA = /<w:tbl\b[\s\S]*?<\/w:tbl>|<w:p\b[^>]*\/>|<w:p\b[\s\S]*?<\/w:p>/g
 const RUN = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>|<w:br\b[^>]*\/>|<w:cr\/>/g
 
-/** A paragraph's text: its runs (not deleted ones: those are <w:delText>), tabs and line breaks. */
 function runs(xml: string) {
   let out = ""
   for (const m of xml.matchAll(RUN)) out += m[1] !== undefined ? xmlDecode(m[1]) : m[0].startsWith("<w:tab") ? "\t" : "\n"
   return out.replace(/[ \t]+$/gm, "")
 }
 
-/** The heading level of a paragraph's style (Heading1, heading 2, Title), or 0. */
 function level(xml: string) {
   const style = /<w:pStyle w:val="([^"]+)"/.exec(xml)?.[1] ?? ""
   if (/^title$/i.test(style)) return 1
@@ -42,7 +38,6 @@ function table(xml: string) {
   return [line(rows[0]), `| ${Array(width).fill("---").join(" | ")} |`, ...rows.slice(1).map(line)].join("\n")
 }
 
-/** A .docx file's text as Markdown. */
 export function docxMarkdown(bytes: Buffer): string {
   const xml = zipText(unzip(bytes), "word/document.xml")
   if (xml === null) throw new Error("not a Word document (no word/document.xml)")
@@ -52,7 +47,6 @@ export function docxMarkdown(bytes: Buffer): string {
     const md = m[0].startsWith("<w:tbl") ? table(m[0]) : paragraph(m[0])
     if (md) out.push(md)
   }
-  // Items of one list together; everything else a paragraph apart.
   return out.reduce((s, b, i) => s + (i === 0 ? "" : b.startsWith("- ") && out[i - 1].startsWith("- ") ? "\n" : "\n\n") + b, "") || "_(empty document)_"
 }
 

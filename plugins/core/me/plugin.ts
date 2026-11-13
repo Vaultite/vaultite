@@ -1,15 +1,10 @@
-// Me: the user's own file (ME.md, or the setting `path`): who they are and how they want AIs to work with them. The
-// kind `me`, its place pinned (People's geocoder, cached there, never in the file), and the service `me:file`.
 import { Plugin } from "../../../core/plugins.ts"
 import { type Item, Kind, num } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** Where the setting says the user's file is (ME.md unset), following it when it's moved through the app. */
 const path = plugin.settingFile("path", "ME.md")
 
-/** A place entered through the app is looked up in the background (People's geocoder, when it's on, keeps the pin in
- *  its cache); the file's coordinates go only when the place changed without them (they were the old place's). */
 function locate(me: Item, before: Item | null) {
   const moved = before !== null && (me.location ?? "") !== (before.location ?? "")
   if (moved && me.lat === before.lat && me.lon === before.lon) me.lat = me.lon = null
@@ -20,7 +15,6 @@ function locate(me: Item, before: Item | null) {
   return me
 }
 
-/** The user's place with its pin: the file's coordinates, else People's cached lookup. */
 function pinned(me: Item | null) {
   if (!me || typeof me.lat === "number" || !me.location) return me
   const known = plugin.service("geocode:known"), ll = known ? known(me.location) : null
@@ -39,8 +33,6 @@ plugin.kind(new Kind({
   prepare: locate,
 }))
 
-/** The user's file: where it is (the setting's path, or the one file of type me wherever it moved), else where it
- *  would be made. */
 const file = () => {
   const me = plugin.vault.get("me", "me")
   return me ? `${me.id}.md` : path()

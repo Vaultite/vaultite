@@ -1,5 +1,3 @@
-// The calendar card on Today: a day timeline, live from GET /api/calendar. From 17:00 it leads with tomorrow: plan
-// the next day the evening before.
 import { CalendarDays } from "lucide-react"
 import { addDays, Bar, cn, dateText, Empty, fmtTime, iso, List, Loading, Panel, parse, today, useKeptCount, useLive } from "@vaultite"
 import type { CalEvent } from "./types"
@@ -13,7 +11,6 @@ const time = "num w-[62px] shrink-0 text-[13px] leading-[18px]"
 const stripe = "w-[3px] shrink-0 rounded-full"
 const name = "line-clamp-2 text-[15px] leading-[18px] font-medium"
 
-/** Events on their way: the rows' shape (start and end, the stripe, the title) with bars for the text. */
 function Skeleton({ count }: { count: number }) {
   return (
     <div className="loading-in hairline" aria-busy>

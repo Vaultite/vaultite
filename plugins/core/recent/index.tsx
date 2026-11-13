@@ -2,8 +2,6 @@ import { useEffect, useState } from "react"
 import { FileClock, FilePen, History } from "lucide-react"
 import { changedFiles, cn, definePlugin, menuFor, openFile, openingSoon, openView, pluginSettings, RecentList, rowFileMenu, SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, type RecentKind, type SidebarCtx, type Store } from "@vaultite"
 
-// Recent files: opened lately in this workspace, or changed lately (a toggle kept
-// per workspace). The lists are the app's (components/RecentFiles.tsx).
 const KINDS: { kind: RecentKind; title: string; icon: typeof FileClock }[] = [
   { kind: "opened", title: "Recently opened", icon: FileClock },
   { kind: "changed", title: "Recently changed", icon: FilePen },
@@ -15,7 +13,6 @@ function useList(store: Store, kind: RecentKind, n: number) {
   return kind === "opened" ? opened : changedFiles(store, n)
 }
 
-/** How many files a list shows at first (the plugin's `limit` setting, 50 as Obsidian's Recent Files plugin). */
 const LIMIT = 50
 const settings = pluginSettings<{ limit?: unknown }>("recent")
 function useLimit() {
@@ -23,7 +20,6 @@ function useLimit() {
   return v >= 1 ? v : LIMIT
 }
 
-/** A list's first `limit` files, then `limit` more at each Show more (one more asked for, to know there are more). */
 function useShown(store: Store, kind: RecentKind) {
   const limit = useLimit()
   const [pages, setPages] = useState(1)
@@ -84,7 +80,6 @@ function RecentPanel({ store, open, file }: SidebarCtx) {
   )
 }
 
-/** The tab (view:recent): both lists, as a blank tab draws them (the sidebar's rows, a size up). */
 function RecentView({ store }: { store: Store }) {
   const opened = useShown(store, "opened")
   const changed = useShown(store, "changed")
