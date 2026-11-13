@@ -673,6 +673,8 @@ html[data-window-inactive] .vau-editor .cm-content ::selection {
   overflow: hidden; overflow-wrap: anywhere;
 }
 [data-sonner-toaster] .vau-toast[data-styled=true] [data-content] { min-width: 0; }
+/* sonner grows a leaving toast's hit area to twice its height: what's under it gets the taps meant for it */
+[data-sonner-toaster] .vau-toast[data-removed=true] { pointer-events: none; }
 [data-sonner-toaster] .vau-toast[data-styled=true]:not(:has([data-button])) { padding-right: 12px; }
 [data-sonner-toaster] .vau-toast[data-styled=true] [data-icon] { margin: 0; }
 [data-sonner-toaster] .vau-toast[data-styled=true] [data-button] {

@@ -3,6 +3,7 @@ import { folderOf } from "@/core/files"
 import { activePane, activeTab, here, onWorkspaceChange, panes, selectPane, selectTab } from "@/core/workspace"
 import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
+import { trackSoon } from "@/core/unsaved"
 import { fingerHolding } from "@/core/drag"
 import { openNewTab, opensSwitcher } from "@/core/launcher"
 import { zoomIn, zoomNew, zoomOut } from "@/core/motion"
@@ -212,7 +213,8 @@ export function swipeSideways() {
     if (d.axis !== "x") return
     const eat = (c: Event) => { c.stopPropagation(); c.preventDefault() }
     addEventListener("click", eat, { capture: true, once: true })
-    setTimeout(() => removeEventListener("click", eat, { capture: true }), 400)
+    const off = trackSoon("a swipe's click eaten", () => true)
+    setTimeout(() => { removeEventListener("click", eat, { capture: true }); off() }, 400)
     const v = e.type === "touchend" ? fling(d.moves, e.timeStamp) : 0
     const { lo, hi } = ends()
     const to = stopFor([...(lo ? [lo] : []), 0, ...(hi ? [hi] : [])], pos, v)
