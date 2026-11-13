@@ -11,6 +11,7 @@ import { failuresOf, mainRed, nightlyRed, notice, redStreaks, type Api, type Run
 import { ATTEMPT_MIN, checkPush, judge, loadTry, riskKey, startTry, sweep, tried, waitTry } from "./try.ts"
 import { AWAY_MS, MACHINE_REF, STEPS, machinesOff, parseJob, patient, unfit, type Machine, type Os, type Part } from "./try_machines.ts"
 import { room, vmStatFree } from "./verify_room.ts"
+import { queued } from "./qa_slots.ts"
 const t0 = Date.now()
 
 section("osrisk")
@@ -318,7 +319,7 @@ section("verify room")
     pause: async (ms: number) => { clock += ms; onPause() } }
   const slots = () => fs.readdirSync(dir).sort().map((f) => `${f}=${fs.readFileSync(path.join(dir, f), "utf8")}`).join()
   const a = await room("verify: a", o), b = await room("verify: b", o)
-  check("room: a free slot and enough memory, taken at once and nothing said", a.release && b.release && !logs.length && slots() === `0=${process.pid},1=${process.pid}`, [logs, slots()])
+  check("room: a free slot and enough memory, taken at once and nothing said, each naming its taker", a.release && b.release && !logs.length && slots() === `0=${process.pid} verify: a,1=${process.pid} verify: b`, [logs, slots()])
   let pauses = 0
   onPause = () => { if (++pauses === 3) a.release?.() }
   const c = await room("verify: c", o)
@@ -328,7 +329,7 @@ section("verify room")
   const gone = spawnSync(process.execPath, ["-e", "0"]).pid ?? 0, sleeper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"])
   fs.writeFileSync(path.join(dir, "0"), String(gone)); fs.writeFileSync(path.join(dir, "1"), String(sleeper.pid))
   const d = await room("verify: d", o)
-  check("room: a slot whose process is gone is freed and taken", !!d.release && !logs.length && slots() === `0=${process.pid},1=${sleeper.pid}`, [logs, slots()])
+  check("room: a slot whose process is gone is freed and taken", !!d.release && !logs.length && slots() === `0=${process.pid} verify: d,1=${sleeper.pid}`, [logs, slots()])
   fs.writeFileSync(path.join(dir, "0"), String(sleeper.pid)); d.release?.()
   const e = await room("verify: e", o)
   check("room: none freed in its time: busy, why said, the wait said once", !e.release && e.busy === "no room on this machine in 60 s: still waiting for a verify slot"
@@ -345,6 +346,44 @@ section("verify room")
   const h = await room("verify: h", o)
   check("room: where the OS doesn't say its free memory, a slot is enough", !!h.release)
   h.release?.(); sleeper.kill()
+}
+
+section("qa slots, in line")
+{
+  const dir = tempDir("qaslots-"), logs: string[] = [], got: string[] = []
+  const sleeper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"])
+  const o = { pause: () => new Promise<void>((r) => setImmediate(r)), log: (l: string) => logs.push(l) }
+  const settle = async () => { for (let i = 0; i < 50; i++) await o.pause() }
+  const take = (label: string, want: number, count = 1, deadline = Infinity) =>
+    queued(dir, count, want, label, "a slot", deadline, o).then((r) => { got.push(label); return r })
+  fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, "0"), `${sleeper.pid} screendraw`)
+  const a = take("a", 1), b = take("b", 1)
+  await settle()
+  check("qa slots: while one's held, the waiters wait, each saying who holds it", !got.length && /^a: waiting for a slot; held by screendraw \d+ s$/.test(logs[0]) && /^b: .*; 1 wanted before this one$/.test(logs[1]), logs)
+  fs.rmSync(path.join(dir, "0"))
+  await settle()
+  check("qa slots: freed, the first in line takes it, not the one after", got.join() === "a", got)
+  ;(await a)?.()
+  await settle()
+  check("qa slots: then the next", got.join() === "a,b", got)
+  ;(await b)?.(); got.length = 0
+  fs.writeFileSync(path.join(dir, "0"), `${sleeper.pid} screendraw`)
+  const all = take("all", 2, 2), one = take("one", 1, 2)
+  await settle()
+  check("qa slots: one wanting every slot isn't passed by a later one wanting the slot that's free", !got.length, got)
+  fs.rmSync(path.join(dir, "0"))
+  await settle()
+  ;(await all)?.()
+  await settle()
+  check("qa slots: it goes once all are free, then the later one", got.join() === "all,one", got)
+  ;(await one)?.()
+  fs.writeFileSync(path.join(dir, "0"), `${sleeper.pid} screendraw`)
+  const late = await take("late", 1, 1, Date.now() + 50)
+  check("qa slots: none freed by its deadline: null, and its ticket gone", late === null && fs.readdirSync(`${dir}.queue`).length === 0)
+  sleeper.kill()
+  const qa = spawnSync(process.execPath, [path.join(import.meta.dirname, "qa.ts"), "counts", "--repeat", "2"], { encoding: "utf8", env: { ...process.env, VAULTITE_QA_BUDGET: "1" } })
+  check("qa: what its budget can't fit isn't started, it says how to run it, exit 3", qa.status === 3
+    && qa.stdout.includes("qa: NOT DONE: 2 not run in its 1 s (too little time left for it; VAULTITE_QA_BUDGET): run them: node tools/qa.ts counts --repeat 2"), qa.stdout + qa.stderr)
 }
 
 section("a machine's room for a try")

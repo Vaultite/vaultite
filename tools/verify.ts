@@ -10,7 +10,6 @@ import { qaFor } from "./qa_scripts.ts"
 import { changeRisk, describe } from "./osrisk.ts"
 import { WAIT_SECONDS, startTry, waitTry, type Waited } from "./try.ts"
 import { findMachines } from "./try_machines.ts"
-// (a stage that passed on the same files isn't run again; --fresh: every one is)
 import { filesState, passes } from "./verify_passed.ts"
 import { room } from "./verify_room.ts"
 
@@ -53,7 +52,7 @@ const picked: Stage[] = [
   ...(areas.length ? [{ name: "test_vault", cmd: ["node", "tools/test_vault.ts", ...(areas.length === AREAS.length ? [] : areas)],
     why: areas.length === AREAS.length ? "all areas" : areas.join(" ") }] : []),
   ...(changed.some((f) => f.startsWith("web/qa/") || f.startsWith("web/src/")) ? [{ name: "qa lint", cmd: ["node", "tools/qa.ts", "--lint"], why: "QA selectors" }] : []),
-  ...(qa.length ? [{ name: "qa", cmd: ["node", "tools/qa.ts", ...qa], why: qa.join(" ") }] : []),
+  ...(qa.length ? [{ name: "qa", cmd: ["node", "tools/qa.ts", "--kept", ...qa], why: qa.join(" ") }] : []),
   ...(web ? [{ name: "smoke", cmd: ["npm", "run", "smoke"], why: "web changed" }] : []),
 ]
 const stages: Stage[] = [
@@ -71,8 +70,8 @@ if (stages.some((st, i) => st.name !== "build" && before[i] === null)) stages.fo
 const logFile = path.join(git("rev-parse", "--absolute-git-dir")[0] ?? ROOT, "verify.log")
 const logFd = dry ? null : fs.openSync(logFile, "w")
 const say = (s: string) => { process.stdout.write(`${s}\n`); if (logFd !== null) fs.writeSync(logFd, `${s}\n`) }
-const run = (cmd: string[]) => new Promise<number>((resolve) => {
-  const child = spawn(cmd[0], cmd.slice(1), { cwd: ROOT, stdio: ["inherit", "pipe", "pipe"] })
+const run = (cmd: string[], env: Record<string, string> = {}) => new Promise<number>((resolve) => {
+  const child = spawn(cmd[0], cmd.slice(1), { cwd: ROOT, stdio: ["inherit", "pipe", "pipe"], env: { ...process.env, ...env } })
   const tee = (to: NodeJS.WriteStream) => (d: Buffer) => { to.write(d); fs.writeSync(logFd!, d) }
   child.stdout!.on("data", tee(process.stdout)); child.stderr!.on("data", tee(process.stderr))
   child.on("error", () => resolve(127)); child.on("close", (code, signal) => resolve(code ?? (signal ? 1 : 0)))
@@ -99,12 +98,13 @@ for (const [i, st] of stages.entries()) {
       continue
     }
     say(`\n== ${st.name}: ${st.cmd.join(" ")}`)
-    const t = Date.now(), ok = (await run(st.cmd)) === 0, s = (Date.now() - t) / 1000
+    const left = String(Math.max(120, Math.round(WAIT_SECONDS - (Date.now() - t0) / 1000)))
+    const t = Date.now(), code = await run(st.cmd, st.name === "qa" ? { VAULTITE_QA_BUDGET: left } : {}), ok = code === 0, s = (Date.now() - t) / 1000
     got.release()
-    rows.push({ name: st.name, why: st.why, s: s.toFixed(1), ok, cmd: st.cmd })
+    if (st.name === "qa" && code === 3) noRoom = "QA ran out of time (above)"
+    rows.push({ name: st.name, why: code === 3 && st.name === "qa" ? "not done: out of time (above)" : st.why, s: s.toFixed(1), ok: st.name === "qa" && code === 3 ? null : ok, cmd: st.cmd })
     if (ok && state && filesState(ROOT) === state) kept.pass(state, st.cmd, s)
   }
-  // (the try starts once build and check pass, what would fail its every job; the other stages run while it does)
   if (tryIt && !dry && st.name === "check") {
     say("\n== try: tools/try.ts (HEAD on Linux, macOS and Windows: idle Machines first, else GitHub's runners)")
     trying = rows.every((x) => x.ok) ? await startTry(ROOT, { also, precheck: () => null, machines: (oses, log) => findMachines(ROOT, oses, log) }) : (say("try: NOT STARTED: build or check fails here"), false)

@@ -1,5 +1,5 @@
 // Every UI QA script (web/qa/*.mjs), each on a fresh sandbox and server, runs kept; exit 1 on any failure (npm run qa).
-// node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
+// node tools/qa.ts [script...] [--repeat 3] [--jobs 3] [--kept]; --lint: selectors QA scripts use that no source draws.
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
@@ -7,8 +7,9 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
-import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
-import { alone, front, slot } from "./qa_slots.ts"
+import { freePort, killTree, lastTimes, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
+import { alone, front, slotTill } from "./qa_slots.ts"
+import { filesState, passes } from "./verify_passed.ts"
 import { FRONT, MEASURES, QA, SKIP, allScripts, head } from "./qa_scripts.ts"
 import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
@@ -19,7 +20,8 @@ import { sharedTmp } from "../core/testrun.ts"
 import { MARK, carrying, endAll } from "./test/leftovers.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
-const OFFICIAL = officialPlugins()
+let official: string | undefined
+const OFFICIAL = () => (official ??= officialPlugins())
 const TIMEOUT = 8 * 60_000
 /** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
  *  sandbox dated to today has that day's logs. */
@@ -57,6 +59,11 @@ function lint() {
 }
 const opt = (name: string, d: number) => { const i = argv.indexOf(`--${name}`); return i < 0 ? d : Number(argv.splice(i, 2)[1]) }
 const repeat = opt("repeat", 1), jobs = opt("jobs", 3)
+const budget = Number(process.env.VAULTITE_QA_BUDGET ?? (process.env.CI ? 0 : 540))
+const deadline = budget > 0 ? Date.now() + budget * 1000 : Infinity
+const kept = argv.indexOf("--kept")
+if (kept >= 0) argv.splice(kept, 1)
+const keep = kept >= 0 ? passes(ROOT) : null, state = keep && filesState(ROOT)
 const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
   : allScripts().filter((n) => !SKIP.has(n))
 // Electron's binary, fetched on its first use when npm skipped its install script: once here, before scripts launch it
@@ -113,7 +120,8 @@ function standIns() {
   } finally { fs.rmSync(work, { recursive: true, force: true }) }
   return dir
 }
-const AGENT_BIN = standIns()
+let agentBin: string | undefined
+const AGENT_BIN = () => (agentBin ??= standIns())
 
 type Server = { base: string, port: number, proc: ReturnType<typeof spawn> }
 async function serve(vault: string, local: string, env: Record<string, string>): Promise<Server> {
@@ -138,7 +146,7 @@ async function stop(s: Server) {
 /** What a script and its servers get besides their vault: the stand-in agents, Claude's made-up home `claude`, and the
  *  made-up repositories under `repos` (web/qa/pluginstore.mjs; a bundle's Vaultite plugins from them, never GitHub). */
 function envFor(claude: string, repos: string): Record<string, string> {
-  const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude, VAULTITE_AGENT_BIN: AGENT_BIN }
+  const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude, VAULTITE_AGENT_BIN: AGENT_BIN() }
   // (the desktop scripts' app as root, a container's user: Chromium starts only unsandboxed then)
   if (process.getuid?.() === 0) env.ELECTRON_DISABLE_SANDBOX = "1"
   env.VAULTITE_GITHUB = officialRepos(repos)
@@ -152,7 +160,7 @@ const boot: Boot = async (at, scratch) => {
   return { base: s.base, stop: () => stop(s) }
 }
 /** The script's template: the sample on the day (UNDATED's on the sample's), with Vaultite's own plugins (but ALONE's). */
-const variant = (name: string): Variant => ({ day: UNDATED.has(name) ? ANCHOR : localToday(), plugins: !ALONE.has(name), official: OFFICIAL })
+const variant = (name: string): Variant => ({ day: UNDATED.has(name) ? ANCHOR : localToday(), plugins: !ALONE.has(name), official: OFFICIAL() })
 
 /** Node running `args` in the checkout, in the caller's QA slot: its exit code and output, killed after TIMEOUT. */
 async function exec(args: string[], env: Record<string, string>) {
@@ -171,7 +179,7 @@ async function exec(args: string[], env: Record<string, string>) {
 /** The web demo (demo.mjs): no server of ours (it's in the browser), on a build made for the run, never a stale one,
  *  with Vaultite's own plugins built in as vaultite.com builds it. */
 async function demo(): Promise<Ran> {
-  const t = Date.now(), env = { VAULTITE_PLUGINS: OFFICIAL }
+  const t = Date.now(), env = { VAULTITE_PLUGINS: OFFICIAL() }
   const built = await exec([path.join(ROOT, "node_modules/vite/bin/vite.js"), "build", "-c", "vite.demo.config.ts", "--logLevel", "warn"], env)
   const setup = Date.now() - t
   if (built.code !== 0) return { ok: false, setup, script: 0, out: `npm run build:demo failed:\n${built.text}` }
@@ -238,7 +246,12 @@ async function setUpAndRun(name: string, mark: string): Promise<Ran> {
   }
 }
 
-const queue = Array.from({ length: repeat }, () => names).flat()
+const known = lastTimes("qa")
+const passed = new Set(names.filter((n) => state && keep?.passedAt(state, ["qa", n]) !== null))
+for (const n of passed) console.log(`ok   ${n} (passed on these files)`)
+const queue = Array.from({ length: repeat }, () => names.filter((n) => !passed.has(n))).flat()
+const left: string[] = []
+let short = ""
 const running = new Set<string>()
 const next = () => { const i = queue.findIndex((n) => !running.has(n)); return i < 0 ? null : queue.splice(i, 1)[0] }
 const fails: string[] = []
@@ -251,7 +264,9 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     if (!name) { await sleep(1000); continue }
     running.add(name)
     // (on a Mac the front window, for one that brings its own forward: after the slot, so no two wait on each other)
-    const asked = Date.now(), held = MEASURES.has(name) ? await alone(name) : { release: await slot(name), busy: undefined }
+    const by = deadline - (known.get(name) ?? 120_000), asked = Date.now()
+    const held = Date.now() >= by ? null : MEASURES.has(name) ? await alone(name, by) : await slotTill(name, by).then((release) => release && { release, busy: undefined })
+    if (!held) { running.delete(name); left.push(name); short ||= Date.now() - asked < 1000 ? "too little time left for it" : "no QA slot in time"; continue }
     const release = held.release, waited = Date.now() - asked
     if (held.busy) { release(); running.delete(name); console.log(`skip ${name} (${held.busy})`); continue }
     const out = process.platform === "darwin" && FRONT.has(name) ? await front(name) : () => {}
@@ -260,6 +275,7 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     Object.assign(spent, { setup: spent.setup + r.setup, script: spent.script + r.script, waited: spent.waited + waited, waits: spent.waits + (waited >= 1000 ? 1 : 0) })
     if (r.skipped) { console.log(`skip ${name} (${r.skipped})`); continue }
     runs.set(name, [...runs.get(name) ?? [], r.ok])
+    if (r.ok && state && filesState(ROOT) === state) keep?.pass(state, ["qa", name], (r.setup + r.script) / 1000)
     times.set(name, r.setup + r.script)
     const more = [(r.template ?? 0) >= 1000 && `template ${sec(r.template!)}`, waited >= 1000 && `slot wait ${sec(waited)}`].filter(Boolean)
     console.log(`${r.ok ? "ok  " : "FAIL"} ${name} (${sec(r.setup + r.script)}: setup ${sec(r.setup)}, script ${sec(r.script)}${more.length ? `; ${more.join(", ")}` : ""})`)
@@ -278,4 +294,6 @@ if (fails.length) console.log(`\n${fails.join("\n\n")}`)
 console.log(`\n${[...runs.values()].flat().filter(Boolean).length}/${[...runs.values()].flat().length} runs passed` +
   (flaky.length ? `; flaky: ${flaky.join(", ")}` : "") + ` in ${sec(Date.now() - t0)}; summed over them: setup ${sec(spent.setup)}, scripts ${sec(spent.script)}, ` +
   `slot waits ${sec(spent.waited)}${spent.waits ? ` (${spent.waits} waited)` : ""}`)
-process.exit(fails.length ? 1 : 0)
+const rest = [...new Set(left)], again = Math.max(0, ...rest.map((n) => left.filter((x) => x === n).length))
+if (left.length) console.log(`\nqa: NOT DONE: ${left.length} not run in its ${budget} s (${short}; VAULTITE_QA_BUDGET): run them: node tools/qa.ts ${rest.join(" ")}${again > 1 ? ` --repeat ${again}` : ""}`)
+process.exit(fails.length ? 1 : left.length ? 3 : 0)

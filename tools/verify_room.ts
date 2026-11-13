@@ -3,12 +3,11 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { sharedTmp } from "../core/testrun.ts"
-import { claim } from "./qa_slots.ts"
+import { MACHINE_TMP, claim } from "./qa_slots.ts"
 
 const GB = 2 ** 30
 export const ROOM = {
-  dir: path.join(sharedTmp(), "vaultite-verify-slots"),
+  dir: path.join(MACHINE_TMP, "vaultite-verify-slots"),
   slots: Number(process.env.VAULTITE_VERIFY_SLOTS) || Math.max(1, Math.floor(os.totalmem() / (8 * GB))),
   floor: (Number(process.env.VAULTITE_VERIFY_FREE_GB) || 4) * GB,
   waitMs: (Number(process.env.VAULTITE_VERIFY_WAIT) || 360) * 1000,
@@ -37,7 +36,7 @@ export async function room(label: string, o: Partial<Deps> = {}): Promise<Room> 
   const asked = d.now()
   let release: (() => void) | null = null, said = ""
   for (;;) {
-    release ??= claim(d.dir, d.slots)
+    release ??= claim(d.dir, d.slots, label)
     const free = release ? d.free() : null, waited = ((d.now() - asked) / 1000).toFixed(0)
     if (release && (free === null || free >= d.floor)) {
       if (said) d.log(`${label}: room after waiting ${waited} s`)
