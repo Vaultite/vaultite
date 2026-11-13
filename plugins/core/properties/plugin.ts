@@ -1,5 +1,3 @@
-// All properties' server side: keys with counts and types (in /api/state, so the panel is live), rename and retype
-// across files as one-key small edits (a file that can't be edited safely is skipped), and restore for Undo.
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
 import { type Entry, readText, renameProperty, setPropertyText, sortBy, writeAtomic, type Vault } from "../../../core/vault.ts"
 
@@ -8,7 +6,6 @@ export const plugin = new Plugin(import.meta.url)
 export type PropType = "text" | "number" | "checkbox" | "date" | "datetime" | "list" | "object" | "empty"
 const TYPES = ["text", "number", "checkbox", "date", "list"] as const
 
-/** What kind of value this is, as the app's Properties show it. */
 export function typeOf(v: unknown): PropType {
   if (v === null || v === undefined || v === "") return "empty"
   if (typeof v === "boolean") return "checkbox"
@@ -22,16 +19,13 @@ export function typeOf(v: unknown): PropType {
   return "text"
 }
 
-/** The vault's Markdown files that are notes (no hidden folders: settings, the trash). */
 const isNote = (rel: string) => rel[0] !== "." && !rel.includes("/.")
 const files = (vault: Vault) => [...vault.entries].filter(([rel]) => isNote(rel))
 
 type Summary = { key: string; count: number; type: PropType; types: Partial<Record<PropType, number>> }
 let cached: { vault: Vault; version: number; list: Summary[] } | null = null
-// Each file's keys and their types, once per read of it (an Entry is new each time its file is read).
 const typed = new WeakMap<Entry, [string, PropType][]>()
 
-// The counts so far and the files they're of: a change counts again only the files read since.
 let tally: { vault: Vault; of: Map<string, Entry>; counts: Map<string, Map<PropType, number>> } | null = null
 const keysOf = (e: Entry) => {
   let keys = typed.get(e)
@@ -39,7 +33,6 @@ const keysOf = (e: Entry) => {
   return keys
 }
 
-/** Every key, most used first (kept until the vault's files change). */
 export function summary(vault: Vault): Summary[] {
   if (cached && cached.vault === vault && cached.version === vault.version) return cached.list
   if (tally?.vault !== vault) tally = { vault, of: new Map(), counts: new Map() }
@@ -63,7 +56,6 @@ export function summary(vault: Vault): Summary[] {
     count(e, 1)
     of.set(rel, e)
   }
-  // (more counted than there are now: some are gone)
   if (seen !== of.size) for (const [rel, e] of of) if (!vault.entries.has(rel)) { count(e, -1); of.delete(rel) }
   const byKey = new Map<string, Summary>()
   for (const [key, c] of counts) {
@@ -76,8 +68,6 @@ export function summary(vault: Vault): Summary[] {
   return list
 }
 
-/** The properties pinned to files' headers as chips (its settings' `chips`: [{key, values, types, status_bar,
- *  show_unset}], in order), the ones with no key left out; the app reads the rest leniently. */
 export const chips = () => {
   const list = plugin.settings().chips
   return Array.isArray(list) ? list.filter((c) => c && typeof c === "object" && typeof c.key === "string" && c.key.trim()) : []
@@ -85,8 +75,6 @@ export const chips = () => {
 
 plugin.state(() => ({ properties: summary(plugin.vault), propertyChips: chips() }))
 
-/** The keys that make good chips: words for values, from a short list each file picks from (status, priority): 2 to
- *  12 values, some shared. Not `type` (a file's kind) nor `origin` (Provenance's chip). Kept until the files change. */
 let chippable: { vault: Vault; version: number; list: { key: string; count: number; values: number }[] } | null = null
 plugin.route("GET", "properties/chippable", () => {
   const vault = plugin.vault
@@ -111,8 +99,6 @@ plugin.route("GET", "properties", (req) => {
   return sortBy(files(plugin.vault).filter(([, e]) => e.fm && key in e.fm).map(([path, e]) => ({ path, value: e.fm[key] })), (r) => r.path.toLowerCase())
 })
 
-/** Change every file that has `key` with `edit` (its text -> the new text, a reason it's skipped, or null: nothing to
- *  do), each read from disk as it is now and written whole only when it changed. */
 async function each(key: string, edit: (text: string, path: string, value: unknown, fm: Record<string, unknown>) => string | { skip: string } | null) {
   const changed: string[] = [], skipped: { path: string; reason: string }[] = []
   for (const [path, e] of files(plugin.vault)) {
@@ -145,7 +131,6 @@ plugin.route("POST", "properties/rename", async (req) => {
   })
 })
 
-/** `v` as `type`, or undefined when it doesn't convert without losing something. */
 export function convert(v: unknown, type: (typeof TYPES)[number]): unknown {
   const t = typeOf(v)
   if (t === "empty") return undefined
@@ -155,7 +140,6 @@ export function convert(v: unknown, type: (typeof TYPES)[number]): unknown {
       return t === "object" ? undefined : String(v)
     case "number": {
       if (t === "number") return v
-      // ("007" or "1.50" would lose what's written)
       const n = typeof v === "string" && v.trim() !== "" ? Number(v) : NaN
       return Number.isFinite(n) && String(n) === (v as string).trim() ? n : undefined
     }
@@ -200,8 +184,6 @@ plugin.route("POST", "properties/restore", async (req) => {
   }
   return { changed }
 })
-
-// ---------- operations (core/ops.ts): `vau properties`, `vau properties rename`, `vau properties retype`
 
 type Skipped = { path: string; reason: string }
 const nFiles = (n: number) => `${n} file${n === 1 ? "" : "s"}`

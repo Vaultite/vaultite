@@ -1,5 +1,3 @@
-// The versions iCloud Drive kept of a file when two devices changed it at once and it showed one (NSFileVersion's
-// unresolved conflicts): found, read, and marked resolved once the user chose. Never removed.
 //   versions scan <file or folder>...   one JSON line per file that has some: {"path", "versions": [{id, at, from}]}
 //   versions read <file>                {"versions": [{id, at, from, text}]} (text null when it isn't UTF-8 or is over 5 MB)
 //   versions resolve <file> <id>...     {"resolved": n}
@@ -20,7 +18,6 @@ func say(_ o: Any) {
   FileHandle.standardOutput.write("\n".data(using: .utf8)!)
 }
 
-/// A version's id: a hash of its persistent identifier, the same each time it's asked.
 func idOf(_ v: NSFileVersion) -> String {
   guard let d = try? NSKeyedArchiver.archivedData(withRootObject: v.persistentIdentifier, requiringSecureCoding: false) else { return "" }
   return SHA256.hash(data: d).prefix(8).map { String(format: "%02x", $0) }.joined()
@@ -77,7 +74,7 @@ case "resolve":
   let u = URL(fileURLWithPath: p)
   var n = 0
   var err: NSError?
-  // (coordinated, as Apple asks of a change to a file's versions)
+  // Apple asks that a change to a file's versions be coordinated.
   NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: u, options: [], error: &err) { at in
     for v in conflicts(at) where ids.contains(idOf(v)) {
       v.isResolved = true
@@ -85,7 +82,7 @@ case "resolve":
     }
   }
   if let e = err { fail(e.localizedDescription) }
-  // (iCloud takes a moment to stop listing them: answered once it has, so a scan right after agrees)
+  // iCloud lists a resolved version for a moment after.
   for _ in 0..<50 where conflicts(u).contains(where: { ids.contains(idOf($0)) }) { Thread.sleep(forTimeInterval: 0.1) }
   say(["resolved": n])
 default:

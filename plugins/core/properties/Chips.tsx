@@ -1,5 +1,3 @@
-// Properties pinned to files' headers: a key whose values are a short list, drawn as a chip (like Provenance's) for the
-// kinds of file asked, set up in its settings sheet.
 import { useState } from "react"
 import { Plus } from "lucide-react"
 import {
@@ -8,10 +6,8 @@ import {
 } from "@vaultite"
 import type { PropChip, PropSummary } from "./types"
 
-/** A pinned property as the app uses it. */
 export type Chip = { key: string; values: ChipValue[]; types: string[]; statusBar: boolean; showUnset: boolean }
 
-/** Its settings' chips, read leniently. */
 export function chipsOf(store: Store | null): Chip[] {
   return (store?.propertyChips ?? []).map((c) => ({
     key: c.key.trim(),
@@ -22,19 +18,15 @@ export function chipsOf(store: Store | null): Chip[] {
   }))
 }
 
-/** As its settings keep it: only what isn't the default. */
 const saved = (c: Chip): PropChip => ({
   key: c.key, values: c.values,
   ...(c.types.length ? { types: c.types } : {}), ...(c.statusBar ? { status_bar: true } : {}), ...(c.showUnset ? {} : { show_unset: false }),
 })
-/** Shown at once (the store), then saved; a failure brings the saved ones back and says so. */
 const save = (list: Chip[]) => optimistic((s) => ({ ...s, propertyChips: list.map(saved) }),
   () => patch("config/plugin/properties", { chips: list.length ? list.map(saved) : null }), "Couldn't save it").then(() => {}, () => {})
 
-/** Asked of this file: a Markdown file in the vault, of one of its kinds (a plain note is `note`) when it has some. */
 const asks = (c: Chip, f: FileHead) => /\.md$/i.test(f.path) && !isHidden(f.path) && (!c.types.length || c.types.includes(f.type ?? "note"))
 
-/** The pinned properties for this file, in order. */
 export function Chips({ file, place }: { file: FileHead; place: "bar" | "line" | "status" }) {
   const { store } = useStore()
   const list = chipsOf(store).filter((c) => asks(c, file) && (place !== "status" || c.statusBar))
@@ -42,16 +34,14 @@ export function Chips({ file, place }: { file: FileHead; place: "bar" | "line" |
   return <>{list.map((c) => <PropertyChip key={c.key} file={file} prop={c.key} values={c.values} place={place} showUnset={c.showUnset} unset="None" />)}</>
 }
 
-/** Whether a property can be pinned: one whose values are words (a checkbox, a number or a list would become text). */
 export const pinnable = (p: PropSummary) => p.key !== "origin" && (p.type === "text" || p.type === "empty")
 export const isPinned = (key: string) => chipsOf(getStore()).some((c) => c.key === key)
 
-/** Pin a property: its values are the vault's (the 12 most used), each with a colour of its own. */
 export async function pin(p: PropSummary) {
   const list = chipsOf(getStore())
   if (list.some((c) => c.key === p.key)) return
   let rows: { value: unknown }[] = []
-  try { rows = await get<{ path: string; value: unknown }[]>(`properties?key=${encodeURIComponent(p.key)}`) } catch { /* none then */ }
+  try { rows = await get<{ path: string; value: unknown }[]>(`properties?key=${encodeURIComponent(p.key)}`) } catch {}
   const counts = new Map<string, number>()
   for (const r of rows) {
     const v = typeof r.value === "string" ? r.value.trim() : ""
@@ -65,11 +55,8 @@ export async function pin(p: PropSummary) {
 
 export const unpin = (key: string) => save(chipsOf(getStore()).filter((c) => c.key !== key))
 
-// ---------- its settings sheet
-
 const field = "h-8 min-w-0 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[16px] outline-none focus:border-primary md:h-7 md:text-[14px]"
 
-/** The kinds a chip is asked of, as words ("note, project"); empty: every file. */
 function Kinds({ c, set }: { c: Chip; set: (types: string[]) => void }) {
   const [typed, setTyped] = useState<string | null>(null)
   const text = c.types.join(", ")
@@ -120,8 +107,6 @@ export function ChipsSettings({ store }: { store: Store }) {
   )
 }
 
-/** The vault's properties that make good chips (properties/chippable: a short list of words each), most used first:
- *  one tap shows it in files' headers. */
 function AddChip({ pinned }: { pinned: string[] }) {
   const [more, setMore] = useState(false)
   const { data } = useLive<{ key: string; count: number; values: number }[]>("properties/chippable")

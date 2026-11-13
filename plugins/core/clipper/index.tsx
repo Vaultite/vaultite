@@ -1,5 +1,3 @@
-// Web clipper's frontend: what the Plugins page says about it. The clipping is the server's (plugin.ts, POST
-// /api/clip); vau clip, MCP's clip tool and, later, the desktop viewer's "Save to vault" call it.
 import { Scissors } from "lucide-react"
 import { definePlugin, Panel } from "@vaultite"
 

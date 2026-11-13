@@ -1,15 +1,12 @@
-// Watches: a follow kept as a file (type: watch), checked by the server live or every few minutes, until something
-// happens. Only a changed text (its hash) reaches anyone: the companion (`companion:watch`), else the inbox.
 import { OpError, Plugin } from "../../../core/plugins.ts"
 import { type Item, joinPath, Kind, nowStamp, safeName, stemOf, str, truthy } from "../../../core/vault.ts"
 import { changes, type Context, happened, hash, type Pane, parseSource, read, type Read, type Source, sourceText } from "./sources.ts"
 
 export const plugin = new Plugin(import.meta.url)
-export { changes, happened, parseSource } // (its tests reach them through the plugin)
+export { changes, happened, parseSource }
 
 const STATUSES = ["active", "paused"]
 const UNIT: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 7 * 86_400_000 }
-/** A cadence in ms: live (0), else a number and a unit (5m, 2h, 1d); null when it's neither. */
 export function periodOf(every: unknown): number | null {
   const s = str(every).trim().toLowerCase()
   if (!s || s === "live") return 0
@@ -28,18 +25,13 @@ plugin.kind(new Kind({
   },
   render: (w) => [{ source: w.source || null, every: w.every || "live", until: w.until || null, status: w.status || "active", by: w.by || null, created: w.created || null }, w.body || ""],
   prepare(w) { w.created = w.created || nowStamp(); w.status = w.status || "active"; return w },
-  // (a new one where the kind's folder is: folders.json's watches, else where they are)
   filename: (w, at) => joinPath(at.folder, at.old ? stemOf(at.old.id) : safeName(w.title || "Watch")),
   stamps: ["created"],
 }))
 
-// ---------- checking
-
-/** Each watch's last check, kept on this machine: its text's hash, when, and when it ended (its until happened). */
 type Last = { hash: string; at: number; done?: number; hit?: number; error?: string }
 const lasts = () => plugin.kept<Record<string, Last>>("lasts", {})
 const keepLast = (id: string, l: Last | null) => { const all = { ...lasts() }; if (l) all[id] = l; else delete all[id]; plugin.keep("lasts", all) }
-/** What each was last read as (in memory: the diff is against it; after a restart the first change has no lines). */
 const seen = new Map<string, Read>()
 
 const context = (): Context => ({
@@ -48,10 +40,8 @@ const context = (): Context => ({
 })
 export const watches = () => plugin.vault.shared("watches") as readonly Item[]
 
-/** What a hit tells: the watch, what changed, and what it shows now. */
 export type Hit = { id: string; title: string; source: string; why: string; until: string; done: boolean; changes: string[]; url?: string; title_now: string }
 
-/** Check watch `w` now: its source read, and a hit told when it changed (and has what it waits for). The hit, or null. */
 export async function check(w: Item, now = Date.now()): Promise<Hit | null> {
   const id = str(w.id), src = parseSource(str(w.source))
   if (!src) return null
@@ -61,7 +51,6 @@ export async function check(w: Item, now = Date.now()): Promise<Hit | null> {
   const h = hash(r), was = lasts()[id], before = seen.get(id) ?? null
   seen.set(id, r)
   const until = str(w.until)
-  // (the first look is where it starts from, unless what it waits for is there already)
   const first = !was?.hash
   if (!first && was.hash === h) { keepLast(id, { ...was, at: now, error: undefined }); return null }
   const lines = first ? [] : changes(before, r)
@@ -74,7 +63,6 @@ export async function check(w: Item, now = Date.now()): Promise<Hit | null> {
   return hit
 }
 
-/** A hit to the companion while it runs, else to the inbox. */
 async function tell(h: Hit) {
   if (await plugin.ask<boolean>("companion:watch", false, h)) return
   await plugin.ask("inbox:event", null, { source: "watches", kind: "watch", key: h.id, title: `${h.title}: ${h.done ? "it happened" : "it changed"}`,
@@ -87,15 +75,12 @@ const due = (w: Item, now: number) => {
   return every !== null && !l?.done && (!l || now - l.at >= every)
 }
 let ticking = false
-/** Every watch that's due, checked one at a time (a round never overlaps the last). */
 export async function tick(now = Date.now()) {
   if (ticking) return
   ticking = true
   try { for (const w of watches().filter((x) => due(x, now))) await check(w, now).catch(() => null) } finally { ticking = false }
 }
-// (one machine runs them, as every job: a vault served from two never tells a change twice)
 plugin.every("check", { every: "1m" }, () => tick())
-// (live ones on a note's change, as it's written)
 plugin.onChange((paths) => {
   if (!paths) return
   const noteOf = (w: Item) => { const s = parseSource(str(w.source)); return s?.kind === "note" ? s.ref : "" }
@@ -107,9 +92,6 @@ plugin.onEvent({ types: ["terminal.state"] }, (ev) => {
   for (const w of watches()) if (str(w.status) !== "paused" && periodOf(w.every) === 0 && str(w.source) === `terminal:${id}`) void check(w).catch(() => null)
 })
 
-// ---------- ops
-
-/** A watch by its id (its path without .md), its path, or its title. */
 function find(ref: string) {
   const r = ref.trim().replace(/\.md$/i, ""), all = watches()
   const w = all.find((x) => x.id === r) ?? all.find((x) => str(x.title).toLowerCase() === r.toLowerCase()) ?? all.find((x) => stemOf(str(x.id)).toLowerCase() === r.toLowerCase())
@@ -199,7 +181,7 @@ plugin.op({
   text: (r) => `Removed ${r.id}.md.`,
 })
 
-/** A source read now (note:, terminal:, site: in the user's tab), as the companion's follows read panes; null: none such. */
+/** A source read now (note:, terminal:, site:); null: none such. */
 plugin.provide("watches:read", async (source: string, pane?: string) => { const s = parseSource(source); return s ? await read(plugin, s, context(), { pane, open: false }) : null })
-/** What changed between two reads, in a few lines (a terminal's new output, a page's lines gone and new). */
+/** What changed between two reads, in a few lines. */
 plugin.provide("watches:changes", (a: Read | null, b: Read, most?: number) => changes(a, b, most))

@@ -1,20 +1,13 @@
-// What a watch (or the companion's follow) looks at, read as text: a note, a terminal's screen, a web page, a pane of the
-// window (today's tab), or a tab group's panes. Read through services and the desktop's browser, never by the model.
 import crypto from "node:crypto"
 import type { Plugin } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 
 export type Kind = "note" | "terminal" | "site" | "pane" | "group"
-/** note:<path>, terminal:<id>, site:<url>, pane:<id>, group:<id>. */
 export type Source = { kind: Kind; ref: string }
-/** A source read: its text, title and (a terminal's agent) state; a page's address; what was read, one per pane of a
- *  group. `missing`: it isn't there now (no window has the pane, the terminal ended). */
 export type Read = { text: string; title: string; state?: string; url?: string; selection?: string; kind: Exclude<Kind, "pane" | "group">; missing?: boolean; parts?: Read[] }
-/** A browser tab as the desktop's engine lists it (`pane`: the window's tab showing it). */
 type BrowserTab = { tab: number; url: string; title: string; container: string | null; access: string; pane?: string }
 
 const KINDS = new Set<Kind>(["note", "terminal", "site", "pane", "group"])
-/** A source from its text: "terminal:claude-k3j2", "site:https://example.com", a bare address or path as a site or a note. */
 export function parseSource(s: string): Source | null {
   const t = s.trim(), m = /^([a-z]+):(.+)$/.exec(t)
   if (m && KINDS.has(m[1] as Kind)) return { kind: m[1] as Kind, ref: m[2].trim() }
@@ -23,17 +16,13 @@ export function parseSource(s: string): Source | null {
   return null
 }
 export const sourceText = (s: Source) => `${s.kind}:${s.ref}`
-/** A pane of the app's windows (the companion says, `companion:panes`): its id, title, tab group and what it shows
- *  (note:, terminal:, site:; null: a view with nothing to read). */
 export type Pane = { id: string; title: string; group?: string; source: string | null }
 
 export const hash = (r: Read) => crypto.createHash("sha1").update(`${r.state ?? ""}\n${r.url ?? ""}\n${r.text}`).digest("hex").slice(0, 16)
 
 const BY = { name: "Watches", session: "", task: "watch", summary: "", remote: false }
-/** What reads need from the companion: the window's panes, and whether a page is private. */
 export type Context = { panes: () => Pane[]; private: (url: string, container: string | null) => boolean }
 
-/** Read a source now. Throws (a plain reason) when it can't be read: private, not allowed, no browser. */
 export async function read(plugin: Plugin, s: Source, c: Context, o: { pane?: string; open?: boolean } = {}): Promise<Read> {
   if (s.kind === "pane" || s.kind === "group") {
     const panes = c.panes().filter((p) => (s.kind === "pane" ? p.id === s.ref : p.group === s.ref))
@@ -58,7 +47,6 @@ export async function read(plugin: Plugin, s: Source, c: Context, o: { pane?: st
     const st = await plugin.ask<{ state?: string; msg?: string } | null>("terminal:state", null, s.ref)
     return { kind: "terminal", title: s.ref, text, ...(st?.state ? { state: `${st.state}${st.msg ? `: ${st.msg}` : ""}` } : {}) }
   }
-  // (a site: the user's tab showing it, else a page opened in the background for the read, then closed)
   const tabs = await plugin.desktop("agent:tabs", BY) as BrowserTab[]
   let t = tabs.find((x) => o.pane && x.pane === o.pane) ?? tabs.find((x) => x.url === s.ref) ?? null
   if (t && c.private(t.url, t.container)) throw new Error(`${hostLabel(t.url)} is private`)
@@ -78,7 +66,6 @@ export async function read(plugin: Plugin, s: Source, c: Context, o: { pane?: st
 }
 const hostLabel = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, "") } catch { return url } }
 
-/** What changed from `a` to `b`, in a few lines: a terminal's new output (its last lines), else the lines gone and new. */
 export function changes(a: Read | null, b: Read, most = 24): string[] {
   const out: string[] = []
   if (a?.url !== undefined && b.url !== undefined && a.url !== b.url) out.push(`went to ${b.url} (${b.title})`)
@@ -99,8 +86,6 @@ export function changes(a: Read | null, b: Read, most = 24): string[] {
   if (more > 0) out.push(`… ${more} more lines changed`)
   return out
 }
-/** A screen's lines after what it showed before: past the longest run of its old last lines found in the new text, but
- *  its very last (the prompt, which a command is then typed into). */
 function newOutput(before: string[], after: string[]) {
   const tail = before.map((l) => l.trimEnd())
   while (tail.length && !tail.at(-1)) tail.pop()
@@ -114,7 +99,6 @@ function newOutput(before: string[], after: string[]) {
 }
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-/** Whether `text` has what a watch waits for: words (any case), or a /regular expression/. */
 export function happened(until: string, text: string) {
   const u = until.trim()
   if (!u) return true

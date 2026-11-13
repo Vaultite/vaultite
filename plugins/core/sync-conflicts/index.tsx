@@ -1,5 +1,3 @@
-// A note iCloud kept another version of: a banner over its text to merge that version in (in place, to settle where
-// they clash) or keep the note as it is. The version is resolved only once the user chose and it's saved.
 import { useEffect, useState } from "react"
 import { GitCompareArrows } from "lucide-react"
 import { Banner, definePlugin, fmtStamp, get, mergeIntoFile, notify, notifyError, Panel, post, useStoreWith } from "@vaultite"
@@ -7,12 +5,10 @@ import { Banner, definePlugin, fmtStamp, get, mergeIntoFile, notify, notifyError
 type Listed = { id: string; at: number; from: string }
 declare module "@vaultite" {
   interface PluginState {
-    /** The files iCloud kept other versions of, on this machine (plugin.ts). */
     syncConflicts?: Record<string, Listed[]>
   }
 }
 
-/** A version as GET sync-conflicts/versions has it. */
 type Version = Listed & { label: string; text: string | null; base: string | null; merge: "same" | "clean" | "clashes" | "none" }
 
 const enc = encodeURIComponent
@@ -22,7 +18,6 @@ function OtherVersion({ path }: { path: string }) {
   const listed = useStoreWith((s) => s?.syncConflicts?.[path])
   const key = listed?.map((v) => v.id).join(",") ?? ""
   const [got, setGot] = useState<{ key: string; versions: Version[] } | null>(null)
-  /** The version being merged in: its banner gives way to the editor's (its clashes, settled in place). */
   const [working, setWorking] = useState<string | null>(null)
   useEffect(() => {
     if (!key) return
@@ -35,7 +30,6 @@ function OtherVersion({ path }: { path: string }) {
   if (!key || !v || working === v.id) return null
 
   const from = `${v.label}, ${fmtStamp(v.at)}`
-  /** Let it go, the note kept as it is: its text in File history first. */
   const keepThis = async () => {
     try {
       if (v.text !== null) await post("history/keep", { path, text: v.text })
@@ -57,7 +51,6 @@ function OtherVersion({ path }: { path: string }) {
   }
   const many = versions.length > 1
   if (v.id.startsWith("sync:")) {
-    // (device sync's clash: two devices changed the same lines; the later stayed, this is the other side)
     const text = v.merge === "same" ? `Sync kept ${v.label}'s side of a clash (${fmtStamp(v.at)}): everything in it is here.`
       : `${v.label} changed the same lines (${fmtStamp(v.at)}): this note kept the later change.`
     const actions = v.merge === "same" ? [["Dismiss", keepThis] as const] : [["Compare", mergeIn] as const, ["Keep this one", keepThis] as const]

@@ -1,5 +1,3 @@
-// The editor's side, loaded with the first note: the suggestions, `:fire:` typed whole becoming 🔥, and `:LiName:`
-// drawn as its icon (reading and live preview; source mode keeps the text). The data loads when first needed.
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete"
 import { syntaxTree } from "@codemirror/language"
 import { EditorState, RangeSetBuilder, type Extension } from "@codemirror/state"
@@ -18,7 +16,6 @@ const loadEmoji = () => (loadingEmoji ??= import("gemoji").then((m) => {
 type Icons = Record<string, ComponentType>
 let icons: Icons | null = null, names: string[] | null = null, loadingIcons: Promise<void> | null = null
 const iconsLoaded = new Set<() => void>()
-/** Lucide's icons (the same chunk the app's named icons load). */
 const loadIcons = () => (loadingIcons ??= import("lucide-react/dist/esm/icons/index.mjs").then((m) => {
   icons = m as unknown as Icons
   names = Object.keys(icons).sort()
@@ -26,11 +23,9 @@ const loadIcons = () => (loadingIcons ??= import("lucide-react/dist/esm/icons/in
 }))
 
 type Drawing = { node?: [string, Record<string, string>][]; aliases?: string[] }
-/** A Lucide component's own drawing and old names (what it renders is Lucide's Icon given them). */
 const drawingOf = (pascal: string) => (icons?.[pascal] as unknown as { render?: (p: object, r: null) => { props?: { icon?: Drawing } } } | undefined)?.render?.({}, null)?.props?.icon
 
 let byLower: Map<string, string> | null = null
-/** Lucide's component name for one written in any case, or an old name (`:LiSmile:`, as Iconize may have written it). */
 export function iconName(written: string): string | null {
   if (!icons || !names) return null
   if (icons[written]) return written
@@ -46,7 +41,6 @@ export function iconName(written: string): string | null {
 
 const NS = "http://www.w3.org/2000/svg"
 const svgs = new Map<string, SVGSVGElement | null>()
-/** An icon as SVG (null for an unknown one, or before Lucide's chunk is in). */
 export function iconSvg(written: string): Node | null {
   const pascal = iconName(written)
   if (!pascal) return null
@@ -77,18 +71,15 @@ function iconEl(pascal: string) {
   return span
 }
 
-// ---------- suggestions ----------
-
 const RECENT = "vau:shortcodes:recent"
 const recent = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENT) ?? "[]"); return Array.isArray(v) ? v : [] } catch { return [] } }
-const used = (f: Found) => { try { localStorage.setItem(RECENT, JSON.stringify(remember(recent(), recentKey(f)))) } catch { /* private mode */ } }
+const used = (f: Found) => { try { localStorage.setItem(RECENT, JSON.stringify(remember(recent(), recentKey(f)))) } catch { /* localStorage throws in private mode */ } }
 
 const CODE = /^(FencedCode|CodeBlock|CodeText|InlineCode|CodeInfo|CodeMark|URL|Autolink|HTMLTag|Comment)/
 const inCode = (state: EditorState, at: number) => {
   for (let n: ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]> | null = syntaxTree(state).resolveInner(at, 1); n; n = n.parent) if (CODE.test(n.name)) return true
   return false
 }
-/** Whether `at` is in the frontmatter (its YAML, hidden or in source mode). */
 const inFrontmatter = (state: EditorState, at: number) => {
   const doc = state.doc
   if (doc.line(1).text !== "---") return false
@@ -104,8 +95,6 @@ const glyphOf = (f: Found) => () => {
   return span
 }
 
-/** `:fi` typed: emoji and icons whose names match, recently used first. Enter, Tab or a click puts it in. At once
- *  once the data is in (a list that waits lets Enter through as a new line). */
 export function suggest(ctx: CompletionContext, on: Settings): CompletionResult | null | Promise<CompletionResult | null> {
   if (on.emoji === false && on.icons === false) return null
   const m = ctx.matchBefore(TYPING)
@@ -132,8 +121,6 @@ function listFor(m: { from: number; text: string }, wantEmoji: boolean, wantIcon
   return { from: m.from, options, filter: false }
 }
 
-// ---------- in the editor ----------
-
 class IconWidget extends WidgetType {
   pascal: string
   constructor(pascal: string) { super(); this.pascal = pascal }
@@ -141,7 +128,6 @@ class IconWidget extends WidgetType {
   toDOM() { return iconEl(this.pascal) }
 }
 
-/** `:LiName:` drawn as its icon, unless the cursor is at it while editing (its text shows, as Markdown's marks do). */
 function iconDecos(view: EditorView, on: () => Settings): DecorationSet {
   const b = new RangeSetBuilder<Decoration>()
   if (on().icons === false) return b.finish()
@@ -175,7 +161,6 @@ const iconPlugin = (on: () => Settings) => ViewPlugin.fromClass(class {
   destroy() { iconsLoaded.delete(this.done) }
 }, { decorations: (p) => p.decorations })
 
-/** `:fire:` typed whole (its closing ":" typed): the emoji in its place. */
 const closeEmoji = (on: () => Settings) => EditorView.inputHandler.of((view, from, to, text) => {
   if (text !== ":" || from !== to || on().emoji === false) return false
   void loadEmoji()
@@ -190,19 +175,14 @@ const closeEmoji = (on: () => Settings) => EditorView.inputHandler.of((view, fro
   return true
 })
 
-/** `on`: the settings as they are now (switching one needs no new editor). Source mode shows icons as their text. */
 export function shortcodesExtension(on: () => Settings, source: boolean): Extension {
   return [EditorState.languageData.of(() => [{ suggest: (ctx: CompletionContext) => suggest(ctx, on()) }]), closeEmoji(on), source ? [] : iconPlugin(on)]
 }
 
-// ---------- Markdown drawn outside the editor (embeds, previews, export) ----------
-
 const HAS_ICON = new RegExp(ICON_CODE.source)
-/** `:LiName:` in text drawn from Markdown (not in code) as its icon. */
 export function drawIcons(root: HTMLElement) {
   if (!HAS_ICON.test(root.textContent ?? "")) return
   if (!icons) { void loadIcons().then(() => { if (root.isConnected) drawIcons(root) }); return }
-  // (not in code, nor an editor's own lines: Markdown drawn inside an editor is a widget of its own)
   const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => { const no = n.parentElement?.closest("code, pre, .cm-line"); return no && root.contains(no) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT },
   })

@@ -1,5 +1,3 @@
-// All properties' list: each key with its type's icon and count; click for its files, its menu renames or retypes it
-// everywhere (with Undo) or pins it as a chip.
 import { useMemo, useState, type MouseEvent } from "react"
 import { ArrowDownAZ, ArrowDownWideNarrow, Binary, Braces, Calendar, CalendarClock, CircleDashed, Ellipsis, List, Pin, PinOff, Search, SquareCheck, Text, type LucideIcon } from "lucide-react"
 import { choose, cn, confirmDialog, devicePref, Empty, isViewOpen, notify, notifyError, numberText, openMenu, openView, post, SidebarHeading, type MenuItem, type SidebarCtx, type Store } from "@vaultite"
@@ -12,13 +10,11 @@ export const ICONS: Record<PropType, LucideIcon> = {
 const NAMES: Record<PropType, string> = {
   text: "Text", number: "Number", checkbox: "Checkbox", date: "Date", datetime: "Date & time", list: "List", object: "Object", empty: "Empty",
 }
-/** What a property can be changed to. */
 const RETYPES: PropType[] = ["text", "number", "checkbox", "date", "list"]
 
 const plural = (n: number, one: string) => `${numberText(n)} ${one}${n === 1 ? "" : "s"}`
 const sortPref = devicePref<"count" | "name">("properties.sort", "count")
 
-/** A search for the files that have the key (core search syntax: `[key]`). */
 export function showFiles(key: string) {
   const q = /^[\w-]+$/.test(key) ? `[${key}]` : `["${key.replace(/"/g, '\\"')}"]`
   openView(`search/${q}`, { newTab: !isViewOpen("search") })
@@ -124,7 +120,6 @@ function SortButton({ by, setBy }: { by: "count" | "name"; setBy: (b: "count" | 
   )
 }
 
-/** The sidebar's panel (desktop). Nothing in the icon rail. */
 export function PropertiesPanel({ store, open }: SidebarCtx) {
   const { sorted, by, setBy } = useSorted(store)
   if (!open) return null
@@ -137,7 +132,6 @@ export function PropertiesPanel({ store, open }: SidebarCtx) {
   )
 }
 
-/** The tab (view:properties): the same list, page-sized. */
 export function PropertiesView({ store }: { store: Store }) {
   const { sorted, by, setBy } = useSorted(store)
   return (
