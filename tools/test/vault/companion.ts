@@ -1191,6 +1191,22 @@ export default async ($: VaultTest) => {
       quietAway: "away",
     }
     check("companion: its cursor's state, as each thing that moves it leaves it", JSON.stringify(got) === JSON.stringify(want), Object.fromEntries(Object.entries(want).flatMap(([k, v]) => (got[k] === v ? [] : [[k, got[k]]]))))
+    {
+      const w = await import("../../../plugins/core/companion/livewire.ts")
+      const SERVER_ONLY = new Set(["anchor", "writer", "share", "answers"])
+      const lost: Any[] = [], seen = { agents: 0, notes: 0, edits: 0 }
+      const same = (kind: string, sent: Any, read: Any) => {
+        const keys = Object.keys(sent).filter((k) => !SERVER_ONLY.has(k) && !(kind === "edit" && k === "t"))
+        if (!read || keys.some((k) => JSON.stringify(read[k]) !== JSON.stringify(sent[k]))) lost.push({ kind, sent, read })
+      }
+      for (const m of win.got) {
+        const agents = m.t === "state" ? m.agents : m.t === "agent" ? [m.agent] : [], notes = m.t === "state" ? [...m.notes, ...m.said] : m.t === "note" ? [m.note] : m.t === "said" ? m.said : []
+        for (const a of agents) { seen.agents++; same("agent", a, w.agentOf(a)) }
+        for (const n of notes) { seen.notes++; same("note", n, w.noteOf(n)) }
+        if (m.t === "edit" || m.t === "stream") { seen.edits++; same("edit", m, w.editAskOf(m)) }
+      }
+      check("companion: the window reads whole each agent, note and edit the server sends it", !lost.length && seen.agents > 0 && seen.edits > 0, { seen, lost: lost.slice(0, 3) })
+    }
     helper.emit("close"); win.emit("close")
   }
   {

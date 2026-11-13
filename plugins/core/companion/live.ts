@@ -7,6 +7,7 @@ export type Mode = "off" | "quiet" | "pair"
 import type { Target } from "../../../core/desktop/places.ts"
 import { locate } from "./locate.ts"
 import { listenInputs } from "./inputs.ts"
+import { agentOf, agentsOf, conditionOf, editAskOf, followsOf, harnessesOf, howFrom, isRec, modeOf, noteOf, notesOf, profilesOf, type Rec } from "./livewire.ts"
 import { windowCheck, windowSnapshot, windowThings } from "./tourwindow.ts"
 export type { Target } from "../../../core/desktop/places.ts"
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
@@ -174,38 +175,43 @@ function open() {
     if (users > 0) retry = setTimeout(open, Math.min(30_000, 1000 * 2 ** tries++))
   }
   s.onmessage = (ev) => {
-    let m: Record<string, unknown>
-    try { m = JSON.parse(String(ev.data)) } catch { return }
-    if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [],
-      fresh: (m.fresh as How | undefined) ?? { agent: "", model: "", effort: "" }, profiles: (m.profiles as State["profiles"] | undefined) ?? {},
-      harnesses: (m.harnesses as Harness[] | undefined) ?? [], follows: (m.follows as Follow[] | undefined) ?? [], riding: typeof m.riding === "string" ? m.riding : "" }); heard(m.agents as Agent[]) }
-    else if (m.t === "riding") set({ riding: typeof m.agent === "string" ? m.agent : "" })
-    else if (m.t === "follows") set({ follows: (m.follows as Follow[] | undefined) ?? [] })
-    else if (m.t === "said") set({ said: m.said as Note[] })
-    else if (m.t === "agent") {
-      const a = m.agent as Agent
-      heard([...told.filter((x) => x.name !== a.name), a], a.name)
-    } else if (m.t === "note") {
-      const n = m.note as Note
-      const has = state.notes.some((x) => x.id === n.id)
-      if (!has && n.kind === "say") arrived.set(n.id, Date.now())
-      set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
-    } else if (m.t === "drop") { arrived.delete(String(m.id)); drawnAt.delete(String(m.id)); set({ notes: state.notes.filter((x) => x.id !== m.id) }) }
-    else if (m.t === "edit") void edit(m as unknown as EditAsk)
-    else if (m.t === "stream") {
-      const e = m as unknown as EditAsk, v = e.path ? viewOf(e.path) : null
-      if (!v || !streamer) say({ t: "done", rid: e.rid, ok: false })
-      else streamer(v, { t: "stream", m: e })
-    } else if (m.t === "stream-more") streamer?.(null, { t: "more", rid: String(m.rid), at: Number(m.at), add: String(m.add ?? "") })
-    else if (m.t === "stream-end") streamer?.(null, { t: "end", rid: String(m.rid), text: String(m.text ?? "") })
-    else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash" || m.t === "y-gone") rooms?.heard(m)
-    else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
-    else if (m.t === "locate") say({ t: "done", rid: m.rid, ok: true, rects: locate(m.places, m.near) })
-    else if (m.t === "inputs") listenInputs(m.on === true, say)
-    else if (m.t === "things") say({ t: "done", rid: m.rid, ok: true, ...windowThings() })
-    else if (m.t === "check") say({ t: "done", rid: m.rid, ok: true, verdict: windowCheck(m.condition as Parameters<typeof windowCheck>[0], typeof m.before === "string" ? m.before : undefined) })
-    else if (m.t === "snapshot") say({ t: "done", rid: m.rid, ok: true, snapshot: windowSnapshot() })
+    let raw: unknown
+    try { raw = JSON.parse(String(ev.data)) } catch { return }
+    if (isRec(raw)) heardLive(raw)
   }
+}
+
+function heardLive(m: Rec) {
+  if (m.t === "state") { set({ mode: modeOf(m.mode) ?? state.mode, name: String(m.name), notes: notesOf(m.notes), said: notesOf(m.said),
+    fresh: howFrom(m.fresh) ?? { agent: "", model: "", effort: "" }, profiles: profilesOf(m.profiles),
+    harnesses: harnessesOf(m.harnesses), follows: followsOf(m.follows), riding: typeof m.riding === "string" ? m.riding : "" }); heard(agentsOf(m.agents)) }
+  else if (m.t === "riding") set({ riding: typeof m.agent === "string" ? m.agent : "" })
+  else if (m.t === "follows") set({ follows: followsOf(m.follows) })
+  else if (m.t === "said") set({ said: notesOf(m.said) })
+  else if (m.t === "agent") {
+    const a = isRec(m.agent) ? agentOf(m.agent) : null
+    if (a) heard([...told.filter((x) => x.name !== a.name), a], a.name)
+  } else if (m.t === "note") {
+    const n = isRec(m.note) ? noteOf(m.note) : null
+    if (!n) return
+    const has = state.notes.some((x) => x.id === n.id)
+    if (!has && n.kind === "say") arrived.set(n.id, Date.now())
+    set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
+  } else if (m.t === "drop") { arrived.delete(String(m.id)); drawnAt.delete(String(m.id)); set({ notes: state.notes.filter((x) => x.id !== m.id) }) }
+  else if (m.t === "edit") { const e = editAskOf(m); if (e) void edit(e); else say({ t: "done", rid: m.rid, ok: false }) }
+  else if (m.t === "stream") {
+    const e = editAskOf(m), v = e?.path ? viewOf(e.path) : null
+    if (!e || !v || !streamer) say({ t: "done", rid: m.rid, ok: false })
+    else streamer(v, { t: "stream", m: e })
+  } else if (m.t === "stream-more") streamer?.(null, { t: "more", rid: String(m.rid), at: Number(m.at), add: String(m.add ?? "") })
+  else if (m.t === "stream-end") streamer?.(null, { t: "end", rid: String(m.rid), text: String(m.text ?? "") })
+  else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash" || m.t === "y-gone") rooms?.heard(m)
+  else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
+  else if (m.t === "locate") say({ t: "done", rid: m.rid, ok: true, rects: locate(m.places, m.near) })
+  else if (m.t === "inputs") listenInputs(m.on === true, say)
+  else if (m.t === "things") say({ t: "done", rid: m.rid, ok: true, ...windowThings() })
+  else if (m.t === "check") { const c = conditionOf(m.condition); say(c ? { t: "done", rid: m.rid, ok: true, verdict: windowCheck(c, typeof m.before === "string" ? m.before : undefined) } : { t: "done", rid: m.rid, ok: false }) }
+  else if (m.t === "snapshot") say({ t: "done", rid: m.rid, ok: true, snapshot: windowSnapshot() })
 }
 
 export const say = (m: object) => { if (ws?.readyState !== WebSocket.OPEN) return false; ws.send(JSON.stringify(m)); return true }
