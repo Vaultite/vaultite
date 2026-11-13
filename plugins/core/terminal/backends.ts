@@ -219,6 +219,7 @@ export const oscMark = (id: string) => `${stateFile(id)}.osc`
 export function hooksText(id: string) {
   try { return fs.readFileSync(stateFile(id), "utf8").trim() || null } catch { return null }
 }
+export const hooksFile = (id: string) => ({ at: fs.statSync(stateFile(id), { throwIfNoEntry: false })?.mtimeMs ?? 0, text: hooksText(id) })
 
 plugin.provide("terminal:runs", runsHere)
 

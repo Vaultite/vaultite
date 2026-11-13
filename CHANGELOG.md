@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **An agent done in its terminal stays done**: on a busy machine, its state file read again late made a terminal back at
+  its shell show working again for a few seconds; a read with nothing new written is now ignored.
 - **Terminals and chats open on a busy machine**: the terminal server and the chat keeper are waited for as long as they
   take to start, rather than given up on after a few seconds; one that ends as it starts says so at once.
 - **Edit source and a found line land on their line on a slow machine too**: when the file took more than 4 s to show,

@@ -9,7 +9,7 @@ import type { Kind, Said, SessionState } from "./osc7501.ts"
 import { closes, fresh, label, moved, nowOf, step, type Event, type From as Source, type Now, type Term } from "./state.ts"
 import type { Job } from "./starter.ts"
 import { SPARE, STATES, TERMINAL_ID, TMP, WIN, plugin, shell } from "./shared.ts"
-import { agentContext, agentOf, backendOf, backends, hooksText, oscMark, runsHere, stateFile, tell } from "./backends.ts"
+import { agentContext, agentOf, backendOf, backends, hooksFile, hooksText, oscMark, runsHere, stateFile, tell } from "./backends.ts"
 import { closedEarlier, keepClosed, reopened } from "./start.ts"
 import { byName, inFront, listChanged } from "./list.ts"
 
@@ -217,7 +217,7 @@ try {
   fs.mkdirSync(STATES, { recursive: true })
   hooksWatch = fs.watch(STATES, (_e, name) => {
     const id = String(name ?? "")
-    if (TERMINAL_ID.test(id)) void runsHere(id).then((here) => here && apply(id, { type: "hooks", text: hooksText(id) }))
+    if (TERMINAL_ID.test(id)) void runsHere(id).then((here) => here && apply(id, { type: "hooks", ...hooksFile(id) }))
   })
   hooksWatch.on("error", () => {})
 } catch (e) { log.error("can't watch the agents' state files", e) }

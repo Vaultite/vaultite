@@ -9,7 +9,7 @@ import { kindOf, progName } from "./shells.ts"
 import { byUs, closes, SIGHUP } from "./state.ts"
 import { CLOSE } from "./closes.ts"
 import { BLOCKED, SPARE, type Session, TERMINAL_ID, TMP, WIN, clamp, plugin, sameShell, scrollback, sessions, shell } from "./shared.ts"
-import { type From, type Home, LOCAL, PATH, agentOf, backendForNew, backendOf, context, dropped, fallback, hooksText, keeper, oscMark, ours, ownedBy, stateFile, tell, termEnv, upload } from "./backends.ts"
+import { type From, type Home, LOCAL, PATH, agentOf, backendForNew, backendOf, context, dropped, fallback, hooksFile, keeper, oscMark, ours, ownedBy, stateFile, tell, termEnv, upload } from "./backends.ts"
 import { agentReady, agentRun, apply, held, metas, oldMetaFiles, oscSaid, sighted, terms, told, vaultDir } from "./terms.ts"
 import { listChanged } from "./list.ts"
 import { exitHeard, lastInput, pageInput } from "./routes.ts"
@@ -148,8 +148,8 @@ export async function start(id: string, cols: number, rows: number, from = LOCAL
   })
   sessions.set(id, s)
   reopened(id)
-  const hooks = hooksText(id)
-  if (hooks) apply(id, { type: "hooks", text: hooks })
+  const hooks = hooksFile(id)
+  if (hooks.text) apply(id, { type: "hooks", ...hooks })
   listChanged()
   // An agent whose folder macOS keeps from the keeper stops with its own vague error ("Unexpected"): its tabs say why.
   if (agentCwd && backend === keeper && process.platform === "darwin") {

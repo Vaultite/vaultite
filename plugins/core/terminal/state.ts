@@ -18,6 +18,7 @@ export type Term = {
   agent: string
   osc: Said | null
   hooks: Hooks | null
+  wrote: { text: string | null; at: number } | null
   ask: Ask | null
   waits: Kind | null
   backend: "working" | "idle" | "blocked" | null
@@ -35,7 +36,7 @@ export type Event =
   | { type: "late" }
   | { type: "seen"; osc: Said | null; hooks: string | null }
   | { type: "osc"; said: Said }
-  | { type: "hooks"; text: string | null }
+  | { type: "hooks"; text: string | null; at: number }
   | { type: "ask"; ask: Ask | null }
   | { type: "waits"; kind: Kind | null }
   | { type: "backend"; state: string | undefined }
@@ -47,7 +48,7 @@ export type Now = { agent: string; state: SessionState; kind?: Kind; msg?: strin
 
 const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
 
-export const fresh = (agent: string): Term => ({ agent, osc: null, hooks: null, ask: null, waits: null, backend: null, front: null, starting: false, heard: 0,
+export const fresh = (agent: string): Term => ({ agent, osc: null, hooks: null, wrote: null, ask: null, waits: null, backend: null, front: null, starting: false, heard: 0,
   phase: { state: "quiet" }, ending: null, at: 0, since: 0 })
 
 const isWord = (p: Phase): p is Word => "from" in p
@@ -104,8 +105,11 @@ function left(n: Term, was: Term, now: number): Term {
   return settle(n, was, now, gone)
 }
 
+const readBefore = (t: Term, ev: { text: string | null; at: number }) => !!ev.at && ev.at === t.wrote?.at && ev.text === t.wrote.text
+
 export function step(t: Term, ev: Event, now: number): Term {
   if (t.phase.state === "ended") return t
+  if (ev.type === "hooks" && readBefore(t, ev)) return t
   const n: Term = { ...t }
   if (ev.type === "osc" || (ev.type === "hooks" && hooksOf(ev.text)) || (ev.type === "ask" && ev.ask) || (ev.type === "waits" && ev.kind)) n.starting = false
   switch (ev.type) {
@@ -122,6 +126,7 @@ export function step(t: Term, ev: Event, now: number): Term {
       break
     case "hooks":
       n.hooks = hooksOf(ev.text)
+      n.wrote = { text: ev.text, at: ev.at }
       n.heard = now
       break
     case "ask": n.ask = ev.ask; n.heard = now; break

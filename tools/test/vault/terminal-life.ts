@@ -77,7 +77,7 @@ async function lifeProperties(check: VaultTest["check"]) {
   const said = () => ({ seen: rand(2) === 0, status: pick([null, { state: "working" as const }, { state: "idle" as const }, { state: "blocked" as const }, { state: "blocked" as const, kind: "question" as const }]) })
   const events: (() => Ev)[] = [
     () => ({ type: "start" }), () => ({ type: "late" }), () => ({ type: "osc", said: said() }),
-    () => ({ type: "hooks", text: pick(["working", "idle", "waiting:permission", "missing", null, "junk"]) }),
+    () => ({ type: "hooks", text: pick(["working", "idle", "waiting:permission", "missing", null, "junk"]), at: pick([0, 1, 2]) }),
     () => ({ type: "ask", ask: pick([null, { id: "trust", says: "Trust?" }]) }), () => ({ type: "waits", kind: pick([null, "permission" as const, "question" as const]) }),
     () => ({ type: "backend", state: pick(["working", "idle", "waiting", undefined]) }), () => ({ type: "front", program: rand(2) === 0, seen: rand(40) * 100 }),
     () => ({ type: "seen", osc: rand(2) ? said() : null, hooks: pick([null, "working"]) }),
