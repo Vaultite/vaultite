@@ -1,16 +1,26 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
-import type { IncomingMessage, ServerResponse } from "node:http"
+import type { IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeader, OutgoingHttpHeaders } from "node:http"
 import path from "node:path"
 import { type Duplex, Readable, Writable } from "node:stream"
 import { WebSocket, WebSocketServer } from "ws"
+import { z } from "zod"
 import { contentType, guestRefusal, HTTPError, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, linkTargets } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 
-export type Role = "read" | "comment" | "edit"
-export type Share = { folder: string; guest: string; role: Role; created: string; expires: string; token: string; used?: string
-  via?: string
-  room?: { notes: number; bytes: number } }
+export const ROLES = ["read", "comment", "edit"] as const
+export type Role = typeof ROLES[number]
+export const ShareSchema = z.object({ folder: z.string(), guest: z.string(), role: z.enum(ROLES), created: z.string(), expires: z.string(), token: z.string(),
+  used: z.string().optional(), via: z.string().optional(), room: z.object({ notes: z.number(), bytes: z.number() }).optional() })
+export type Share = z.infer<typeof ShareSchema>
+const passed = z.unknown().optional()
+const GuestWrite = z.object({ path: passed, text: z.string().optional().catch(undefined),
+  edit: z.object({ at: z.number().int().min(0), cut: z.number().int().min(0), add: z.string() }).optional().catch(undefined),
+  base: passed, baseHash: passed, lean: passed, unique: passed })
+const GuestStat = z.object({ paths: z.array(z.unknown()).catch([]) })
+type Res = Writable & { headersSent: boolean; setHeader(k: string, v: OutgoingHttpHeader): void; removeHeader(k: string): void
+  writeHead(status: number, h?: OutgoingHttpHeaders): void }
+type SearchNode = ReturnType<typeof parseSearch>
 type Guest = { id: string; share: Share }
 
 const DIST = path.join(ROOT, "web", "dist")
@@ -103,7 +113,7 @@ export class Gateway {
     return new Folder(this.plugin.vault.path, g.share.folder)
   }
 
-  async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  async handle(req: IncomingMessage, res: Res): Promise<boolean> {
     const url = new URL(req.url ?? "/", "http://x")
     const m = /^\/s\/([^/]+)(\/.*)?$/.exec(url.pathname)
     if (!m || !this.ours(req)) return false
@@ -124,11 +134,10 @@ export class Gateway {
       if (!g) return this.json(res, 401, { error: "this folder isn't shared with you any more" }), true
       await this.api(req, res, g, rest.slice(5), url)
     } catch (e) {
-      const status = e instanceof HTTPError || e instanceof OpError ? (e as { status: number }).status : 500
-      const known = e instanceof HTTPError || e instanceof OpError
+      const known = e instanceof HTTPError || e instanceof OpError ? e : null
       if (!known) console.error("share:", e)
-      const said = known ? String((e as Error).message) : "something went wrong"
-      if (!res.headersSent) this.json(res, status, { error: g ? this.folderOf(g).scrub(said) : said })
+      const said = known ? known.message : "something went wrong"
+      if (!res.headersSent) this.json(res, known?.status ?? 500, { error: g ? this.folderOf(g).scrub(said) : said })
     }
     return true
   }
@@ -180,20 +189,18 @@ export class Gateway {
   }
 
   guestHeaders(req: IncomingMessage): Record<string, string> {
-    const h = req.headers, pick = (k: string) => (typeof h[k] === "string" ? h[k] as string : undefined)
+    const pick = (k: string) => { const v = req.headers[k]; return typeof v === "string" ? v : undefined }
     return Object.fromEntries(Object.entries({ path: req.url, host: pick("host"), cookie: pick("cookie"), origin: pick("origin"), ua: pick("user-agent"),
       "fetch-site": pick("sec-fetch-site"), proto: this.https(req) ? "https" : "http", ip: this.ipOf(req) }).filter(([, v]) => v).map(([k, v]) => [`x-share-${k}`, String(v)]))
   }
 
-  async passOn(req: IncomingMessage, res: ServerResponse, m: Machine) {
+  async passOn(req: IncomingMessage, res: Res, m: Machine) {
     const method = req.method ?? "GET"
     let body: Buffer | undefined
     if (method !== "GET" && method !== "HEAD") {
-      const parts: Buffer[] = []
-      let size = 0
-      for await (const c of req) if ((size += (c as Buffer).length) <= BODY_MAX) parts.push(c as Buffer)
-      if (size > BODY_MAX) return this.json(res, 413, { error: "too big" })
-      body = Buffer.concat(parts)
+      const all = await readAll(req)
+      if (!all) return this.json(res, 413, { error: "too big" })
+      body = all
     }
     const type = req.headers["content-type"]
     const r = await fetch(`${m.url}/api/share/relay`, { method, headers: { ...MACHINE_CLIENT, ...this.guestHeaders(req), ...(typeof type === "string" ? { "content-type": type } : {}) },
@@ -205,19 +212,19 @@ export class Gateway {
     if (cookie.length) head["set-cookie"] = cookie
     res.writeHead(r.status, head)
     if (!r.body || method === "HEAD") return res.end()
-    Readable.fromWeb(r.body as import("node:stream/web").ReadableStream).on("error", () => res.destroy()).pipe(res)
+    Readable.from(r.body, { objectMode: false }).on("error", () => res.destroy()).pipe(res)
   }
 
   unwrap(req: IncomingMessage, copy = false): IncomingMessage | null {
     if (this.passed.has(req)) return req
     const had = this.copies.get(req)
     if (had) return had
-    const h = req.headers, x = (k: string) => (typeof h[`x-share-${k}`] === "string" ? h[`x-share-${k}`] as string : undefined)
+    const h = req.headers, x = (k: string) => { const v = h[`x-share-${k}`]; return typeof v === "string" ? v : undefined }
     const p = x("path") ?? ""
     if (!p.startsWith("/s/")) return null
-    const headers = Object.fromEntries(Object.entries({ host: x("host"), cookie: x("cookie"), origin: x("origin"), "user-agent": x("ua"), "sec-fetch-site": x("fetch-site"),
-      "x-forwarded-proto": x("proto"), "content-type": h["content-type"], "content-length": h["content-length"] }).filter(([, v]) => v !== undefined)) as IncomingMessage["headers"]
-    const out = copy ? Object.create(req, { url: { value: p }, headers: { value: headers } }) as IncomingMessage : Object.assign(req, { url: p, headers })
+    const headers: IncomingHttpHeaders = Object.fromEntries(Object.entries({ host: x("host"), cookie: x("cookie"), origin: x("origin"), "user-agent": x("ua"), "sec-fetch-site": x("fetch-site"),
+      "x-forwarded-proto": x("proto"), "content-type": h["content-type"], "content-length": h["content-length"] }).filter(([, v]) => v !== undefined))
+    const out: IncomingMessage = copy ? Object.create(req, { url: { value: p }, headers: { value: headers } }) : Object.assign(req, { url: p, headers })
     if (copy) this.copies.set(req, out)
     this.passed.set(out, x("ip") ?? "")
     return out
@@ -228,7 +235,7 @@ export class Gateway {
     const req = this.unwrap(http)
     if (!req) throw new HTTPError(400, "not a guest's request")
     const out = new Kept()
-    if (!(await this.handle(req, out as unknown as ServerResponse))) this.json(out as unknown as ServerResponse, 404, { error: "not found" })
+    if (!(await this.handle(req, out))) this.json(out, 404, { error: "not found" })
     await out.done
     const { "content-type": type = "application/octet-stream", ...headers } = out.headers
     return reply(out.status, new Text(Buffer.concat(out.chunks), type, headers))
@@ -250,7 +257,7 @@ export class Gateway {
     return { id, share }
   }
 
-  invite(req: IncomingMessage, res: ServerResponse, token: string) {
+  invite(req: IncomingMessage, res: Res, token: string) {
     if (this.limited(`invite:${this.ipOf(req)}`, 30)) return this.page(res, 429, "Too many tries", "Wait a minute and try again.")
     const h = sha(token)
     const hit = Object.entries(this.shares()).find(([, s]) => same(h, s.token))
@@ -263,7 +270,7 @@ export class Gateway {
     this.redirect(res, `/s/${id}/`)
   }
 
-  file(req: IncomingMessage, res: ServerResponse, id: string, rest: string) {
+  file(req: IncomingMessage, res: Res, id: string, rest: string) {
     if (req.method !== "GET" && req.method !== "HEAD") return this.json(res, 405, { error: "not here" })
     let name: string
     try { name = decodeURIComponent(rest) } catch { return this.json(res, 400, { error: "bad address" }) }
@@ -286,7 +293,7 @@ export class Gateway {
     this.send(res, abs, name.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache")
   }
 
-  artifact(req: IncomingMessage, res: ServerResponse, id: string, rest: string, url: URL) {
+  artifact(req: IncomingMessage, res: Res, id: string, rest: string, url: URL) {
     let shown: string
     try { shown = decodeURIComponent(rest) } catch { return this.json(res, 400, { error: "bad address" }) }
     // a sandboxed frame's request carries no cookie
@@ -312,7 +319,7 @@ export class Gateway {
     return Number.isFinite(until) && until > Date.now() && same(String(k), this.key(id, shown, until))
   }
 
-  send(res: ServerResponse, abs: string, cache: string) {
+  send(res: Res, abs: string, cache: string) {
     let body: Buffer
     try {
       if (!fs.statSync(abs).isFile()) throw new Error("not a file")
@@ -322,7 +329,7 @@ export class Gateway {
     res.end(body)
   }
 
-  async api(req: IncomingMessage, res: ServerResponse, g: Guest, route: string, url: URL) {
+  async api(req: IncomingMessage, res: Res, g: Guest, route: string, url: URL) {
     const method = req.method ?? "GET"
     if (method !== "GET" && !this.sameSite(req)) return this.json(res, 403, { error: "the page asking isn't this folder's" })
     this.used(g.id)
@@ -351,8 +358,8 @@ export class Gateway {
       return this.json(res, 200, q.total === "1" ? { results: page, files: found.files, lines: found.lines } : page)
     }
     if (key === "POST artifact/stat") {
-      const asked = (await this.body(req) as Item).paths, rels = new Map<string, string>()
-      for (const x of Array.isArray(asked) ? asked.slice(0, 200) : []) try { rels.set(f.at(x), String(x)) } catch {}
+      const asked = this.parsed(GuestStat, await this.body(req)).paths, rels = new Map<string, string>()
+      for (const x of asked.slice(0, 200)) try { rels.set(f.at(x), String(x)) } catch {}
       const now = await this.plugin.host.api("POST", "artifact/stat", { paths: [...rels.keys()] }) as Record<string, number | null>
       return this.json(res, 200, Object.fromEntries([...rels].map(([rel, x]) => [x, now[rel] ?? null])))
     }
@@ -378,16 +385,15 @@ export class Gateway {
     }
     if ((key === "PUT file" || key === "POST file") && role === "edit") {
       if (this.limited(`write:${g.id}`, WRITES) || (method === "POST" && this.limited(`new:${g.id}`, NEW_NOTES))) return this.json(res, 429, { error: "too many changes at once: wait a moment" })
-      const body = await this.body(req) as Item
+      const body = this.parsed(GuestWrite, await this.body(req))
       const rel = f.at(body.path)
-      const edit = method === "PUT" && typeof body.text !== "string" ? body.edit as { at?: unknown; cut?: unknown; add?: unknown } | undefined : undefined
-      let text = typeof body.text === "string" ? body.text : null
+      const edit = method === "PUT" && body.text === undefined ? body.edit : undefined
+      let text = body.text ?? null
       if (edit && typeof body.baseHash === "string") {
         let cur = ""
         try { cur = fs.readFileSync(this.plugin.vault.abs(rel), "utf8") } catch {}
         const { at, cut, add } = edit
-        if (Number.isInteger(at) && Number.isInteger(cut) && typeof add === "string" && Number(at) >= 0 && Number(cut) >= 0 && Number(at) + Number(cut) <= cur.length)
-          text = cur.slice(0, Number(at)) + add + cur.slice(Number(at) + Number(cut))
+        if (at + cut <= cur.length) text = cur.slice(0, at) + add + cur.slice(at + cut)
       }
       if (!/\.md$/i.test(rel) || text === null) throw new HTTPError(400, "only notes' text can be written here")
       if (text.length > NOTE_MAX) throw new HTTPError(413, "a note this long can't be written here")
@@ -398,7 +404,7 @@ export class Gateway {
       if ((fresh && has.notes >= room.notes) || (grows > 0 && has.bytes + grows > room.bytes)) throw new HTTPError(507, "this folder is full: ask whoever shared it")
       const sent: Item = { path: rel, ...(edit ? { edit } : { text }), ...pick(body, method === "PUT" ? ["base", "baseHash", "lean"] : ["unique"]) }
       try { return this.json(res, method === "POST" ? 201 : 200, theirs(await api(method, "file", sent) as Item)) } catch (e) {
-        if ((e as { status?: number }).status === 409 && method === "PUT") return this.json(res, 409, { error: "the note changed meanwhile", ...theirs(await api("GET", `file?path=${encodeURIComponent(rel)}`) as Item) })
+        if ((e instanceof OpError || e instanceof HTTPError) && e.status === 409 && method === "PUT") return this.json(res, 409, { error: "the note changed meanwhile", ...theirs(await api("GET", `file?path=${encodeURIComponent(rel)}`) as Item) })
         throw e
       }
     }
@@ -438,7 +444,7 @@ export class Gateway {
     return { guest: g.share.guest, role: g.share.role, folder: g.share.folder.split("/").pop(), expires: g.share.expires, plugins: GUEST_PLUGINS }
   }
 
-  raw(req: IncomingMessage, res: ServerResponse, rel: string, download = false) {
+  raw(req: IncomingMessage, res: Res, rel: string, download = false) {
     const abs = path.join(this.plugin.vault.path, rel)
     let st: fs.Stats
     try { st = fs.statSync(abs) } catch { return this.json(res, 404, { error: "not found" }) }
@@ -470,11 +476,15 @@ export class Gateway {
   }
 
   async body(req: IncomingMessage): Promise<unknown> {
-    let size = 0
-    const parts: Buffer[] = []
-    for await (const c of req) if ((size += (c as Buffer).length) <= BODY_MAX) parts.push(c as Buffer)
-    if (size > BODY_MAX) throw new HTTPError(413, "too big")
-    try { return JSON.parse(Buffer.concat(parts).toString("utf8")) } catch { throw new HTTPError(400, "send JSON") }
+    const all = await readAll(req)
+    if (!all) throw new HTTPError(413, "too big")
+    try { return JSON.parse(all.toString("utf8")) } catch { throw new HTTPError(400, "send JSON") }
+  }
+
+  parsed<T>(schema: z.ZodType<T>, body: unknown): T {
+    const r = schema.safeParse(body)
+    if (!r.success) throw new HTTPError(400, "not a file in this folder")
+    return r.data
   }
 
   sameSite(req: IncomingMessage) {
@@ -505,17 +515,17 @@ export class Gateway {
     return ++h.n > n
   }
 
-  json(res: ServerResponse, status: number, body: unknown) {
+  json(res: Res, status: number, body: unknown) {
     res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" })
     res.end(JSON.stringify(body))
   }
 
-  redirect(res: ServerResponse, to: string) {
+  redirect(res: Res, to: string) {
     res.writeHead(302, { Location: to, "Cache-Control": "no-store" })
     res.end()
   }
 
-  page(res: ServerResponse, status: number, title: string, text: string) {
+  page(res: Res, status: number, title: string, text: string) {
     const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
     res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'" })
     res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title>
@@ -534,11 +544,11 @@ class Kept extends Writable {
   chunks: Buffer[] = []
   headersSent = false
   done = new Promise<void>((ok) => { this.on("finish", ok); this.on("close", ok); this.on("error", () => ok()) })
-  setHeader(k: string, v: unknown) { this.headers[k.toLowerCase()] = String(v); return this }
+  setHeader(k: string, v: OutgoingHttpHeader) { this.headers[k.toLowerCase()] = String(v); return this }
   removeHeader(k: string) { delete this.headers[k.toLowerCase()] }
-  writeHead(status: number, h: Record<string, unknown> = {}) {
+  writeHead(status: number, h: OutgoingHttpHeaders = {}) {
     this.status = status
-    for (const [k, v] of Object.entries(h)) this.setHeader(k, v)
+    for (const [k, v] of Object.entries(h)) if (v !== undefined) this.setHeader(k, v)
     this.headersSent = true
     return this
   }
@@ -554,11 +564,18 @@ export function folderSize(vault: { entries: Map<string, { stat: { size: number 
 export const guestWho = (s: Share): Who => ({ client: "guest", agent: s.guest, label: `${s.guest} (guest)`, source: "guest" })
 
 function plainQuery(q: string) {
-  let node
+  let node: SearchNode
   try { node = parseSearch(q) } catch { return true }
-  const ok = (n: Item): boolean => n.t === "folder" ? false : n.t === "term" ? n.field !== "path" && !String(n.m?.label ?? "").startsWith("/")
-    : n.t === "prop" ? !n.value || ok(n.value) : (n.kids ?? (n.kid ? [n.kid] : [])).every(ok)
-  return ok(node as Item)
+  const ok = (n: SearchNode): boolean => n.t === "folder" ? false : n.t === "term" ? n.field !== "path" && !n.m.label.startsWith("/")
+    : n.t === "prop" ? !n.value || ok(n.value) : "kids" in n ? n.kids.every(ok) : "kid" in n ? ok(n.kid) : true
+  return ok(node)
+}
+
+async function readAll(req: AsyncIterable<Buffer>) {
+  let size = 0
+  const parts: Buffer[] = []
+  for await (const c of req) if ((size += c.length) <= BODY_MAX) parts.push(c)
+  return size > BODY_MAX ? null : Buffer.concat(parts)
 }
 
 function theirPaths(v: unknown, folder: string): unknown {

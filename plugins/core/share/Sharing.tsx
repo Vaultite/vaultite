@@ -19,7 +19,7 @@ function useShares(folder?: string) {
   useEffect(() => {
     if (over) return
     let on = true
-    op<Shared[]>("share.list", folder ? { folder } : {}).then((r) => on && setList(r), (e) => on && setError(String((e as Error).message)))
+    op<Shared[]>("share.list", folder ? { folder } : {}).then((r) => on && setList(r), (e) => on && setError(e instanceof Error ? e.message : String(e)))
     return () => { on = false }
   }, [folder, again, tick, over])
   return { list, error, over, reload: () => setAgain((n) => n + 1) }

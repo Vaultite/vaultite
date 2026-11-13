@@ -2,22 +2,22 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { byUser, HTTPError, localDate, type OpCtx, OpError, Plugin, whoOf } from "../../../core/plugins.ts"
-import { expired, folderSize, Gateway, ID, ROOM, type Role, type Share, sha } from "./gateway.ts"
-import { machines, type Where } from "./machines.ts"
+import { z } from "zod"
+import { expired, folderSize, Gateway, ID, ROLES, ROOM, type Role, type Share, ShareSchema, sha } from "./gateway.ts"
+import { machines, ShareListed, ShareWithLink, type Where } from "./machines.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-const ROLES: Role[] = ["read", "comment", "edit"]
 const OWNER = "sharing folders"
-type Stored = { shares?: Record<string, Share> }
+const Stored = z.looseObject({ shares: z.record(z.string(), z.unknown()).catch({}) }).catch({ shares: {} })
+const stored = () => Stored.parse(plugin.secrets().share ?? {})
 
-const stored = (): Stored => (plugin.secrets().share as Stored | undefined) ?? {}
-export const shares = () => stored().shares ?? {}
+export const shares = (): Record<string, Share> => Object.fromEntries(Object.entries(stored().shares)
+  .flatMap(([id, v]) => { const s = ShareSchema.safeParse(v); return s.success ? [[id, s.data]] : [] }))
 function save(fn: (all: Record<string, Share>) => void) {
-  const s = structuredClone(stored())
-  s.shares ??= {}
-  fn(s.shares)
-  plugin.saveSecrets(s)
+  const all = shares()
+  fn(all)
+  plugin.saveSecrets({ ...stored(), shares: all })
   mirror()
 }
 const guestUrls = (): string[] => {
@@ -35,7 +35,7 @@ async function refresh() {
   try {
     const w = await others.where()
     plugin.keep("links", w ? linkBase(w) : "")
-    kept = w && "host" in w ? await others.passOn<Shared[]>(w.host, "share.list", {}) : []
+    kept = w && "host" in w ? await others.passOn(w.host, "share.list", {}, z.array(ShareListed)) : []
   } catch {}
   mirror()
 }
@@ -115,7 +115,7 @@ async function hostOf(ctx: OpCtx) {
 }
 const changed = () => void refresh()
 
-async function yes(ctx: OpCtx, op: string, params: Record<string, unknown>, what: string) {
+async function yes(ctx: OpCtx, op: string, params: Record<string, string | number | null | undefined>, what: string) {
   if (byUser(ctx.who) || ctx.who.client?.startsWith("machine/")) return
   const ask = plugin.service("inbox:ask"), answerOf = plugin.service("inbox:answer")
   if (!ask || !answerOf) throw new OpError(`${what} needs the user's yes, asked in the Inbox, which is off: they can do it themselves (a folder's menu, Share…)`, 403)
@@ -128,9 +128,9 @@ async function yes(ctx: OpCtx, op: string, params: Record<string, unknown>, what
   throw new OpError(`Waiting for the user's yes: Vaultite asked them in the Inbox and on their phone whether you may ${what}. Tell them, and run this again with the same arguments once they approve.`, 409)
 }
 
-const listed = (id: string, s: Share) => ({ id, folder: s.folder, guest: s.guest, role: s.role, created: s.created, expires: s.expires, expired: expired(s), used: s.used ?? null,
+const listed = (id: string, s: Share): Shared => ({ id, folder: s.folder, guest: s.guest, role: s.role, created: s.created, expires: s.expires, expired: expired(s), used: s.used ?? null,
   here: gateway.here(id) })
-type Shared = ReturnType<typeof listed>
+type Shared = z.infer<typeof ShareListed>
 const line = (s: Shared) => `- ${s.id}: ${s.folder} with ${s.guest}, ${s.role}, ${s.expired ? "expired" : `until ${localDate(Date.parse(s.expires))}`}${s.here ? ", here now" : s.used ? `, last here ${localDate(Date.parse(s.used))}` : ""}`
 
 plugin.op({
@@ -161,7 +161,7 @@ of the vault; read, comment (margin threads) or edit (its notes). \`days\` it la
     const w = await where(ctx)
     await yes(ctx, "share.create", { folder: rel, guest: name, role, days: n }, `share ${rel} with ${name} (${role}, ${n} days) over the internet`)
     if ("host" in w) {
-      const made = await others.passOn<Shared & { link: string }>(w.host, "share.create", { folder: rel, guest: name, role, days: n })
+      const made = await others.passOn(w.host, "share.create", { folder: rel, guest: name, role, days: n }, ShareWithLink)
       changed()
       return made
     }
@@ -189,7 +189,7 @@ plugin.op({
   run: async ({ folder }, ctx) => {
     const w = await others.where(ctx), host = w && "host" in w ? w.host : null
     plugin.keep("links", !!w)
-    const theirs = host ? await others.passOn<Shared[]>(host, "share.list", folder ? { folder } : {}) : []
+    const theirs = host ? await others.passOn(host, "share.list", folder ? { folder } : {}, z.array(ShareListed)) : []
     if (host && !folder) { kept = theirs; mirror() }
     return [...theirs, ...Object.entries(shares()).filter(([, s]) => !folder || s.folder === folder).map(([id, s]) => listed(id, s))]
       .sort((a, b) => a.folder.localeCompare(b.folder) || a.created.localeCompare(b.created))
@@ -222,7 +222,7 @@ plugin.op({
     const who = s ?? there
     await yes(ctx, "share.update", { id, role, days: n }, `change ${who ? `${who.guest}'s access to ${who.folder}` : `a share's access (${id})`} (${[role, n && `${n} days`].filter(Boolean).join(", ")})`)
     if (host) {
-      const r = await others.passOn<Shared>(host, "share.update", { id, ...(role ? { role } : {}), ...(n ? { days: n } : {}) })
+      const r = await others.passOn(host, "share.update", { id, ...(role ? { role } : {}), ...(n ? { days: n } : {}) }, ShareListed)
       changed()
       return r
     }
@@ -257,7 +257,7 @@ to the same person. Its id is in \`vau share list\`.
     const who = s ?? there
     await yes(ctx, "share.new-link", { id }, who ? `give ${who.guest} a new link to ${who.folder} (their link stops working)` : `give a share's guest a new link (${id})`)
     if (host) {
-      const r = await others.passOn<Shared & { link: string }>(host, "share.new-link", { id })
+      const r = await others.passOn(host, "share.new-link", { id }, ShareWithLink)
       changed()
       return r
     }
@@ -291,7 +291,7 @@ plugin.op({
     const who = s ?? there
     await yes(ctx, "share.revoke", { id }, who ? `stop sharing ${who.folder} with ${who.guest}` : `turn off a share (${id})`)
     if (host) {
-      const r = await others.passOn<Shared>(host, "share.revoke", { id })
+      const r = await others.passOn(host, "share.revoke", { id }, ShareListed)
       changed()
       return r
     }
