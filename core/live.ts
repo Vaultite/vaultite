@@ -8,6 +8,7 @@ import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 import { keptOf } from "./kept.ts"
 import { logger } from "./log.ts"
+import { codeOf, messageOf } from "./values.ts"
 
 const log = logger("live")
 
@@ -109,8 +110,8 @@ export class Live {
 
   private restart(e: unknown) {
     // Out of inotify watches (Linux): said once, how to have more, then tried again now and then, not every 5 s.
-    const full = (e as NodeJS.ErrnoException).code === "ENOSPC"
-    if (!full || !this.full) log.error(`watching the vault failed (${(e as Error).message ?? e}); trying again in ${full ? "a minute" : "5 s"}` +
+    const full = codeOf(e) === "ENOSPC"
+    if (!full || !this.full) log.error(`watching the vault failed (${messageOf(e)}); trying again in ${full ? "a minute" : "5 s"}` +
       (full ? ". Linux ran out of inotify watches: raise them with `sudo sysctl fs.inotify.max_user_watches=524288` (and in /etc/sysctl.d/)" : ""))
     this.full ||= full
     if (this.watcher) { this.watcher.close(); this.vault.watching(false) }

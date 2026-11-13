@@ -20,7 +20,7 @@ import { type Digest, notesOf, trustOf, type Trust } from "./trust.ts"
 import { official } from "./updates.ts"
 import { served } from "./webbuild.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
-import { isObj } from "./values.ts"
+import { isObj, messageOf } from "./values.ts"
 
 export const DIR = ".vaultite/plugins"
 const CACHE = path.join(LOCAL, "cache", "plugins")
@@ -57,7 +57,7 @@ export type VaultPlugin = {
 }
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").trim()
-const message = (e: unknown) => plain(String((e as Error)?.message ?? e)).split("\n").slice(0, 6).join("\n")
+const message = (e: unknown) => plain(messageOf(e)).split("\n").slice(0, 6).join("\n")
 
 // --- plugin.ts: what it may import
 /** Vault plugin id -> its folder, the version loaded and its files' hashes then (what its imports must still be). */
@@ -360,7 +360,7 @@ export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; lab
   dirOf?: (id: string) => string }) {
   const { ids, label } = o
   let raw: unknown = o.manifest ?? null, unread = ""
-  if (!raw) try { raw = JSON.parse(readText(path.join(dir, "manifest.json"))) } catch (e) { unread = (e as Error).message }
+  if (!raw) try { raw = JSON.parse(readText(path.join(dir, "manifest.json"))) } catch (e) { unread = messageOf(e) }
   const written = isObj(raw) ? raw : null
   const id = typeof written?.id === "string" ? written.id : path.basename(dir)
   const problems: string[] = []

@@ -4,6 +4,7 @@ import net from "node:net"
 import path from "node:path"
 import { runtimeDir } from "./runtime.ts"
 import { atExit } from "./exit.ts"
+import { codeOf } from "./values.ts"
 
 /** `key`: what an attaching desktop app shows it may. */
 export type Serving = { pid: number; port: number; key: string; vault: string; app: boolean
@@ -13,7 +14,7 @@ export type Serving = { pid: number; port: number; key: string; vault: string; a
 
 const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
 const fileFor = (vault: string) => path.join(runtimeDir(), `vaultite-serves-${crypto.createHash("sha1").update(real(vault)).digest("hex").slice(0, 12)}.json`)
-const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM" } }
+const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return codeOf(e) === "EPERM" } }
 
 export function servingOf(vault: string): Serving | null {
   try {
@@ -38,7 +39,7 @@ export function claim(vault: string, port: number, app: boolean): Serving | null
       mine = { file, key: s.key }
       return null
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e
+      if (codeOf(e) !== "EEXIST") throw e
     }
   }
   return servingOf(vault)

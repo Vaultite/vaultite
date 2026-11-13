@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import path from "node:path"
 import { type Logger, logger } from "./log.ts"
+import { errnoOf, isObj, messageOf } from "./values.ts"
 
 /** The plugin acting on its own now; null or unset: the user (whoever made the request being answered). */
 const acting = new AsyncLocalStorage<string | null>()
@@ -31,10 +32,10 @@ export class WriteRefused extends Error {
 
 /** A file iCloud hasn't brought down yet (errno 11, EDEADLK), or a failure it caused: there at a later try. */
 export const notHereYet = (e: unknown): boolean =>
-  !!e && (Math.abs((e as NodeJS.ErrnoException).errno ?? 0) === 11 || notHereYet((e as Error).cause))
+  !!e && (Math.abs(errnoOf(e) ?? 0) === 11 || notHereYet(isObj(e) ? e.cause : undefined))
 
 export function logFailure(log: Logger, what: string, e: unknown) {
-  if (e instanceof WriteRefused || notHereYet(e)) log.warn(`${what}: ${(e as Error).message}`)
+  if (e instanceof WriteRefused || notHereYet(e)) log.warn(`${what}: ${messageOf(e)}`)
   else log.error(what, e)
 }
 

@@ -7,6 +7,13 @@ export default async ($: VaultTest) => {
   // ---------- Errors (plugins/core/errors): the app's and the server's, grouped by kind, kept on this machine ----------
   {
   write(".vaultite/plugins/errors/data.json", JSON.stringify({ notify: false })) // (a toast would be an inbox event, which the Inbox's tests count)
+  const { codeOf, errnoOf, messageOf } = await import("../../../core/values.ts")
+  const { runInNewContext } = await import("node:vm")
+  const missing = (() => { try { return fs.readFileSync(path.join(tmp, "no-such-file")) } catch (e) { return e } })()
+  check("errors: a thrown value's message whatever was thrown (another realm's Error, a string, an object with one); a system error's code",
+    messageOf(new TypeError("bad")) === "bad" && messageOf(runInNewContext("new Error('there')")) === "there" && messageOf("plain") === "plain" && messageOf({ message: "obj" }) === "obj"
+      && messageOf(null) === "null" && codeOf(missing) === "ENOENT" && errnoOf(missing) !== undefined && codeOf(new Error("x")) === undefined && codeOf("ENOENT") === undefined,
+    [messageOf(missing), codeOf(missing), errnoOf(missing)])
   const { errorOf } = await import("../../../core/serverlog.ts")
   const logged = errorOf(["terminal: couldn't start:", new Error("posix_spawnp failed.")])
   check("errors: console.error's words and its error's message are one line, with the stack", logged.message === "terminal: couldn't start: posix_spawnp failed." && !!logged.stack?.includes("test_vault"), logged)

@@ -19,6 +19,7 @@ import { defineOp, entryOf, type Op, type OpDef, type Params, type OpCtx, type O
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 import { logger } from "./log.ts"
+import { codeOf } from "./values.ts"
 export { gitEnv } from "./gitenv.ts"
 export { logger } from "./log.ts"
 export { readableImage } from "./heic.ts"
@@ -839,7 +840,7 @@ export class Plugin {
     const file = path.join(LOCAL, "config.json")
     let all: Item = {}
     try { all = JSON.parse(readText(file)) } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("data/config.json doesn't parse: not changed")
+      if (codeOf(e) !== "ENOENT") throw new Error("data/config.json doesn't parse: not changed")
     }
     if (data === null) delete all[this.id]; else all[this.id] = data
     writeAtomic(file, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 })

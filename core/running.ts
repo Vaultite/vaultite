@@ -10,6 +10,7 @@ import type { Graph, ParseCache } from "./update/closure.ts"
 import { graphModule } from "./update/graph.ts"
 import { ENTRIES } from "./update/sites.ts"
 import { served, type WebBuild } from "./webbuild.ts"
+import { messageOf } from "./values.ts"
 
 const exec = promisify(execFile)
 
@@ -50,7 +51,7 @@ export function runningIn(root: string, web: () => WebBuild) {
     try {
       const { diskTree, graphOf } = await mod
       return { graph: graphOf(diskTree(root), { cache: parses ??= new Map() }) }
-    } catch (e) { return { why: `the module graph failed: ${(e as Error).message}` } }
+    } catch (e) { return { why: `the module graph failed: ${messageOf(e)}` } }
   }
   const same = new Map<string, Promise<boolean>>()
   const sameServer = (a: string, b: string) => {

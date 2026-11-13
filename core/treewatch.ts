@@ -2,6 +2,7 @@
 // and a big vault runs out of them (ENOSPC): this one watches folder by folder, skipping what nobody needs to hear about.
 import fs from "node:fs"
 import path from "node:path"
+import { codeOf, messageOf } from "./values.ts"
 
 export type TreeWatcher = { close(): void; on(event: "error", fn: (e: Error) => void): void }
 
@@ -28,7 +29,7 @@ export function watchTree(root: string, skip: (rel: string) => boolean, changed:
       })
     } catch (e) {
       // A folder gone between being listed and watched is nothing; anything else (ENOSPC) is.
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT" || !rel) fail(e as Error)
+      if (codeOf(e) !== "ENOENT" || !rel) fail(e instanceof Error ? e : new Error(messageOf(e)))
       return
     }
     w.on("error", (e) => { if (rel && !fs.existsSync(abs)) drop(rel); else fail(e) })

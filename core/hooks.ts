@@ -11,6 +11,7 @@ import { LOCAL, type Plugin, serverUrl, vaultHere } from "./plugins.ts"
 import { hashed, inside } from "./rules.ts"
 import { atSetting, type Job, resolvedAt, type When, whenProblems } from "./schedule.ts"
 import type { Item, Vault } from "./vault.ts"
+import { messageOf } from "./values.ts"
 
 export type Command = string[]
 type Declared = { id: string; dir: string; manifest: Item }
@@ -202,7 +203,7 @@ export class Hooks {
       try {
         child = spawn(prog, args, { cwd: p.dir, env, stdio: ["pipe", "pipe", "pipe"] })
       } catch (e) {
-        error = String((e as Error).message)
+        error = messageOf(e)
         return finish(null, null)
       }
       timer = setTimeout(() => {

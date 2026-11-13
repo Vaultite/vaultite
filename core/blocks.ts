@@ -1,6 +1,6 @@
 import { blockName, blocksIn } from "./sections.ts"
 import { load } from "./yaml.ts"
-import { isObj as isMap, strings } from "./values.ts"
+import { isObj as isMap, messageOf, strings } from "./values.ts"
 
 type OptionType = "string" | "number" | "boolean" | "list" | "map" | "enum"
 export type OptionDecl = {
@@ -109,7 +109,7 @@ function parseFresh(text: string): { options: Record<string, unknown>; error?: s
   try {
     o = load(text)
   } catch (e) {
-    return { options: {}, error: `its options aren't YAML (${String((e as Error).message ?? e).split("\n")[0]})` }
+    return { options: {}, error: `its options aren't YAML (${messageOf(e).split("\n")[0]})` }
   }
   if (o === null || o === undefined) return { options: {} }
   return isMap(o) ? { options: o } : { options: {}, error: "its options should be `key: value` lines" }

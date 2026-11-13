@@ -6,6 +6,7 @@ import { writeAtomic } from "./vault.ts"
 import { errorContext } from "./serverlog.ts"
 import { logFailure, onItsOwn } from "./writegate.ts"
 import { logger } from "./log.ts"
+import { messageOf } from "./values.ts"
 
 const log = logger("schedule")
 
@@ -161,7 +162,7 @@ export class Scheduler {
     try {
       await errorContext.run(`job ${key}`, () => onItsOwn(plugin, () => job.run()))
     } catch (e) {
-      error = String((e as Error)?.message ?? e).slice(0, 500)
+      error = messageOf(e).slice(0, 500)
       logFailure(log, key, e)
     } finally {
       this.running.delete(key)

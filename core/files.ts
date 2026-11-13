@@ -19,6 +19,7 @@ import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
 import { cmp, DEVICE_NAME, type Entry, linkKey, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, removeTree, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 import { logger } from "./log.ts"
+import { messageOf } from "./values.ts"
 
 const log = logger("files")
 
@@ -500,7 +501,7 @@ function refresh(vault: Vault): Promise<void> {
 }
 
 function warmSearch(vault: Vault) {
-  refresh(vault).catch((e) => log.error(`reading the search index ahead failed: ${(e as Error).message}`))
+  refresh(vault).catch((e) => log.error(`reading the search index ahead failed: ${messageOf(e)}`))
 }
 
 async function* pieces(abs: string): AsyncGenerator<string> {

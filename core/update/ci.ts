@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
 import path from "node:path"
 import { promisify } from "node:util"
+import { messageOf } from "../values.ts"
 
 const exec = promisify(execFile)
 
@@ -85,7 +86,7 @@ export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => 
       const r = await get(`https://api.github.com/${path}`, { headers: { accept: "application/vnd.github+json", "user-agent": "vaultite" }, signal: AbortSignal.timeout(timeout) })
       return r.ok ? await r.json() as T : `GitHub answered ${r.status} about CI`
     } catch (e) {
-      return `GitHub didn't answer about CI (${(e as Error).message})`
+      return `GitHub didn't answer about CI (${messageOf(e)})`
     }
   }
   return { api, login, signedIn: () => state.signedIn }

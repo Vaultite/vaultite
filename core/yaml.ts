@@ -1,6 +1,7 @@
 // YAML for frontmatter the way Obsidian and PyYAML read it (YAML 1.1: `23:15` is a number), written in one style
 // (one key per line, small lists inline, quotes only when needed) so files look the same whoever wrote them.
 import { parse as parseYaml, type ScalarTag } from "yaml"
+import { messageOf } from "./values.ts"
 
 const TIMESTAMP = /^(\d{4})-(\d\d?)-(\d\d?)(?:(?:[Tt]|[ \t]+)(\d\d?):(\d\d):(\d\d)(?:\.\d*)?(?:[ \t]*(?:Z|[-+]\d\d?(?::\d\d)?))?)?$/
 
@@ -94,7 +95,7 @@ export function loadYaml(text: string): unknown {
       uniqueKeys: false, merge: true, maxAliasCount: 100, prettyErrors: false,
     }) ?? null
   } catch (e) {
-    throw new YAMLError((e as Error).message)
+    throw new YAMLError(messageOf(e))
   }
 }
 

@@ -11,6 +11,7 @@ import { fixSpawnHelper } from "./npm.ts"
 import { leaseIn, processStart, type Lease } from "./lease.ts"
 import { fingerprint } from "../../electron/shell/print.mjs"
 import { atExit } from "../exit.ts"
+import { codeOf, isObj, messageOf } from "../values.ts"
 
 const exec = promisify(execFile)
 const MINUTE = 60_000
@@ -197,7 +198,7 @@ export function rootStore(o: StoreOptions) {
         try { fs.writeFileSync(lockFile, String(process.pid), { flag: "wx" }); break } catch {
           const pid = Number(fs.readFileSync(lockFile, "utf8"))
           let alive = false
-          try { process.kill(pid, 0); alive = true } catch (e) { alive = (e as NodeJS.ErrnoException).code === "EPERM" }
+          try { process.kill(pid, 0); alive = true } catch (e) { alive = codeOf(e) === "EPERM" }
           if (!alive || pid === process.pid) { fs.rmSync(lockFile, { force: true }); continue }
           if (i > 600) throw new Error(`the store is locked by process ${pid}`)
           await new Promise((r) => setTimeout(r, 1000))
@@ -275,7 +276,7 @@ export function rootStore(o: StoreOptions) {
     for (const name of Object.keys(pkg?.dependencies ?? {})) {
       if (!fs.existsSync(path.join(root, "node_modules", name, "package.json"))) { out.push(`its dependency ${name} doesn't resolve`); break }
     }
-    const status = await git(["status", "--porcelain"], root).catch((e) => `(git status failed: ${(e as Error).message})`)
+    const status = await git(["status", "--porcelain"], root).catch((e) => `(git status failed: ${messageOf(e)})`)
     if (status) out.push(`git finds it changed: ${status.split("\n").slice(0, 3).join("; ")}`)
     return out
   }
@@ -407,4 +408,4 @@ export function rootStore(o: StoreOptions) {
 }
 export type RootStore = ReturnType<typeof rootStore>
 
-const errLine = (e: unknown) => String((e as { stderr?: string }).stderr || (e as Error).message || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
+const errLine = (e: unknown) => String((isObj(e) && (e.stderr || e.message)) || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)

@@ -8,7 +8,7 @@ import { compareVersions, parseVersion } from "./version.ts"
 import { removeTree, type Vault } from "./vault.ts"
 import { keptOf } from "./kept.ts"
 import { fetchPublic } from "./web.ts"
-import { isObj } from "./values.ts"
+import { isObj, messageOf } from "./values.ts"
 import type { Sketch } from "./bundlesketch.ts"
 
 export const DEFAULT_INDEX = "https://raw.githubusercontent.com/Vaultite/plugins/main/directory/index.json"
@@ -208,7 +208,7 @@ export class PluginIndex {
       return got
     }, (e) => {
       const last = this.known()
-      const error = String((e as Error)?.message ?? e)
+      const error = messageOf(e)
       return last?.url === url ? { ...last, error } : { url, available: false, fetched: null, error, index: EMPTY }
     }).then((got) => {
       if (JSON.stringify(got.index.blocked) !== JSON.stringify(this.got?.index.blocked ?? {})) this.version++

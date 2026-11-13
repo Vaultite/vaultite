@@ -8,6 +8,7 @@ import { readJson } from "../jsonfile.ts"
 import type { Relation } from "./git.ts"
 import { logger } from "../log.ts"
 import { capped, changedFiles, commitsNotIn, commitsSince, currentBranch, dirtyFiles, fetchBranch, gitIn, originRepo, pickTarget, relation, short } from "./git.ts"
+import { isObj } from "../values.ts"
 
 const Kept = z.object({ last: UpdateStatus.shape.last.catch(undefined), error: UpdateStatus.shape.error.catch(undefined) })
 type Kept = z.infer<typeof Kept>
@@ -43,7 +44,7 @@ export type UpdaterOptions = {
 }
 
 const MINUTE = 60_000
-export const errText = (e: unknown) => String((e as { stderr?: string }).stderr || (e as Error).message || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
+export const errText = (e: unknown) => String((isObj(e) && (e.stderr || e.message)) || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
 
 let status: UpdateStatus = { branch: null, state: "off", why: "not a service install following a branch (vau service install --updates <branch>)", checked: null }
 let looking: Promise<UpdateStatus> | null = null

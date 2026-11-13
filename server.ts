@@ -18,6 +18,7 @@ import type { App } from "./core/app.ts"
 import type { FileAnswer as Answered } from "./core/plugins.ts"
 import type { Live as LiveType } from "./core/live.ts"
 import type { Vault } from "./core/vault.ts"
+import { codeOf, errnoOf, messageOf } from "./core/values.ts"
 
 // Node's compile cache must be on before the app's modules load, so they're imported below rather than above.
 module.enableCompileCache?.()
@@ -292,7 +293,7 @@ async function downloaded(abs: string, wait = 30_000) {
       try { await fh.read(Buffer.alloc(1), 0, 1, 0) } finally { await fh.close() }
       return true
     } catch (e) {
-      if (Math.abs((e as NodeJS.ErrnoException).errno ?? 0) !== 11) return true
+      if (Math.abs(errnoOf(e) ?? 0) !== 11) return true
       if (Date.now() - start > wait) return false
       fetchFromICloud(abs, e)
       await new Promise((r) => setTimeout(r, 300))
@@ -397,7 +398,7 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   try {
     abs = isOutside(body?.path) ? liveFolder(body!.path as string) ?? allowedPath(body!.path as string) : vault.abs(clean(body?.path, true, vault, true))
   } catch (e) {
-    return json(res, { error: (e as Error).message }, e instanceof HTTPError ? e.status : 400)
+    return json(res, { error: messageOf(e) }, e instanceof HTTPError ? e.status : 400)
   }
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
   let reveal = !!body?.reveal
@@ -435,7 +436,7 @@ async function openOnLinux(abs: string, reveal: boolean) {
         "org.freedesktop.FileManager1.ShowItems", `array:string:${pathToFileURL(abs).href.replace(/,/g, "%2C")}`, "string:"])
     } catch { abs = path.dirname(abs) }
   }
-  try { return await run("gio", ["open", abs]) } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e }
+  try { return await run("gio", ["open", abs]) } catch (e) { if (codeOf(e) !== "ENOENT") throw e }
   // xdg-open may wait for the app it starts: it's left to run.
   const child = spawn("xdg-open", [abs], { detached: true, stdio: "ignore" })
   await new Promise<void>((ok, fail) => { child.once("error", fail); child.once("spawn", () => ok()) })
@@ -591,8 +592,8 @@ const server = http.createServer(async (req, res) => {
     } else if (!(await served(req, res, url))) await file(req, res, url)
   } catch (e) {
     // (a client gone mid-request, its body cut off: ECONNRESET "aborted", not the server's error)
-    if (!(e instanceof HTTPError) && (e as NodeJS.ErrnoException).code !== "ECONNRESET") log.error("a request failed", e)
-    if (!res.headersSent) json(res, { error: String((e as Error).message ?? e) }, e instanceof HTTPError ? e.status : 500)
+    if (!(e instanceof HTTPError) && codeOf(e) !== "ECONNRESET") log.error("a request failed", e)
+    if (!res.headersSent) json(res, { error: messageOf(e) }, e instanceof HTTPError ? e.status : 500)
     else res.end()
   }
 })
@@ -643,14 +644,14 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     await sock.accept?.(req, params)
     socketsFor(req).handleUpgrade(req, socket, head, (ws) => {
       // A bad frame (one over maxPayload) closes this socket, not the server: unheard, ws's error event throws.
-      ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${(e as Error).message}\n`); ws.terminate() })
+      ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${e.message}\n`); ws.terminate() })
       process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
       errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { log.error(`WS ${url.pathname}`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
     })
   } catch (e) {
     if (e instanceof HTTPError) return refuse(socket, e.status, e.message)
     log.error("a socket's upgrade failed", e)
-    refuse(socket, 500, String((e as Error).message ?? e))
+    refuse(socket, 500, messageOf(e))
   }
 })
 

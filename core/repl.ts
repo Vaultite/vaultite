@@ -5,6 +5,7 @@ import { z } from "zod"
 import { commands, Ctx, CliError, execute, parseArgs, print, userData } from "./cli.ts"
 import type { OpEntry, Schema } from "./contracts/ops.ts"
 import { camel, flagOf } from "./ops.ts"
+import { messageOf } from "./values.ts"
 
 const Listed = z.looseObject({ files: z.array(z.looseObject({ path: z.unknown().optional() })).optional() })
 const Commands = z.looseObject({ commands: z.array(z.looseObject({ id: z.unknown().optional() })).optional() })
@@ -191,7 +192,7 @@ export async function repl(): Promise<number> {
       const r = await execute(words, { stdin: noStdin })
       await print(r, !!parseArgs(words).flags.copy)
     } catch (e) {
-      process.stderr.write(`vau: ${(e as Error).message}\n`)
+      process.stderr.write(`vau: ${messageOf(e)}\n`)
     }
     busy = false
     rl.prompt()

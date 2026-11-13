@@ -8,6 +8,7 @@ import { noteHere, source, traced } from "./sources.ts"
 import { formatInput, type Item, readText, sortBy, stemOf, type Vault } from "./vault.ts"
 import { FM, prose } from "./frontmatter.ts"
 import { notHereYet } from "./writegate.ts"
+import { messageOf } from "./values.ts"
 
 function ownerOf(plugins: Plugin[], on: Set<string>, name: string, options: Item = {}) {
   const has = (x: Plugin) => x.textBlocks.has(name) || Object.hasOwn(x.blocks, name)
@@ -55,7 +56,7 @@ export async function blockText(vault: Vault, plugins: Plugin[], rel: string, fm
     try {
       return ((await fn(ctx)) || "").trim()
     } catch (e) {
-      return `_(${name} couldn't be shown: ${(e as Error).message})_`
+      return `_(${name} couldn't be shown: ${messageOf(e)})_`
     }
   }
 }
@@ -216,7 +217,7 @@ function embedded(vault: Vault, plugins: Plugin[], on: Set<string>, target: stri
 function otherText(vault: Vault, rel: string, plugins: Plugin[], on: Set<string>, at: At = {}) {
   const read = formatReader(plugins, on, rel)
   if (read) {
-    try { return read(formatInput(vault.abs(rel), rel), rel, at) } catch (e) { return `_(${rel} couldn't be read: ${(e as Error).message})_` }
+    try { return read(formatInput(vault.abs(rel), rel), rel, at) } catch (e) { return `_(${rel} couldn't be read: ${messageOf(e)})_` }
   }
   return null
 }
@@ -236,7 +237,7 @@ async function fenced(plugins: Plugin[], on: Set<string>, rel: string, body: str
     out.push(...lines.slice(at, f.open))
     let md: string
     try { md = String(await read({ path: rel, text: lines.slice(f.open + 1, f.close!).join("\n"), ...(host && host !== rel ? { host } : {}) }) ?? "").trim() } catch (e) {
-      md = `_(${f.info.split(/\s/)[0]} couldn't be shown: ${(e as Error).message})_`
+      md = `_(${f.info.split(/\s/)[0]} couldn't be shown: ${messageOf(e)})_`
     }
     out.push(md)
     at = f.close! + 1
@@ -257,7 +258,7 @@ async function inlineCode(plugins: Plugin[], on: Set<string>, rel: string, body:
     for (const m of lines[i].matchAll(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g)) {
       let text: string | null = null
       for (const read of readers) {
-        try { text = await read({ path: rel, code: m[2], ...(host && host !== rel ? { host } : {}) }) } catch (e) { text = `_(\`${m[2]}\` couldn't be shown: ${(e as Error).message})_` }
+        try { text = await read({ path: rel, code: m[2], ...(host && host !== rel ? { host } : {}) }) } catch (e) { text = `_(\`${m[2]}\` couldn't be shown: ${messageOf(e)})_` }
         if (typeof text === "string") break
       }
       if (typeof text !== "string") continue

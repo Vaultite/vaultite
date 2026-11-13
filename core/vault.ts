@@ -16,7 +16,7 @@ import { kindOf } from "./filetypes.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
-import { strings } from "./values.ts"
+import { codeOf, errnoOf, messageOf, strings } from "./values.ts"
 import { guard, setGate, watching, written } from "./writegate.ts"
 import { logger } from "./log.ts"
 
@@ -130,14 +130,14 @@ export function writeText(p: string, text: string) {
 
 /** Windows won't replace or move a file another process, or this one's own reads under way, has open (a reader, the
  *  search indexer, antivirus): EPERM, EACCES or EBUSY until it lets go. */
-const held = (e: unknown) => process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException)?.code ?? "")
+const held = (e: unknown) => process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes(codeOf(e) ?? "")
 
 /** A folder removed with all in it. On Windows, Electron's Node (the app's) neither removes a read-only file (git's
  *  objects: a clone, a folder with a repository in it) nor waits for a watcher or antivirus to let go of one. */
 export function removeTree(dir: string) {
   for (let wait = 10; ; wait *= 2) {
     try { return fs.rmSync(dir, { recursive: true, force: true }) } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code ?? ""
+      const code = codeOf(e) ?? ""
       if (process.platform !== "win32" || wait > 320 || !["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"].includes(code)) throw e
       if (code === "EPERM" || code === "EACCES") {
         try { for (const f of fs.readdirSync(dir, { recursive: true, withFileTypes: true })) if (!f.isDirectory()) fs.chmodSync(path.join(f.parentPath, f.name), 0o666) } catch { /* going */ }
@@ -203,7 +203,7 @@ function configStat(file: string) {
 
 /** A read failed because the file isn't there (not because iCloud holds it or has it in the cloud only for now). */
 function gone(file: string, e: unknown) {
-  return (e as NodeJS.ErrnoException).code === "ENOENT" && !fs.existsSync(path.join(path.dirname(file), `.${path.basename(file)}.icloud`))
+  return codeOf(e) === "ENOENT" && !fs.existsSync(path.join(path.dirname(file), `.${path.basename(file)}.icloud`))
 }
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
@@ -286,7 +286,7 @@ export const iCloud = {
   evicted: (_abs: string, st: { blocks: number | bigint; size: number | bigint }) => Number(st.blocks) === 0 && Number(st.size) > 0,
   download(p: string, done: (err: Error | null) => void) { execFile("/usr/bin/brctl", ["download", p], { timeout: 60_000 }, done) },
 }
-const placeholder = (e: unknown) => iCloud.on && Math.abs((e as NodeJS.ErrnoException)?.errno ?? 0) === 11
+const placeholder = (e: unknown) => iCloud.on && Math.abs(errnoOf(e) ?? 0) === 11
 const evicted = (abs: string, st: fs.BigIntStats | fs.Stats) => iCloud.on && iCloud.evicted(abs, st)
 
 /** Ask iCloud for a placeholder (`brctl download`, once a minute per file till it's read); `e`: the read's error, if it
@@ -313,7 +313,7 @@ export function keepDownloaded(vault: string, done: string) {
   try { const d = JSON.parse(fs.readFileSync(done, "utf8")).keptDownloaded; if (Array.isArray(d)) kept = d } catch { /* none yet */ }
   if (kept.includes(real)) return
   const mark = () => {
-    try { writeAtomic(done, JSON.stringify({ keptDownloaded: [...kept, real] }, null, 2) + "\n") } catch (e) { log.warn(`couldn't note it's kept downloaded: ${(e as Error).message}`) }
+    try { writeAtomic(done, JSON.stringify({ keptDownloaded: [...kept, real] }, null, 2) + "\n") } catch (e) { log.warn(`couldn't note it's kept downloaded: ${messageOf(e)}`) }
   }
   // (the xattr Finder's Keep Downloaded sets; `xattr -d` with that name, or Finder, undoes it)
   execFile("/usr/bin/xattr", ["-p", PINNED, real], (no) => {
@@ -897,7 +897,7 @@ export class Vault {
           if (!was.has(rel)) readEnd(abs)?.then(() => { for (const fn of this.arrivals) fn(rel) })
         } catch (e) {
           if (placeholder(e)) late.push(rel)
-          else texts.set(rel, e as Error)
+          else texts.set(rel, e instanceof Error ? e : new Error(messageOf(e)))
         }
       }
     }
@@ -1470,7 +1470,7 @@ export class Vault {
       [item, problems] = kind.parse(e.fm, prose(e.body), stemOf(rel))
     } catch (ex) {
       item = null
-      problems = [`${kind.plugin ?? "plugin"} couldn't read this file: ${(ex as Error).message}`]
+      problems = [`${kind.plugin ?? "plugin"} couldn't read this file: ${messageOf(ex)}`]
       log.error(`${kind.plugin ?? "a plugin"} couldn't read a file`, ex, { file: rel })
     }
     if (item !== null) {
@@ -1588,7 +1588,7 @@ export class Vault {
       if (filled) await this.save(kind.collection, filled, e.item.id)
     } catch (ex) {
       const now = this.entries.get(rel)
-      if (now) now.problems = [...now.problems, `${kind.plugin ?? "plugin"} couldn't fill in this file: ${(ex as Error).message}`]
+      if (now) now.problems = [...now.problems, `${kind.plugin ?? "plugin"} couldn't fill in this file: ${messageOf(ex)}`]
       log.error(`${kind.plugin ?? "a plugin"} couldn't fill in a file`, ex, { file: rel })
     }
   }
@@ -1602,7 +1602,7 @@ export class Vault {
     try {
       raw = readText(this.abs(e.rel))
     } catch (ex) {
-      throw new ConflictError(`couldn't read ${e.rel} to change it (${(ex as Error).message}); try again`, { cause: ex })
+      throw new ConflictError(`couldn't read ${e.rel} to change it (${messageOf(ex)}); try again`, { cause: ex })
     }
     const m = FM.exec(raw)
     const [baseOwned, baseBody] = rendered(k, old!)
@@ -1767,7 +1767,7 @@ export class Vault {
       if (gone(file, e)) return null
       const last = this.lastGood.get(name)
       if (last && stat && last.stat === stat) return JSON.parse(last.text)
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") throw new ConfigError(`.vaultite/${name}.json is in iCloud only for now`, true)
+      if (codeOf(e) === "ENOENT") throw new ConfigError(`.vaultite/${name}.json is in iCloud only for now`, true)
       throw new ConfigError(`.vaultite/${name}.json can't be read`, true)
     }
     try {

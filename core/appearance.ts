@@ -3,6 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, Text } from "./plugins.ts"
 import type { Vault } from "./vault.ts"
+import { messageOf } from "./values.ts"
 
 export type ThemeInfo = { name: string; author: string; version: string; modes: Mode[]; mtime: number; problem?: string }
 export type SnippetInfo = { name: string; mtime: number; path: string }
@@ -66,7 +67,7 @@ export function listThemes(vault: Vault): ThemeInfo[] {
     }
     if (!file) info.problem = "no theme.css in its folder"
     else {
-      try { info.modes = convertedOf(file).modes } catch (err) { info.problem = `couldn't read theme.css: ${(err as Error).message}` }
+      try { info.modes = convertedOf(file).modes } catch (err) { info.problem = `couldn't read theme.css: ${messageOf(err)}` }
     }
     out.push(info)
   }

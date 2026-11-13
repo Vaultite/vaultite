@@ -6,7 +6,7 @@ import { MOVED } from "./migrations.ts"
 import { CATEGORIES, GROUPS, groupOf, SWITCH_SECTIONS } from "./categories.ts"
 import { API_VERSION, APP_VERSION, compareVersions, MIN_API_VERSION, parseVersion, tagVersion } from "./version.ts"
 import { DISCLOSURES, EXPORT_NAME, exportsOf, HOST, ICON_FILE, ICON_MAX, ICON_NAME, PLUGIN_MODULE, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
-import { isObj as isMap } from "./values.ts"
+import { isObj as isMap, messageOf } from "./values.ts"
 
 const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
 const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
@@ -288,7 +288,7 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   try {
     m = manifest ?? JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"))
   } catch (e) {
-    return [`${label}: no readable manifest.json (${(e as Error).message})`]
+    return [`${label}: no readable manifest.json (${messageOf(e)})`]
   }
   const out = manifestProblems(m, name, new Set(ids.keys()), `${label}/manifest.json`)
   if (!vault && !CATEGORIES.some((c) => c.id === m.category)) {

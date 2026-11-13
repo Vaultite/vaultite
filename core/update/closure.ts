@@ -3,6 +3,7 @@ import { builtinModules } from "node:module"
 import path from "node:path"
 import { parseSync } from "rolldown/utils"
 import { ENTRIES, type Entry, GENERATED, PLUGIN_READS, ROOT_EXPORTS, SITES, type Site } from "./sites.ts"
+import { messageOf } from "../values.ts"
 
 /** Paths are the repo's, with "/". */
 export type Tree = { files: string[]; read: (file: string) => string | null }
@@ -168,7 +169,7 @@ export function graphOf(tree: Tree, o: { cache?: ParseCache; entries?: Entry[]; 
     const c = cache.get(file)
     if (c && c.text === text) return c.parsed
     let p: Parsed
-    try { p = parse(file, text) } catch (e) { p = { refs: [], globs: [], plugin: false, loose: [{ file, line: 1, kind: "import", text: `doesn't parse: ${(e as Error).message}` }] } }
+    try { p = parse(file, text) } catch (e) { p = { refs: [], globs: [], plugin: false, loose: [{ file, line: 1, kind: "import", text: `doesn't parse: ${messageOf(e)}` }] } }
     cache.set(file, { text, parsed: p })
     return p
   }

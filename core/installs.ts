@@ -15,6 +15,7 @@ import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
 import { unzip } from "./unzip.ts"
 import { removeTree, type Item, type Vault } from "./vault.ts"
 import { gitEnv } from "./gitenv.ts"
+import { messageOf } from "./values.ts"
 
 /** Kept so another machine knows. `tag` and `commit` are null from a plain folder. */
 export type Locked = { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; hash: string; installed: string
@@ -156,7 +157,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
     }
     let manifest: Item
     try { manifest = JSON.parse(fs.readFileSync(path.join(from, "manifest.json"), "utf8")) } catch (e) {
-      throw new OpError(`${src.given}${tag ? ` at ${tag}` : ""} has no readable manifest.json at its top (${(e as Error).message})`, 422)
+      throw new OpError(`${src.given}${tag ? ` at ${tag}` : ""} has no readable manifest.json at its top (${messageOf(e)})`, 422)
     }
     const id = typeof manifest.id === "string" ? manifest.id : ""
     if (!/^[a-z][a-z0-9-]*$/.test(id)) throw new OpError(`${src.given}: its manifest's id must be lowercase letters, digits and dashes`, 422)
@@ -191,7 +192,7 @@ async function unpack(src: Source, to: string): Promise<string> {
   const { url, sha256 } = src.archive!, shown = src.given.replace(/#.*$/, "")
   let r: Response
   try { r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(GIT_TIMEOUT) }) } catch (e) {
-    throw new OpError(`couldn't download ${shown}: ${(e as Error).message}`, 502)
+    throw new OpError(`couldn't download ${shown}: ${messageOf(e)}`, 502)
   }
   if (!r.ok) throw new OpError(`couldn't download ${shown}: it answered ${r.status}`, 502)
   if (r.redirected && !/^https:/i.test(r.url) && !LOOPBACK.test(new URL(r.url).host)) throw new OpError(`${shown} sent the download elsewhere over plain http`, 502)
@@ -207,7 +208,7 @@ async function unpack(src: Source, to: string): Promise<string> {
   const got = crypto.createHash("sha256").update(buf).digest("hex")
   if (got !== sha256) throw new OpError(`${shown} isn't the file its #sha256 names (it's ${got}): not installed`, 422)
   let entries: Map<string, () => Buffer>
-  try { entries = unzip(buf, UNZIPPED_MAX) } catch (e) { throw new OpError(`${shown} isn't a zip that can be read: ${(e as Error).message}`, 422) }
+  try { entries = unzip(buf, UNZIPPED_MAX) } catch (e) { throw new OpError(`${shown} isn't a zip that can be read: ${messageOf(e)}`, 422) }
   if (entries.size > ENTRIES_MAX) throw new OpError(`${shown} has over ${ENTRIES_MAX} files`, 422)
   const names = [...entries.keys()]
   // (and a name Windows writes as another file: a trailing dot or space, a drive's or a stream's colon)
@@ -220,7 +221,7 @@ async function unpack(src: Source, to: string): Promise<string> {
     const rel = name.slice(strip.length)
     if (!rel) continue
     let bytes: Buffer
-    try { bytes = read() } catch (e) { throw new OpError(`${shown}: ${(e as Error).message}`, 422) }
+    try { bytes = read() } catch (e) { throw new OpError(`${shown}: ${messageOf(e)}`, 422) }
     total += bytes.length
     if (total > UNZIPPED_MAX) throw new OpError(`${shown} unpacks to over ${UNZIPPED_MAX >> 20} MB`, 422)
     const out = path.join(to, ...rel.split("/"))

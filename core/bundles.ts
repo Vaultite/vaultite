@@ -17,7 +17,7 @@ import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
 import { readSidebars, type Sidebars } from "./sidebars.ts"
 import { type Item, readText, removeTree, type Vault, writeAtomic } from "./vault.ts"
-import { isObj } from "./values.ts"
+import { isObj, messageOf } from "./values.ts"
 
 export const APP_BUNDLES = path.join(ROOT, "bundles")
 const appBundles = () => process.env.VAULTITE_BUNDLES || APP_BUNDLES
@@ -96,7 +96,7 @@ function list(vault: Vault): Bundle[] {
       if (!ID.test(id) || RESERVED.has(id) || !fs.existsSync(path.join(dir, id, "bundle.json"))) continue
       if (out.some((b) => b.id === id)) continue
       try { out.push({ id, source, files: readFolder(path.join(dir, id)) }) } catch (e) {
-        out.push({ id, source, files: {}, error: `it can't be read: ${(e as Error).message}` })
+        out.push({ id, source, files: {}, error: `it can't be read: ${messageOf(e)}` })
       }
     }
   }
@@ -670,7 +670,7 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   for (const c of fetch) {
     try { await host.install(c.source!, c.tag ?? null, { commit: c.commit ?? null, hash: c.hash ?? null }) } catch (e) {
       for (const id of prev.installed ?? []) await host.uninstall(id).catch(() => {})
-      throw new HTTPError(e instanceof OpError ? e.status : 502, `${name} isn't applied: couldn't install ${c.name} from ${c.source}: ${(e as Error).message}. Nothing was installed or changed.`)
+      throw new HTTPError(e instanceof OpError ? e.status : 502, `${name} isn't applied: couldn't install ${c.name} from ${c.source}: ${messageOf(e)}. Nothing was installed or changed.`)
     }
     (prev.installed ??= []).push(c.id)
   }

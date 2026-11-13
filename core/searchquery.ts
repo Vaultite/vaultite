@@ -111,7 +111,7 @@ function regexMatcher(src: string, flags: string, matchCase: boolean): Matcher {
     if (!matchCase) f.add("i")
     re = new RegExp(src, [...f].join(""))
   } catch (e) {
-    throw new SearchError(`/${src}/ isn't a regular expression (${(e as Error).message.replace(/^Invalid regular expression: \/.*\/\w*: /, "")})`)
+    throw new SearchError(`/${src}/ isn't a regular expression (${messageOf(e).replace(/^Invalid regular expression: \/.*\/\w*: /, "")})`)
   }
   return {
     label: `/${src}/${flags}`,
@@ -435,3 +435,5 @@ export function suggestQuery(q: string, caret: number, v: QueryVocab, max = 8): 
   if (op === "folder") return values(v.folders, typed, (x) => x, quoteValue)
   return null
 }
+
+import { messageOf } from "./values.ts"

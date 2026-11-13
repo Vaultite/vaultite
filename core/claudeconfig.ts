@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { codeOf } from "./values.ts"
 
 /** A new project's settings as Claude Code makes them (it reads some without checking they're there). */
 export const NEW_PROJECT = { allowedTools: [], mcpContextUris: [], mcpServers: {}, enabledMcpjsonServers: [], disabledMcpjsonServers: [], hasTrustDialogAccepted: false,
@@ -14,7 +15,7 @@ export async function editClaudeProject(file: string, key: string, edit: (p: Pro
   fs.mkdirSync(path.dirname(file), { recursive: true })
   for (let i = 0; ; i++) {
     try { fs.mkdirSync(lock); break } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e
+      if (codeOf(e) !== "EEXIST") throw e
       // (stale after 10 s without an update, as proper-lockfile has it: a Claude that died holding it)
       if (Date.now() - (fs.statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? 0) > 10_000) { fs.rmSync(lock, { recursive: true, force: true }); continue }
       if (i > 50) throw new Error("Claude Code is busy writing its settings: try again in a moment")

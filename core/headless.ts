@@ -4,6 +4,7 @@ import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { logger } from "./log.ts"
+import { messageOf } from "./values.ts"
 
 const log = logger("headless")
 
@@ -38,7 +39,7 @@ export type Headless = { page: Cdp; stop: () => void; quit: () => Promise<void> 
 export async function headless(size: { width: number; height: number }, signal?: AbortSignal): Promise<Headless> {
   try { return await launch(size, signal, false) } catch (e) {
     // (Ubuntu 24.04 keeps Chrome's sandbox from starting: AppArmor refuses it the user namespaces it needs)
-    if (process.platform !== "linux" || !/quit as it started/.test((e as Error).message)) throw e
+    if (process.platform !== "linux" || !/quit as it started/.test(messageOf(e))) throw e
     return launch(size, signal, true)
   }
 }
@@ -55,7 +56,7 @@ async function launch(size: { width: number; height: number }, signal: AbortSign
     const gone = browser.exitCode !== null ? Promise.resolve() : new Promise<void>((ok) => browser.once("exit", () => ok()))
     stop()
     await Promise.race([gone, sleep(3000)])
-    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }) } catch (e) { log.error(`${profile} stays: ${(e as Error).message}`) }
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }) } catch (e) { log.error(`${profile} stays: ${messageOf(e)}`) }
   }
   signal?.addEventListener("abort", stop, { once: true })
   try {
