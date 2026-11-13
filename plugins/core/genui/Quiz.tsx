@@ -1,13 +1,16 @@
 import { useContext, useState } from "react"
 import { cn, haptic, namedIcon } from "@vaultite"
 import { HostCtx } from "./parts"
+import { str } from "./chartdata"
+import { objs } from "./dil"
 
 type Option = { value: string; label: string; feedback?: string }
-type Question = { id?: string; type?: string; question: string; options: Option[]; correctValues?: string[]; hint?: string }
+type Question = { type?: string; question: string; options: Option[]; correctValues?: string[]; hint?: string }
 
-const questionsOf = (v: unknown): Question[] =>
-  (Array.isArray(v) ? v : []).filter((q) => q && typeof q === "object" && typeof (q as Question).question === "string")
-    .map((q) => ({ ...(q as Question), options: Array.isArray((q as Question).options) ? (q as Question).options.map((o) => ({ ...o, value: String(o.value ?? o.label) })) : [] }))
+const questionsOf = (v: unknown): Question[] => objs(v).flatMap((q) => (typeof q.question === "string" ? [{
+  question: q.question, type: str(q.type), hint: str(q.hint), correctValues: Array.isArray(q.correctValues) ? q.correctValues.map(String) : undefined,
+  options: objs(q.options).map((o) => ({ value: String(o.value ?? o.label), label: String(o.label ?? ""), feedback: str(o.feedback) })),
+}] : []))
 
 export function Quiz({ p }: { p: Record<string, unknown> }) {
   const host = useContext(HostCtx)

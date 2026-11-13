@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { askAbout, copyText, Loading, Markdown, notify, onLook, openWebLink, type BlockCtx, errorText } from "@vaultite"
-import { dilText, parse, savedData, savedState, stateNames, withState } from "./dil"
-import { sandboxDoc, type FromSandbox, type Tree } from "./sandbox"
+import { dilText, obj, parse, savedData, savedState, stateNames, withState } from "./dil"
+import { sandboxDoc, type FromSandbox, type ToSandbox, type Tree } from "./sandbox"
 import type { Host } from "./parts"
 
 let parts: Promise<typeof import("./parts")> | null = null
@@ -29,7 +29,7 @@ export function GenUiFence(ctx: BlockCtx) {
   setText.current = ctx.setText
   const timer = useRef(0)
   const run = useRef(() => {})
-  run.current = () => frame.current?.contentWindow?.postMessage({ g: 1, type: "run", nodes, names, state: current.current, bindings: data.bindings, env: env() }, "*")
+  run.current = () => frame.current?.contentWindow?.postMessage({ g: 1, type: "run", nodes, names, state: current.current, bindings: data.bindings, env: env() } satisfies ToSandbox, "*")
 
   const save = () => {
     clearTimeout(timer.current)
@@ -54,9 +54,9 @@ export function GenUiFence(ctx: BlockCtx) {
 
   const host = useMemo<Host>(() => ({
     from: ctx.path, data,
-    call: (fn, args) => frame.current?.contentWindow?.postMessage({ g: 1, type: "call", fn, args }, "*"),
+    call: (fn, args) => frame.current?.contentWindow?.postMessage({ g: 1, type: "call", fn, args } satisfies ToSandbox, "*"),
     action: (name, args) => {
-      const o = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : null
+      const first = args[0], o = obj(first) ? first : null
       const pick = (...ks: string[]) => ks.map((k) => o?.[k]).find((v): v is string => typeof v === "string" && !!v.trim())
       const a = typeof args[0] === "string" ? args[0] : name === "openEntityDetail" ? [pick("value", "name", "query"), pick("location", "address")].filter(Boolean).join(", ") : pick("url", "href", "prompt", "query", "text", "value") ?? ""
       if (name === "copy" || name === "copyText") void copyText(a).then(() => notify("Copied"))
@@ -70,7 +70,7 @@ export function GenUiFence(ctx: BlockCtx) {
   useEffect(() => {
     const on = (e: MessageEvent) => {
       if (e.source !== frame.current?.contentWindow || !e.data || e.data.g !== 1) return
-      const d = e.data as FromSandbox
+      const d: FromSandbox = e.data
       if (d.type === "ready") { ready.current = true; run.current() }
       else if (d.type === "tree" && Array.isArray(d.tree)) { setTree(d.tree); setError(null) }
       else if (d.type === "error") setError(errorText(String(d.message), "This live answer couldn't run"))

@@ -1,28 +1,33 @@
-import { createContext, Fragment, Suspense, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { createContext, createElement, Fragment, Suspense, useCallback, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { cn, haptic, Markdown, namedIcon, PinMap, Switch } from "@vaultite"
 import type { Tree } from "./sandbox"
-import type { Data } from "./dil"
+import { obj, objs, type Data } from "./dil"
 import { AppFrame } from "./AppFrame"
-import { Chart, type ChartSpec } from "./Chart"
-import { fromChatGpt } from "./chartdata"
+import { Chart } from "./Chart"
+import { fromChatGpt, specOf, str } from "./chartdata"
 import { Quiz } from "./Quiz"
 
 type P = Record<string, unknown>
+const ALIGNS = ["left", "center", "right", "justify", "start", "end"] as const
+const FITS = ["fill", "contain", "cover", "none", "scale-down"] as const
+const CAPS = ["butt", "round", "square", "inherit"] as const
+const JOINS = ["miter", "round", "bevel", "inherit"] as const
 export type Host = { call: (fn: number, args: unknown[]) => void; from: string; action: (name: string, args: unknown[]) => void; data?: Data }
 const HostCtx = createContext<Host>({ call: () => {}, from: "", action: () => {} })
 const InlineCtx = createContext(false)
 const SvgCtx = createContext(false)
 
-const fnOf = (host: Host, v: unknown) =>
-  v && typeof v === "object" && typeof (v as { $fn?: unknown }).$fn === "number" ? (...a: unknown[]) => host.call((v as { $fn: number }).$fn, a) : null
-const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : undefined)
+const fnOf = (host: Host, v: unknown) => {
+  const id = obj(v) ? v.$fn : undefined
+  return typeof id === "number" ? (...a: unknown[]) => host.call(id, a) : null
+}
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() && !isNaN(+v) ? +v : undefined)
 
 const space = (v: unknown) => { const n = num(v); return n !== undefined ? `${n * 4}px` : str(v) }
 function pad(v: unknown): string | undefined {
   if (Array.isArray(v)) return v.map((x) => space(x) ?? "0").join(" ")
-  if (v && typeof v === "object") { const o = v as P; return `${space(o.top ?? o.y) ?? 0} ${space(o.right ?? o.x) ?? 0} ${space(o.bottom ?? o.y) ?? 0} ${space(o.left ?? o.x) ?? 0}` }
+  if (obj(v)) { const o = v; return `${space(o.top ?? o.y) ?? 0} ${space(o.right ?? o.x) ?? 0} ${space(o.bottom ?? o.y) ?? 0} ${space(o.left ?? o.x) ?? 0}` }
   return space(v)
 }
 // (ChatGPT's renderer's own scale, as measured: lg is 8px)
@@ -49,7 +54,7 @@ TONE.prose = TONE.emphasis = "var(--foreground)"
 TONE.subtle = TONE.faint = TONE.tertiary
 TONE.inverse = "var(--background)"
 const CSS_COLOR = /^(#|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\(|var\(|currentColor$|transparent$|white$|black$)/
-const themed = (v: unknown): unknown => (v && typeof v === "object" && !Array.isArray(v) && ("light" in v || "dark" in v) ? (document.documentElement.classList.contains("dark") ? (v as P).dark ?? (v as P).light : (v as P).light ?? (v as P).dark) : v)
+const themed = (v: unknown): unknown => (obj(v) && ("light" in v || "dark" in v) ? (document.documentElement.classList.contains("dark") ? v.dark ?? v.light : v.light ?? v.dark) : v)
 const shade = (v: string) => {
   const m = /^(\w+)-(\d{2,3})$/.exec(v)
   if (!m || !TONE[m[1]]) return undefined
@@ -83,7 +88,7 @@ function border(v: unknown, color: unknown, key: string): CSSProperties {
   if (v === true || v === "true") return { [key]: `1px solid ${c(color)}` }
   if (typeof v === "number") return { [key]: `${v}px solid ${c(color)}` }
   if (typeof v === "string") return { [key]: /\s/.test(v) ? v : tone(v) || v === "subtle" || v === "strong" || v === "default" ? `1px solid ${c(v)}` : `${v} solid ${c(color)}` }
-  if (v && typeof v === "object") { const o = v as P; return { [key]: `${num(o.size ?? o.width) ?? 1}px ${str(o.style) ?? "solid"} ${c(o.color ?? color)}` } }
+  if (obj(v)) { const o = v; return { [key]: `${num(o.size ?? o.width) ?? 1}px ${str(o.style) ?? "solid"} ${c(o.color ?? color)}` } }
   return {}
 }
 
@@ -92,9 +97,9 @@ function boxStyle(p: P): CSSProperties {
   if (p.gap !== undefined) s.gap = space(p.gap)
   if (p.padding !== undefined) s.padding = pad(p.padding)
   for (const [k, css] of [["paddingX", ["paddingLeft", "paddingRight"]], ["paddingY", ["paddingTop", "paddingBottom"]], ["marginX", ["marginLeft", "marginRight"]], ["marginY", ["marginTop", "marginBottom"]]] as const)
-    if (p[k] !== undefined) for (const c of css) (s as P)[c] = space(p[k])
+    if (p[k] !== undefined) for (const c of css) Object.assign(s, { [c]: space(p[k]) })
   if (p.margin !== undefined) s.margin = pad(p.margin)
-  for (const k of ["marginTop", "marginBottom", "paddingTop", "paddingBottom", "paddingLeft", "paddingRight"] as const) if (p[k] !== undefined) (s as P)[k] = space(p[k])
+  for (const k of ["marginTop", "marginBottom", "paddingTop", "paddingBottom", "paddingLeft", "paddingRight"] as const) if (p[k] !== undefined) Object.assign(s, { [k]: space(p[k]) })
   const bg = surface(p.background ?? p.bg)
   if (bg) s.background = bg
   if (p.radius !== undefined) s.borderRadius = radius(p.radius)
@@ -107,14 +112,14 @@ function boxStyle(p: P): CSSProperties {
   if (p.shadow) s.boxShadow = "0 1px 3px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.04)"
   for (const k of ["width", "minWidth", "maxWidth", "height", "minHeight", "maxHeight"] as const) {
     const v = p[k]
-    if (v !== undefined) (s as P)[k] = typeof v === "number" ? `${v}px` : v === "full" ? "100%" : v
+    if (v !== undefined) Object.assign(s, { [k]: typeof v === "number" ? `${v}px` : v === "full" ? "100%" : v })
   }
   if (p.flex !== undefined) s.flex = typeof p.flex === "number" ? p.flex : str(p.flex) === "1" ? 1 : str(p.flex)
   if (p.grow) s.flexGrow = 1
   if (p.shrink === false) s.flexShrink = 0
-  if (p.textAlign) s.textAlign = p.textAlign as CSSProperties["textAlign"]
+  if (p.textAlign) Object.assign(s, { textAlign: p.textAlign })
   if (p.opacity !== undefined) s.opacity = num(p.opacity)
-  if (p.overflow) s.overflow = str(p.overflow) as CSSProperties["overflow"]
+  if (p.overflow) Object.assign(s, { overflow: str(p.overflow) })
   if (p.clip) s.overflow = "hidden"
   const c = tone(p.color)
   if (c) s.color = c
@@ -185,7 +190,7 @@ function Md({ s, inline, from }: { s: string; inline: boolean; from: string }) {
 
 const SLOT = /\u2063(\d+)\u2063/
 function Slotted({ s, slots, inline, from }: { s: string; slots: Tree[]; inline: boolean; from: string }) {
-  const box = useRef<HTMLDivElement>(null)
+  const box = useRef<HTMLElement | null>(null), setBox = useCallback((el: HTMLElement | null) => { box.current = el }, [])
   const [at, setAt] = useState<HTMLElement[]>([])
   useLayoutEffect(() => {
     const root = box.current
@@ -193,7 +198,7 @@ function Slotted({ s, slots, inline, from }: { s: string; slots: Tree[]; inline:
     const found: HTMLElement[] = []
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     const texts: Text[] = []
-    while (walker.nextNode()) if (SLOT.test((walker.currentNode as Text).data)) texts.push(walker.currentNode as Text)
+    while (walker.nextNode()) { const n = walker.currentNode; if (n instanceof Text && SLOT.test(n.data)) texts.push(n) }
     for (const t of texts) {
       const bits = t.data.split(/\u2063(\d+)\u2063/)
       const frag = document.createDocumentFragment()
@@ -206,7 +211,7 @@ function Slotted({ s, slots, inline, from }: { s: string; slots: Tree[]; inline:
   }, [s])
   const Tag = inline ? "span" : "div"
   return (
-    <Tag ref={box as never} className="contents">
+    <Tag ref={setBox} className="contents">
       <Md s={s} inline={inline} from={from} />
       {at.map((el, i) => (el && slots[i] ? createPortal(<InlineCtx.Provider value={true}><Piece t={slots[i]} /></InlineCtx.Provider>, el) : null))}
     </Tag>
@@ -334,7 +339,7 @@ function Button({ p, k }: { p: P; k: Tree[] }) {
 
 type Option = { value: string; label: string; description?: string }
 const optionsOf = (v: unknown): Option[] =>
-  Array.isArray(v) ? v.map((o) => (o && typeof o === "object" ? { value: String((o as P).value ?? (o as P).id ?? (o as P).label), label: String((o as P).label ?? (o as P).value), description: str((o as P).description) } : { value: String(o), label: String(o) })) : []
+  Array.isArray(v) ? v.map((o) => (obj(o) ? { value: String(o.value ?? o.id ?? o.label), label: String(o.label ?? o.value), description: str(o.description) } : { value: String(o), label: String(o) })) : []
 
 function Select({ p }: { p: P; k: Tree[] }) {
   const host = useContext(HostCtx)
@@ -380,9 +385,10 @@ function Slider({ p }: { p: P; k: Tree[] }) {
   const on = fnOf(host, p.onChange ?? p.onValueChange)
   const min = num(p.min) ?? 0, max = num(p.max) ?? 100, step = num(p.step) ?? 1
   const v = num(p.value) ?? min
+  const vars: Record<`--${string}`, string | undefined> = { "--pct": `${max > min ? ((v - min) / (max - min)) * 100 : 0}%`, "--fill": tone(p.color) }
   return (
     <input type="range" min={min} max={max} step={step} value={v} disabled={!on} aria-label={str(p.label) ?? "Value"}
-      onChange={(e) => on?.(+e.target.value)} className="genui-slider w-full cursor-pointer" style={{ ...boxStyle({ ...p, color: undefined }), ["--pct" as string]: `${max > min ? ((v - min) / (max - min)) * 100 : 0}%`, ...(tone(p.color) ? { ["--fill" as string]: tone(p.color) } : {}) }} />
+      onChange={(e) => on?.(+e.target.value)} className="genui-slider w-full cursor-pointer" style={{ ...boxStyle({ ...p, color: undefined }), ...vars }} />
   )
 }
 
@@ -446,7 +452,7 @@ function Tabs({ p, k }: { p: P; k: Tree[] }) {
           </button>
         ))}
       </div>
-      {shown ? <div style={flexStyle(shown.p, "column")}><Kids k={shown.k} /></div> : <Kids k={k.filter((x) => !(x.t === "el" && tabs.includes(x as never)))} />}
+      {shown ? <div style={flexStyle(shown.p, "column")}><Kids k={shown.k} /></div> : <Kids k={k.filter((x) => !tabs.some((t) => t === x))} />}
     </div>
   )
 }
@@ -484,7 +490,7 @@ function Progress({ p }: { p: P; k: Tree[] }) {
 function Image({ p }: { p: P; k: Tree[] }) {
   const src = str(p.src ?? p.url)
   if (!src || !/^(https:|data:image\/)/i.test(src)) return str(p.alt) ? <span className="text-muted-foreground">{str(p.alt)}</span> : null
-  return <img src={src} alt={str(p.alt) ?? ""} loading="lazy" referrerPolicy="no-referrer" style={{ maxWidth: "100%", objectFit: (str(p.fit) as CSSProperties["objectFit"]) ?? "cover", aspectRatio: str(p.aspectRatio)?.replace(":", "/"), ...boxStyle({ ...p, radius: p.radius ?? "lg" }) }} />
+  return <img src={src} alt={str(p.alt) ?? ""} loading="lazy" referrerPolicy="no-referrer" style={{ maxWidth: "100%", objectFit: FITS.find((f) => f === p.fit) ?? "cover", aspectRatio: str(p.aspectRatio)?.replace(":", "/"), ...boxStyle({ ...p, radius: p.radius ?? "lg" }) }} />
 }
 
 function Link({ p, k }: { p: P; k: Tree[] }) {
@@ -494,27 +500,27 @@ function Link({ p, k }: { p: P; k: Tree[] }) {
 }
 
 function Table({ p, k }: { p: P; k: Tree[] }) {
-  const rows = (Array.isArray(p.rows) ? p.rows : Array.isArray(p.data) ? p.data : null) as unknown[] | null
+  const rows: unknown[] | null = Array.isArray(p.rows) ? p.rows : Array.isArray(p.data) ? p.data : null
   const sections = k.some((x) => x.t === "el" && x.n === "table-section")
   if (!rows) return <div className="overflow-x-auto"><table className="genui-table w-full">{sections ? <Kids k={k} /> : <tbody><Kids k={k} /></tbody>}</table></div>
-  const cols = (Array.isArray(p.columns) ? p.columns : rows[0] && typeof rows[0] === "object" && !Array.isArray(rows[0]) ? Object.keys(rows[0] as P) : []).map((c, i) =>
-    c && typeof c === "object" ? { key: String((c as P).key ?? (c as P).id ?? (c as P).field ?? i), label: String((c as P).label ?? (c as P).title ?? (c as P).header ?? (c as P).key ?? ""), align: str((c as P).align) } : { key: String(c), label: String(c), align: undefined })
-  const cell = (r: unknown, c: { key: string }, i: number) => (Array.isArray(r) ? r[i] : r && typeof r === "object" ? (r as P)[c.key] : r)
+  const cols = (Array.isArray(p.columns) ? p.columns : obj(rows[0]) ? Object.keys(rows[0]) : []).map((c, i) =>
+    obj(c) ? { key: String(c.key ?? c.id ?? c.field ?? i), label: String(c.label ?? c.title ?? c.header ?? c.key ?? ""), align: ALIGNS.find((a) => a === c.align) } : { key: String(c), label: String(c), align: undefined })
+  const cell = (r: unknown, c: { key: string }, i: number) => (Array.isArray(r) ? r[i] : obj(r) ? r[c.key] : r)
   return (
     <div className="overflow-x-auto">
       <table className="genui-table w-full">
-        <thead><tr>{cols.map((c) => <th key={c.key} style={{ textAlign: (c.align as CSSProperties["textAlign"]) ?? "left" }}>{c.label}</th>)}</tr></thead>
-        <tbody>{rows.map((r, ri) => <tr key={ri}>{cols.map((c, ci) => { const v = cell(r, c, ci); return <td key={c.key} style={{ textAlign: (c.align as CSSProperties["textAlign"]) ?? (typeof v === "number" ? "right" : "left") }}>{v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v)}</td> })}</tr>)}</tbody>
+        <thead><tr>{cols.map((c) => <th key={c.key} style={{ textAlign: c.align ?? "left" }}>{c.label}</th>)}</tr></thead>
+        <tbody>{rows.map((r, ri) => <tr key={ri}>{cols.map((c, ci) => { const v = cell(r, c, ci); return <td key={c.key} style={{ textAlign: c.align ?? (typeof v === "number" ? "right" : "left") }}>{v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v)}</td> })}</tr>)}</tbody>
       </table>
     </div>
   )
 }
 const Tr: Part = ({ k }) => <tr><Kids k={k} /></tr>
-const Td: Part = ({ p, k }) => <td style={{ textAlign: p.align as CSSProperties["textAlign"] }}><Inline k={k} /></td>
-const Th: Part = ({ p, k }) => <th style={{ textAlign: (p.align as CSSProperties["textAlign"]) ?? "left" }}><Inline k={k} /></th>
+const Td: Part = ({ p, k }) => <td style={{ textAlign: ALIGNS.find((a) => a === p.align) }}><Inline k={k} /></td>
+const Th: Part = ({ p, k }) => <th style={{ textAlign: ALIGNS.find((a) => a === p.align) ?? "left" }}><Inline k={k} /></th>
 
 function ChartPart({ p }: { p: P; k: Tree[] }) {
-  return <Chart spec={p.content && typeof p.content === "object" ? fromChatGpt(p.content as P) : p as ChartSpec} />
+  return <Chart spec={obj(p.content) ? fromChatGpt(p.content) : specOf(p)} />
 }
 
 const Card: Part = ({ p, k }) => {
@@ -527,7 +533,7 @@ const Card: Part = ({ p, k }) => {
 const ListCtx = createContext<{ marker: string; line: boolean; start: number }>({ marker: "bullet", line: false, start: 1 })
 const List: Part = ({ p, k }) => {
   const marker = str(p.marker) ?? (p.ordered ? "number" : "bullet")
-  const items = Array.isArray(p.items) ? (p.items as unknown[]).map((x): Tree => ({ t: "el", n: "list-item", p: x && typeof x === "object" ? (x as P) : { label: String(x) }, k: [] })) : null
+  const items = Array.isArray(p.items) ? p.items.map((x): Tree => ({ t: "el", n: "list-item", p: obj(x) ? x : { label: String(x) }, k: [] })) : null
   const kids = items ?? k
   return (
     <ListCtx.Provider value={{ marker, line: str(p.connector) === "line" || str(p.connector) === "solid" || str(p.connector) === "dashed", start: num(p.start) ?? 1 }}>
@@ -609,8 +615,8 @@ const AsyncImage: Part = ({ p }) => {
   )
 }
 const AsyncImageGroup: Part = ({ p }) => {
-  const qs = (Array.isArray(p.queries) ? p.queries : Array.isArray(p.images) ? p.images : []) as unknown[]
-  return <div className="grid grid-cols-2 gap-2 @md:grid-cols-3">{qs.map((q, i) => <AsyncImage key={i} p={typeof q === "string" ? { query: q } : (q as P)} k={[]} />)}</div>
+  const qs: unknown[] = Array.isArray(p.queries) ? p.queries : Array.isArray(p.images) ? p.images : []
+  return <div className="grid grid-cols-2 gap-2 @md:grid-cols-3">{qs.map((q, i) => <AsyncImage key={i} p={typeof q === "string" ? { query: q } : obj(q) ? q : {}} k={[]} />)}</div>
 }
 const Entity: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
@@ -667,8 +673,7 @@ function SvgPart({ t }: { t: Extract<Tree, { t: "el" }> }) {
     attrs[name] = typeof v === "string" ? (k === "id" ? own(`#${v}`).slice(1) : /^(fill|stroke|stopColor|stop-color|color|floodColor)$/.test(k) ? tone(v) ?? own(v) : own(v)) : v
   }
   if (Object.values(t.p).some((v) => fnOf(host, v))) attrs.cursor ??= "pointer"
-  const El = n as "g"
-  return <El {...attrs}>{t.k.map((x, i) => (x.t === "md" ? x.s.replace(/\\(.)/g, "$1") : <Piece key={i} t={x} />))}</El>
+  return createElement(n, attrs, t.k.map((x, i) => (x.t === "md" ? x.s.replace(/\\(.)/g, "$1") : <Piece key={i} t={x} />)))
 }
 const Svg: Part = ({ p, k }) => {
   const size = num(p.size) ?? str(p.size)
@@ -680,8 +685,8 @@ const Svg: Part = ({ p, k }) => {
   const own = (v: string) => (ids.size ? v.replace(/(url\(\s*['"]?#|^#)([\w:.-]+)/g, (m, a: string, id: string) => (ids.has(id) ? `${a}${prefix}${id}` : m)) : v)
   return (
     <SvgCtx.Provider value={true}><SvgIds.Provider value={own}>
-      <svg viewBox={str(p.viewBox) ?? "0 0 24 24"} width={p.width as number ?? size ?? "100%"} height={p.height as number ?? size} preserveAspectRatio={str(p.preserveAspectRatio)}
-        fill={str(p.fill) === "currentColor" || !p.fill ? c : str(p.fill)} stroke={str(p.stroke)} strokeWidth={num(p.strokeWidth)} strokeLinecap={str(p.strokeLinecap) as never} strokeLinejoin={str(p.strokeLinejoin) as never}
+      <svg viewBox={str(p.viewBox) ?? "0 0 24 24"} width={str(p.width) ?? size ?? "100%"} height={str(p.height) ?? size} preserveAspectRatio={str(p.preserveAspectRatio)}
+        fill={str(p.fill) === "currentColor" || !p.fill ? c : str(p.fill)} stroke={str(p.stroke)} strokeWidth={num(p.strokeWidth)} strokeLinecap={CAPS.find((x) => x === p.strokeLinecap)} strokeLinejoin={JOINS.find((x) => x === p.strokeLinejoin)}
         style={{ color: c, maxWidth: "100%", display: "block" }}>
         {k.map((x, i) => <Piece key={i} t={x} />)}
       </svg>
@@ -699,7 +704,7 @@ const Carousel: Part = ({ p, k }) => {
 }
 const CarouselItem: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
-  const media = p.media && typeof p.media === "object" ? p.media as P : null
+  const media = obj(p.media) ? p.media : null
   return (
     <div style={flexStyle({ radius: "xl", gap: 2, ...p, aspectRatio: undefined }, "column")} className="h-full overflow-hidden">
       {media && <Image p={{ ...media, src: media.src ?? media.url, radius: p.radius ?? "xl", aspectRatio: p.aspectRatio ?? "4:3" }} k={[]} />}
@@ -826,15 +831,15 @@ const TableSection: Part = ({ p, k }) => (p.header ? <thead><Kids k={k} /></thea
 const TableRow: Part = ({ p, k }) => <tr data-header={p.header ? "" : undefined}>{str(p.label) && <th>{str(p.label)}</th>}<Kids k={k} /></tr>
 const TableCell: Part = ({ p, k }) => {
   const Tag = p.header ? "th" : "td"
-  return <Tag colSpan={num(p.colSpan)} rowSpan={num(p.rowSpan)} style={{ textAlign: (str(p.align) as CSSProperties["textAlign"]) ?? "left", verticalAlign: str(p.vAlign) === "center" ? "middle" : str(p.vAlign) === "end" ? "bottom" : "top", width: str(p.width) }}><Inline k={k} /></Tag>
+  return <Tag colSpan={num(p.colSpan)} rowSpan={num(p.rowSpan)} style={{ textAlign: ALIGNS.find((a) => a === p.align) ?? "left", verticalAlign: str(p.vAlign) === "center" ? "middle" : str(p.vAlign) === "end" ? "bottom" : "top", width: str(p.width) }}><Inline k={k} /></Tag>
 }
 
 const MapWidget: Part = ({ p }) => {
   const host = useContext(HostCtx)
   const [failed, setFailed] = useState(false)
-  const points = (Array.isArray(p.points) ? p.points : []) as P[]
+  const points = objs(p.points)
   const found = typeof p.$n === "number" ? host.data?.maps?.[p.$n] ?? [] : []
-  const groups = (Array.isArray(p.groups) && p.groups.length ? p.groups : [{ locations: points.map((x, i) => ({ point_id: str(x.id ?? x.ref) ?? String(i) })) }]) as P[]
+  const groups: P[] = Array.isArray(p.groups) && p.groups.length ? objs(p.groups) : [{ locations: points.map((x, i) => ({ point_id: str(x.id ?? x.ref) ?? String(i) })) }]
   const at = (id: string) => {
     const i = points.findIndex((x) => str(x.id ?? x.ref) === id)
     const pt = points[i] ?? {}
@@ -852,7 +857,7 @@ const MapWidget: Part = ({ p }) => {
           <div key={gi} className="flex flex-col gap-1.5">
             {str(g.title) && <div className="text-[15px] font-semibold">{str(g.title)}</div>}
             <ol className="flex flex-col gap-1.5">
-              {((Array.isArray(g.locations) ? g.locations : []) as P[]).map((l, li) => {
+              {objs(g.locations).map((l, li) => {
                 const pt = at(str(l.point_id) ?? "")
                 return (
                   <li key={li} className="flex gap-2.5 text-[14px]">

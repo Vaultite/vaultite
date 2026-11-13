@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { onLook } from "@vaultite"
 import type { Host } from "./parts"
+import { obj } from "./dil"
 
 type P = Record<string, unknown>
 const isDark = () => document.documentElement.classList.contains("dark")
@@ -76,20 +77,19 @@ function bridge() {
   let raw: Record<string, unknown> = {}
   const wrap = (v: Record<string, unknown>) => {
     const out: Record<string, unknown> = {}
-    for (const [k, x] of Object.entries(v)) out[k] = x && typeof x === "object" && typeof (x as { $fn?: unknown }).$fn === "number" ? (...a: unknown[]) => post({ type: "call", fn: (x as { $fn: number }).$fn, args: JSON.parse(JSON.stringify(a)) }) : x
+    for (const [k, x] of Object.entries(v)) { const fn = x && typeof x === "object" && "$fn" in x ? x.$fn : undefined; out[k] = typeof fn === "number" ? (...a: unknown[]) => post({ type: "call", fn, args: JSON.parse(JSON.stringify(a)) }) : x }
     return out
   }
-  const g = globalThis as unknown as Record<string, unknown>
-  g.__bindings = {}
-  g.__effect = (f: () => void) => { effects.push(f); try { f() } catch (e) { console.error(e) } }
   const genui = new Proxy({}, { get: (_, name) => (...args: unknown[]) => post({ type: "action", name: String(name), args: JSON.parse(JSON.stringify(args ?? [])) }) })
-  g.GenUI = genui
-  g.openai = { sendFollowUpMessage: (o: { prompt?: string }) => post({ type: "action", name: "issueNewTurn", args: [o?.prompt ?? ""] }), openExternal: (o: { href?: string }) => post({ type: "action", name: "openUrl", args: [o?.href ?? ""] }) }
+  Object.assign(globalThis, {
+    __bindings: {}, __effect: (f: () => void) => { effects.push(f); try { f() } catch (e) { console.error(e) } }, GenUI: genui,
+    openai: { sendFollowUpMessage: (o: { prompt?: string }) => post({ type: "action", name: "issueNewTurn", args: [o?.prompt ?? ""] }), openExternal: (o: { href?: string }) => post({ type: "action", name: "openUrl", args: [o?.href ?? ""] }) },
+  })
   addEventListener("message", (e) => {
     if (e.source !== parent || !e.data || e.data.ga !== 1) return
     if (e.data.type === "bind") {
       raw = e.data.bind ?? {}
-      g.__bindings = wrap(raw)
+      Object.assign(globalThis, { __bindings: wrap(raw) })
       for (const f of effects) { try { f() } catch (err) { console.error(err) } }
     } else if (e.data.type === "theme") {
       document.documentElement.dataset.theme = e.data.dark ? "dark" : "light"
@@ -102,8 +102,8 @@ function bridge() {
   new ResizeObserver(size).observe(document.documentElement)
   addEventListener("load", size)
   document.addEventListener("click", (e) => {
-    const a = (e.target as Element).closest?.("a[href]") as HTMLAnchorElement | null
-    if (a && /^https?:/i.test(a.href)) { e.preventDefault(); post({ type: "action", name: "openUrl", args: [a.href] }) }
+    const a = e.target instanceof Element ? e.target.closest("a[href]") : null
+    if (a instanceof HTMLAnchorElement && /^https?:/i.test(a.href)) { e.preventDefault(); post({ type: "action", name: "openUrl", args: [a.href] }) }
   })
 }
 
@@ -111,7 +111,7 @@ export function AppFrame({ p, html, host }: { p: P; html: string; host: Host }) 
   const frame = useRef<HTMLIFrameElement>(null)
   const [css, setCss] = useState<string | null>(null)
   const [h, setH] = useState(0)
-  const bind = (p.bind && typeof p.bind === "object" ? p.bind : {}) as P
+  const bind: P = obj(p.bind) ? p.bind : {}
   const bindKey = JSON.stringify(bind)
   useEffect(() => {
     let live = true

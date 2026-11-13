@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "yaml"
+import { obj } from "./dil.ts"
 
 export type ChartSpec = {
   type?: string; title?: string; data?: unknown; labels?: unknown; datasets?: unknown
@@ -8,8 +9,8 @@ export type ChartSpec = {
 }
 
 export function fromChatGpt(c: Record<string, unknown>): ChartSpec {
-  const series = Array.isArray(c.series) ? (c.series as Record<string, unknown>[]) : undefined
-  const first = series?.find((x) => x && typeof x === "object")
+  const series: unknown[] | undefined = Array.isArray(c.series) ? c.series : undefined
+  const first = series?.find(obj)
   const type = String(c.chartType ?? c.type ?? "bar").toLowerCase()
   return {
     type: type === "bar" && c.layout === "vertical" ? "hbar" : type, title: typeof c.title === "string" ? c.title : undefined,
@@ -18,12 +19,22 @@ export function fromChatGpt(c: Record<string, unknown>): ChartSpec {
     min: typeof c.yAxisMin === "number" ? c.yAxisMin : undefined, max: typeof c.yAxisMax === "number" ? c.yAxisMax : undefined,
   }
 }
+export const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : undefined)
+
+export function specOf(o: Record<string, unknown>): ChartSpec {
+  return {
+    type: str(o.type), title: str(o.title), data: o.data, labels: o.labels, datasets: o.datasets, series: o.series,
+    x: str(o.x), y: Array.isArray(o.y) ? o.y.map(String) : str(o.y), stacked: !!o.stacked, horizontal: !!o.horizontal,
+    height: Number(o.height) || undefined, unit: str(o.unit), suffix: str(o.suffix), prefix: str(o.prefix),
+    colors: Array.isArray(o.colors) ? o.colors.map(String) : undefined, xLabel: str(o.xLabel), yLabel: str(o.yLabel),
+    min: isNum(o.min) ? o.min : undefined, max: isNum(o.max) ? o.max : undefined,
+  }
+}
 export type Series = { key: string; label: string; color: string; values: (number | null)[] }
 
 export const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--blue)", "var(--orange)", "var(--purple)", "var(--teal)", "var(--pink)"]
 export const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v)
 const toNum = (v: unknown) => (isNum(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(+v.replace(/[,_]/g, "")) ? +v.replace(/[,_]/g, "") : null)
-const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 export function chartData(spec: ChartSpec): { cats: string[]; series: Series[] } {
   const palette = Array.isArray(spec.colors) && spec.colors.length ? spec.colors.map(String) : COLORS
@@ -53,10 +64,10 @@ export function chartData(spec: ChartSpec): { cats: string[]; series: Series[] }
 
 export function chartSpec(text: string): { spec: ChartSpec } | { error: string } {
   let v: unknown
-  try { v = text.trim().startsWith("{") ? JSON.parse(text) : parseYaml(text) } catch (e) { return { error: (e as Error).message.split("\n")[0] } }
+  try { v = text.trim().startsWith("{") ? JSON.parse(text) : parseYaml(text) } catch (e) { return { error: (e instanceof Error ? e.message : String(e)).split("\n")[0] } }
   if (Array.isArray(v)) v = { data: v }
   if (!obj(v)) return { error: "it needs a type and data" }
-  return { spec: v as ChartSpec }
+  return { spec: specOf(v) }
 }
 
 export function chartText(text: string): string {

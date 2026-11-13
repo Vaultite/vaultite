@@ -215,7 +215,7 @@ export function parse(src: string, span?: [number, number]): Node[] {
           if (f && f.branch) {
             close("#if")
             const m = /^:else(?:\s+if\s+([\s\S]+))?$/.exec(head.trim())
-            const b = { test: m?.[1]?.trim() ?? null, kids: [] as Node[] }
+            const b: { test: string | null; kids: Node[] } = { test: m?.[1]?.trim() ?? null, kids: [] }
             f.branch.push(b)
             stack.push({ name: "#if", kids: b.kids, node: f.node, branch: f.branch })
             done(); continue
@@ -320,24 +320,29 @@ export const savedState = (src: string): Record<string, unknown> => savedObject(
 
 export const savedData = (src: string): Data => savedObject(DATA, src)
 
+type Obj = Record<string, unknown>
+export const obj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v)
+export const objs = (v: unknown): Obj[] => (Array.isArray(v) ? v.map((x) => (obj(x) ? x : {})) : [])
+const field = (v: unknown, key: string): unknown => (obj(v) ? v[key] : undefined)
+
 export function dataLine(meta: unknown): string {
-  const m = (meta ?? {}) as { model_dil_v2?: { appData?: { opGenui?: { modelDataBindings?: unknown; componentResults?: Record<string, unknown> } } }; content_references?: unknown[] }
-  const app = m.model_dil_v2?.appData?.opGenui
-  if (!app) return ""
+  const app = field(field(field(meta, "model_dil_v2"), "appData"), "opGenui")
+  if (!obj(app)) return ""
   const data: Data = {}
-  for (const r of (Array.isArray(m.content_references) ? m.content_references : []) as { type?: string; category?: string; data?: { points?: Record<string, unknown>[] } }[]) {
-    if (r?.type !== "client_defined_widget" || r.category !== "map" || !Array.isArray(r.data?.points)) continue
-    ;(data.maps ??= []).push(r.data.points.filter((pt) => typeof pt.latitude === "number" && typeof pt.longitude === "number").map((pt) => ({
-      name: String(pt.name ?? ""), lat: pt.latitude as number, lon: pt.longitude as number,
+  for (const r of objs(field(meta, "content_references"))) {
+    const points = field(r.data, "points")
+    if (r.type !== "client_defined_widget" || r.category !== "map" || !Array.isArray(points)) continue
+    ;(data.maps ??= []).push(objs(points).flatMap((pt) => (typeof pt.latitude === "number" && typeof pt.longitude === "number" ? [{
+      name: String(pt.name ?? ""), lat: pt.latitude, lon: pt.longitude,
       address: typeof pt.address === "string" ? pt.address : undefined, category: typeof pt.category === "string" ? pt.category : undefined,
-    })))
+    }] : [])))
   }
-  if (app.modelDataBindings && typeof app.modelDataBindings === "object" && Object.keys(app.modelDataBindings).length) data.bindings = app.modelDataBindings as Record<string, unknown>
-  for (const r of Object.values(app.componentResults ?? {}) as { componentName?: string; state?: Record<string, unknown> }[]) {
-    if (r?.componentName === "Cite") for (const it of (r.state?.items ?? []) as Record<string, unknown>[]) {
+  if (obj(app.modelDataBindings) && Object.keys(app.modelDataBindings).length) data.bindings = app.modelDataBindings
+  for (const r of Object.values(obj(app.componentResults) ? app.componentResults : {}).filter(obj)) {
+    if (r.componentName === "Cite") for (const it of objs(field(r.state, "items"))) {
       if (typeof it.ref_id === "string" && typeof it.url === "string") (data.refs ??= {})[it.ref_id] = { url: it.url, title: typeof it.title === "string" ? it.title : undefined, source: typeof it.source_label === "string" ? it.source_label : undefined }
-    } else if (r?.componentName === "AsyncImage") {
-      const imgs = ((r.state?.images ?? []) as Record<string, unknown>[]).map((im) => ({ url: String(im.content_url ?? im.thumbnail_url ?? ""), alt: typeof im.title === "string" ? im.title : undefined })).filter((im) => /^https:/.test(im.url))
+    } else if (r.componentName === "AsyncImage") {
+      const imgs = objs(field(r.state, "images")).map((im) => ({ url: String(im.content_url ?? im.thumbnail_url ?? ""), alt: typeof im.title === "string" ? im.title : undefined })).filter((im) => /^https:/.test(im.url))
       ;(data.images ??= []).push(imgs)
     }
   }
@@ -352,7 +357,7 @@ export function withState(src: string, state: Record<string, unknown>): string {
 
 export function dilText(src: string): string {
   const out: string[] = []
-  const str = (p: Prop[], name: string) => (p.find((x) => "name" in x && x.name === name) as { str?: string } | undefined)?.str
+  const str = (p: Prop[], name: string) => p.find((x): x is Extract<Prop, { name: string }> => "name" in x && x.name === name)?.str
   const lit = (parts: Part[]) => {
     const s = parts.map((p) => (typeof p === "string" ? p : "el" in p ? str(p.el.t === "el" ? p.el.props : [], "value") ?? inline(p.el.t === "el" ? p.el.kids : []) : "")).join("").replace(/[ \t]+$/gm, "")
     return parts.some((p) => typeof p !== "string" && !("el" in p)) && (s.match(/\p{L}/gu) ?? []).length < 3 ? "" : s.replace(/[\s·:,–-]+$/u, "")
