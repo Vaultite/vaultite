@@ -5,6 +5,7 @@ import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
 import { DONE } from "../../core/migrations.ts"
+import { portOf } from "../../core/listening.ts"
 
 const ROOT = path.join(import.meta.dirname, "..", "..")
 
@@ -37,7 +38,7 @@ function write(dir: string, rel: string, text: string) {
 export function freePort(): Promise<number> {
   return new Promise((ok, fail) => {
     const s = net.createServer().once("error", fail).listen(0, "127.0.0.1", () => {
-      const { port } = s.address() as net.AddressInfo
+      const port = portOf(s)
       s.close(() => ok(port))
     })
   })

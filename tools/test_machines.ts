@@ -7,6 +7,7 @@ import crypto from "node:crypto"
 import http from "node:http"
 import { WebSocket } from "ws"
 import { tempDir } from "./test/lib.ts"
+import { portOf } from "../core/listening.ts"
 
 if (process.platform === "win32") { console.log("skip machines: the dial-in agent (dial.py) is for Linux and macOS machines"); process.exit(0) }
 
@@ -143,7 +144,7 @@ try {
   })
   await new Promise<void>((r) => relay.listen(0, "127.0.0.1", () => r()))
   try {
-    const relayPort = (relay.address() as { port: number }).port
+    const relayPort = portOf(relay)
     const cur = machinePlugin.readSettings()!
     machinePlugin.saveSettings({ ...cur, machines: [...cur.machines, { id: "other", label: "Other", url: `http://127.0.0.1:${relayPort}` }, { id: "away", label: "Away", via: "other" }] })
     machinePlugin.forget()

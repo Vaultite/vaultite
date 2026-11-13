@@ -9,6 +9,7 @@ import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { makeVault } from "./vault.ts"
 import { sharedTmp } from "../../core/testrun.ts"
+import { portOf } from "../../core/listening.ts"
 
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
 const ROOT = path.resolve(arg("root", path.join(import.meta.dirname, "..", "..")))
@@ -70,7 +71,7 @@ const server = http.createServer((req, res) => {
   send("text/html; charset=utf-8", ARTICLE(u.slice(1).replace(/\W/g, "-")))
 })
 await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok))
-const SITE = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+const SITE = `http://127.0.0.1:${portOf(server)}`
 
 // ---------- the app, through its main process's inspector ----------
 

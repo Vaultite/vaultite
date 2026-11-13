@@ -9,6 +9,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import tls from "node:tls"
+import { portOf } from "../../core/listening.ts"
 
 export type Profile = { name: string; rttMs: number; downKbps: number; upKbps: number }
 /** A phone on LTE through the tailnet (a relay or a direct path home), and a Mac away from home on good Wi-Fi. */
@@ -127,7 +128,7 @@ export async function netem(target: string, profile: Profile): Promise<Netem> {
     else h1.emit("connection", s)
   })
   await new Promise<void>((r) => secure.listen(0, "127.0.0.1", r))
-  const tlsPort = (secure.address() as net.AddressInfo).port
+  const tlsPort = portOf(secure)
 
   // The air: the relay the browser connects to
   const up = new Link(profile.upKbps, profile.rttMs / 2), down = new Link(profile.downKbps, profile.rttMs / 2)
@@ -149,7 +150,7 @@ export async function netem(target: string, profile: Profile): Promise<Netem> {
     carry(server, client, down, count)
   })
   await new Promise<void>((r) => relay.listen(0, "127.0.0.1", r))
-  const port = (relay.address() as net.AddressInfo).port
+  const port = portOf(relay)
   return {
     url: `https://localhost:${port}/`, spki, up, down,
     h1Bytes: () => conns.filter((c) => alpn.get(c.port) === "http/1.1").reduce((a, c) => a + c.bytes, 0),

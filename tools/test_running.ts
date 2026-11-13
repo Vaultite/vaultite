@@ -15,6 +15,7 @@ import http from "node:http"
 import type net from "node:net"
 import { webBuilds } from "../core/webbuild.ts"
 import { giveGraph } from "../core/update/graph.ts"
+import { portOf } from "../core/listening.ts"
 const t0 = Date.now()
 
 const tmp = tempDir("vaultite-running-test-")
@@ -243,7 +244,7 @@ async function restartingServer(steps: Step[], live = true) {
   const listen = () => new Promise<void>((ok) => {
     listening = http.createServer(handler)
     listening.on("connection", (c) => { sockets.add(c); c.on("close", () => sockets.delete(c)) })
-    listening.listen(port, "127.0.0.1", () => { port = (listening!.address() as net.AddressInfo).port; ok() })
+    listening.listen(port, "127.0.0.1", () => { port = portOf(listening!); ok() })
   })
   /** Down for `ms` (refusing), then up again on its port. */
   const stop = (ms: number) => { const s = listening; listening = null; s?.close(); for (const c of sockets) c.destroy(); setTimeout(() => void listen(), ms) }
@@ -320,7 +321,7 @@ await section("a wait through a restart", async () => {
 await section("an agent's call through a restart: sent again only where that's safe", async () => {
   // (a server whose port answers nothing for `downMs`, then takes calls as `steps` say, kept in `got`)
   const flaky = async (steps: ("cut" | "proxy" | "answer")[], downMs = 0) => {
-    const got: string[] = [], port = await new Promise<number>((ok) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => ok(p)) }) })
+    const got: string[] = [], port = await new Promise<number>((ok) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = portOf(s); s.close(() => ok(p)) }) })
     let srv: http.Server | null = null
     const up = () => { srv = http.createServer((req, res) => {
       const step = steps[Math.min(got.length, steps.length - 1)]
@@ -343,7 +344,7 @@ await section("an agent's call through a restart: sent again only where that's s
   {
     // (the catalog is asked first: the app's own processes wait for it too; elsewhere nothing up is said at once)
     const late = async () => {
-      const port = await new Promise<number>((ok) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => ok(p)) }) })
+      const port = await new Promise<number>((ok) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = portOf(s); s.close(() => ok(p)) }) })
       const got: string[] = [], entry = entryOf(versionOps()[0], null)
       let srv: http.Server | null = null
       setTimeout(() => { srv = http.createServer((req, res) => {
