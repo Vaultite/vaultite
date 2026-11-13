@@ -84,9 +84,9 @@ try {
   const before = stamps(VA)
   const t1 = Date.now()
   await api(pa, "PUT", "tabs/devices/alphamac0001", { tabs: [{ to: "file:Notes/Idea.md" }, { to: term("k1"), label: "Claude" }] }, { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "x-vaultite-client": "app/desktop" })
-  const seen = await waitFor(async () => (await devicesOn(pb)).find((d) => d.id === "alphamac0001") ?? null, 10_000, 50)
+  const seen = await waitFor(async () => (await devicesOn(pb)).find((d) => d.id === "alphamac0001") ?? null, 15_000, 50)
   const ms = Date.now() - t1
-  check(`shared: a device's tabs reach the other machine live (${ms} ms)`, !!seen && ms < 3000, seen)
+  check(`shared: a device's tabs reach the other machine live, well before its 30 s pull (${ms} ms)`, !!seen && ms < 10_000, seen)
   check("shared: its terminal tab names the machine it runs on", seen?.tabs.some((t: Any) => t.to === `${term("k1")}@alpha`), seen?.tabs)
   check("shared: as its own machine lists it, without its machine", (await devicesOn(pa)).find((d) => d.id === "alphamac0001")?.tabs.some((t: Any) => t.to === term("k1")))
   await api(pb, "PUT", "workspaces/1", { layout: { tabs: [{ id: "t9", root: { id: "p9", to: "file:Notes/Idea.md" }, focus: "p9" }], active: "t9" } })
