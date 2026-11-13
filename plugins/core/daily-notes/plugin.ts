@@ -1,13 +1,9 @@
-// Daily notes, as Obsidian's: a note per day named by a date format (YYYY-MM-DD), in their folder (Daily/, or where
-// Obsidian's daily-notes.json says), made from a template. Other plugins may keep keys of their own in them.
 import { formatDate, OpError, parseDate, Plugin, section, today } from "../../../core/plugins.ts"
 import { type Entry, extract, fetchFromICloud, joinPath, Kind, readText, setPropertyText, stemOf, str, writeNew } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
 const ISO = /^\d{4}-\d\d-\d\d$/
-/** The settings (Obsidian's daily-notes.json under them: plugin.seeded) and the folder set (Vault.folderSet), read
- *  again when settings change; `named` remembers which paths are daily notes by their name. */
 let spec: { version: number; format: string; template: string; folder: string | null; named: Map<string, boolean> } | null = null
 function dailySpec() {
   if (spec?.version !== plugin.vault.settingsVersion) {
@@ -17,19 +13,16 @@ function dailySpec() {
   }
   return spec
 }
-/** A YYYY-MM-DD as a local date at noon (so formats never see another day). */
+/** Noon, so a time zone change never moves it to another day. */
 const dayOf = (date: string) => new Date(`${date}T12:00:00`)
-/** The date a daily note's name (its path in the folder, without .md) writes in the format, or null. */
 function dateIn(name: string, format: string) {
   const d = parseDate(name, format)
   return d ? formatDate(d, "YYYY-MM-DD") : null
 }
-/** A daily note's name for a date: its path in the daily notes' folder, without .md (the format may make folders). */
 const dailyName = (date: string) => formatDate(dayOf(date), dailySpec().format)
 
 plugin.kind(new Kind({
   type: "day", collection: "days", folder: "Daily", label: "Daily notes",
-  // (a note without a type is one by its name, in the folder set for them: as in Obsidian)
   owns: (rel) => {
     const { folder, format, named } = dailySpec()
     if (folder === null || !rel.endsWith(".md") || (folder && !rel.startsWith(`${folder}/`))) return false
@@ -42,23 +35,18 @@ plugin.kind(new Kind({
     const date = dateIn(stem, last) ?? (ISO.test(stem) ? stem : null)
     return [{ date: date ?? stem, body }, date ? [] : [`a daily note's name is its date, written ${last}`]]
   },
-  // (owns no keys: what other plugins keep in a day's note stays as it is)
   render: (d) => [{}, d.body || ""],
   filename: (d, at) => (at.old ? joinPath(at.folder, stemOf(at.old.id)) : joinPath(plugin.vault.home("days") ?? "Daily", dailyName(str(d.date)))),
   key: (d) => d.date ?? null,
 }))
 
-// The day notes' text isn't app data: /api/state sends none of them.
 plugin.state(() => ({}))
 
-/** A date's daily note's path, made or not. */
 function dayPath(date: string) {
   const d = plugin.vault.get("days", date)
   return d ? `${d.id}.md` : `${joinPath(plugin.vault.home("days") ?? "Daily", dailyName(date))}.md`
 }
 
-/** A date's daily note, made where they go (from their template, with `type: day` unless their folder finds them) when
- *  there's none yet. Its path, and whether it was made. */
 async function dailyNote(date: string): Promise<{ path: string; made: boolean }> {
   const rel = dayPath(date)
   if (plugin.vault.get("days", date)) { await mergeCopies(rel); return { path: rel, made: false } }
@@ -70,7 +58,7 @@ async function dailyNote(date: string): Promise<{ path: string; made: boolean }>
     const t = plugin.vault.entries.has(`${template}.md`) ? readText(plugin.vault.abs(`${template}.md`)) : null
     if (t === null) throw new OpError(`the daily notes' template ${template}.md isn't there: set another in Daily notes' settings`)
     const fill = plugin.peer("templates")?.exports.fill as ((text: string, title: string, into?: string, now?: Date) => string) | undefined
-    // ({{date}} is the note's day, {{time}} the time it's made, as Obsidian fills them)
+    // (as Obsidian fills {{date}} and {{time}})
     const now = new Date(), at = dayOf(date)
     at.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
     text = fill ? fill(t, name.split("/").pop()!, own, at) : t
@@ -78,7 +66,7 @@ async function dailyNote(date: string): Promise<{ path: string; made: boolean }>
   const made = writeNew(plugin.vault.abs(rel), text)
   await plugin.vault.sync()
   if (!made && !plugin.vault.get("days", date)) {
-    // Another file there: a second one would be iCloud's "2026-10-08 2" when it's this note still on its way.
+    // A second note here would be iCloud's "2026-10-08 2" when this one is still on its way.
     if (plugin.vault.entries.has(rel)) throw new OpError(`${rel} is there but isn't a daily note (its type: ${plugin.vault.entries.get(rel)!.fm.type})`, 409)
     fetchFromICloud(plugin.vault.abs(rel), { errno: 11 })
     throw new OpError(`${rel} is still coming from iCloud: try again in a moment`, 503)
@@ -87,14 +75,12 @@ async function dailyNote(date: string): Promise<{ path: string; made: boolean }>
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-/** iCloud's copies of a day's note two Macs made at once ("2026-10-08 2.md" beside it): merged into it and archived
- *  when nothing would be lost (no text of their own, properties that agree or are lists), else left for the user. */
+/** iCloud names the copy two Macs made at once "2026-10-08 2.md". */
 async function mergeCopies(rel: string) {
   const v = plugin.vault, stem = rel.slice(0, -3)
   for (let n = 1; n < 10; n++) {
     const copy = v.entries.get(`${stem} ${n}.md`), e = v.entries.get(rel)
     if (!copy || !e || (copy.kind ? copy.kind.collection !== "days" : !!copy.fm.type)) continue
-    // (a tidy-up: one that can't happen now, the note still on its way or changed meanwhile, never stops it opening)
     try {
       const text = readText(v.abs(rel)), next = merged(text, e, copy)
       if (next === null) continue
@@ -103,7 +89,6 @@ async function mergeCopies(rel: string) {
     } catch (err) { console.error(`daily-notes: couldn't merge ${copy.rel} into ${rel}: ${(err as Error).message}`) }
   }
 }
-/** The note's text with a copy's properties added in, or null when the copy holds what the note doesn't. */
 function merged(text: string, e: Entry, copy: Entry): string | null {
   const body = copy.body.trim()
   if (body && !e.body.includes(body)) return null
@@ -118,7 +103,6 @@ function merged(text: string, e: Entry, copy: Entry): string | null {
   return out
 }
 
-// For plugins that require this one (to write in a day's note).
 plugin.exports = { note: dailyNote, path: dayPath }
 
 plugin.op({
@@ -137,7 +121,6 @@ or without \`type: day\`.
   text: (r) => `${r.made ? "Made" : "There's"} ${r.path}.`,
 })
 
-/** The date a [[link]]'s name gives a daily note (2026-10-08, or its path from their folder or the top), or null. */
 function linkedDate(name: string) {
   const { format } = dailySpec(), home = plugin.vault.home("days") ?? "Daily"
   let rest = name.trim().replace(/\.md$/i, "")
@@ -145,8 +128,6 @@ function linkedDate(name: string) {
   return dateIn(rest, format) ?? (rest.includes("/") ? null : dateIn(rest, format.slice(format.lastIndexOf("/") + 1)))
 }
 
-/** A day's note as the `day` block finds it (or as a link's `name` names one: null when it doesn't): its path, and
- *  whether it's there. Never makes one. */
 plugin.route("GET", "daily-notes/day", (req) => {
   if (req.query.name !== undefined) {
     const date = linkedDate(req.query.name)
@@ -156,8 +137,6 @@ plugin.route("GET", "daily-notes/day", (req) => {
   return { date, path: dayPath(date), exists: !!plugin.vault.get("days", date) }
 })
 
-/** A month's daily notes (`month`: YYYY-MM, default this one), by date: each one's path and about how many words it
- *  has (the sidebar's month draws more dots for more). */
 plugin.route("GET", "daily-notes/month", (req) => {
   const month = /^\d{4}-\d\d$/.test(req.query.month ?? "") ? req.query.month : today().slice(0, 7)
   const days: Record<string, { path: string; words: number }> = {}
@@ -168,7 +147,6 @@ plugin.route("GET", "daily-notes/month", (req) => {
   return { month, days }
 })
 
-/** "Plan" or "## Plan": the heading a `day` block shows. */
 const headingOf = (v: unknown) => (typeof v === "string" ? v.trim().replace(/^#+\s*/, "") : "")
 
 plugin.block("day", (ctx) => {
@@ -180,7 +158,6 @@ plugin.block("day", (ctx) => {
   ctx.source(rel)
   const part = extract(str(d.body), heading)
   if (part === null) return section(`${title} (${rel})`, `_No heading ${heading} in it._`)
-  // (a section's own heading is the title already)
   const lines = (heading ? part.split("\n").slice(1).join("\n") : part).trim()
   return section(`${title} (${rel})`, lines || "_Empty._")
 })

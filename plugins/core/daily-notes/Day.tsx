@@ -7,20 +7,15 @@ import {
 
 export const ISO = /^\d{4}-\d\d-\d\d$/
 export const dayName = (date: string) => (date === addDays(today(), 1) ? "Tomorrow" : fmtDay(date))
-/** A day's name inside a sentence: "today", "Oct 12". */
 export const inSentence = (name: string) => (/^(Today|Yesterday|Tomorrow)$/.test(name) ? name.toLowerCase() : name)
-/** "today's", "Oct 12's". */
 export const whose = (date: string) => `${inSentence(dayName(date))}'s`
 export const nav = "grid size-9 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:size-7"
 
-/** A day's note, made when there's none yet where daily notes go, named and filled as the settings say (daily-note.open). */
 export async function openDay(date: string, newTab = false) {
   try { openFile((await op<{ path: string }>("daily-note.open", { date })).path, { newTab }) } catch (e) { notifyError(e, `Couldn't open ${whose(date)} daily note`) }
 }
 
 type Day = { date: string; path: string; exists: boolean }
-/** A day's note as the server finds it (looking never makes it), and `start`: made as daily-note.open makes it, then
- *  focused (`started`) to write in at once. */
 export function useDay(date: string) {
   const at = useRef<string | null>(null)
   const { data, error } = useLive<Day>(`daily-notes/day?date=${date}`, undefined, (p) => p === at.current)
@@ -29,11 +24,9 @@ export function useDay(date: string) {
   const [started, setStarted] = useState<string | null>(null)
   const [busy, run] = useBusy()
   const start = () => void run(() => op("daily-note.open", { date }).then(() => setStarted(date), (e) => notifyError(e, `Couldn't start ${whose(date)} note`)))
-  // (busy from the press until the note is there to write in)
   return { day, error, start, started: started === date, starting: busy || (started === date && !!day && !day.exists) }
 }
 
-/** Today's date, changing at midnight (setting the same date again draws nothing). */
 function useToday() {
   const [now, setNow] = useState(today)
   useEffect(() => {
@@ -43,12 +36,9 @@ function useToday() {
   return now
 }
 
-// The day the panel and its tab show, this device's (a phone browses days of its own): one stepped to stays until the
-// date changes, then it's today again.
 type Kept = { date: string; on: string } | null
 const SHOWN = "daily-notes:shown"
 const shown = (kept: Kept, now: string) => (kept?.on === now && ISO.test(kept.date) ? kept.date : now)
-/** The day shown now, for the panel's menu. */
 export const shownDay = () => shown(scopedState<Kept>(SHOWN, null, "device").get(), today())
 function useShownDay() {
   const now = useToday()
@@ -56,17 +46,14 @@ function useShownDay() {
   return { date: shown(kept, now), now, show: (date: string) => keep(date === now ? undefined : { date, on: now }) }
 }
 
-/** The sidebar panel: the shown day's note, edited in place beside whatever is open; ‹ › step days. */
 export const DailyPanel = ({ store, open, flyout }: SidebarCtx) => (open ? <DayPanel store={store} jot={flyout} /> : null)
 
-/** `jot`: opened from the rail, to write in at once. */
 function DayPanel({ store, jot }: { store: Store; jot?: boolean }) {
   const { date, now, show } = useShownDay()
   const { day, error, start, started, starting } = useDay(date)
   return (
     <div className="flex shrink-0 flex-col" data-daily-panel={date}>
       <SidebarHeading title={dayName(date)} open>
-        {/* (first, so the arrows stay put as it comes and goes) */}
         {date !== now && <HeadingButton icon={Calendar1} label="Today" onClick={() => show(now)} />}
         <HeadingButton icon={ChevronLeft} label="Day before" onClick={() => show(addDays(date, -1))} />
         <HeadingButton icon={ChevronRight} label="Day after" onClick={() => show(addDays(date, 1))} />
@@ -83,7 +70,6 @@ function DayPanel({ store, jot }: { store: Store; jot?: boolean }) {
   )
 }
 
-/** The panel as a tab (view:daily-note), to keep in a split: the same day, a page's size. */
 export function DailyView({ store }: { store: Store }) {
   const { date, now, show } = useShownDay()
   const { day, error, start, started, starting } = useDay(date)

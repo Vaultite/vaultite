@@ -1,5 +1,3 @@
-// The month's daily notes as a calendar in the sidebar: a dot under each day that has one (more dots, more words),
-// today ringed; a day opens its note (made from the template when there's none, as the commands do).
 import { useEffect, useState } from "react"
 import { Calendar1, ChevronLeft, ChevronRight } from "lucide-react"
 import { addDays, cn, dateText, dow, get, HeadingButton, openFile, parse, range, SidebarHeading, today, useTick, useVaultChange, type SidebarCtx } from "@vaultite"
@@ -9,7 +7,6 @@ type Month = { month: string; days: Record<string, { path: string; words: number
 
 const firstOf = (month: string) => `${month}-01`
 const shift = (month: string, by: number) => { const d = parse(firstOf(month)); d.setMonth(d.getMonth() + by); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` }
-/** Dots for a note's length: one for a few words, up to three for a long one. */
 const dots = (words: number) => (words < 150 ? 1 : words < 600 ? 2 : 3)
 
 function useMonth(month: string) {
@@ -26,9 +23,8 @@ function useMonth(month: string) {
 
 export const MonthPanel = ({ open }: SidebarCtx) => (open ? <MonthCalendar /> : null)
 
-/** The calendar itself: the panel's, and the tab's (`tab`: a page's heading with its arrows always shown). */
 export function MonthCalendar({ tab = false }: { tab?: boolean }) {
-  useTick(60_000) // so the ring moves to the new day after midnight
+  useTick(60_000)
   const now = today()
   const [month, setMonth] = useState(now.slice(0, 7))
   const data = useMonth(month)
