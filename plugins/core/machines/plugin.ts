@@ -2,10 +2,13 @@ import crypto from "node:crypto"
 import { z } from "zod"
 import os from "node:os"
 import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, logger, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
-import { dialIn, type DialEntry } from "./dial.ts"
+import { dialIn, type DialEntry, Entries } from "./dial.ts"
 import { shareKept } from "./kept.ts"
 import { alerts, duration, EVERY, KEEP_DAYS, machineNow, type Now, report, reportText, sample, SampleRow, watch, type Report, type Sample } from "./health.ts"
 import type { Item } from "../../../core/vault.ts"
+
+const Words = z.array(z.unknown()).catch([])
+const Relayed = z.looseObject({ error: z.unknown().optional() }).catch({})
 
 export const plugin = new Plugin(import.meta.url)
 const log = logger("machines")
@@ -29,7 +32,7 @@ export const slug = (s: string) => s.toLowerCase().replace(/\.local$/, "").repla
 function listed(): DialEntry[] {
   const raw = plugin.settings({}).machines
   const out: DialEntry[] = []
-  for (const m of Array.isArray(raw) ? raw as Item[] : []) {
+  for (const m of Entries.parse(raw)) {
     const id = String(m?.id ?? "").toLowerCase(), url = String(m?.url ?? "").replace(/\/+$/, "")
     const via = typeof m.via === "string" && ID.test(m.via) && m.via !== id ? m.via : undefined
     if (!ID.test(id) || (!via && !onTailnet(url)) || out.some((o) => o.id === id)) continue
@@ -228,7 +231,7 @@ async function agentFs(id: string, rest: string, query: Record<string, string> =
   let r: Response
   try { r = await fetch(`${via.url}/api/machines/${encodeURIComponent(m.id)}/${rest}${qs ? `?${qs}` : ""}`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(20000) }) }
   catch { throw new HTTPError(502, `${via.label} doesn't answer`) }
-  const answer = await r.json().catch(() => ({})) as Item
+  const answer = Relayed.parse(await r.json().catch(() => ({})))
   if (!r.ok) throw new HTTPError(r.status, String(answer.error || `${via.label} couldn't read ${m.label}'s files`))
   return answer
 }
@@ -267,8 +270,8 @@ async function register() {
 function join(url: string) {
   let cur: Item | null
   try { cur = plugin.readSettings() } catch { return }
-  const list = Array.isArray(cur?.machines) ? cur.machines as Item[] : []
-  const added = Array.isArray(cur?.added) ? (cur.added as unknown[]).map(String) : []
+  const list = Entries.parse(cur?.machines)
+  const added = Words.parse(cur?.added).map(String)
   const id = slug(HOST)
   if (!id) return
   const listed = list.some((m) => String(m?.url ?? "").replace(/\/+$/, "") === url || String(m?.id ?? "").toLowerCase() === id)
@@ -370,7 +373,7 @@ async function relayWrite(via: DialEntry, route: string, body: Item) {
   let r: Response
   try { r = await fetch(`${via.url}/api/${route}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }) }
   catch { throw new HTTPError(502, `${via.label} doesn't answer`) }
-  const answer = await r.json() as Item
+  const answer = Relayed.parse(await r.json())
   if (!r.ok) throw new HTTPError(r.status, String(answer.error || "The relay refused the request"))
   return answer
 }

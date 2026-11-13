@@ -7,6 +7,8 @@ import { z } from "zod"
 import type { Item } from "../../../core/vault.ts"
 import { HTTPError, type Plugin } from "../../../core/plugins.ts"
 
+export const Entries = z.array(z.record(z.string(), z.unknown())).catch([])
+
 export type DialEntry = { id: string; label: string; url: string; via?: string }
 type Hello = { host: string; platform: string; home: string; os: string; v: string }
 type Pending = { id: string; label: string; hash: string; hello: Hello; until: number }
@@ -129,7 +131,7 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
     if (!p) throw new HTTPError(404, "No machine waits with that code (codes last ten minutes)")
     const via = await selfId()
     if (!via) throw new HTTPError(409, "List this Vaultite server in Machines before enrolling a file agent")
-    const all = plugin.readSettings() ?? {}, list = Array.isArray(all.machines) ? all.machines as Item[] : []
+    const all = plugin.readSettings() ?? {}, list = Entries.parse(all.machines)
     if (list.some((e) => e.id === p.id && !e.via)) throw new HTTPError(409, "That id belongs to a Vaultite server")
     const keyState = stored()
     plugin.saveSecrets({ ...keyState, keys: { ...hashes(), [p.id]: p.hash } })

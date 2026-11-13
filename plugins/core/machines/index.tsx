@@ -1,7 +1,7 @@
 import { lazy, Suspense, type MouseEvent } from "react"
 import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
-  canRunAgents, cell, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, places,
+  canRunAgents, cell, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, openMenu, openPlace, openTerminal, openView, Panel, places,
   SidebarHeading, SidebarRow,
   useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
@@ -42,9 +42,9 @@ async function machineItems(m: Machine): Promise<MenuItem[]> {
 }
 
 async function machineMenu(e: MouseEvent, m: Machine) {
-  const at = { clientX: e.clientX, clientY: e.clientY, currentTarget: e.currentTarget } as MouseEvent
+  const r = e.currentTarget.getBoundingClientRect()
   const items = await machineItems(m)
-  if (items.length) menuBelow(at, items)
+  if (items.length) openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, items)
 }
 
 function machineContextMenu(e: MouseEvent, m: Machine) {

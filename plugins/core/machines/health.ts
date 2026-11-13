@@ -169,5 +169,5 @@ export function alerts(w: Watch, s: Sample, host: string): Alert[] {
 export function duration(s: string) {
   const m = /^(\d+(?:\.\d+)?)\s*([mhd])$/.exec(s.trim())
   if (!m) throw new Error(`'${s}' isn't a duration like 30m, 6h or 2d`)
-  return Number(m[1]) * { m: 60_000, h: 3600_000, d: 86400_000 }[m[2] as "m" | "h" | "d"]
+  return Number(m[1]) * (m[2] === "m" ? 60_000 : m[2] === "h" ? 3600_000 : 86400_000)
 }
