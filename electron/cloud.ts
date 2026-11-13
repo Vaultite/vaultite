@@ -7,6 +7,7 @@ import type { Session, WebContents } from "electron"
 import { z } from "zod"
 import { strings } from "../core/values.ts"
 import type { AppWindow } from "./appwindow.ts"
+import { hostOfUrl, siteOf } from "./webwire.ts"
 
 /** A claude.ai organization whose sessions are read: `label` its name, or its login's email for a personal one
  *  ("<email>'s Organization"); `profiles` the logins it's in, in the order the app named them. */
@@ -62,7 +63,6 @@ export type CloudHost = {
 /** Asked of claude.ai with a profile's logins, no page needed. VAULTITE_TEST_CLAUDE_URL: web/qa/webwatch.mjs's stand-in. */
 const BASE = process.env.VAULTITE_TEST_CLAUDE_URL || "https://claude.ai"
 const TEST = !!process.env.VAULTITE_TEST_CLAUDE_URL
-const hostOf = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
 const CLOUD = {
   orgs: `${BASE}/api/organizations`,
   // (what claude.ai's own sidebar lists: /v1/code/sessions no longer says whether one is working)
@@ -81,7 +81,7 @@ const CLOUD = {
 }
 
 export function cloudHandlers(host: CloudHost) {
-  const site = siteOfHost(hostOf(BASE))
+  const site = siteOf(hostOfUrl(BASE))
   let want: CloudWant = { profiles: [], read: false, hidden: [] }
   const wantOf = (x: unknown): CloudWant => {
     const w = Want.parse(x)
@@ -309,12 +309,6 @@ export function cloudHandlers(host: CloudHost) {
   }
 }
 
-/** "chat.example.co.uk" → "example.co.uk" (as web.ts' siteOf, for claude.ai and its stand-in). */
-function siteOfHost(host: string) {
-  const h = host.toLowerCase()
-  if (!h || /^[\d.]+$/.test(h) || !h.includes(".")) return h
-  return h.split(".").slice(/\.(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(h) ? -3 : -2).join(".")
-}
 const labelOf = (name: string) => name.replace(/'s Organization$/, "").trim() || "Claude"
 const text = (v: unknown, n = 200) => (typeof v === "string" && v.trim() ? v.trim().replace(/\s+/g, " ").slice(0, n) : undefined)
 const REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/

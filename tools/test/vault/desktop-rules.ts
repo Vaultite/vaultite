@@ -113,7 +113,25 @@ async function cloudSessions(check: Check) {
     of(read({ title: "x" })) === null && of(read(null)) === null, bare)
 }
 
+async function webWire(check: Check) {
+  const W = await import("../../../electron/webwire.ts")
+  const good = { name: "SID", value: "v", domain: ".google.com", path: "/", sameSite: "lax", secure: true, hostOnly: "yes", expirationDate: 123.5 }
+  const list = [good, { ...good, domain: "accounts.google.co.uk" }, { ...good, domain: "evil.com" }, { ...good, sameSite: undefined }, { ...good, path: "x" },
+    { ...good, domain: "bad domain" }, { ...good, expirationDate: "1" }, null, ...Array.from({ length: 600 }, (_, i) => ({ ...good, name: `n${i}` }))]
+  const got = W.cookiesFrom(list, ["google.com", "google.co.uk"])
+  check("browser: a login from another machine brings only its sites' well-formed cookies, at most 500",
+    got.length === 500 && got[0].hostOnly === false && got[0].secure && got[1].domain === "accounts.google.co.uk" && !got.some((c) => c.domain === "evil.com" || c.path !== "/"), got.slice(0, 3))
+  const sealed = W.SEALED_LOGIN.parse({ at: 1, names: ["Google.com", 3], known: { "google.com": { login: "h", who: { account: "a@example.com", more: "x" } }, "evil.com": { login: "h", who: { account: "b" } }, "x.com": { who: {} } } })
+  check("browser: what a sealed login says is read field by field, malformed parts left out",
+    JSON.stringify(sealed.names) === '["google.com"]' && JSON.stringify(W.knownFrom(sealed.known ?? {}, sealed.names ?? [])) === '{"google.com":{"login":"h","who":{"account":"a@example.com"}}}' &&
+    JSON.stringify(W.SEALED_LOGIN.parse("x")) === "{}")
+  const rect = (r: Parameters<typeof W.RECT.safeParse>[0]) => W.RECT.safeParse(r).data ?? null
+  check("browser: a page's box from the app, its corner radius kept within 0 to 40, nothing for a malformed one",
+    rect({ x: 1, y: 2, width: 3, height: 4 })?.radius === 0 && rect({ x: 1, y: 2, width: 3, height: 4, radius: 99 })?.radius === 40 &&
+    rect({ x: 1, y: 2, width: 3, height: 4, radius: Infinity })?.radius === 0 && rect({ x: 1, y: 2, width: 3, height: NaN }) === null && rect("r") === null)
+}
+
 export default async ($: VaultTest) => {
   winspawnFirst($.check)
-  for (const t of [bridge, clipboard, snapshots, accounts, hangs, cloudSessions]) await t($.check)
+  for (const t of [bridge, clipboard, snapshots, accounts, hangs, cloudSessions, webWire]) await t($.check)
 }

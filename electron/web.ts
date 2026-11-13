@@ -19,11 +19,12 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { z } from "zod"
+import { CONTAINER, cookiesFrom, FIND, hostOfUrl, ICONS, KNOWN, knownFrom, MENUS, PAGE_HTML, RECT, SEAL_KEYS, SEALED_LOGIN, siteOf, SITES, ZOOM_FILE, FETCHED, type Known, type WebRect } from "./webwire.ts"
 
 setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl })
 
 /** `radius`: its corners' (CSS px), where it meets its pane's rounded card's (one radius: Electron rounds all four). */
-export type WebRect = { x: number; y: number; width: number; height: number; radius?: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
   paused?: boolean; player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean; painted?: boolean }
 type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
@@ -105,7 +106,7 @@ function webSession(profile: string) {
       item.setSavePath(tmp)
       item.once("done", (_ev, state) => {
         let data: Buffer | null = null, error = state === "completed" ? "" : `the download was ${state}`
-        try { if (!error) data = fs.readFileSync(tmp) } catch (e) { error = (e as Error).message }
+        try { if (!error) data = fs.readFileSync(tmp) } catch (e) { error = e instanceof Error ? e.message : String(e) }
         fs.rm(tmp, { force: true }, () => {})
         if (p && !p.win.isDestroyed()) tell(p.win, { type: "image", id: p.id, name: item.getFilename(), mime: item.getMimeType(), data, ...(error ? { error } : {}) })
       })
@@ -195,7 +196,7 @@ const ACTIVATION_MS = 5000
 const BLANK_MS = 30_000
 const EDGE = 12
 const TOP = 8, TOP_MS = 100
-const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+const tell = (win: AppWindow, msg: { type: string; [k: string]: unknown }) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
 const canBack = (p: Page) => !p.blankBehind && p.view.webContents.navigationHistory.canGoBack()
 const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.sound, p.view.webContents.isCurrentlyAudible(), Date.now())
@@ -873,7 +874,7 @@ const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2
 let zooms: Record<string, number> | null = null
 const zoomFile = () => path.join(app.getPath("userData"), "web-zoom.json")
 function zoomsKept() {
-  if (!zooms) { try { zooms = JSON.parse(fs.readFileSync(zoomFile(), "utf8")) as Record<string, number> } catch { zooms = {} } }
+  if (!zooms) { try { zooms = ZOOM_FILE.parse(JSON.parse(fs.readFileSync(zoomFile(), "utf8"))) } catch { zooms = {} } }
   return zooms
 }
 const zoomOf = (host: string) => { const z = zoomsKept()[host]; return typeof z === "number" && z >= ZOOMS[0] && z <= ZOOMS[ZOOMS.length - 1] ? z : 1 }
@@ -968,13 +969,6 @@ function fromPlayer(p: Page, user = false) {
 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
 const tabOf = (x: unknown) => (typeof x === "string" && /^[\w-]{1,64}$/.test(x) ? x : "")
-const rectOf = (r: unknown): WebRect | null => {
-  if (!r || typeof r !== "object") return null
-  const o = r as Record<string, unknown>
-  if (!["x", "y", "width", "height"].every((k) => typeof o[k] === "number" && Number.isFinite(o[k]))) return null
-  const radius = typeof o.radius === "number" && Number.isFinite(o.radius) ? Math.max(0, Math.min(40, o.radius)) : 0
-  return { x: o.x as number, y: o.y as number, width: o.width as number, height: o.height as number, radius }
-}
 function mine(win: AppWindow, id: unknown) {
   const p = pages.get(Number(id))
   if (!p || p.win !== win) throw new Error("no such page")
@@ -1025,9 +1019,8 @@ setOpener(async (win, url, profile) => {
 let menus: { containers: { id: string; name: string }[]; glance: boolean } = { containers: [], glance: false }
 const tellGlance = (wc: WebContents) => { if (!wc.isDestroyed()) wc.send("vaultite:web:glance", menus.glance) }
 handle("web:menus", (_win, m) => {
-  const o = (m && typeof m === "object" ? m : {}) as { containers?: unknown; glance?: unknown }
-  const containers = (Array.isArray(o.containers) ? o.containers : []).flatMap((c) => (c && typeof c.id === "string" && profileOf(c.id) && typeof c.name === "string"
-    ? [{ id: c.id as string, name: (c.name as string).slice(0, 80) }] : [])).slice(0, 50)
+  const o = MENUS.parse(m)
+  const containers = o.containers.flatMap((x) => { const c = CONTAINER.safeParse(x); return c.success && profileOf(c.data.id) ? [{ id: c.data.id, name: c.data.name.slice(0, 80) }] : [] }).slice(0, 50)
   const glance = o.glance === true, changed = glance !== menus.glance
   menus = { containers, glance }
   if (changed) for (const p of pages.values()) tellGlance(p.view.webContents)
@@ -1096,7 +1089,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     p.holds++
     p.orphan = undefined
     pagesChanged(win)
-    const r = rectOf(rect), wasHidden = !shown(p.spot)
+    const r = RECT.safeParse(rect).data ?? null, wasHidden = !shown(p.spot)
     place(p, r)
     let focused = false
     if (r && wasHidden && shown(p.spot)) { focused = !!p.hadFocus; p.hadFocus = false }
@@ -1109,7 +1102,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   },
   "web:titles": async () => (await restore()).pastTitles(),
   "web:place": (win, id, rect) => {
-    const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !shown(p.spot)
+    const p = mine(win, id), r = mayOpen(p.profile) ? RECT.safeParse(rect).data ?? null : null, wasHidden = !shown(p.spot)
     place(p, r)
     if (r && wasHidden && shown(p.spot)) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had, shown: true } }
     return { focused: false, shown: shown(p.spot) }
@@ -1156,7 +1149,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   },
   "web:go": (win, id, action, url) => go(mine(win, id), str(action), typeof url === "string" ? url : undefined),
   "web:find": (win, id, text, o) => {
-    const wc = mine(win, id).view.webContents, t = str(text).slice(0, 1000), x = (o ?? {}) as { forward?: unknown; next?: unknown; matchCase?: unknown }
+    const wc = mine(win, id).view.webContents, t = str(text).slice(0, 1000), x = FIND.parse(o)
     if (!t) { wc.stopFindInPage("keepSelection"); return null }
     return wc.findInPage(t, { forward: x.forward !== false, findNext: x.next !== true, matchCase: x.matchCase === true })
   },
@@ -1170,7 +1163,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     const p = mine(win, id)
     // In a world of its own: the page's scripts can't stand in for what's read.
     const r = await p.view.webContents.executeJavaScriptInIsolatedWorld(1001, [{ code: "({ url: location.href, title: document.title, html: '<!doctype html>' + document.documentElement.outerHTML })" }])
-    return r as { url: string; title: string; html: string }
+    return PAGE_HTML.parse(r)
   },
   "web:external": (_win, url) => { const u = str(url); if (web(u)) openElsewhere(u); else if (/^mailto:/i.test(u)) void shell.openExternal(u) },
   "web:keys": (win, steps) => { keysOf.set(win, new Set(Array.isArray(steps) ? steps.filter((s): s is string => typeof s === "string") : [])) },
@@ -1180,8 +1173,8 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "web:who": (_win, site, profiles) => whoIn(str(site), Array.isArray(profiles) ? profiles.map(profileOf).filter(Boolean).slice(0, 40) : []),
   "web:forget": async (_win, profile, site) => forgetSite(profileOf(profile), str(site).toLowerCase()),
   "web:move": (_win, from, to, sites, copy) => moveLogins(profileOf(from), profileOf(to),
-    (Array.isArray(sites) ? sites : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20), copy === true),
-  "web:seal": (_win, from, sites, to, key) => sealLogin(profileOf(from), sitesList(sites), profileOf(to), str(key)),
+    SITES.parse(sites), copy === true),
+  "web:seal": (_win, from, sites, to, key) => sealLogin(profileOf(from), SITES.parse(sites), profileOf(to), str(key)),
   ...cloud,
   "web:icons": (_win, hosts) => {
     const all = loadIcons(), keys = (Array.isArray(hosts) ? hosts : []).slice(0, 500).filter((h): h is string => typeof h === "string")
@@ -1201,24 +1194,14 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
 }
 
 
-const TWO_PART = /\.(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/
-/** "chat.example.co.uk" → "example.co.uk", "auth.claude.ai" → "claude.ai". */
-function siteOf(host: string) {
-  const h = host.toLowerCase().replace(/^\./, "").replace(/\.$/, "")
-  if (!h || /^[\d.]+$/.test(h) || !h.includes(".")) return h
-  const parts = h.split(".")
-  return parts.slice(TWO_PART.test(h) ? -3 : -2).join(".")
-}
-const hostOfUrl = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
 
 const accounts = new Map<string, { at: number; login: string; who: Who | null }>()
 const ASK_NAMED = 6 * 3_600_000, ASK_UNNAMED = 30 * 60_000, ASK_LOOK = 60_000
 
-type Known = Record<string, Record<string, { login: string; who: Who; at?: number }>>
 let known: Known | null = null
 const knownFile = () => path.join(app.getPath("userData"), "web-accounts.json")
 function loadKnown(): Known {
-  if (!known) { try { known = JSON.parse(fs.readFileSync(knownFile(), "utf8")) as Known } catch { known = {} } }
+  if (!known) { try { known = KNOWN.parse(JSON.parse(fs.readFileSync(knownFile(), "utf8"))) } catch { known = {} } }
   return known
 }
 function keepKnown(profile: string, site: string, login: string, who: Who | null) {
@@ -1267,20 +1250,20 @@ async function accountOf(profile: string, site: string, cookies: Electron.Cookie
 
 /** What a site's rule finds: who (an empty account: signed in, not named), false: signed out, null: it can't tell. */
 async function askWho(s: Electron.Session, how: Rule, open: Page | undefined): Promise<Who | false | null> {
-  const inPage = (code: string) => open!.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code }]) as Promise<unknown>
+  const inPage = <T>(code: string, as: z.ZodType<T>) => open!.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code }]).then((v) => as.parse(v))
   const cookie = async (domain: string, name: string) => (await s.cookies.get({ domain, name }).catch(() => []))[0]?.value ?? ""
   if (how.look && open) {
-    const w = how.look.read(await inPage(how.look.code).catch(() => null))
+    const w = how.look.read(await inPage(how.look.code, z.unknown()).catch(() => null))
     if (w !== null || !how.read) return w
   }
   if (!how.read) return null
-  let res: { url: string; body: unknown } | null = null
+  let res: z.infer<typeof FETCHED> = null
   if (how.url) {
     const as = how.text ? "text" : "json", headers = { accept: how.text ? "text/html,*/*" : "application/json", ...how.headers }
     if (how.page && open && !how.method) res = await inPage(`fetch(${JSON.stringify(how.url)}, { credentials: "include", headers: ${JSON.stringify(headers)} })
-      .then(async (r) => r.ok ? { url: r.url, body: await r.${as}() } : null).catch(() => null)`).catch(() => null) as typeof res
-    res ??= await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers } as RequestInit)
-      .then(async (r) => (r.ok ? { url: r.url, body: await r[as]() as unknown } : null)).catch(() => null)
+      .then(async (r) => r.ok ? { url: r.url, body: await r.${as}() } : null).catch(() => null)`, FETCHED).catch(() => null)
+    res ??= await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers })
+      .then(async (r) => (r.ok ? { url: r.url, body: await (as === "text" ? r.text() : r.json()) } : null)).catch(() => null)
     if (!res?.body) return null
   }
   const v = await how.read(res?.body ?? null, cookie, res?.url ?? "")
@@ -1425,7 +1408,7 @@ function keysForSealing() {
   if (sealKeys) return sealKeys
   if (!safeStorage.isEncryptionAvailable()) return (sealKeys = newKeys())
   const file = path.join(app.getPath("userData"), "Login Key.vaultite")
-  try { sealKeys = JSON.parse(safeStorage.decryptString(fs.readFileSync(file))) as { pub: string; priv: string } }
+  try { sealKeys = SEAL_KEYS.parse(JSON.parse(safeStorage.decryptString(fs.readFileSync(file)))) }
   catch {
     sealKeys = newKeys()
     fs.writeFileSync(file, safeStorage.encryptString(JSON.stringify(sealKeys)), { mode: 0o600 })
@@ -1433,17 +1416,6 @@ function keysForSealing() {
   return sealKeys
 }
 
-const SAME_SITE = new Set(["unspecified", "no_restriction", "lax", "strict"])
-function cookiesOf(list: unknown, names: string[]): Electron.Cookie[] {
-  const ok = (c: Record<string, unknown>) => typeof c.name === "string" && typeof c.value === "string" && typeof c.domain === "string"
-    && /^\.?[\w.-]+$/.test(c.domain) && names.includes(siteOf(c.domain)) && typeof c.path === "string" && c.path.startsWith("/")
-    && SAME_SITE.has(String(c.sameSite)) && (c.expirationDate === undefined || typeof c.expirationDate === "number")
-  return (Array.isArray(list) ? list : []).filter((c): c is Record<string, unknown> => !!c && typeof c === "object" && ok(c)).slice(0, 500)
-    .map((c) => ({ name: c.name as string, value: c.value as string, domain: c.domain as string, path: c.path as string, hostOnly: c.hostOnly === true,
-      secure: c.secure === true, httpOnly: c.httpOnly === true, session: c.session === true, sameSite: c.sameSite as Electron.Cookie["sameSite"],
-      ...(typeof c.expirationDate === "number" ? { expirationDate: c.expirationDate } : {}) }))
-}
-const sitesList = (v: unknown) => (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20)
 const sealedFor = (to: string) => `vaultite login for ${to}`
 
 handle("remote:key", () => ({ key: keysForSealing().pub }))
@@ -1459,20 +1431,17 @@ handle("remote:sites", async (_win, profiles) => {
 handle("remote:take", async (_win, to, sealed) => {
   const prof = profileOf(to)
   const { data, from } = openSealed(keysForSealing(), str(sealed).slice(0, 4 << 20), sealedFor(prof))
-  const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>
+  const d = SEALED_LOGIN.parse(data)
   const now = Date.now()
   for (const [k, at] of taken) if (now - at > SEALED_MS) taken.delete(k)
   if (typeof d.at !== "number" || Math.abs(now - d.at) > SEALED_MS) throw new Error("the login took too long to come: copy it again")
   if (taken.has(from)) throw new Error("that login was copied here already")
   taken.set(from, now)
-  const names = sitesList(d.names)
-  const cookies = cookiesOf(d.cookies, names)
+  const names = d.names ?? []
+  const cookies = cookiesFrom(d.cookies ?? [], names)
   if (!names.length || !cookies.length) throw new Error("no cookies to move")
-  const known: Leaving["known"] = {}
-  for (const [n, k] of Object.entries(d.known && typeof d.known === "object" ? d.known as Record<string, { login?: unknown; who?: Who }> : {})) {
-    if (names.includes(n) && typeof k?.login === "string" && typeof k.who?.account === "string") known[n] = { login: k.login, who: k.who }
-  }
-  return loginIn(prof, { names, cookies, account: typeof d.account === "string" ? d.account : null, known, visited: sitesList(d.visited).filter((n) => names.includes(n)) })
+  const known = knownFrom(d.known ?? {}, names)
+  return loginIn(prof, { names, cookies, account: typeof d.account === "string" ? d.account : null, known, visited: (d.visited ?? []).filter((n) => names.includes(n)) })
 })
 
 async function sealLogin(from: string, names: string[], to: string, key: string) {
@@ -1525,7 +1494,7 @@ function loadIcons() {
   if (!icons) {
     icons = new Map()
     try {
-      const j = JSON.parse(fs.readFileSync(iconsFile(), "utf8")) as { v?: number; icons?: Record<string, unknown> }
+      const j = ICONS.parse(JSON.parse(fs.readFileSync(iconsFile(), "utf8")))
       for (const [h, v] of Object.entries(j?.icons ?? {})) if (typeof v === "string" && isIcon(v)) icons.set(h, v)
       if (j?.v !== ICONS_VERSION) for (const h of icons.keys()) staleIcons.add(h)
     } catch { /* none yet, or unreadable: they're fetched again */ }
@@ -1576,7 +1545,7 @@ async function iconBytes(s: Session, url: string): Promise<Buffer | null> {
   }
   if (!web(url)) return null
   try {
-    const r = await s.fetch(url, { signal: AbortSignal.timeout(8000), credentials: "include" } as RequestInit)
+    const r = await s.fetch(url, { signal: AbortSignal.timeout(8000), credentials: "include" })
     if (!r.ok || Number(r.headers.get("content-length") ?? 0) > ICON_MAX) return null
     return Buffer.from(await r.arrayBuffer())
   } catch { return null }
