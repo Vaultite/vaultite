@@ -161,6 +161,23 @@ import { plugin } from "./lib.ts"
 }
 
 {
+  const { painted }: { painted(): Promise<void> } = await plugin("web-viewer/layers.ts")
+  const faked = ["document", "requestAnimationFrame"], had = faked.map((k) => Object.getOwnPropertyDescriptor(globalThis, k))
+  let frames: (() => void)[] = [], hidden = false
+  Object.assign(globalThis, { document: { get hidden() { return hidden } }, requestAnimationFrame: (f: () => void) => frames.push(f) })
+  const frame = async () => { const now = frames; frames = []; for (const f of now) f(); await Promise.resolve() }
+  let done = false
+  void painted().then(() => { done = true })
+  const seen: boolean[] = []
+  for (let i = 0; i < 3; i++) { await frame(); seen.push(done) }
+  check("Browser: painted() resolves two frames after the one that cuts the holes as set now, so they're on screen", seen.join() === "false,false,true", seen)
+  hidden = true; frames = []
+  const outcome = await Promise.race([painted().then(() => "resolved"), new Promise((r) => setTimeout(() => r("waiting"), 1000))])
+  check("Browser: a hidden window, which draws no frames, has painted() resolve all the same", outcome === "resolved" && frames.length === 0, { outcome, frames: frames.length })
+  faked.forEach((k, i) => { const d = had[i]; if (d) Object.defineProperty(globalThis, k, d); else Reflect.deleteProperty(globalThis, k) })
+}
+
+{
   const { readFileSync } = await import("node:fs")
   const read = (f: string) => readFileSync(new URL(`../../../plugins/core/web-viewer/${f}`, import.meta.url), "utf8")
   check("Browser: framed.ts imports nothing, as the web demo's boot.ts loads it before the app's modules run", !/^\s*import\b/m.test(read("framed.ts")))
