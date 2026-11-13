@@ -1,5 +1,5 @@
-// vau choose (ui.choose; the window's side in components/Chooser.tsx): the pick's id, Esc, --current, --other,
-// timeouts, a window closing or missing. Headless Chrome; WRITES nothing in the vault.
+// vau choose (ui.choose, components/Chooser.tsx): the pick's id, Esc, --current, --other, timeouts, a window closing.
+// WRITES nothing in the vault.
 //   node web/qa/choose.mjs <base url>
 import { spawn } from "node:child_process"
 import fs from "node:fs"
@@ -9,7 +9,6 @@ import { CHROME, qa, ROOT, until, wait } from "./lib/qa.mjs"
 if (!fs.existsSync(CHROME)) { console.log("choose: skipped (no Google Chrome here)"); process.exit(0) }
 const { args: [arg], browser, check, done } = await qa(import.meta.url)
 const base = arg.endsWith("/") ? arg : `${arg}/`
-/** vau running in the background: its exit status and output once it ends. */
 const vau = (args, input = "") => new Promise((resolve) => {
   const p = spawn(process.execPath, [path.join(ROOT, "bin/vau"), ...args], { env: { ...process.env, VAULTITE_URL: base.replace(/\/$/, "") } })
   let stdout = "", stderr = ""
@@ -32,7 +31,6 @@ try {
   const dialog = () => page.locator('[role="dialog"][aria-modal="true"]')
   const shown = () => page.waitForSelector('[role="dialog"] [role="option"]', { timeout: 5000 }).then(() => true, () => false)
 
-  // Lines piped in, filtered, Enter picks.
   let run = vau(["choose", "--prompt", "Which fruit?"], "Apple\nBanana\nCherry\n")
   check("the list shows in the window", await shown(), null)
   const text = await dialog().innerText()
@@ -45,14 +43,12 @@ try {
   check("Enter: the pick printed", r.status === 0 && r.stdout.trim() === "Banana", r)
   check("the list is gone", (await dialog().count()) === 0, null)
 
-  // Esc: nothing.
   run = vau(["choose", "--json"], "Apple\nBanana\n")
   await shown()
   await page.keyboard.press("Escape")
   r = await run
   check("Esc: nothing picked", r.status === 0 && json(r)?.picked === null && json(r)?.typed === null, r)
 
-  // JSON items: ids, details, a current one.
   run = vau(["choose", "--json", "--current", "b", "--items", JSON.stringify([{ id: "a", label: "Keep both", detail: "two files" }, { id: "b", label: "Merge", icon: "merge" }, "Skip"])])
   await shown()
   const rows = await dialog().innerText()
@@ -61,7 +57,6 @@ try {
   r = await run
   check("--current: Enter picks it, with its id and index", json(r)?.picked?.id === "b" && json(r)?.picked?.index === 1 && json(r)?.picked?.label === "Merge", r)
 
-  // --other: what's typed.
   run = vau(["choose", "--other"], "Low\nHigh\n")
   await shown()
   await page.keyboard.type("Medium")
@@ -70,7 +65,6 @@ try {
   r = await run
   check("--other: the text typed", r.status === 0 && r.stdout.trim() === "Medium", r)
 
-  // A list in place of another: the first answers nothing.
   const first = vau(["choose", "--json"], "One\n")
   await shown()
   run = vau(["choose"], "Two\n")
@@ -81,7 +75,6 @@ try {
   r = await run
   check("the second answers", r.stdout.trim() === "Two", r)
 
-  // Time's up: an error, and the list closes.
   r = await vau(["choose", "--timeout", "5"], "Late\n")
   check("timeout: exit 1, says so", r.status === 1 && r.stderr.includes("picked nothing within 5 s"), r)
   await until(async () => (await dialog().count()) === 0, 5000)
@@ -90,7 +83,6 @@ try {
   r = await vau(["choose", "--items", "[]"])
   check("no items: an error", r.status === 1 && r.stderr.includes("nothing to pick"), r)
 
-  // The window closing ends the wait.
   run = vau(["choose", "--timeout", "60"], "Gone\n")
   await shown()
   await page.close()

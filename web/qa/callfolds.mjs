@@ -1,6 +1,5 @@
-// Foldable callouts in the editor (editor/livePreview.ts, core/heights.ts): one opened stays open when the note is
-// left and opened again, and is drawn at the height of how it's folded, never held at the other's (an empty gap).
-// Writes Qa folds/: throwaway server only.
+// Foldable callouts (editor/livePreview.ts, core/heights.ts): one opened stays open, drawn at its folded height.
+// WRITES Qa folds/: throwaway server only.
 //   node web/qa/callfolds.mjs <base url> <vault path>
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -15,7 +14,6 @@ writeFileSync(`${VAULT}/${OTHER}`, "# Other\n\nSomewhere else.\n")
 const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } })
 const page = watch(await ctx.newPage())
 const go = async (p) => { await page.evaluate((h) => { location.hash = h }, `#file/${enc(p)}`); await page.waitForSelector(`[data-pane] .cm-content`, { timeout: 15000 }) }
-// The first callout: whether it's open, its height and its content's (more than its content: held at a stale height).
 const first = () => page.evaluate(() => {
   const el = document.querySelector("[data-pane] .cm-block-callout"), body = el?.querySelector(".cm-block-body"), d = el?.querySelector("details")
   return el && body && d ? { open: d.open, h: Math.round(el.getBoundingClientRect().height), content: Math.round(body.getBoundingClientRect().height) } : null
@@ -38,7 +36,6 @@ check("left and opened again: still open, at its open height", await settled(tru
 await toggle()
 check("shut again", await settled(false), await first())
 await comeBack()
-// (before: the height kept was the open one's, whatever its fold; drawn shut, it was held that tall for up to 4 s)
 const back = await first()
 check("left shut and opened again: shut, no empty room held below it", back && !back.open && Math.abs(back.h - back.content) < 12, back)
 

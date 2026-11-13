@@ -1,7 +1,7 @@
-// The companion following a sidebar tab row (a split tab: all its panes) or a tab group's row, as it's asked to: the row
-// shows an eye, whose click stops it (plugins/core/companion/panes.ts, plugins/core/tabs/index.tsx).
+// A sidebar tab row or tab group row the companion follows shows an eye, whose click stops it.
 // WRITES the companion's data.json, plugins.json, sidebars and appearance: throwaway server only.
 //   node web/qa/companion-rows.mjs <base url> <vault path> [out dir]
+// Paths: plugins/core/companion/panes.ts, plugins/core/tabs/index.tsx
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, wait } from "./lib/qa.mjs"
 const { args: [BASE, VAULT, OUT = "/tmp/companion-rows-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -28,7 +28,6 @@ try {
   const page = watch(await ctx.newPage(), { label: "desktop" })
   await page.goto(`${B}/#file/${encodeURIComponent(notes[0])}`)
   await page.waitForSelector("[data-open-tab]")
-  // A split tab (the first note beside the second), and another tab.
   let r = await op("tabs.split", { pane: notes[0], to: notes[1] })
   check("a split tab made by its op", !!r.pane, r)
   await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, notes[2])
@@ -40,7 +39,6 @@ try {
   await until(async () => !(await op("companion.look", { pane: split.panes[0].id })).error, 6000)
   await wait(900)
 
-  // Asked to follow the split tab: its row shows it.
   await op("companion.follow", { tab: split.id, as: "Claude" })
   const st = await op("companion.status")
   const f = st.follows?.find((x) => x.tab === split.id || split.panes.some((p) => p.id === x.pane))
@@ -52,7 +50,6 @@ try {
   check("its click stops following it", await until(async () => !(await op("companion.status")).follows?.some((x) => x.id === f?.id), 4000))
   check("and the eye goes", await until(async () => (await eye.count()) === 0, 4000))
 
-  // A tab group's row: the group followed.
   const g = await op("tabs.group", { tabs: [notes[2]], name: "Lighthouse" })
   const gid = g.group?.id
   await page.waitForSelector(`[data-ui="group:${gid}"]`)

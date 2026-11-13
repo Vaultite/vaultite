@@ -1,5 +1,5 @@
-// Canvas (JSON Canvas boards): cards, links, drags, undo, scrolling and zooming never writing, embeds, phone. WRITES
-// "Qa canvas" (the workspaces' data.json put back): throwaway server only. The web card needs the network.
+// Canvas boards: cards, links, drags, undo, embeds, a phone, and scrolling or zooming never writing.
+// WRITES "Qa canvas": throwaway server only. The web card needs the network.
 //   node web/qa/canvas.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, utimesSync, writeFileSync } from "node:fs"
 import { SHOTS, palette, qa } from "./lib/qa.mjs"
@@ -27,7 +27,6 @@ await req("PATCH", "config/plugin/canvas", { snapToGrid: true, snapToObjects: tr
 await req("POST", "file", { path: TARGET, text: "# Target\n\nThe note a card shows.\n" })
 await req("POST", "file", { path: BOARD, text: JSON.stringify(board, null, "\t") + "\n" })
 await req("POST", "file", { path: NOTE, text: `A board:\n\n![[Board.canvas|300]]\n` })
-// A big board: 40 x 40 cards.
 const big = { nodes: [], edges: [] }
 for (let i = 0; i < 1600; i++) big.nodes.push({ id: `n${i}`, type: "text", text: `Card ${i}`, x: (i % 40) * 300, y: Math.floor(i / 40) * 160, width: 250, height: 100 })
 for (let i = 1; i < 1600; i++) if (i % 40) big.edges.push({ id: `e${i}`, fromNode: `n${i - 1}`, toNode: `n${i}` })
@@ -37,7 +36,6 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, d
 const page = watch(await ctx.newPage()), ui = app(page)
 const node = (id) => page.locator(`[data-canvas-node="${id}"]`)
 const center = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 } }
-/** A point on the board's background with room around it (nothing but the board under it and around it, for a new card). */
 const emptyPoint = () => page.evaluate(() => {
   const el = document.querySelector("[data-canvas-board=page]"), r = el.getBoundingClientRect()
   const free = (x, y) => document.elementFromPoint(x, y) === el
@@ -56,7 +54,6 @@ check("draws its cards and arrows", await boardEl.getAttribute("data-canvas-node
 check("a text card's Markdown is drawn", await page.locator("[data-canvas-node=a] strong").textContent() === "bold")
 await page.waitForFunction(() => document.querySelector("[data-canvas-node=f]")?.textContent?.includes("The note a card shows"), null, { timeout: 5000 }).then(() => check("a file card shows the note", true), () => check("a file card shows the note", false))
 check("an arrow's label is drawn", (await page.locator("[data-edge-label=e1]").textContent()).includes("then"))
-// The whole pane, edge to edge under the path bar (its format's layout: "pane"), with no title or box around it.
 const box = await page.locator("[data-format-pane]").boundingBox()
 const paneBox = await page.locator("[data-pane-body]").first().boundingBox()
 check(`fills the pane, edge to edge (${Math.round(box?.width ?? 0)} x ${Math.round(box?.height ?? 0)} of ${Math.round(paneBox?.width ?? 0)} x ${Math.round(paneBox?.height ?? 0)})`,
@@ -66,15 +63,14 @@ await page.waitForFunction(() => document.querySelector("[data-canvas-node=l]")?
   .then(() => check("a web page card shows the page's title", true), () => check("a web page card shows the page's title (needs the network)", false))
 await page.screenshot({ path: `${OUT}canvas-edit.png` })
 
-// A double-click on the background: a new card, written in the editor, saved.
 const bb = await boardEl.boundingBox()
 const spot = await emptyPoint()
 await page.mouse.dblclick(spot.x, spot.y)
 await page.waitForSelector("[data-editing] .cm-content")
 await page.keyboard.type("Hello from **QA** [[Targ")
 await page.waitForSelector(".cm-tooltip-autocomplete", { timeout: 3000 }).then(() => check("[[ suggests notes in a card", true), () => check("[[ suggests notes in a card", false))
-await page.keyboard.press("Escape") // closes the suggestions
-await page.keyboard.press("Escape") // ends editing
+await page.keyboard.press("Escape")
+await page.keyboard.press("Escape")
 check("a double-click adds a card and what's written in the editor is saved", await written((d) => d.nodes.length === 5 && d.nodes.some((n) => String(n.text).startsWith("Hello from **QA**"))))
 check("Escape ends editing", !(await page.$("[data-editing]")))
 let doc = read()
@@ -86,8 +82,6 @@ check("one ⌘Z takes the new card and its text away", await written((d) => d.no
 await page.keyboard.press("ControlOrMeta+Shift+z")
 check("⇧⌘Z brings it back", await written((d) => d.nodes.length === 5))
 
-// Drag a card: it moves in the file, and (the grid's snapping off, from the controls) snaps to the left edge of the
-// card below it ("l" at x 0) when let go near it.
 await ui.menu.open(page.locator("[data-canvas-tool=Snapping]"))
 await page.getByText("Snap to grid", { exact: true }).click(); await ui.saved()
 const aBox = await node("a").boundingBox()
@@ -99,8 +93,6 @@ await page.getByText("Snap to grid", { exact: true }).click(); await ui.saved()
 await ui.menu.open(page.locator("[data-canvas-tool=Snapping]"))
 check("snapping to the grid is back on (kept in the plugin's settings)", await page.locator("[role=menu] [aria-checked=true]").filter({ hasText: "Snap to grid" }).count() === 1)
 await page.keyboard.press("Escape")
-// With the grid on, a dragged card follows the pointer: the grid is only a notch near its lines, never holding it back
-// (a first run's drag seemed to barely move it).
 const was = read().nodes.find((n) => n.id === "a"), aAt = await node("a").boundingBox()
 await dragTo({ x: aAt.x + 40, y: aAt.y + 60 }, { x: aAt.x + 40 + 57 * k0, y: aAt.y + 60 + 33 * k0 })
 const followed = await written((d) => { const a = d.nodes.find((n) => n.id === "a"); return Math.abs(a.x - was.x - 57) <= 3 && Math.abs(a.y - was.y - 33) <= 3 })
@@ -108,15 +100,12 @@ check(`a card dragged with the grid on follows the pointer (moved ${read().nodes
 await page.keyboard.press("ControlOrMeta+z")
 check("...and ⌘Z puts it back", await written((d) => { const a = d.nodes.find((n) => n.id === "a"); return a.x === was.x && a.y === was.y }))
 
-// Resize from the left edge.
 await node("a").click()
 const wa = read().nodes.find((n) => n.id === "a").width
 const lh = await page.locator('[data-handle="resize-w"][data-for="a"]').boundingBox()
-await dragTo({ x: lh.x + lh.width / 2, y: lh.y + 12 }, { x: lh.x - 60, y: lh.y + 12 }) // (above the middle's connect dot)
+await dragTo({ x: lh.x + lh.width / 2, y: lh.y + 12 }, { x: lh.x - 60, y: lh.y + 12 })
 check("a card's left edge resizes it", await written((d) => { const a = d.nodes.find((n) => n.id === "a"); return a.width > wa + 40 && a.x < 0 }))
 
-// A box drawn on the background selects what it touches. Started below the link card and left of the group, where
-// a press would move nothing (on the group it moves it; beside "a" it catches a's side dot).
 const aC = await center(node("a")), lB = await node("l").boundingBox(), gB = await node("grp").boundingBox()
 await dragTo({ x: gB.x - 30, y: lB.y + lB.height + 30 }, aC)
 await ui.idle()
@@ -127,7 +116,6 @@ check(`⌘D duplicates the selection (${picked} cards)`, picked >= 2 && await wr
 await page.keyboard.press("ControlOrMeta+z")
 check("and ⌘Z undoes it", await written((d) => d.nodes.length === 5))
 
-// Copy and paste (the clipboard's events, as the browser sends them).
 await node("a").click()
 const pasted = await page.evaluate(() => {
   const data = new DataTransfer()
@@ -152,15 +140,12 @@ await node(linkId).click(); await page.keyboard.press("Backspace")
 await node(copyId).click(); await page.keyboard.press("Backspace")
 check("Delete removes them", await written((d) => d.nodes.length === 5))
 
-// Connect the new card to the web page card by a side dot.
 await node(added.id).hover()
 const dot = page.locator(`[data-handle=bottom][data-for="${added.id}"]`)
 await dragTo(await center(dot), await center(node("l")), 12)
 check("dragging a side dot to a card connects them", await written((d) => d.edges.length === 2 && d.edges.some((e) => e.fromNode === added.id && e.toNode === "l" && e.fromSide === "bottom")))
 const edgeId = read().edges.find((e) => e.fromNode === added.id).id
 
-// The arrow's bar: Two-way.
-// A point on the arrow that nothing covers (cards drawn over it hide parts of it).
 const lab = await page.evaluate((id) => {
   const p = document.querySelector(`[data-edge="${id}"] path:nth-of-type(2)`), l = p.getTotalLength(), r = p.getScreenCTM()
   for (let t = 0.5, k = 0; k < 40; k++, t = 0.5 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.02) {
@@ -174,7 +159,6 @@ await ui.menu.open(page.locator("[data-canvas-toolbar=selection] [data-canvas-to
 await page.getByText("Two-way", { exact: true }).click()
 check("an arrow made two-way from the bar above it", await written((d) => d.edges.find((e) => e.id === edgeId)?.fromEnd === "arrow"))
 
-// Drag a side dot into empty space: a menu, a card there, connected.
 await node("a").hover()
 const right = page.locator('[data-handle=right][data-for="a"]')
 const rc = await center(right)
@@ -185,8 +169,6 @@ await page.keyboard.type("Next step")
 await page.keyboard.press("Escape")
 check("an arrow let go in empty space makes a connected card there", await written((d) => { const n = d.nodes.find((x) => x.text === "Next step"); return !!n && d.edges.some((e) => e.fromNode === "a" && e.toNode === n.id) }))
 
-// Colour from the selection's bar, Delete, undo. (The card clicked by its corner: its middle is the [[Targ]] link the
-// editor closed, which would open that note.)
 const corner = { position: { x: 6, y: 6 } }
 await node(added.id).click(corner)
 await ui.menu.open(page.locator("[data-canvas-toolbar=selection] [data-canvas-tool=Colour]"))
@@ -198,14 +180,12 @@ check("Delete removes the card and its arrows", await written((d) => !d.nodes.so
 await page.keyboard.press("ControlOrMeta+z")
 check("⌘Z brings it back", await written((d) => d.nodes.some((n) => n.id === added.id) && d.edges.some((e) => e.id === edgeId)))
 
-// Right click > Convert to file.
 await ui.menu.context(node(added.id), corner)
 await page.getByText("Convert to file", { exact: true }).click()
 check("Convert to file makes a note of a text card (where new notes go)", await written((d) => { const n = d.nodes.find((x) => x.id === added.id); return n?.type === "file" && /Hello from QA/.test(n.file) && !("text" in n) }))
 const made = read().nodes.find((x) => x.id === added.id).file
 check(`the note has the card's text (${made})`, existsSync(`${VAULT}/${made}`) && readFileSync(`${VAULT}/${made}`, "utf8").includes("Hello from **QA**"))
 
-// A note's card edited in place.
 await node("f").dblclick({ position: { x: 100, y: 120 } })
 await page.waitForSelector('[data-canvas-node="f"][data-editing] .cm-content')
 await page.keyboard.press("ControlOrMeta+End")
@@ -214,9 +194,7 @@ await page.keyboard.press("Escape")
 check("a note's card edits the note in place", await written((t) => t.includes("Written on the canvas."), TARGET))
 check("after Escape the card is selected, with its bar", await page.locator("[data-canvas-toolbar=selection]").count() === 1)
 
-// A file dragged from the file tree.
 const row = page.locator(`[data-tree-path="${TARGET}"]`).first()
-// (its folder opened first: the tree doesn't open folders to reveal the open file)
 if (!(await row.isVisible())) await page.locator('aside [role=tree] [data-tree-path="Qa canvas"] > button').first().click().catch(() => {})
 await row.waitFor({ timeout: 3000 }).catch(() => {})
 if (await row.count() && await row.isVisible()) {
@@ -229,7 +207,6 @@ if (await row.count() && await row.isVisible()) {
   check(`a note dragged from the file tree becomes a card (${read().nodes.length - n0} added, at ${JSON.stringify(to)})`, await written((d) => d.nodes.length === n0 + 1 && d.nodes.at(-1).file === TARGET))
 } else console.log("skip a note dragged from the file tree (the tree doesn't show it)")
 
-// A change on disk is drawn without a reload.
 const onDisk = read()
 onDisk.nodes.find((n) => n.id === "a").text = "Changed on disk"
 writeFileSync(`${VAULT}/${BOARD}`, JSON.stringify(onDisk, null, "\t") + "\n")
@@ -238,7 +215,6 @@ utimesSync(`${VAULT}/${BOARD}`, t, t)
 await page.waitForFunction(() => document.querySelector("[data-canvas-node=a]")?.textContent?.includes("Changed on disk"), null, { timeout: 8000 })
   .then(() => check("a change made on disk is drawn", true), () => check("a change made on disk is drawn", false))
 
-// Scrolling, zooming and panning with the space bar leave the file alone.
 await ui.saved()
 const before = readFileSync(`${VAULT}/${BOARD}`, "utf8")
 await page.mouse.move(bb.x + 100, bb.y + bb.height - 120)
@@ -253,7 +229,6 @@ await ui.saved()
 check("scrolling, zooming and panning don't write the file", readFileSync(`${VAULT}/${BOARD}`, "utf8") === before)
 check("the space bar pans rather than selecting", !(await page.$("[data-canvas-marquee]")))
 
-// Presenting: each group a slide; Escape ends it.
 await page.click("[data-canvas-tool='Present its groups']")
 await page.waitForFunction(() => document.querySelector("[data-canvas-slide]")?.textContent === "1 / 1", null, { timeout: 3000 })
   .then(() => check("Present shows its group as the first slide", true), () => check("Present shows its group as the first slide", false))
@@ -261,7 +236,6 @@ await page.keyboard.press("Escape")
 await page.waitForSelector("[data-canvas-toolbar=present]", { state: "detached", timeout: 3000 })
   .then(() => check("Escape ends presenting", true), () => check("Escape ends presenting", false))
 
-// A big board: only what's near the screen is drawn, and zoomed far out cards are names.
 await page.goto(`${B}#file/${encodeURIComponent(BIG)}`)
 await page.waitForSelector("[data-canvas-board=page]", { timeout: 15000 })
 await ui.idle()
@@ -271,11 +245,10 @@ await page.click("[data-canvas-tool='Zoom to 100%']")
 await page.waitForFunction(() => document.querySelectorAll("[data-canvas-board=page] [data-canvas-node]").length < 400, null, { timeout: 5000 }).catch(() => {})
 const near = await drawn()
 check(`a 1,600-card board at 100% draws only the cards near the screen (${near}; fitted ${fitDrawn})`, near < 400)
-// (the main thread's work per frame: headless Chrome draws frames slowly whatever the page does)
+// (main-thread time a frame, not frame rate: headless Chrome draws frames slowly whatever the page does)
 const cdp = await page.context().newCDPSession(page)
 await cdp.send("Performance.enable")
 const metric = async () => Object.fromEntries((await cdp.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value])).TaskDuration
-// Two passes, there and back, after the page has settled; the better one counts (other work on the machine adds noise).
 await ui.idle()
 const pass = async (dx, dy) => {
   const t0 = await metric()
@@ -290,27 +263,23 @@ const pass = async (dx, dy) => {
   return (await metric() - t0) * 1000 / 60
 }
 const panMs = Math.min(await pass(40, 25), await pass(-40, -25))
-// (3 to 11 ms here, as new cards come near the screen; restyling the whole page each frame was 15+)
 check(`scrolling a big board is light work (${panMs.toFixed(1)} ms of the main thread a frame)`, panMs < 12)
 await page.click("[data-canvas-tool='Zoom to fit']")
 await page.waitForFunction(() => !document.querySelector("[data-canvas-board=page] [data-canvas-node] .canvas-md"), null, { timeout: 4000 })
   .then(() => check("zoomed far out, cards are drawn as their names", true), () => check("zoomed far out, cards are drawn as their names", false))
 await page.screenshot({ path: `${OUT}canvas-big.png` })
 
-// Embedded in a note.
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await page.waitForSelector("[data-format-embed] [data-canvas-board=embed]", { timeout: 10000 }).then(() => check("![[Board.canvas]] shows the board in a note", true), () => check("![[Board.canvas]] shows the board in a note", false))
 await ui.idle()
 await page.screenshot({ path: `${OUT}canvas-embed.png` })
 
-// New canvas.
 await palette(page, "New canvas", 0)
 await ui.idle()
 const hash = decodeURIComponent(await page.evaluate(() => location.hash))
 check(`New canvas makes one and opens it (${hash})`, /\.canvas$/.test(hash) && !!(await page.$("[data-canvas-board=page]")))
 noErrors()
 
-// Phone: a tap selects and shows the bar.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const pp = await phone.newPage(), pui = app(pp)
 await pp.goto(`${B}#file/${encodeURIComponent(BOARD)}`)
@@ -318,10 +287,10 @@ await pp.waitForSelector("[data-canvas-board]", { timeout: 15000 })
 await pui.idle()
 const over = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 check(`no sideways scroll at 390px (${over})`, over <= 0)
-await pp.click("[data-view-toggle=read]") // phones open it reading: to editing
+await pp.click("[data-view-toggle=read]")
 await pp.waitForSelector("[data-view-toggle=live]", { timeout: 5000 })
 await pui.idle()
-const pa = await pp.locator("[data-canvas-node=a]").boundingBox() // (a text card: a tap on a web page card's address opens it)
+const pa = await pp.locator("[data-canvas-node=a]").boundingBox()
 if (pa) {
   await pp.touchscreen.tap(pa.x + pa.width / 2, pa.y + pa.height / 2)
   await pp.waitForSelector("[data-canvas-toolbar=selection]", { timeout: 3000 }).then(() => check("a tap on a card selects it and shows the bar", true), () => check("a tap on a card selects it and shows the bar", false))

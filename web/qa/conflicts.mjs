@@ -1,9 +1,7 @@
-// Conflicts: a note changed elsewhere in the lines being typed. The clash shows in place (yours, theirs, each with Keep,
-// and Keep both), the rest merged, both sides kept in File history, nothing written until it's settled, and each choice
-// undone from its toast; the agent that wrote it named. A save whose answer was lost isn't a conflict with itself. At a
-// phone's width the choices are finger-sized and nothing scrolls sideways.
-// WRITES to the vault (Qa conflicts/, removed at the end): throwaway server only.
+// Conflicts in the lines being typed: the clash in place, Keep, Keep both, Undo, the agent named, a phone's width.
+// WRITES Qa conflicts/, removed at the end: throwaway server only.
 //   node web/qa/conflicts.mjs <base url> <vault path> [out dir]
+// Paths: plugins/core/companion/cotype.ts
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, done } = await qa(import.meta.url)
@@ -12,17 +10,13 @@ const abs = `${VAULT}/${P}`
 const read = () => readFileSync(abs, "utf8")
 const START = "Line one.\n\nLine three.\n\nLine five.\n"
 const reset = () => { mkdirSync(`${VAULT}/Qa conflicts`, { recursive: true }); writeFileSync(abs, START) }
-// An agent's write (Activity names it Claude Code), on top of what's on disk.
 const agentWrite = (fn) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" },
   body: JSON.stringify({ path: P, text: fn(read()) }) })
 
-/** Open the note, type `typed` at the end of line 3 and let it save; then the agent changes line 1 and line 3, and more
- *  is typed: a clash. */
 async function clash(page, more = " More") {
   reset()
   await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(P)}`)
   await until(() => page.locator(".cm-content").count(), 8000)
-  // (a phone opens notes to read: Edit first)
   if (!(await page.locator(".cm-content[contenteditable=true]").count())) { await page.locator("button[aria-label=Edit]").first().click(); await wait(500) }
   await page.locator(".cm-line", { hasText: "Line three." }).click()
   await page.keyboard.press("End"); await page.keyboard.type(" Mine.")
@@ -32,17 +26,14 @@ async function clash(page, more = " More") {
   return until(() => page.locator(".cm-clash").count(), 9000)
 }
 
-// (who wrote it is Activity's, off in a new vault: on, so the agent is named)
 await fetch(`${B}api/ops/plugin.enable`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "activity" }) })
 const page = await browser.newPage({ viewport: { width: 1200, height: 800 } })
 const errs = []
-// (a plugin asking to write on its own, on a fresh server: not now)
 const notNow = (p) => p.addLocatorHandler(p.locator("dialog[open] button", { hasText: "Not now" }), (b) => b.click())
 await notNow(page)
 page.on("pageerror", (e) => errs.push(String(e)))
 const out = {}
 
-// Shown in place, nothing written, the rest merged, both kept in history.
 out.shown = !!(await clash(page))
 out.banner = await page.locator("[role=alert]").first().innerText().catch(() => "")
 out.diskHeld = read().includes("Theirs.") && !read().includes("More")
@@ -56,7 +47,6 @@ out.historyMine = texts.some((t) => t.includes("Mine. More"))
 out.historyTheirs = texts.some((t) => t.includes("Theirs.") && !t.includes("More"))
 await page.screenshot({ path: `${OUT}conflicts-desktop.png` })
 
-// Keep theirs: saved; Undo brings the clash back; Keep both: both lines.
 await page.locator(".cm-clash-theirs button", { hasText: "Keep" }).first().click()
 out.theirsSaved = !!(await until(() => read().includes("Line three. Theirs.") && !read().includes("More") && read().includes("Line one, edited."), 4000))
 out.toast = await page.locator("[data-sonner-toast]", { hasText: "history" }).first().innerText().catch(() => "")
@@ -67,12 +57,10 @@ await page.locator(".cm-clash button", { hasText: "Keep both" }).click()
 out.both = !!(await until(() => read().includes("Line three. Mine. More\nLine three. Theirs."), 4000))
 out.bothClean = !(await page.locator(".cm-clash").count())
 
-// Keep yours.
 await clash(page)
 await page.locator(".cm-clash-mine button", { hasText: "Keep" }).click()
 out.yours = !!(await until(() => read().includes("Line three. Mine. More") && !read().includes("Theirs.") && read().includes("Line one, edited."), 4000))
 
-// Switched to source mode and back mid-conflict: still shown, then settled.
 await clash(page)
 const view = async (name) => {
   await page.locator("[role=status] button[aria-label^='Current view']").click(); await wait(200)
@@ -85,7 +73,6 @@ out.backLive = await page.locator(".cm-clash").count()
 await page.locator(".cm-clash-theirs button", { hasText: "Keep" }).first().click()
 out.afterSwitch = !!(await until(() => read().includes("Line three. Theirs.") && !read().includes("More"), 4000))
 
-// Where it can't be shown in place (a property, its frontmatter hidden): the banner's choice, undone from its toast.
 const FM = "Qa conflicts/Fm.md"
 writeFileSync(`${VAULT}/${FM}`, "---\nstatus: draft\n---\n\nBody.\n")
 const readFm = () => readFileSync(`${VAULT}/${FM}`, "utf8")
@@ -106,7 +93,6 @@ out.fbBack = !!(await until(() => fallback.count(), 3000))
 await fallback.locator("button", { hasText: "Keep yours" }).click()
 out.fbYours = !!(await until(() => readFm().includes("status: draft, mine"), 4000))
 
-// A save that reached the server but whose answer was lost: no conflict with itself.
 reset()
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(P)}`)
 await until(() => page.locator(".cm-content").count(), 8000)
@@ -127,8 +113,6 @@ await page.keyboard.type("tence and more.")
 out.lostAnswer = !!(await until(() => read().includes("Line three. Cut off mid-sentence and more."), 6000))
 out.lostNoClash = !(await page.locator(".cm-clash").count()) && !(await page.locator("[role=alert]", { hasText: "while you typed" }).count())
 
-// A phone: finger-sized choices, nothing sideways. (Alone on the note: open in another window too, the two type into
-// one doc the server saves, plugins/core/companion/cotype.ts, so an agent's write merges in with no clash)
 await page.close()
 const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2,
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" })

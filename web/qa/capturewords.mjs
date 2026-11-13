@@ -1,5 +1,5 @@
-// Region capture by voice (electron/capture.ts): with a box up, "record this" records it, "stop" sends it and "that,
-// just now" sends the last seconds, each said with ⌃⌥ held (a stand-in Soniox hears them). WRITES: throwaway vault only.
+// Region capture by voice (electron/capture.ts): "record this", "stop" and "that, just now" said with ⌃⌥ held.
+// Needs the desktop app; a stand-in Soniox hears them. WRITES only the throwaway vault.
 //   node web/qa/capturewords.mjs <vault copy>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
@@ -33,7 +33,6 @@ const ink = (phase, x, y) => helper((h, m) => h.heard({ event: "ink", ...m }), {
 const region = () => helper((h) => h.scene()?.region ?? null)
 const words = () => helper((h) => h.scene()?.summon?.words ?? "")
 const notes = () => (fs.existsSync(path.join(VAULT, "Captures")) ? fs.readdirSync(path.join(VAULT, "Captures")).filter((f) => f.endsWith(".md")) : [])
-/** Held, `said` heard (its words by the cursor), then let go. */
 async function say(said, drag) {
   cloud.next.push(said)
   await chord(true)
@@ -45,7 +44,6 @@ async function say(said, drag) {
   return heard
 }
 
-// (a first press warms the recognizer up: the stand-in hands out words by session, and a slow first one would shift them)
 cloud.next.push("")
 await chord(true)
 await until(() => cloud.seen.length > 0, 60000, 200)
@@ -67,7 +65,6 @@ cloud.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 await done()
 
-/** Soniox stood in: each session hears the next words queued (`next`), growing as audio comes, final at its finalize. */
 async function standInSoniox() {
   const { WebSocketServer } = await import("ws")
   fs.mkdirSync(LOCAL, { recursive: true })
@@ -80,7 +77,7 @@ async function standInSoniox() {
     seen.push(c)
     const parts = c.said.split(" ").map((w, i) => (i ? " " : "") + w)
     let bytes = 0, said = false, config = false
-    // (its answers a moment late, as over a network: the last words come after the key is let go)
+    // (Soniox answers late over the network: its last words come after the key is let go)
     const send = ws.send.bind(ws)
     ws.send = (m) => setTimeout(() => ws.readyState === 1 && send(m), 300)
     ws.on("message", (d, binary) => {

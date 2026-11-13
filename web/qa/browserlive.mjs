@@ -1,8 +1,5 @@
-// The desktop app's browser tabs watched and driven from a plain browser (a phone, another Mac), as on an always-on Mac
-// whose app is attached to its server (web/qa/attach.mjs): the list, frames, click or tap, typing, the wheel, Stop/Resume
-// agents, Done for an ask and the tab's steps, on a computer and a phone (a pinch zooms, a tap zoomed in, a double tap,
-// trackpad mode, Copy onto the viewer's clipboard); then from another machine's server (Machines).
-// WRITES: the throwaway vault only.
+// The desktop app's browser tabs watched and driven from a plain browser, a phone and another machine's server.
+// Needs the desktop app, attached as web/qa/attach.mjs does; WRITES only the throwaway vault.
 //   node web/qa/browserlive.mjs <vault copy> [shots dir]
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -20,7 +17,6 @@ const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "web-viewer", "activity", "machines", "inbox"])] }))
 
-// ---------- a page that says in its title what it got ----------
 const site = http.createServer((_q, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(`<!doctype html><title>start</title><style>body{font:20px system-ui;margin:0}input{font-size:24px;position:fixed;top:20px;left:20px;width:60%}
@@ -31,8 +27,6 @@ button{position:fixed;top:80px;left:20px;font-size:24px;width:200px;height:60px}
 await new Promise((ok) => site.listen(0, "127.0.0.1", ok))
 const SITE = `http://127.0.0.1:${site.address().port}/`
 
-// ---------- the always-on server, and the app attached to it; another machine's server, on a copy of the vault ----------
-// (a free port, never one of the 20000-40000 the desktop app gives its vaults: one taken would be the user's server)
 const PORT = await freePort(), PORT2 = await freePort()
 const B = `http://127.0.0.1:${PORT}`, F = `http://127.0.0.1:${PORT2}`
 const machines = path.join(VAULT, ".vaultite/plugins/machines/data.json")
@@ -80,7 +74,6 @@ async function run(label, viewport, mobile, base = B) {
   const at = (x, y) => [box.x + box.width * x, box.y + box.height * y]
   const clicks = (t) => Number(/clicks=(\d+)/.exec(t)?.[1])
   const before = (await tab()).title
-  // (the page's button: left 20, top 80, 200x60 of its viewport, an agent's 1280x800)
   const [bx, by] = at(0.09, 0.14)
   if (mobile) await page.touchscreen.tap(bx, by); else await page.mouse.click(bx, by)
   check(`${label}: a ${mobile ? "tap" : "click"} on the picture clicks the page`, await until(async () => clicks((await tab()).title) === clicks(before) + 1, 5000), [before, (await tab()).title])
@@ -120,7 +113,6 @@ async function run(label, viewport, mobile, base = B) {
     check(`${label}: Zoom to fit zooms out`, await until(async () => (await zoom()) === "fit", 3000), await zoom())
     await page.locator("[data-web-live-trackpad]").click()
     check(`${label}: trackpad mode draws a pointer`, await until(() => page.locator("[data-web-live-pointer]").isVisible(), 3000))
-    // (the pointer starts mid-picture, and goes 1.5 times the finger's way)
     const fb = await frame.boundingBox()
     const [mx, my] = [((0.09 - 0.5) * fb.width) / 1.5, ((0.14 - 0.5) * fb.height) / 1.5]
     await gesture([[cx, cy]], [[cx + mx, cy + my]], 12)
@@ -136,8 +128,6 @@ async function run(label, viewport, mobile, base = B) {
     await page.keyboard.press("Backspace")
     check(`${label}: typing goes into the page's field`, await until(async () => /v=\S*xy /.test((await tab()).title), 5000), (await tab()).title)
     await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base })
-    // (a double click on the field's word selects it: the field's text starts 20px in, 24px type, of the page's own
-    // size: an agent's 1280x800, or its pane's in the app once an ask has shown its tab there)
     const word = /v=(\S+) /.exec((await tab()).title)?.[1]
     const css = await app.evaluate(({ webContents }, site) => webContents.getAllWebContents().find((w) => w.getURL().startsWith(site))?.executeJavaScript("[innerWidth, innerHeight]"), SITE)
     const fit = await frame.boundingBox()
@@ -170,14 +160,11 @@ await run("computer", { width: 1280, height: 800 }, false)
 await op("ask", { tab: TAB, reason: "Solve the check, then Done" })
 await run("phone", { width: 390, height: 844 }, true)
 
-// Another machine (a laptop) with no browser of its own here: the owner's tabs listed, named, watched and driven through
-// its server; an ask's Inbox row there opens the owner's tab.
 const laptop = testServer({ stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, VAULTITE_VAULT: FVAULT, VAULTITE_LOCAL: path.join(TMP, "laptop-local"), HOST: "127.0.0.1", PORT: String(PORT2), VAULTITE_DESKTOP: "", TMPDIR: RUN, XDG_RUNTIME_DIR: RUN } })
 let fout = ""
 laptop.stdout.on("data", (d) => { fout += d })
 laptop.stderr.on("data", (d) => { fout += d })
-// (its output, if it doesn't come up: CI's run once found nothing on its port, with no word why)
 check("(the other machine's server is up)", await until(() => /vaultite: vault read/.test(fout) || laptop.exitCode !== null, 60000) && laptop.exitCode === null,
   { exit: laptop.exitCode, port: PORT2, out: fout.slice(-2000) })
 const listed = await until(async () => (await (await fetch(`${F}/api/web-viewer/tabs`)).json()).tabs?.find((t) => t.tab === TAB), 30000)
@@ -202,5 +189,5 @@ laptop.kill()
 await app.close()
 server.kill()
 site.close()
-try { fs.rmSync(TMP, { recursive: true, force: true }) } catch { /* a server still writing its folder */ }
+try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {}
 await done()

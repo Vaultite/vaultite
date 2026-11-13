@@ -1,6 +1,4 @@
-// Companion beyond notes: its cursor points at the app's UI (look --ui) and at a terminal pane's row (look --pane --find),
-// and lights it; following a terminal (asked), its command's end comes as a change moment; a watch of a note tells it
-// once what it waits for is there.
+// Companion beyond notes: its cursor at the app's UI and a terminal's row, following a terminal, watching a note.
 // WRITES "QA companion panes/", the companion's data.json, folders.json: throwaway server only.
 //   node web/qa/companion-panes.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -33,10 +31,8 @@ check("its pane carries its tab's id (data-ui pane:<id>)", !!pane, pane)
 await page.locator("[data-term]").click()
 await page.keyboard.type("echo needle-17"); await page.keyboard.press("Enter")
 await until(async () => /^needle-17\s*$/m.test(await terminalText(page)))
-// (the window has told the server its panes)
 await until(async () => { const r = await op("companion.look", { pane }); return !r.error }, 6000)
 const cursor = page.locator('.companion-cursor[data-agent="Claude"]')
-// (where it's going: its spring writes where it is on the way)
 const tip = () => cursor.evaluate((el) => { const m = /^(-?[\d.]+),(-?[\d.]+)$/.exec(el.dataset.to ?? ""); return m ? { x: Number(m[1]) + 3, y: Number(m[2]) + 2 } : null })
 
 const ui = await page.evaluate(() => ["button:switcher:open", "button:sidebar:toggle", "button:tab:new"].find((id) => [...document.querySelectorAll(`[data-ui="${id}"]`)].some((e) => e.getClientRects().length)))
@@ -46,7 +42,6 @@ const box = await page.evaluate((id) => { const e = [...document.querySelectorAl
 let at = await tip()
 check("look --ui: its cursor goes to that part of the app", !!at && at.x >= box.left - 2 && at.x <= box.right + 2 && at.y >= box.top - 2 && at.y <= box.bottom + 2, { ui, r, at, box })
 
-// A terminal's row by its text, lit.
 r = await op("companion.look", { pane, find: "needle-17" })
 await wait(900)
 const row = await page.evaluate(() => {
@@ -64,18 +59,15 @@ r = await op("companion.highlight", { pane, find: "needle-17" })
 check("highlight in a terminal: its row lit in its colour", await until(async () => (await page.locator("[data-companion-highlight]").count()) > 0, 3000), r)
 await op("companion.say", { text: "That's the line.", pane, find: "needle-17" })
 check("say in a pane: its bubble there", await until(async () => (await page.locator("[data-companion-bubble]").count()) > 0, 3000))
-// (a native web page draws over the window's page: what's shown of it floats, so the window rises over one it reaches)
 check("its bubble and cursor float (layers.ts' floats), as a toast does", (await page.locator("[data-companion-bubble][data-floats]").count()) > 0 && (await cursor.getAttribute("data-floats")) !== null)
 await page.screenshot({ path: `${OUT}terminal.png` })
 
-// Asked to follow the terminal (pointing at it never is).
 await op("companion.next", { timeout: 0 })
 await op("companion.follow", { pane, as: "Claude" })
 const st = await op("companion.status")
 check("it follows that pane", st.follows?.some((f) => f.pane === pane), st.follows)
 await wait(2500)
 
-// The follow: a command's end, its new output.
 await page.locator("[data-term]").click()
 await page.keyboard.type("sleep 1; echo done-$((40+2))"); await page.keyboard.press("Enter")
 check("(the command ran)", await until(async () => /^done-42\s*$/m.test(await terminalText(page)), 6000), (await terminalText(page)).slice(-300))
@@ -85,7 +77,6 @@ check("a command's end in a followed terminal comes as a change, with its new ou
 check("only once: no change while nothing happens", !(await op("companion.next", { timeout: 4 })).moments?.some((m) => m.kind === "change"))
 await op("companion.unfollow", { id: pane })
 
-// A watch: a note's text, told once what it waits for is there.
 await api("PUT", "file", { path: `${DIR}/Order.md`, text: "Status: packing\n" })
 await api("PATCH", "config/folders", { watches: `${DIR}/Watches` })
 r = await op("watches.add", { source: `note:${DIR}/Order.md`, until: "shipped", why: "Tell me when it ships", title: "Order" })
@@ -100,7 +91,6 @@ check("what it waited for comes to the companion as a watch moment (not the pack
 check("and it's done", (await op("watches.list")).find?.((w) => w.title === "Order")?.state === "done")
 await op("watches.remove", { id: "Order" })
 
-// A pane not shown (another tab in front): its cursor points at its tab, not at a spot of the window.
 await page.locator('[data-ui="button:tab:new"]').first().click()
 check("(a new tab hides the terminal's pane)", await until(async () => !(await page.locator(`[data-pane-frame="${pane}"]`).isVisible())))
 await op("companion.look", { pane })
@@ -118,7 +108,6 @@ await until(async () => (await cursor.getAttribute("data-loose")) !== null, 4000
 at = await tip()
 check("look at a whole pane: no corner, nothing to fly to", !!at && (await cursor.getAttribute("data-loose")) !== null && at.x > whole.left + whole.width * 0.25 && at.y > whole.top + 60, { at, whole, looked })
 
-// Its place gone from view and no status bar to rest in: it fades where it was, its words never shown there.
 await page.addStyleTag({ content: "[data-companion-status] { display: none !important }" })
 await op("companion.look", { ui: "button:tab:new" })
 await wait(900)

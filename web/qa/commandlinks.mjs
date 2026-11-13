@@ -1,5 +1,5 @@
-// A note's vaultite://command/<id> links: one that only opens something runs at once, any other asks first (the note
-// may not be the user's). WRITES Notes/Qa command links.md: throwaway server only.
+// A note's vaultite://command/<id> links: one that only opens something runs at once, any other asks first.
+// WRITES Notes/Qa command links.md: throwaway server only.
 //   node web/qa/commandlinks.mjs <base url>
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, errs, watch, done } = await qa(import.meta.url)
@@ -28,7 +28,6 @@ const before = await tabs()
 await link("a new tab").click()
 const asked = await until(() => page.$("[data-confirm]"), 5000)
 check("a link to any other command asks first, naming it", !!asked && /Open new tab\?/.test(await page.locator("[data-confirm]").innerText()))
-// Run has the focus and its keyboard ring: still filled with the primary colour, its white label readable.
 await page.keyboard.press("Tab"); await page.keyboard.press("Tab")
 const run = await page.$eval("[data-confirm-ok]", (b) => {
   const probe = document.createElement("i"); probe.style.color = "var(--primary)"; b.append(probe)

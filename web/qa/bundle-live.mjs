@@ -1,5 +1,5 @@
-// A bundle applied with the app open draws what a reload does: nothing of the one before stays (Standard, Zen,
-// Browser). WRITES the vault's settings: throwaway servers only.
+// A bundle applied with the app open draws what a reload does (Standard, Zen, Browser).
+// WRITES the vault's settings: throwaway servers only.
 //   node web/qa/bundle-live.mjs <base url>
 import { spawnSync } from "node:child_process"
 import path from "node:path"
@@ -13,7 +13,6 @@ function apply(id) {
   if (r.status !== 0) throw new Error(r.stderr || r.stdout)
 }
 
-/** The shell's boxes (left, top, width, height). */
 const shell = (page) => page.evaluate(() => {
   const out = {}
   const SEL = ["[data-status-bar]", "[data-status-bar] [data-ambient]", "[data-steady]", "aside[data-side=left]", "aside[data-side=right]", "main", "[data-pane]", "section[data-pane-frame]:not([data-away])", "[data-tab-bar]", "[data-pane-bar]"]
@@ -23,7 +22,6 @@ const shell = (page) => page.evaluate(() => {
   })
   return out
 })
-/** Where they differ by more than a rounding (a pixel or two: what's held as it loads). */
 const differ = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])]
   .filter((k) => !a[k] || !b[k] || a[k].some((v, i) => Math.abs(v - b[k][i]) > 2)).map((k) => `${k}: live ${a[k] ?? "-"} / reload ${b[k] ?? "-"}`)
 

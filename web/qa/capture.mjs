@@ -1,6 +1,7 @@
-// Region capture (electron/capture.ts) in the desktop app, unseen: a drag with ⌃⌥ held makes a box that stays; Record
-// records the real screen cropped to it, Stop and Just now send it (saved in Captures here); the timeline answers agents.
-// WRITES: throwaway vault only.   node web/qa/capture.mjs <vault copy>
+// Region capture: a drag with ⌃⌥ held makes a box; Record, Stop and Just now send it; the timeline answers agents.
+// Needs the desktop app; WRITES only the throwaway vault.
+//   node web/qa/capture.mjs <vault copy>
+// Paths: electron/capture.ts, tools/test/vault/captures.ts
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -15,7 +16,6 @@ const AUDIO = path.join(TMP, "said.aiff")
 execFileSync("say", ["-o", AUDIO, "Record this."])
 const conf = (id, v) => { fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", id), { recursive: true }); fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", id, "data.json"), JSON.stringify(v)) }
 conf("dictation", { engine: "apple", language: "en-US" })
-// (no agent here and no jobs' agent: nothing it sends starts one)
 conf("companion", { agent: "nobody", jobs_agent: "nobody", timeline: true })
 
 const app = await _electron.launch({
@@ -29,7 +29,6 @@ const w9 = { window: 9, bundle: "com.example.browser", name: "Example Browser", 
 await helper((h, w) => { h.stub("focus", { ...w, field: false, pid: 1 }); h.stub("window", w); h.stub("at", w) }, w9)
 await wait(1500)
 
-// ---------- held, a drag makes a box (no trail meanwhile); it stays once let go
 const chord = (on) => helper((h, o) => h.heard({ event: "chord", name: "control_option", on: o }), on)
 const ink = (phase, x, y) => helper((h, m) => h.heard({ event: "ink", ...m }), { phase, x, y })
 const region = () => helper((h) => h.scene()?.region ?? null)
@@ -44,10 +43,8 @@ const overlay = await until(() => app.windows().find((p) => p.url().endsWith("/s
 check("the overlay draws it, with Record and Just now", !!overlay && await until(() => overlay.evaluate(() => !!document.querySelector('[data-region="idle"]') && !!document.querySelector('[aria-label="Record this box"]') &&
   !!document.querySelector('[aria-label^="Send the last"]')), 5000))
 
-// ---------- Record (its words, "record this", are tools/test/vault/captures.ts'): recorded; Stop sends it
 await chord(false)
 await overlay.evaluate(() => document.querySelector('[aria-label="Record this box"]').click())
-// (its first use builds the capture helper: a while on a busy machine)
 check("Record records the box", await until(async () => !!(await region())?.recording, 120000, 300), { region: await region(), hint: await helper((h) => h.scene()?.pill) })
 check("recording, the box shows it (its time and Stop)", await until(() => overlay.evaluate(() => !!document.querySelector('[data-region="recording"]') && !!document.querySelector('[aria-label="Stop recording and send"]')), 5000))
 await wait(2500)
@@ -66,18 +63,15 @@ check("…its clip is the box at the display's pixels, as long as it recorded, w
   fs.readFileSync(path.join(VAULT, "Captures", first), "utf8").includes("clip.mp4]]"), { first, stream })
 check("the box stays for the next one", !!(await region()) && !(await region()).recording)
 
-// ---------- Just now: the last seconds, kept in memory, sent the same way
-await wait(1000)
+await wait(1000) // (a second recorded for Just now to send)
 await overlay.evaluate(() => document.querySelector('[aria-label^="Send the last"]').click())
 check("Just now sends the last seconds kept, saved beside the first", await until(() => notes().length === 2, 120000, 300), { notes: notes(), said: await hint() })
-// ---------- the timeline, as agents ask it (vau screen timeline): the box, the clicks, on one clock
 await helper((h) => h.heard({ event: "click", x: 320, y: 260, exchange: false }))
 const port = new URL(win.url()).port
 const tl = await fetch(`http://127.0.0.1:${port}/api/ops/screen.timeline`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ last: 25, kinds: ["box", "click"], clip: true }) }).then((r) => r.json())
 const lines = tl.lines ?? []
 check("the timeline's last seconds: the click, and its clip saved when asked",
   lines.some((l) => /clicked at 320,260/.test(l)) && !!tl.clip && fs.existsSync(tl.clip), tl)
-// ---------- its pill sits outside the box, never in what's recorded; its grip moves the box
 const apart = () => overlay.evaluate(() => {
   const b = document.querySelector("[data-region]").getBoundingClientRect(), p = document.querySelector("[data-region-pill]").getBoundingClientRect()
   return { apart: p.right <= b.left || p.left >= b.right || p.bottom <= b.top || p.top >= b.bottom, box: [b.left, b.top, b.width, b.height], pill: [p.left, p.top, p.width, p.height] }

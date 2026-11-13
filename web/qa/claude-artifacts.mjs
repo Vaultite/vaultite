@@ -1,5 +1,5 @@
-// claude.ai artifacts saved as .html run as is (window.claude, window.storage); QA_SAMPLE=1 also asks Claude for real
-// (Claude Code on the server's machine). WRITES fixtures (QA/ in the vault): throwaway server only.
+// claude.ai artifacts saved as .html run as is; QA_SAMPLE=1 also asks Claude Code on the server's machine.
+// WRITES fixtures in QA/: throwaway server only.
 //   node web/qa/claude-artifacts.mjs <base url> <vault path>
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,7 +10,6 @@ if (!temp(VAULT)) { console.error("claude-artifacts: the vault must be a throwaw
 mkdirSync(OUT, { recursive: true })
 mkdirSync(`${VAULT}/QA`, { recursive: true })
 const REAL = process.env.QA_SAMPLE === "1"
-// A new page each run: what a run leaves (its data, the yes to asking Claude) belongs to that page only.
 const NAME = `QA claude ${Date.now().toString(36)}.html`
 
 const ART = `<!doctype html>
@@ -48,7 +47,6 @@ window.pub = async () => {
 </script></body></html>
 `
 writeFileSync(`${VAULT}/QA/${NAME}`, ART)
-// Claude Code's Artifact tool reads a page back in this shape: a skeleton head, the page (title, style) inside body.
 writeFileSync(`${VAULT}/QA/QA skeleton.html`, '<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">' +
   "<style>*{box-sizing:border-box}body{margin:0}</style></head><body><title>Skeleton page</title><style>h1{color:rgb(1, 2, 3)}</style><h1>Drawn</h1>" +
   '<script>claude.use("db").then((db) => { window.__db = !!db })</script></body></html>')
@@ -76,14 +74,12 @@ await f.click("#go")
 check("a form's submit reaches the page", (await until(async () => (await t(f)).submitted, 2000)) === true)
 check("window.storage: set and list", s.storage?.value === "1" && s.list?.keys?.includes("visits"), s)
 
-// db: writes show in onSnapshot, ordered and limited, and are kept beside the artifact.
 await f.evaluate(() => Promise.all([window.add(5), window.add(9), window.add(7)]))
 s = await until(async () => { const x = await t(f); return x.snaps.at(-1)?.join() === "9,7" ? x : null }, 4000)
 check("db: onSnapshot sees writes, ordered and limited", !!s, (await t(f)).snaps)
 const kept = await until(() => { try { const d = JSON.parse(readFileSync(side, "utf8")); return Object.keys(d.db).length >= 3 && d.storage.personal.visits === "1" ? d : null } catch { return null } }, 4000)
 check("db and storage kept in the sidecar", !!kept, existsSync(side) ? readFileSync(side, "utf8").slice(0, 300) : "none")
 
-// A second view of it (an embed) hears the first one's writes.
 writeFileSync(`${VAULT}/QA/QA claude note.md`, `# Two views\n\n![[${NAME}|200]]\n`)
 const other = watch(await ctx.newPage(), { label: "second view" })
 await other.goto(`${B}#file/${enc("QA/QA claude note.md")}`)
@@ -94,11 +90,10 @@ const f2 = await until(async () => {
 await f.evaluate(() => window.add(11))
 check("db: another view hears the write", !!f2 && !!(await until(async () => (await t(f2)).snaps.at(-1)?.join() === "11,9", 4000)), f2 && (await t(f2)).snaps)
 await other.close()
-await f.evaluate(() => window.add(3)) // back to 9 on top after the delete below
+await f.evaluate(() => window.add(3))
 await f.evaluate(() => claude.use("db").then(async (db) => { const s = await db.collection("data/users/u_owner/profile/notes").where("n", "==", 11).get(); for (const d of s.docs) await db.doc("data/users/u_owner/profile/notes/" + d.id).delete() }))
 check("db: where() and delete()", !!(await until(async () => (await t(f)).snaps.at(-1)?.join() === "9,7", 4000)), (await t(f)).snaps)
 
-// Consent: declined, sample rejects not_granted and isn't asked again in this view.
 if (s?.sample === "function" || (await t(f)).sample === "function") {
   void f.evaluate(() => window.ask("Reply with exactly: ok", { modelTier: "quick" }))
   const no = await until(() => page.getByRole("button", { name: "Don't allow" }).first().isVisible().then((v) => v && page.getByRole("button", { name: "Don't allow" }).first()), 5000)
@@ -123,7 +118,6 @@ if (s?.sample === "function" || (await t(f)).sample === "function") {
   }
 }
 
-// publish: the file is rewritten, the frame reloads into the new version, the data stays.
 await f.evaluate(() => window.pub())
 const rewritten = await until(() => readFileSync(`${VAULT}/QA/${NAME}`, "utf8").includes("version two"), 4000)
 check("publish rewrites the file", rewritten)
@@ -139,7 +133,6 @@ if (reloaded) {
 }
 await page.screenshot({ path: `${OUT}claude-artifact.png` })
 
-// The Artifact tool's shape: title from inside body, its style applied, the runtime there.
 await page.goto("about:blank")
 await page.goto(`${B}#file/${enc("QA/QA skeleton.html")}`)
 const sk = await frameOf("QA skeleton.html")

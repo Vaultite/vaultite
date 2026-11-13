@@ -1,5 +1,5 @@
-// Claude Code's chat tab, pictured: a made-up session played over its socket (no session runs), each scene at desktop
-// and phone sizes, light and dark, plus frames of a turn streaming. For judging the design; checks only that it draws.
+// Claude Code's chat tab pictured, each scene at desktop and phone sizes, light and dark; checks only that it draws.
+// A made-up session over its socket: no session runs.
 //   node web/qa/chatshots.mjs <base url> [out dir] [scene,scene...] [size,size...]
 import { mkdirSync } from "node:fs"
 import { deflateSync } from "node:zlib"
@@ -45,7 +45,6 @@ const DONE = [
   { k: "result", id: "r1", ok: true, ms: 14_000, at: at(13) },
 ]
 
-/** A small PNG: a soft gradient from one colour to another (rgb triples). */
 function png(w, h, a, b) {
   const crcT = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
   const crc = (buf) => { let c = 0xffffffff; for (const x of buf) c = crcT[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0 }
@@ -55,15 +54,12 @@ function png(w, h, a, b) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 3; c++) raw[y * (w * 3 + 1) + 1 + x * 3 + c] = Math.round(a[c] + (b[c] - a[c]) * ((x / w + y / h) / 2))
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", head), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))])
 }
-// (a message's pictures as the server names them; the page's requests for them are answered with these)
 const PICTURES = [png(160, 100, [242, 160, 90], [120, 70, 200]), png(120, 120, [60, 170, 140], [30, 60, 120])]
 const IMAGES = PICTURES.map((_, n) => ({ src: `image/u1/${n}` }))
 
-/** The scenes: a hello (what the socket says first), then what it says over time. */
 const SCENES = {
   done: { hello: { s: S("idle"), live: DONE } },
   expanded: { hello: { s: S("idle"), live: DONE }, open: ["[data-work] button[aria-expanded]", "[data-tool=Edit] button", "[data-tool=Bash] button"] },
-  // a message with pictures, and a turn whose calls ran long (grouped) and one failed
   images: { hello: { s: S("idle"), live: [{ ...user("u1", "Make the countdown look like these two mockups.", 0), images: IMAGES },
     text("m1:0", "I'll look at the current styles first.", 2),
     tool("t1", "Read", "site/countdown.css", { file_path: "/Users/alice/lighthouse/site/countdown.css" }, "     1→.countdown { display: flex; }\n     2→.countdown span { font: 600 48px/1 system-ui; }", 3),
@@ -85,26 +81,19 @@ const SCENES = {
     { k: "ask", id: "ask:t7", kind: "plan", tool: "ExitPlanMode", title: "Claude has a plan", at: at(4), plan: "## Plan\n1. Read `launch_at` from the page's front matter in `site/build.ts`.\n2. Pass it to the countdown; drop the date in `index.html`.\n3. Add a test for a missing date.\n4. Run the tests." }] } },
   error: { hello: { s: S("error", { error: "Claude's usage limit is reached: it resets at 3 pm." }), live: DONE.slice(0, 5) } },
   loading: { silent: true },
-  // loading while its machine isn't answering
   unreachable: { silent: true, then: async (page, ws) => { ws.send(JSON.stringify({ t: "unreachable", reason: "Mini PC isn't answering" })) } },
-  // a picture added with the attach button, then words typed beside it
   attached: { hello: { s: S("idle"), live: DONE }, then: async (page) => {
-    // (a picture of the page itself: a real screenshot, as one is pasted)
     const shot = await page.screenshot({ clip: { x: 0, y: 0, width: 360, height: 240 } })
     await page.locator("[data-attach-input]").setInputFiles({ name: "screenshot.png", mimeType: "image/png", buffer: shot })
     await page.locator("[data-picture]").first().waitFor({ timeout: 5000 }).catch(() => {})
     await page.locator("[data-composer] textarea").fill("The countdown overlaps the header here:")
   } },
-  // read three times without a hello: it says it couldn't load, and keeps trying
   failed: { silent: true, then: async (page, ws) => { for (let n = 0; n < 3; n++) ws.send(JSON.stringify({ t: "error", reason: "ENOENT: no such file" })) } },
-  // its machine not answering: said over the composer, the conversation kept
   away: { hello: { s: S("idle"), live: DONE }, then: async (page, ws) => { ws.send(JSON.stringify({ t: "unreachable", reason: "Mini PC isn't answering" })) } },
-  // a message sent while Claude works: queued under the composer
   queued: { hello: { s: S("working"), live: DONE.slice(0, 5) }, then: async (page) => {
     await page.locator("[data-composer] textarea").fill("Also update the changelog when you're done.")
     await page.keyboard.press("Enter")
   } },
-  // a turn as it streams: thinking, words written a few at a time, a call running, then more words
   streaming: { hello: { s: S("working"), live: [DONE[0]], asked: 4000 }, stream: true },
 }
 
@@ -120,7 +109,6 @@ const SIZES = ALL.filter((s) => (SIZES_ONLY ? SIZES_ONLY.split(",").includes(s.n
 const hello = (h) => JSON.stringify({ t: "hello", id: h.s.id, found: true, s: h.s, title: "Read the launch date from front matter", cwd: h.s.cwd, account: "default", model: h.s.model, effort: "high",
   tui: null, driven: "", history: { entries: h.asked ? [{ ...h.live[0], at: new Date(Date.now() - h.asked).toISOString() }, ...h.live.slice(1)] : h.live, start: 0, total: h.live.length } })
 
-/** `end`: told as the turn is about to end (its result, then idle), so a video can mark where its work folds away. */
 async function stream(ws, page, ui, shot, end = () => {}) {
   const put = (e) => ws.send(JSON.stringify({ t: "put", e }))
   const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
@@ -184,7 +172,6 @@ for (const size of SIZES) {
     }
     await page.close()
   }
-  // a new chat, as the tab opens
   if (!ONLY || ONLY.split(",").includes("new")) {
     const page = watch(await ctx.newPage(), { label: `${size.name} new` }), ui = app(page)
     await page.goto("about:blank")
@@ -197,8 +184,6 @@ for (const size of SIZES) {
   }
   await ctx.close()
 }
-// Motion, as video: a turn streams in, its work folds away as it ends, a call opens and closes, a message is sent; cut
-// into contact sheets (ffmpeg) of 10 frames a second, for judging motion without watching.
 if (!ONLY || ONLY.split(",").includes("motion")) {
   const { execFileSync } = await import("node:child_process")
   const { readdirSync, renameSync, writeFileSync } = await import("node:fs")
@@ -207,7 +192,7 @@ if (!ONLY || ONLY.split(",").includes("motion")) {
     const ctx = await browser.newContext({ viewport: size.viewport, colorScheme: size.scheme, ...(size.phone ? { isMobile: true, hasTouch: true } : {}),
       recordVideo: { dir: vdir, size: size.viewport } })
     const page = watch(await ctx.newPage(), { label: `${size.name} motion`, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
-    // (the video starts once the page is made: marks count from then, so each sheet starts as its action does)
+    // (Playwright's video starts as the page is made: marks count from then)
     const t0 = Date.now()
     let sock = null
     await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; ws.send(hello({ s: S("idle"), live: [{ ...DONE[0], at: new Date(Date.now() - 2000).toISOString() }] })) })

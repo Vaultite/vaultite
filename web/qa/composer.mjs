@@ -22,24 +22,21 @@ const selectLine = async (n) => {
 await page.goto(B)
 await page.waitForSelector("[aria-label='New tab']", { timeout: 30000 })
 
-// Extract to a new note.
 await open("Notes/Composer source.md")
 check("no Extract without a selection", !(await command(page, "Extract current selection")))
 await selectLine(2)
 check("Extract current selection", await command(page, "Extract current selection"))
 await pick("Extracted bit")
-const body = (p) => read(p)?.replace(/^---\n[\s\S]*?\n---\n/, "").trim() // (Provenance gives a new note its origin)
+const body = (p) => read(p)?.replace(/^---\n[\s\S]*?\n---\n/, "").trim()
 check("the new note has the text", await until(() => body("Notes/Extracted bit.md") === "move this line"), read("Notes/Extracted bit.md"))
 check("a link in its place", await until(() => read("Notes/Composer source.md") === "keep this\n[[Extracted bit]]\nand keep this\n"), read("Notes/Composer source.md"))
 
-// Extract to a note that's there: at its end.
 await selectLine(3)
 await command(page, "Extract current selection")
 await pick("Composer target")
 check("appended to the note picked", await until(() => read("Notes/Composer target.md") === "---\ntags: [x]\n---\nTarget text\n\nand keep this\n"), read("Notes/Composer target.md"))
 check("its link in its place", await until(() => read("Notes/Composer source.md")?.includes("[[Composer target]]")), read("Notes/Composer source.md"))
 
-// Merge, then Undo.
 await open("Notes/Composer merged.md")
 check("Merge current file with another file", await command(page, "Merge current file with another file"))
 await pick("Composer target")
@@ -49,13 +46,10 @@ check("merged: the other is open", await until(() => page.evaluate(() => decodeU
 await page.click("[data-sonner-toast] button:has-text('Undo')")
 check("Undo: both back", await until(() => existsSync(path.join(VAULT, "Notes/Composer merged.md")) && !read("Notes/Composer target.md")?.includes("Merged body")), read("Notes/Composer target.md"))
 
-// Random note.
 const before = await page.evaluate(() => location.hash)
 check("Open random note", await command(page, "Open random note"))
 check("another note opens", await until(async () => { const h = await page.evaluate(() => location.hash); return h !== before && h.startsWith("#file/") && h.endsWith(".md") }), await page.evaluate(() => location.hash))
 
-// Unique note.
-// (where new notes go: the vault's top, here)
 const had = new Set(readdirSync(VAULT))
 check("Create new unique note", await command(page, "Create new unique note"))
 const made = await until(() => readdirSync(VAULT).find((f) => !had.has(f) && f.endsWith(".md")))

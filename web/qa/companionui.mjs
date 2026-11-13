@@ -1,6 +1,5 @@
-// The companion's one UI model in Vaultite's window (core/desktop/uimodel.ts, uidom.ts, panes.ts): tasks any
-// user asks, by role and name, each read back: fold and open a section, show a place, select a tab, find a setting's
-// switch, read a state with check, and an act that changes nothing says so. Throwaway server only (it opens tabs).
+// The companion's UI model in the window (core/desktop/uimodel.ts, uidom.ts, panes.ts): fold, show, select, read.
+// Throwaway server only (it opens tabs).
 //   node web/qa/companionui.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -19,11 +18,9 @@ try {
   await page.waitForSelector(files)
   await wait(800)
 
-  // Its ARIA: the panel a named region, its heading the disclosure that says what it folds
   const aria = await page.evaluate((f) => { const p = document.querySelector(f), h = p?.querySelector("[aria-expanded]"); return { role: p?.getAttribute("role"), name: document.getElementById(p?.getAttribute("aria-labelledby") ?? "")?.textContent?.trim(), controls: h?.getAttribute("aria-controls") === p?.id && !!p?.id } }, files)
   check("a panel is a named group, its heading controls it", aria.role === "group" && aria.name === "Files" && aria.controls, aria)
 
-  // Fold a section by its name, then again: the second does nothing and says it's already so
   const fold = await act("collapse", "Files")
   check("collapse \"Files\" folds it, read back", fold.status === 200 && fold.body?.ok === true && !!(await page.$(`${files}[data-collapsed]`)), fold.body)
   const twice = await act("collapse", "Files")
@@ -31,7 +28,6 @@ try {
   const c1 = await holds(`collapsed "Files"`), c2 = await holds(`expanded "Files"`)
   check("check reads the fold back both ways", c1?.ok === true && c2?.ok === false && /folded/.test(c2?.saw ?? ""), { c1, c2 })
 
-  // Open it by name (its heading pressed, not its container) and by its id (a place shown)
   const open = await act("expand", "Files", { role: "button" })
   check("expand button \"Files\" opens it", open.body?.ok === true && !(await page.$(`${files}[data-collapsed]`)) && /Start here/.test(open.body?.shows ?? ""), open.body)
   await act("collapse", "Files")
@@ -39,7 +35,6 @@ try {
   check("a place by its id is shown, unfolded, with what it shows", place.body?.opened === true && place.body?.ok === true && !(await page.$(`${files}[data-collapsed]`)), place.body)
   await page.screenshot({ path: `${OUT}files-open.png` })
 
-  // Select a tab by its role and name, read back
   await call("companion.open", { path: "Start here.md" })
   await call("companion.open", { path: "view:files" })
   await until(async () => (await page.$$("[role=tab]")).length >= 2)
@@ -48,7 +43,6 @@ try {
   const tabAgain = await act("select", "Start here", { role: "tab" })
   check("selecting it again is already so", tabAgain.body?.already === true, tabAgain.body)
 
-  // Find a setting: its switch by name, its state read (Settings' first switch, whatever it is)
   await page.keyboard.press("ControlOrMeta+Comma")
   await until(async () => !!(await page.$("[role=switch][aria-label]")))
   const sw = await page.evaluate(() => { const s = document.querySelector("[role=switch][aria-label]"); return s ? { name: s.getAttribute("aria-label"), on: s.getAttribute("aria-checked") === "true" } : null })
@@ -56,7 +50,6 @@ try {
   check("a setting's switch is found by its name and its state read", !!sw && read?.ok === sw.on && read?.thing?.role === "switch", { sw, read })
   await page.screenshot({ path: `${OUT}settings.png` })
 
-  // What isn't there, and a check that can't be read, say so
   const miss = await act("click", "No such thing here")
   check("a thing not on screen is a 404", miss.status === 404, miss.body)
   const gone = await holds(`gone "No such thing here"`), bad = await call("companion.check", { condition: "wobbly \"x\"" })

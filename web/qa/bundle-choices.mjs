@@ -1,7 +1,8 @@
-// Layouts, choosing (components/LayoutPicker.tsx, pages/Bundles.tsx, components/BundleTrial.tsx): Details' ticks, the
-// Changed mark and Reset, each layout's tweaks kept, trying one, and Get's layouts and packs beside its plugins. WRITES
-// settings and bundles: throwaway servers started with VAULTITE_PLUGIN_INDEX=<plugin index>, VAULTITE_GITHUB=file://<plugin repos>.
+// Choosing layouts: Details' ticks, Changed and Reset, each layout's tweaks, Try, and Get's layouts and packs.
+// WRITES settings and bundles: throwaway servers with VAULTITE_PLUGIN_INDEX=<plugin index>,
+// VAULTITE_GITHUB=file://<plugin repos>.
 //   node web/qa/bundle-choices.mjs <base url> <vault path> <plugin index> <plugin repos> [out dir]
+// Paths: components/LayoutPicker.tsx, pages/Bundles.tsx, components/BundleTrial.tsx
 import { execFileSync } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
@@ -17,7 +18,6 @@ const api = async (method, path, body) => {
 const look = () => json(".vaultite/appearance.json") ?? {}
 const enabled = () => json(".vaultite/plugins.json")?.enabled ?? []
 
-// ---------- the fixture: a repository with a bundle, and an index listing it ----------
 const REPO = `${REPOS}/qa/desk`
 const git = (...a) => execFileSync("git", ["-C", REPO, ...a], { encoding: "utf8", env: gitEnv() }).trim()
 function commit(scheme) {
@@ -43,9 +43,7 @@ mkdirSync(REPOS, { recursive: true })
 const c1 = commit("dracula")
 index(c1)
 await api("GET", "bundles/browse?refresh=1")
-// (from Standard, whatever ran before: Zen's every change is one to make)
 for (const id of ["desk", "my-zen", "my-days"]) await api("DELETE", `bundles/${id}`)
-// (Days: a bundle installing Vaultite's own plugins, as the directory's Life OS)
 cpSync(`${ROOT}/tools/fixtures/bundles/days`, `${VAULT}/.vaultite/bundles/days`, { recursive: true })
 await api("POST", "bundles/standard/apply", {})
 rmSync(`${VAULT}/Guides/How Zen works.md`, { force: true })
@@ -60,7 +58,6 @@ async function go(page, h = "settings") {
   await page.goto(`${B}#${h}`)
   await until(() => page.locator("main").count(), 6000)
   if (h === "settings") {
-    // (a narrow pane lists the sections: Appearance opens as a sheet)
     await until(() => page.locator("[data-layout-pick], [data-settings-list]").count(), 8000)
     if (!(await page.locator("[data-settings-section] [data-layout-pick]").count())) await page.locator("[data-settings-nav=appearance]").first().click()
     await until(() => page.locator("[data-layout-pick]").count() >= 3, 8000)
@@ -68,7 +65,6 @@ async function go(page, h = "settings") {
   await wait(600)
 }
 const sheet = (page) => page.locator("dialog[open]")
-/** A tile's menu item. */
 async function tileMenu(page, id, item) {
   await page.locator(`[data-layout="${id}"]`).hover()
   await page.locator(`[data-layout-more="${id}"]`).click()
@@ -81,7 +77,6 @@ const menuItems = async (page, id) => {
   await page.keyboard.press("Escape")
   return items.map((x) => x.trim())
 }
-/** Details…: what applying it changes, each change ticked. */
 async function preview(page, id) {
   await tileMenu(page, id, "Details…")
   await until(() => sheet(page).locator(`[data-bundle-preview="${id}"] [data-change]`).count(), 8000)
@@ -96,7 +91,6 @@ const overflow = (page) => page.evaluate(() => { const d = document.querySelecto
 
 const { ctx, page } = await open(1600, 900)
 
-// ---------- 1. Details' ticks: leave changes out, Apply ----------
 {
   await go(page)
   await preview(page, "zen")
@@ -126,7 +120,6 @@ const { ctx, page } = await open(1600, 900)
   check("its tile is the one in use, not Changed (what it left out doesn't count)", (await current(page)).join() === "zen" && !(await changed(page, "zen").count()), await current(page))
 }
 
-// ---------- 2. Changed, Reset, and each layout's tweaks ----------
 {
   await api("PATCH", "config/appearance", { density: look().density === "compact" ? "comfortable" : "compact", lineNumbers: true })
   await go(page)
@@ -141,7 +134,6 @@ const { ctx, page } = await open(1600, 900)
   await until(async () => !(await changed(page, "zen").count()), 8000)
   check("Reset: Zen as it comes, the mark gone", !look().lineNumbers && !(await changed(page, "zen").count()), look())
   await dismissAll(page)
-  // Switching away keeps Zen's tweaks; coming back brings them.
   await api("PATCH", "config/appearance", { lineNumbers: true })
   await go(page)
   await until(() => changed(page, "zen").count(), 6000)
@@ -161,15 +153,12 @@ const { ctx, page } = await open(1600, 900)
   await dismissAll(page)
 }
 
-// ---------- 3. Details' Save as "<Name> (mine)"; an install's plugin goes with it ----------
 {
   await go(page)
   await preview(page, "days")
-  // (an install not here yet: which ones depends on what this vault has installed)
   const ins = (await sheet(page).locator('[data-change^="install:"]').evaluateAll((els) => els.map((e) => e.dataset.change.slice(8))))
   const ids = await sheet(page).locator("[data-change]").evaluateAll((els) => els.map((e) => e.dataset.change))
   const x = ins.find((id) => ids.includes(`plugin:${id}`)) ?? ins[0], other = ins.find((id) => id !== x)
-  // (this vault may have its plugins installed already: then a plugin it turns on is left out instead)
   const left = x ? `install:${x}` : ids.find((id) => id.startsWith("plugin:"))
   check("Days' Details: what it installs or turns on, each a line", !!left, ids)
   await line(page, left).click()
@@ -191,7 +180,6 @@ const { ctx, page } = await open(1600, 900)
   await dismissAll(page)
 }
 
-// ---------- 4. Try: the bar, Keep and Revert, after a reload ----------
 {
   const before = JSON.stringify(look())
   await go(page)
@@ -219,7 +207,6 @@ const { ctx, page } = await open(1600, 900)
   await dismissAll(page)
 }
 
-// ---------- 5. Get: the directory's layouts and packs beside its plugins ----------
 {
   await go(page, "get")
   const browse = page.locator("[data-bundles-browse]")
@@ -255,7 +242,6 @@ const { ctx, page } = await open(1600, 900)
   await until(() => browse.locator('[data-listed="qa/desk"] [data-listed-imported]').count(), 6000)
   check("its card says Imported", await browse.locator('[data-listed="qa/desk"] [data-listed-imported]').count() === 1)
   await dismissAll(page)
-  // A newer commit listed: Update available; its preview says what changed, and replaces the user's copy on their go.
   const c2 = commit("nord")
   index(c2)
   await api("GET", "bundles/browse?refresh=1")
@@ -273,16 +259,13 @@ const { ctx, page } = await open(1600, 900)
   await until(() => browse.locator('[data-listed="qa/desk"] [data-listed-imported]').count(), 6000)
   check("Imported again", await browse.locator('[data-listed="qa/desk"] [data-listed-imported]').count() === 1)
   await dismissAll(page)
-  // (a look, not a layout: it isn't a tile in the picker)
   await go(page)
   check("an imported look isn't in the layout picker", !(await page.locator('[data-layout-pick="desk"]').count()))
-  // Unreachable: one quiet line, no error toast.
   await page.route("**/api/bundles/browse*", (r) => r.abort())
   await go(page, "get")
   await until(() => browse.locator("[data-bundles-browse-off]").count(), 6000)
   check("unreachable: a quiet line, no error", await browse.locator("[data-bundles-browse-off]").count() === 1 && !(await page.locator('[data-sonner-toast][data-type="error"]').count()))
   await page.unroute("**/api/bundles/browse*")
-  // Slow: skeleton cards, as many as last time, until the directory comes.
   let release
   const held = new Promise((r) => { release = r })
   await page.route("**/api/bundles/browse*", async (r) => { await held; await r.continue() })
@@ -298,7 +281,6 @@ const { ctx, page } = await open(1600, 900)
 }
 await ctx.close()
 
-// ---------- 6. Dark, and 390px ----------
 {
   const { ctx: dc, page: dp } = await open(1600, 900, { dark: true })
   await go(dp)

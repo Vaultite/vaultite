@@ -1,11 +1,4 @@
-// Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
-// words pop in a bubble by it, comments are cards in the margin (a dot on a phone, opened by a tap; or, a setting,
-// threads in the Conversations panel, a dot by the line) and take a reply, a suggestion is struck through with its replacement after it
-// and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask that
-// stays in the note, the agent hears at once (else at the pause, its cursor reading along as it's written); what the user writes
-// reaches it after a pause. Its cursor: its flag hovered, its status; its last words and a box to ask it from the status
-// bar's menu; idle a while, it goes home; its flag follows it; agents on one spot fan out from one flag. A file's top bar items dock in a
-// sidebar and come back. Driven through the ops an agent calls.
+// Companion in a note: its cursor, bubbles, comments, suggestions, edits, @ asks, the pause, its flag and menus.
 // WRITES "QA companion/", the plugin's data.json and the sidebars' setup: throwaway server only.
 //   node web/qa/companion.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -19,31 +12,25 @@ const text = (rel) => { try { return readFileSync(file(rel), "utf8") } catch { r
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
 const restore = [keep(".vaultite/plugins/companion/data.json"), keep(".vaultite/plugins.json"), keep(".vaultite/appearance.json"), keep(".vaultite/sidebars.json")]
 const api = (method, p, body) => fetch(`${B}/api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json())
-/** An op as the companion's agent calls it: `vau` run by Claude Code (not this script, which only a machine where it runs
- *  under Claude Code would take for it). */
 const op = (id, params = {}) => fetch(`${B}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) }).then((r) => r.json())
 const enc = encodeURIComponent
-/** The right sidebar folded to its rail (the Conversations panel is there by default), for the margin's cards' room. */
-const foldRight = (c) => c.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: false })) } catch { /* private */ } })
-/** An op as the user calls it in the app (Review's keep and revert are theirs only). */
+const foldRight = (c) => c.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: false })) } catch {} })
 const asUser = (id, params) => fetch(`${B}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/web" }, body: JSON.stringify(params) }).then((r) => r.json())
 
 const plugins = JSON.parse(text(".vaultite/plugins.json") || "{}")
-// (Activity too: Review reads who changed what from it)
 const want = ["companion", "activity"].filter((id) => !(plugins.enabled ?? []).includes(id))
 if (want.length) {
   writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []), ...want] }, null, 2))
   await until(async () => Array.isArray((await op("companion.status")).notes), 8000)
 }
-// (the margin's cards, the default, first; the sidebar after)
 await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1, comments: null })
-await op("plugin.grant", { id: "activity", allow: false }) // (its recaps' ask would cover the page)
+await op("plugin.grant", { id: "activity", allow: false })
 const DIR = "QA companion", NOTE = `${DIR}/Garden ideas.md`
 rmSync(file(DIR), { recursive: true, force: true })
 await api("PUT", "file", { path: NOTE, text: "# Garden ideas\n\nTomatos along the fence, where it's sunny.\n\nBasil between them.\n" })
 await api("PUT", "file", { path: `${DIR}/Seeds.md`, text: "# Seeds\n" })
-await asUser("review.keep", { all: true }) // (an earlier run's AI changes reviewed)
-await op("companion.next", { timeout: 0 }) // (what came before)
+await asUser("review.keep", { all: true })
+await op("companion.next", { timeout: 0 })
 await op("companion.clear")
 
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } })
@@ -55,12 +42,10 @@ await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFo
 await ui.idle()
 const editor = page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`)
 
-// Its cursor goes where it looks.
 await op("companion.look", { path: NOTE, find: "Basil" })
 const cursor = page.locator('.companion-cursor[data-agent="Claude"]')
 await cursor.waitFor({ timeout: 4000 })
 await ui.idle()
-/** Where a line's text ends on screen. */
 const endOf = (p, start) => p.locator(".cm-content:visible").first().evaluate((el, start) => {
   const line = [...el.querySelectorAll(".cm-line")].find((l) => l.textContent.startsWith(start)), r = document.createRange()
   r.selectNodeContents(line)
@@ -75,7 +60,6 @@ await told(() => op("companion.look", { path: `${DIR}/Seeds.md` }))
 const row = await page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first().boundingBox(), there = await cursor.boundingBox()
 check("look: a note that isn't open, its row in the file tree", !!row && !!there && Math.abs(there.y - row.y) < 20 && there.x < row.x + row.width, { row, there })
 
-// (the row scrolled out of its list: the cursor stays at the list's edge, not over what's above or below it)
 {
   const rowEl = page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first()
   const size = page.viewportSize()
@@ -104,14 +88,12 @@ check("look: a note that isn't open, its row in the file tree", !!row && !!there
   await page.setViewportSize(size); await ui.idle()
 }
 
-// Words by its cursor.
 await op("companion.say", { text: "Basil keeps aphids off tomatoes.", path: NOTE, find: "Basil" })
 await page.getByText("Basil keeps aphids off tomatoes.").waitFor({ timeout: 3000 })
 await ui.idle()
 check("say: a bubble by its cursor", await cursor.getByText("Basil keeps aphids off tomatoes.").isVisible())
 await page.screenshot({ path: `${OUT}say.png` })
 
-// "@claude …" then Enter: an ask, at once, its line staying in the note as written; it shows thinking.
 await editor.click()
 await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n@claude how far apart should they be?\n")
@@ -129,7 +111,6 @@ await page.keyboard.type("Maybe a hand apart.\n")
 r = await until(async () => { const x = await op("companion.next", { timeout: 3 }); return x.moments?.find((m) => m.kind === "edit") ? x : null }, 8000)
 check("edit: what the user wrote reaches it after a pause, as lines added", r?.moments.some((m) => m.kind === "edit" && m.hunks?.some((h) => h.added.includes("Maybe a hand apart."))), r)
 
-// Handed a moment, its cursor reads it there; back for more without a word, a seen tick.
 await until(async () => (await cursor.getAttribute("data-state")) === "reading", 3000)
 check("edit: handed what they wrote, its cursor shows it reading", (await cursor.getAttribute("data-state")) === "reading")
 await op("companion.next", { timeout: 0 })
@@ -138,7 +119,6 @@ check("silence: back for more without acting, a seen tick by its cursor", await 
 await ui.idle()
 await page.screenshot({ path: `${OUT}seen.png` })
 
-// Mid-sentence it waits longer: a burst of dictation is often half a thought.
 await page.keyboard.type("Then the")
 let t0 = Date.now()
 r = await op("companion.next", { timeout: 6 })
@@ -148,7 +128,6 @@ t0 = Date.now()
 r = await op("companion.next", { timeout: 6 })
 check("pause: a sentence's end, only the pause", r.moments?.some((m) => m.kind === "edit") && Date.now() - t0 < 1800, { ms: Date.now() - t0, r })
 
-// @claude mid-sentence: the picker, a chip, and the ask goes at the pause without Enter, the whole line, once.
 await op("companion.next", { timeout: 0 })
 await page.keyboard.type("\nAlright, how is it going @")
 const midList = await until(async () => (await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()).join(" "), 3000)
@@ -162,7 +141,6 @@ check("@claude mid-line: the ask reaches it at the pause, the whole line", r?.mo
 await page.keyboard.press("Enter")
 r = await op("companion.next", { timeout: 3 })
 check("@claude mid-line: Enter after it doesn't ask again", !r.moments?.some((m) => m.kind === "ask"), r)
-// A line starting with @claude goes at the pause as a mid-line one does, and stays where it is as they write on.
 await page.keyboard.type("@claude and what about the")
 r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
 check("ask line: sent at the pause, still in the note", r?.moments.some((m) => m.kind === "ask" && m.text === "and what about the" && !m.item) && text(NOTE).includes("@claude and what about the"), r)
@@ -173,15 +151,13 @@ await page.keyboard.type("Mail bob@claude.com or ask @nobody.")
 r = await op("companion.next", { timeout: 4 })
 check("@ in an email or an unknown name mid-line: no chip, no ask", !r.moments?.some((m) => m.kind === "ask") &&
   (await editor.locator(".cm-line", { hasText: "Mail bob" }).locator(".cm-companion-mention").count()) === 0, r)
-// Out of the editor (to its terminal, a menu): the note is still where they are, for next and the ops alike.
 await page.evaluate(() => document.activeElement?.blur())
 await ui.idle()
 r = await op("companion.say", { text: "Going well.", find: "how is it going" })
 check("say: no path, the note they just left the editor of", r.path === NOTE, r)
 await editor.click()
-await page.keyboard.press("ControlOrMeta+End") // (the caret off the text commented on below: in it, its card opens)
+await page.keyboard.press("ControlOrMeta+End")
 
-// A comment in the margin, a reply to it.
 r = await op("companion.comment", { path: NOTE, find: "Maybe a hand apart", text: "About 60 cm: they get big." })
 const commentId = r.id
 const card = page.locator(`[data-companion-note="${r.id}"]`)
@@ -190,9 +166,8 @@ await ui.idle()
 const cb = await card.boundingBox(), content = await editor.boundingBox()
 check("comment: a card in the margin, beside the text", !!cb && !!content && cb.x >= content.x + content.width, { cb, content })
 const mark = editor.locator(`[data-companion-mark="${r.id}"]`)
-/** A comment's text, lit: its background's alpha (0 to 1) and whether it's underlined as the active one. */
 const litOf = (m) => m.evaluate((el) => { const c = getComputedStyle(el), a = c.backgroundColor.match(/[\d.]+(?=\))/); return { alpha: c.backgroundColor.startsWith("rgba") || /\//.test(c.backgroundColor) ? Number(a?.[0] ?? 1) : 1, line: c.boxShadow !== "none", bg: c.backgroundColor } })
-await page.mouse.move(5, 5) // (not hovering its text)
+await page.mouse.move(5, 5)
 await ui.idle()
 const soft = await litOf(mark)
 check("comment: its text is highlighted, as in a shared doc, not underlined", (await mark.innerText()) === "Maybe a hand apart" && soft.alpha > 0.05 && soft.alpha < 0.3 && !soft.line && (await mark.evaluate((el) => getComputedStyle(el).textDecorationLine)) === "none", soft)
@@ -222,7 +197,6 @@ await ui.idle()
 check("comment: not open, its card is its first words and how many replies", (await card.innerText()).includes("2 replies") && !(await card.innerText()).includes("25 cm") && !(await card.getByPlaceholder("Reply").count()), await card.innerText())
 await page.screenshot({ path: `${OUT}comment-shut.png` })
 
-// Add comment: a selection shows its button in the margin, level with it; it opens a card to write in there.
 const sunny = await editor.getByText("Tomatos along").boundingBox()
 await page.mouse.dblclick(sunny.x + 4, sunny.y + sunny.height / 2)
 const add = page.locator("[data-companion-add]")
@@ -255,7 +229,6 @@ await editor.getByText("Tomatos along").click()
 await ui.idle()
 check("add comment: no selection, no button", !(await add.count()), await page.evaluate(() => ({ el: document.activeElement?.className, sel: getSelection()?.toString() })))
 
-// A suggestion: struck through, the new text after it, Tab takes it.
 r = await op("companion.suggest", { path: NOTE, find: "Tomatos", replace: "Tomatoes", why: "Spelling" })
 await page.locator(".cm-companion-del").waitFor({ timeout: 3000 })
 check("suggest: the old text struck through, the new after it", (await page.locator(".cm-companion-del").innerText()) === "Tomatos" && (await page.locator(".cm-companion-ins").innerText()) === "Tomatoes")
@@ -267,7 +240,6 @@ check("suggest: Tab takes it, and it's saved", text(NOTE).includes("Tomatoes alo
 r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "accept") ? x : null }, 5000)
 check("suggest: the agent hears it was taken", !!r)
 
-// An edit, typed in before the user's eyes and lit in its colour, then saved.
 r = await op("companion.edit", { path: NOTE, line: text(NOTE).split("\n").findIndex((l) => l.startsWith("Basil")) + 1, text: "- Water them every morning" })
 check("edit: typed into the open note", r.how === "typed", r)
 check("edit: what it typed is lit in its colour", (await page.locator(".cm-companion-typed").count()) > 0)
@@ -279,23 +251,20 @@ await ui.idle()
 check("edit: the user can undo it", !(await editor.innerText()).includes("Water them every morning"))
 await page.keyboard.press("ControlOrMeta+Shift+z")
 
-// What it typed is its own in Review (the app's save of it is Claude's, not the user's), and reverts like any AI's.
 const rev = await until(async () => (await api("GET", "review")).files?.find((f) => f.path === NOTE && f.by.includes("Claude")), 8000)
 check("edit: in Review as Claude's, against the text before it", !!rev && rev.added >= 1, rev)
-await until(() => text(NOTE).includes("Water them every morning"), 5000) // (its redo saved)
+await until(() => text(NOTE).includes("Water them every morning"), 5000)
 await ui.idle()
 const reverted = await asUser("review.revert", { path: NOTE })
 await until(() => !text(NOTE).includes("Water them every morning"), 5000)
 check("edit: reverted from Review, gone from the note and its editor", !text(NOTE).includes("Water them every morning") && text(NOTE).includes("Basil between them.") &&
   !!(await until(async () => !(await editor.innerText()).includes("Water them every morning"), 5000)), { reverted: reverted.reverted?.length, text: text(NOTE), editor: await editor.innerText() })
 
-// A highlight in its colour.
 await op("companion.highlight", { path: NOTE, find: "sunny" })
 await page.locator(".cm-companion-hl").waitFor({ timeout: 3000 })
 check("highlight: lit in its colour", (await page.locator(".cm-companion-hl").innerText()) === "sunny")
 await page.screenshot({ path: `${OUT}highlight.png` })
 
-// The user typing while it types: one moment after their pause, without its words, not one a key.
 await op("companion.next", { timeout: 0 })
 await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await page.keyboard.press("End")
@@ -306,7 +275,6 @@ r = await until(async () => { const x = await op("companion.next", { timeout: 4 
 const edits = r?.moments.filter((m) => m.kind === "edit") ?? []
 check("edit: typing while it types is one moment, theirs only", edits.length === 1 && edits[0].hunks[0].added.some((l) => l.endsWith("sunny. or so")) && !JSON.stringify(edits).includes("Mulch"), r)
 
-// Three quick edits while the user types: one at a time, each whole, and their typing whole.
 await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await page.keyboard.press("End")
 const LINES = ["- Pinch the basil flowers off", "- Harvest tomatoes from the top", "- Compost the vines in October"]
@@ -319,7 +287,6 @@ check("edits: three at once while the user types land one at a time, none mixed"
   LINES.every((l) => lines3.filter((x) => x === l).length === 1) && lines3.some((l) => l.endsWith("sunny. or so and in pots")), { done3, text: text(NOTE) })
 await op("companion.next", { timeout: 0 })
 
-// Several agents: @ lists the ones around, and "@ada …" + Enter asks Ada alone, who shows thinking.
 await op("companion.next", { timeout: 0, as: "Ada" })
 await op("companion.next", { timeout: 0 })
 await editor.getByText("Basil between them").click({ position: { x: 30, y: 8 } })
@@ -341,8 +308,6 @@ check("@ada: Claude isn't asked", !r.moments.some((m) => m.kind === "ask"), r)
 await op("companion.say", { text: "No, an annual.", as: "Ada" })
 await page.screenshot({ path: `${OUT}two.png` })
 
-// A name no agent has: Start @name last, at Sonnet and medium; Tab or → opens a chooser (its agent when several are
-// installed, its model and effort: ← → pick, ↓ the row, Esc back), Enter starts it. (The op is caught here: no agent runs.)
 const started = []
 await page.route("**/api/ops/companion.start", (route) => { started.push(route.request().postDataJSON()); return route.fulfill({ json: { id: "t", running: false, name: "Bob" } }) })
 await editor.getByText("Basil between them").click({ position: { x: 30, y: 8 } })
@@ -354,7 +319,6 @@ await page.keyboard.press("Tab")
 const chooser = page.locator("[data-companion-start]")
 await chooser.waitFor({ timeout: 2000 })
 const pressed = async () => (await chooser.locator("button[aria-pressed]").allInnerTexts()).join()
-// (an Agent row first when another agent than Claude Code is installed here)
 const several = (await chooser.locator('[data-row="agent"]').count()) > 0
 check("Tab on it: a chooser, at Sonnet and medium, the list gone", (await pressed()).endsWith("Sonnet,Medium") && !(await page.locator(".cm-tooltip-autocomplete").count()), await pressed())
 for (const k of [...(several ? ["ArrowDown"] : []), "ArrowRight", "ArrowDown", "ArrowRight"]) await page.keyboard.press(k)
@@ -368,7 +332,6 @@ if (several) {
 }
 await page.keyboard.press("Escape")
 check("Esc goes back to the list", !!(await until(async () => (await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()).some((x) => x.includes("Start @bob")), 2000)) && !(await chooser.count()))
-// (its chip, a split button's other half: the chooser, as a tap on a phone opens it)
 await page.locator(".cm-tooltip-autocomplete .cm-companion-chip").click()
 await chooser.waitFor({ timeout: 2000 })
 check("its chip, clicked: the chooser, nothing started", (await pressed()).endsWith("Sonnet,Medium") && !started.length, { pressed: await pressed(), started })
@@ -388,8 +351,6 @@ check("Enter starts it with what was picked, where it was called, and its @name 
 await page.keyboard.type("x")
 check("no new line from that Enter", (await editor.innerText()).includes("@bob x"), await editor.innerText())
 await page.keyboard.press("Backspace")
-// A name a profile picks: offered as it's typed, its chip saying what it runs; with more after a "-", Start @opus-review
-// runs it too; at a line's start it's an @name already (an ask on it starts it).
 await page.keyboard.type("\n@op")
 const opRows = await until(async () => { const t = await page.locator(".cm-tooltip-autocomplete li").allInnerTexts(); return t.some((x) => x.includes("Start @opus")) ? t : null }, 3000)
 check("@op: Start @opus, at Opus", opRows?.some((x) => /Start @opus\s*Claude Code · Opus · medium ›/.test(x)), opRows)
@@ -403,7 +364,6 @@ check("@opus-review at a line's start: an @name", (await editor.locator(".cm-lin
 for (let i = 0; i < "\n@opus-review ".length; i++) await page.keyboard.press("Backspace")
 await page.unroute("**/api/ops/companion.start")
 
-// Ask command: a comment by the caret's line that starts with @claude; nothing written in the note.
 await editor.getByText("Basil between them").click({ position: { x: 30, y: 8 } })
 await page.keyboard.press("End")
 const unasked = text(NOTE)
@@ -413,7 +373,6 @@ await askBox.waitFor({ timeout: 2000 }).catch(() => {})
 check("Ask the companion (⌘⇧K): a comment that starts with @claude, the note unchanged", (await askBox.inputValue().catch(() => "")) === "@claude " && text(NOTE) === unasked)
 await page.keyboard.press("Escape")
 
-// A long card shows its first lines and More; clicked, all of it; clicking elsewhere folds it again. Lists are lists.
 await op("companion.clear")
 r = await op("companion.comment", { path: NOTE, find: "Basil", text: "- **Hover** shows its status\n- **Click** asks it\n- **Drag** points it\n- Follow it\n- Pin a bubble\n- One more" })
 const lc = page.locator(`[data-companion-note="${r.id}"]`)
@@ -435,10 +394,9 @@ await lc.waitFor({ state: "detached", timeout: 3000 })
 check("cards: Resolve takes it out of the margin", true)
 await op("companion.clear")
 
-// Hover its flag: it says what it's doing. What it said (the status bar's menu): its last words, and a box to ask it there.
 const line = (s) => text(NOTE).split("\n").findIndex((l) => l.startsWith(s)) + 1
 await op("companion.next", { timeout: 0 })
-await op("companion.look", { path: `${DIR}/Seeds.md`, as: "Ada" }) // (out of Claude's way: on one spot they'd stack)
+await op("companion.look", { path: `${DIR}/Seeds.md`, as: "Ada" })
 await op("companion.look", { path: NOTE, find: "Basil" })
 await op("companion.say", { text: "First thought." })
 await op("companion.say", { text: "Second thought." })
@@ -446,10 +404,8 @@ await cursor.getByText("Second thought.").waitFor({ timeout: 3000 }); await ui.i
 const flag = cursor.locator('button[aria-label="Go to Claude"]')
 const openBox = async () => { await page.locator("[data-companion-status]").click(); await page.getByRole("menuitem", { name: /What it said/ }).click() }
 const menuOn = async () => { const b = await flag.boundingBox(); await flag.dispatchEvent("contextmenu", { clientX: b.x + 8, clientY: b.y + 8, button: 2, bubbles: true }) }
-// (the user writing on its line, their editor focused: once the cursor slid away when its box took the focus)
 await editor.getByText("Basil between them").click({ position: { x: 30, y: 8 } })
 await ui.idle()
-// (where it's put, not its arrow's box: that bobs as it thinks)
 const held = async () => { await ui.idle(); const [x, y] = (await cursor.evaluate((el) => el.style.translate)).split(" ").map(parseFloat); return { x: Math.round(x), y: Math.round(y) } }
 const still = await held()
 await flag.hover()
@@ -474,7 +430,6 @@ check("its box again: what you asked it shows with its words, as yours", asked.a
 await page.keyboard.press("Escape")
 await page.keyboard.press("Escape")
 
-// Right-click its flag: its menu (its session, the mode, Start fresh, Stop); … in its box opens the same.
 const menu = page.locator('[role="menu"]').filter({ hasText: "Start fresh" })
 const menuRows = ["Show its session", "Quiet", "Pair", "Start fresh", "Stop"]
 await menuOn()
@@ -484,7 +439,6 @@ check("right-click: its menu, its session, the mode, Start fresh and Stop", menu
 const modes = menu.locator("[data-menu-segments]")
 check("right-click: the mode as a segmented control, the one on checked", (await modes.getByRole("radio", { name: "Pair" }).getAttribute("aria-checked")) === "true")
 await page.screenshot({ path: `${OUT}cursor-menu.png` })
-// (a mode picked starts the companion's session: a real one would answer this script's moments, at its cost)
 const modeStarts = []
 await page.route("**/api/ops/companion.start", (route) => { modeStarts.push(route.request().postDataJSON()); return route.fulfill({ json: { id: "t", running: true, name: "Claude" } }) })
 await modes.getByRole("radio", { name: "Quiet" }).click()
@@ -503,7 +457,6 @@ menuText = await menu.innerText()
 check("…: the same menu from its box, which closes", menuRows.every((x) => menuText.includes(x)) && !(await pop.count()), menuText)
 await page.keyboard.press("Escape")
 
-// Pin a bubble: a margin comment with its words, by its line.
 await op("companion.say", { text: "Pin me, please.", path: NOTE, find: "Tomatoes" })
 await cursor.getByText("Pin me, please.").waitFor({ timeout: 3000 })
 await cursor.getByRole("button", { name: "Pin as a comment" }).click()
@@ -512,7 +465,6 @@ r = await op("companion.status")
 check("pin: the bubble becomes a comment, same words, same line", r.notes.some((n) => n.kind === "comment" && n.text === "Pin me, please." && n.line === line("Tomatoes")) && !r.notes.some((n) => n.kind === "say" && n.text === "Pin me, please."), r.notes)
 await op("companion.clear")
 
-// A bubble takes a reply: a click opens its box, Enter sends it and it goes.
 await op("companion.next", { timeout: 0 })
 await op("companion.say", { text: "Shall I water them?", path: NOTE, find: "Tomatoes" })
 const bubble = cursor.locator("[data-companion-bubble]")
@@ -522,7 +474,6 @@ await page.keyboard.press("Enter")
 r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "reply") ? x : null }, 4000)
 check("bubble: a reply in it reaches it as a reply to that bubble", r?.moments.some((m) => m.kind === "reply" && m.bubble && m.text === "not yet"), r)
 check("bubble: and it goes", (await bubble.count()) === 0)
-// A question looks like one, its box open; writing on in the note sends it away, unread: a dot on its status bar arrow.
 await op("companion.say", { text: "For me, or a note to yourself?", ask: true, path: NOTE, find: "Basil" })
 await bubble.waitFor({ timeout: 3000 })
 check("question: a bubble that looks asked, its reply box already there", (await bubble.getAttribute("data-question")) === "true" && await bubble.getByRole("textbox").isVisible())
@@ -545,7 +496,6 @@ await page.screenshot({ path: `${OUT}unread.png` })
 await openBox()
 await pop.waitFor({ timeout: 2000 })
 check("unread: its history shows it, and the dot goes", await pop.getByText("For me, or a note to yourself?").isVisible() && (await badge.count()) === 0)
-// Put in note from its history: its words after the paragraph it was said by, as its own.
 await pop.locator('[data-said]').filter({ hasText: "For me, or a note" }).getByRole("button", { name: "Put in note" }).click()
 await until(() => text(NOTE).includes("For me, or a note to yourself?"), 5000)
 const placed = text(NOTE).split("\n")
@@ -553,7 +503,6 @@ check("put in note: after the paragraph it was said by, a blank line between", p
 await page.keyboard.press("Escape")
 r = await until(async () => { await op("companion.say", { text: "x", path: NOTE }); const x = await op("companion.next", { timeout: 1 }); return x.moments?.find((m) => m.kind === "move") ? x : null }, 4000)
 check("put in note: a hint for it, with the next moment", r?.moments.some((m) => m.kind === "move" && m.into === "note"), r)
-// Fold it back: the menu on its lines, the lines out of the note, a bubble by its cursor.
 await api("PATCH", "config/plugin/provenance", { authorship: "gutter" })
 await page.reload()
 await editor.waitFor({ timeout: 10000 })
@@ -570,12 +519,10 @@ await page.screenshot({ path: `${OUT}folded.png` })
 r = await until(async () => { await op("companion.say", { text: "y", path: NOTE }); const x = await op("companion.next", { timeout: 1 }); return x.moments?.find((m) => m.kind === "move") ? x : null }, 4000)
 check("fold: a hint for it too", r?.moments.some((m) => m.kind === "move" && m.into === "bubble"), r)
 await api("PATCH", "config/plugin/provenance", { authorship: null })
-// Silence with its reason, by the seen tick.
 await op("companion.pass", { reason: "waiting for you to finish" })
 await cursor.locator("[data-companion-why]").waitFor({ timeout: 3000 })
 check("pass: its few words by the seen tick", (await cursor.locator("[data-companion-why]").innerText()) === "waiting for you to finish" && await cursor.getByLabel("seen").isVisible())
 await page.screenshot({ path: `${OUT}pass.png` })
-// Its menu folds what it just wrote by its cursor (a finger's way there: a held finger on its name).
 await op("companion.edit", { path: NOTE, after: "Basil between them.", text: "Marigolds keep pests away too." })
 await until(() => text(NOTE).includes("Marigolds keep pests"), 5000)
 await told(() => op("companion.look", { path: NOTE, find: "Marigolds keep" }))
@@ -587,16 +534,13 @@ await until(() => !text(NOTE).includes("Marigolds keep pests"), 5000)
 check("fold: from its menu, out of the note, a bubble instead", !text(NOTE).includes("Marigolds keep pests") && await cursor.getByText("Marigolds keep pests away too.").isVisible().catch(() => false))
 await op("companion.clear")
 
-// Idle a while, its cursor fades where it was: it shows only while it works, writes, speaks or points.
 await op("companion.clear")
 await told(() => op("companion.look", { path: NOTE, find: "Basil" }))
 check("idle: where it last looked, a moment", (await cursor.getAttribute("data-docked")) === null)
 const lookedAt = await cursor.getAttribute("data-to")
-// (shown, it's drawn at its tip less 3, 2: resting, at the spot itself)
 const near = (p, q) => { const [a, b] = [p, q].map((x) => (x ?? "").split(",").map(Number)); return Math.abs(a[0] - b[0]) <= 4 && Math.abs(a[1] - b[1]) <= 4 }
 check("idle: then it rests, out of the note", await until(async () => (await cursor.getAttribute("data-docked")) !== null, 12000), await cursor.getAttribute("data-docked"))
 check("idle: it fades in place, never gliding off to the status bar", (await cursor.getAttribute("data-faded")) !== null && near(await cursor.getAttribute("data-to"), lookedAt), await cursor.getAttribute("data-to"))
-// (its line scrolled out of view, a quiet cursor hides there rather than waiting at the edge, and comes back with the line)
 {
   const pane = page.locator(`.file-view[data-path="${NOTE}"]:visible`).locator("xpath=ancestor::*[@data-pane][1]")
   const long = Array.from({ length: 80 }, (_, i) => `Filler line ${i + 1}.`).join("\n")
@@ -616,8 +560,6 @@ check("idle: it fades in place, never gliding off to the status bar", (await cur
   await until(async () => (await cursor.getAttribute("data-docked")) !== null, 12000)
 }
 
-// Follow: from another note, its flag (or the status bar's menu) goes where it is. (Idle in pair mode it comes along to
-// the note they open: it's sent back to the other one once that's landed.)
 const elsewhere = async (first = false) => {
   await page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first().click()
   await page.locator(`.file-view[data-path="${DIR}/Seeds.md"]:visible`).waitFor({ timeout: 5000 })
@@ -625,7 +567,6 @@ const elsewhere = async (first = false) => {
   await ui.idle()
   if (first) check("follow: come along to the note they opened, it stays home (no act, no cursor)", (await cursor.getAttribute("data-docked")) !== null)
   await op("companion.look", { path: NOTE, find: "Basil" })
-  // (out from home, a flag clicked mid-glide moves between press and release: no click)
   await until(async () => { const [x, y] = (await cursor.evaluate((el) => [el.style.translate, el.dataset.to])).map((v, i) => (i ? v.split(",") : v.split(" ")).map(parseFloat)); return Math.abs(x[0] - y[0]) < 1 && Math.abs(x[1] - y[1]) < 1 }, 5000)
 }
 await elsewhere(true)
@@ -647,13 +588,11 @@ await page.screenshot({ path: `${OUT}presence.png` })
 await ctx.close()
 
 await op("companion.clear")
-// A phone: comments fold to a dot at the line's end; a tap opens it.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 const pp = watch(await phone.newPage(), { label: 390 }), phoneUi = app(pp)
 await pp.goto(`${B}/#file/${enc(NOTE)}`)
 await pp.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 10000 })
 await phoneUi.idle()
-// Start @name's chip, tapped: its chooser, every effort inside the screen (no Tab on a phone); nothing started.
 const zed = []
 await pp.route("**/api/ops/companion.start", (route) => { zed.push(route.request().postDataJSON()); return route.fulfill({ json: { id: "t", running: false, name: "Zed" } }) })
 await pp.getByRole("button", { name: "Edit", exact: true }).tap()
@@ -686,15 +625,12 @@ await pp.getByText("Plant it after the last frost.").waitFor({ timeout: 3000 })
 const opened = await pp.locator("[data-companion-note]").last().boundingBox()
 check("phone: a tap opens it, inside the screen", !!opened && opened.x >= 0 && opened.x + opened.width <= 390, opened)
 await pp.screenshot({ path: `${OUT}phone.png` })
-// No cursor on a phone: a moment it's handed that wasn't asked from here shows nothing in the note (companion-phone.mjs
-// has the caret and the card).
 writeFileSync(`${OUT}moment.jsonl`, JSON.stringify({ kind: "edit", path: NOTE, line: 5, hunks: [{ line: 5, added: ["Basil between them."], removed: [] }], t: 1 }))
 await op("companion.replay", { file: `${OUT}moment.jsonl` })
 await until(async () => (await op("companion.next", { timeout: 2 })).moments?.length, 4000)
 await phoneUi.idle()
 check("phone: handed a moment not asked from here, nothing of it in the note", await pp.evaluate(() => !document.querySelector(".companion-cursor, [data-companion-caret]")))
 await op("companion.next", { timeout: 0 })
-// A bubble by touch: a card by the thumb, its buttons a finger's size, a reply sent from the keyboard's Send.
 await op("companion.say", { text: "Want the spacing as a list?", path: NOTE, find: "Tomatoes" })
 const pbub = pp.locator("[data-companion-card='say']")
 await pbub.waitFor({ timeout: 3000 })
@@ -711,10 +647,8 @@ check("phone: the reply reaches it", r?.moments.some((m) => m.kind === "reply" &
 await phone.close()
 
 await op("companion.clear")
-// Long cards at a note's end, stacked: each stays reachable, scrolled to, over neither the status bar nor the phone's bar.
 const LONG = `${DIR}/Long.md`, words = "Measured: a call takes a tenth of a second, so tools aren't it. ".repeat(12)
 await api("PUT", "file", { path: LONG, text: `# Long\n\n${Array.from({ length: 40 }, (_, i) => `Line ${i + 3} of a long note.`).join("\n")}\n` })
-// (a phone's page scrolls the window)
 const toEnd = () => { const s = document.querySelector("[data-pane]"); if (s) s.scrollTop = s.scrollHeight; else scrollTo(0, document.documentElement.scrollHeight) }
 for (const [label, viewport, mobile] of [["desktop", { width: 1500, height: 700 }, false], ["phone", { width: 390, height: 700 }, true]]) {
   const c = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile })
@@ -734,7 +668,6 @@ for (const [label, viewport, mobile] of [["desktop", { width: 1500, height: 700 
   await pUi.idle()
   await p.evaluate(toEnd)
   await pUi.idle()
-  // (open, it has its Reply box)
   if (!mobile) { await p.locator(`[data-companion-note="${ids[2]}"]`).click({ position: { x: 100, y: 40 } }); await pUi.idle() }
   const shown = mobile ? [ids[2]] : ids
   const [top, floor] = await p.evaluate(() => {
@@ -750,7 +683,6 @@ for (const [label, viewport, mobile] of [["desktop", { width: 1500, height: 700 
   check(`${label}: with the cards gone, the note gives back the room it kept`, await p.evaluate(() => [...document.querySelectorAll(".cm-content")].every((e) => !e.style.marginBottom)))
   await c.close()
 }
-// Comments in the sidebar (a setting): threads in the Conversations panel in the note's order, a dot by each line.
 await api("PATCH", "config/plugin/companion", { comments: "sidebar" })
 await op("companion.clear")
 const sc = await browser.newContext({ viewport: { width: 1400, height: 900 } })
@@ -765,7 +697,6 @@ const panel = sp.locator("[data-companion-panel]:visible")
 await panel.locator(`[data-companion-thread="${s1}"]`).waitFor({ timeout: 4000 })
 await spUi.idle()
 check("sidebar: an agent commenting shows the Conversations panel, in the right sidebar", await sp.locator('aside[data-side="right"] [data-panel="companion:conversations"]').isVisible())
-// (the user's own threads, from the asks above, stay: only these two are counted)
 const order = (await panel.locator("[data-companion-thread]").evaluateAll((els) => els.map((e) => e.dataset.companionThread))).filter((id) => [s1, c1].includes(id))
 check("sidebar: threads in the note's order", order.join() === [s1, c1].join(), order)
 check("sidebar: no cards in the margin, a dot by each line", !(await sp.locator("[data-companion-note]").count()) && (await sp.locator(`[data-companion-gutter="${s1}"], [data-companion-gutter="${c1}"]`).count()) === 2)
@@ -782,13 +713,11 @@ check("sidebar: a reply from the panel reaches it", r?.moments.some((m) => m.kin
 await panel.locator(`[data-companion-thread="${s1}"]`).getByRole("button", { name: /Accept/ }).click()
 await until(() => text(NOTE).includes("sunniest"), 5000)
 check("sidebar: Accept in the panel takes the suggestion", text(NOTE).includes("sunniest"), text(NOTE))
-// Resolved: listed under Resolved, and Reopen brings it back.
 await panel.locator(`[data-companion-thread="${c1}"]`).getByRole("button", { name: "Resolve" }).click()
 await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ state: "detached", timeout: 3000 })
 await panel.locator('[data-filter="resolved"]').click()
 await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ timeout: 3000 })
 check("history: a resolved comment is under Resolved", true)
-// Slow: Resolved says it's loading, its count as last time, until the server answers (not "Nothing resolved yet").
 {
   const count = await panel.locator('[data-filter="resolved"]').innerText()
   let release
@@ -797,7 +726,6 @@ check("history: a resolved comment is under Resolved", true)
   await spUi.saved()
   check("the resolved count is kept", await sp.evaluate(([key, n]) => (JSON.parse(localStorage.getItem("vaultite.counts") ?? "[]")).some(([k, v]) => k === key && String(v) === n), [`companion:resolved:${NOTE}`, count.match(/\d+/)?.[0]]))
   await sp.reload()
-  // (none open: the panel opens on the talk, Comments a click away)
   await panel.locator('[data-option="note"]').click()
   await panel.locator('[data-filter="resolved"]').click()
   await panel.locator("[aria-busy]").waitFor({ timeout: 6000 })
@@ -812,7 +740,6 @@ await panel.locator(`[data-companion-thread="${c1}"]`).getByRole("button", { nam
 await until(async () => (await op("companion.status")).notes.some((n) => n.id === c1), 3000)
 await spUi.idle()
 check("history: Reopen brings it back, open", (await panel.locator('[data-filter="open"]').getAttribute("aria-checked")) === "true" && await panel.locator(`[data-companion-thread="${c1}"]`).isVisible())
-// The right sidebar closed: a dot on the panel's icon in its rail; a line's dot opens it at its thread.
 await sp.locator("[data-sidebar-toggle=right]").click()
 await sp.locator("[data-companion-rail]").waitFor({ timeout: 3000 })
 check("sidebar: closed, the panel's rail icon has a dot", true)
@@ -820,12 +747,8 @@ await sp.locator(`[data-companion-gutter="${c1}"]`).click()
 await panel.locator(`[data-companion-thread="${c1}"][data-picked]`).waitFor({ timeout: 3000 })
 check("sidebar: a line's dot opens the panel at its thread", await sp.locator('aside[data-side="right"]').evaluate((e) => !e.dataset.collapsed))
 
-// Two agents on one spot: side by side, one flag fanning out into a chip each, a chip opening that one's box.
 await op("companion.next", { timeout: 0, as: "Ada" })
-// (both looking again before each step: idle 8 s, a cursor rests out of sight, Overlay.tsx IDLE_MS, which a slow run reaches)
 const bothLook = async () => { await op("companion.look", { path: NOTE, find: "Basil between" }); await op("companion.look", { path: NOTE, find: "Basil between", as: "Ada" }) }
-// (a flag shows only while its cursor is fresh, presence's age 0: on a slow run a glide outlasts it, so look again, let
-// the flag settle, then hover at once)
 const hoverFresh = async (flag) => {
   for (let n = 0; ; n++) {
     await bothLook()
@@ -865,7 +788,6 @@ await sp.locator(`[data-companion-popover="${chosen}"]`).waitFor({ timeout: 2000
 check("stacked: the keyboard reaches each: Tab to the flag, arrows choose, Enter opens", !!chosen && (await sp.locator(`[data-companion-popover="${chosen}"]`).count()) === 1, chosen)
 await sp.keyboard.press("Escape")
 
-// A file's top bar items move: Move to right sidebar docks one as a section there; dragged back, it's in the bar again.
 const pres = sp.locator('[data-file-bar="bar"]:visible [data-file-bar-key="companion:presence"]')
 await pres.click({ button: "right" })
 await sp.getByRole("menuitem", { name: "Move to right sidebar" }).click()
@@ -877,8 +799,6 @@ const hb = await docked.locator("[data-panel-handle]").boundingBox(), fb = await
 await sp.mouse.move(hb.x + 20, hb.y + hb.height / 2)
 await sp.mouse.down()
 await sp.mouse.move(fb.x, fb.y + fb.height / 2, { steps: 10 }); await spUi.idle()
-// (over the bar, it opens a gap for the item and grows to the left: its first item is aimed at where it's laid out
-// then, not where it slid to make way)
 const first = await sp.locator('[data-file-bar="bar"]:visible').evaluate((bar) => { const e = [...bar.children].find((c) => c.dataset.fileBarKey && c.offsetWidth), r = bar.getBoundingClientRect(); return { x: r.x + e.offsetLeft, y: r.y + r.height / 2 } })
 await sp.mouse.move(first.x + 2, first.y, { steps: 4 }); await spUi.idle()
 await sp.mouse.up()
@@ -887,7 +807,6 @@ const bar = await sp.locator('[data-file-bar="bar"]:visible > [data-file-bar-key
 check("top bar: dragged back from the sidebar, first in the bar, out of the sidebar", bar[0] === "companion:presence" && !(await docked.count()), bar)
 await sc.close()
 
-// A phone: a thread's dot opens the right drawer at it; the dots step aside while it's out.
 const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 const pq = watch(await ph.newPage(), { label: "sidebar 390" }), pqUi = app(pq)
 await pq.goto(`${B}/#file/${enc(NOTE)}`)
@@ -902,11 +821,10 @@ await pq.locator(`[data-companion-thread="${c1}"]:visible`).waitFor({ timeout: 3
 check("phone: tapped, the right drawer opens at its thread", true)
 check("phone: the dots step aside while the drawer is out", !(await pdot.isVisible()))
 await pq.screenshot({ path: `${OUT}phone-sidebar.png` })
-// Many agents: as many faces as fit, the rest behind +N, clear of Open / Resolved.
 for (const as of ["Bob", "Cy", "Dee", "Eve"]) await op("companion.next", { timeout: 0, as })
 const pqp = pq.locator("[data-companion-panel]:visible")
 await pqp.getByRole("button", { name: /more agents/ }).waitFor({ timeout: 3000 }).catch(() => {})
-await until(async () => { const b = await pqp.locator('[role="radiogroup"][aria-label="Show"]').boundingBox(); return b && b.x + b.width <= 390 }, 3000) // (the drawer done sliding in)
+await until(async () => { const b = await pqp.locator('[role="radiogroup"][aria-label="Show"]').boundingBox(); return b && b.x + b.width <= 390 }, 3000)
 const fcb = await pqp.locator("[data-companion-presence]").boundingBox(), rgb = await pqp.locator('[role="radiogroup"][aria-label="Show"]').boundingBox()
 check("phone: many agents' faces fit beside Open / Resolved, the rest behind +N", !!fcb && !!rgb && fcb.x + fcb.width <= rgb.x + 1 && await pqp.getByRole("button", { name: /more agents/ }).isVisible(), { fcb, rgb })
 await pq.screenshot({ path: `${OUT}phone-faces.png` })

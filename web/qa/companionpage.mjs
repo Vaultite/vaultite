@@ -1,5 +1,5 @@
-// The Companion page: its talk (an ask and its answer, Details), a job card and its usage. Seeds a day's logs in the
-// server's local dir: throwaway server only.
+// The Companion page: its talk, a job card and its usage.
+// WRITES a day's logs in the server's local dir: throwaway server only.
 //   node web/qa/companionpage.mjs <base url> <server's VAULTITE_LOCAL> [out dir]
 import { appendFileSync, mkdirSync, readdirSync } from "node:fs"
 import path from "node:path"
@@ -32,7 +32,6 @@ try {
   check("its answer shows", await until(async () => /It shares this page with your team/.test(await page.$eval("[data-companion-conversation]", (el) => el.innerText).catch(() => ""))))
   check("usage draws", await until(async () => !!(await page.$("[data-companion-usage]"))))
   await page.screenshot({ path: `${OUT}page.png` })
-  // A day back and forth.
   await page.click("[data-companion-conversation] [aria-label='Day before']")
   check("the day before", await until(async () => /Nothing that day|data-companion-turn/.test(await page.$eval("[data-companion-conversation]", (el) => el.innerHTML))))
   await page.click("[data-companion-conversation] [aria-label='Day after']")
