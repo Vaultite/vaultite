@@ -49,6 +49,6 @@ export function whereOf(t: DictationTarget): DictationWhere {
   if (t.path) return { kind: "note", path: t.path }
   const el = document.activeElement
   if (el?.closest("[data-terminal]")) return { kind: "terminal", name: "Terminal" }
-  const named = el instanceof HTMLElement ? el.closest<HTMLElement>("[aria-label]")?.getAttribute("aria-label") || (el as HTMLInputElement).placeholder : ""
+  const named = el instanceof HTMLElement ? el.closest<HTMLElement>("[aria-label]")?.getAttribute("aria-label") || (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.placeholder : "") : ""
   return { kind: "field", ...(named ? { name: named.slice(0, 80) } : {}) }
 }

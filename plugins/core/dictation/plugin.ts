@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { inDesktop, OpError, Plugin } from "../../../core/plugins.ts"
 import { Kind } from "../../../core/vault.ts"
 import { addEntry, hintOf, readDictionary, readEntries, removeEntry } from "./words.ts"
@@ -10,8 +11,9 @@ const API = () => process.env.VAULTITE_SONIOX_API || "https://api.soniox.com"
 const MODEL = "stt-rt-v6"
 export const SET_KEY = `vau secret "Soniox API key" | vau dictation key`
 
-const stored = () => (plugin.secrets()[plugin.id] ?? {}) as { soniox?: unknown }
-const keyHere = () => { const k = stored().soniox; return typeof k === "string" && k.trim() ? k.trim() : "" }
+const SECRETS = z.looseObject({ soniox: z.string().optional().catch(undefined) }).catch({})
+const stored = () => SECRETS.parse(plugin.secrets()[plugin.id] ?? {})
+const keyHere = () => stored().soniox?.trim() ?? ""
 
 const VOCABULARY = ["Vaultite", "vau", "Claude", "Claude Code", "Codex", "Sonnet", "Opus", "Agent SDK"]
 const REPLACEMENTS: [string, string][] = [["at Claude", "@claude"]]

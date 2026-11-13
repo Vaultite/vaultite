@@ -1,10 +1,8 @@
 import { joinText, type DictationTarget } from "@vaultite"
 import { WATCH_MS, watchFix, type Watch } from "./learning.ts"
 
-type Field = HTMLInputElement | HTMLTextAreaElement
-
 export function fieldTarget(el: HTMLElement): DictationTarget {
-  const text = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el as Field) : null
+  const text = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null
   let at = text?.selectionEnd ?? 0
   let pending = ""
   let fixing: Watch | null = null

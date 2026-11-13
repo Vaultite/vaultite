@@ -72,7 +72,7 @@ export function DictationsView() {
     ...(data?.here ? [{ label: "Keep dictations", checked: keep, run: () => void settings.set({ history: !keep }) }] : []),
     { label: "Dictation settings", icon: Settings, run: () => openPluginSettings("dictation", "history") },
     ...(data?.here ? [{ label: "Clear dictations…", icon: Trash2, danger: true, sep: true, run: () => void askClear(again) }] : []),
-  ] as MenuItem[])
+  ])
   return (
     <div className="mx-auto max-w-[760px] pb-16" data-dictations>
       <header className="mb-4 flex items-start justify-between gap-3">
