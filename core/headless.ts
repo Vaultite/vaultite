@@ -65,7 +65,7 @@ async function launch(size: { width: number; height: number }, signal: AbortSign
   try {
     const endpoint = await new Promise<string>((ok, fail) => {
       let err = ""
-      const t = setTimeout(() => fail(new Error(`Chrome didn't start: ${err.slice(-300)}`)), 20_000)
+      const t = setTimeout(() => fail(new Error(`Chrome didn't start in ${START_MS / 1000} s: ${err.slice(-300)}`)), START_MS)
       browser.stderr!.on("data", (d: Buffer) => { err += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(err); if (m) { clearTimeout(t); ok(m[1]) } })
       browser.on("exit", () => { clearTimeout(t); fail(new Error(`Chrome quit as it started: ${err.slice(-300)}`)) })
     })
@@ -85,4 +85,5 @@ async function launch(size: { width: number; height: number }, signal: AbortSign
   }
 }
 
+const START_MS = 60_000
 const sleep = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms))
