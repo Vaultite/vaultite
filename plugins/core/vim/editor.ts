@@ -1,5 +1,3 @@
-// Vim in the editor: @replit/codemirror-vim plus what Obsidian's Vimrc Support adds (Markdown motions, folds, the app's
-// leader and window keys, the system clipboard, the vimrc), on while this device takes Vim's keys (state.ts).
 import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state"
 import { EditorView, ViewPlugin, drawSelection } from "@codemirror/view"
 import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirror/language"
@@ -20,16 +18,11 @@ export type CM = {
 }
 
 let loading: Promise<VimModule> | null = null
-/** The package, loaded once (and set up with this plugin's keys). */
 export const loadVim = () => loading ??= import("@replit/codemirror-vim").then((m) => { setUp(m.Vim); return m })
 
-/** The view a `cm` drives. */
 const viewOf = (cm: CM) => cm.cm6
-/** The file an editor shows (its EditorCtx path), by view. */
 const paths = new WeakMap<EditorView, string | undefined>()
 
-// ---------- links and headings ----------
-/** The link under the cursor, else the first one after it on its line. */
 function linkAtCursor(view: EditorView) {
   const pos = view.state.selection.main.head
   const line = view.state.doc.lineAt(pos)
@@ -50,14 +43,12 @@ function follow(cm: CM, how: "here" | "tab" | "split" | "browser") {
   if (!store) return
   if (how === "split") {
     runCommandById("split:right")
-    // (The new pane has the focus: the link opens there.)
     setTimeout(() => void followLink(store, link, false, from), 0)
     return
   }
   void followLink(store, link, how === "tab", from)
 }
 
-/** Which lines are inside code fences (no headings there), by line number. */
 function fenced(view: EditorView) {
   const doc = view.state.doc, out: boolean[] = []
   let inside = false
@@ -66,7 +57,6 @@ function fenced(view: EditorView) {
   }
   return out
 }
-/** Where the `count`th heading after (or before) `pos` starts, or null. */
 function headingFrom(view: EditorView, pos: number, forward: boolean, count: number) {
   const doc = view.state.doc, code = fenced(view)
   let n = doc.lineAt(pos).number, found: number | null = null
@@ -77,7 +67,6 @@ function headingFrom(view: EditorView, pos: number, forward: boolean, count: num
   }
   return found
 }
-/** Where the `count`th link after (or before) `pos` starts, or null. */
 function linkFrom(view: EditorView, pos: number, forward: boolean, count: number) {
   const doc = view.state.doc
   let at = pos, found: number | null = null
@@ -100,7 +89,6 @@ function linkFrom(view: EditorView, pos: number, forward: boolean, count: number
   return found
 }
 
-// ---------- Vim's keys ----------
 let setUpDone = false
 function setUp(Vim: Vim) {
   if (setUpDone) return
@@ -109,7 +97,6 @@ function setUp(Vim: Vim) {
   installClipboard(Vim)
 }
 
-/** The keys this plugin adds to Vim's (again after a vimrc's mapclear: vimrc.ts calls this). */
 export function installKeys(Vim: Vim) {
   type MotionFn = Parameters<Vim["defineMotion"]>[1]
   const motion = (fn: (view: EditorView, pos: number, forward: boolean, count: number) => number | null) =>
@@ -149,10 +136,8 @@ export function installKeys(Vim: Vim) {
   Vim.mapCommand("zM", "action", "vauFoldAll", {}, normal)
   Vim.mapCommand("zR", "action", "vauUnfoldAll", {}, normal)
 
-  // The app's keys: Space (the leader) and Ctrl+W hand the next keys to the app's sequences (core/commands.ts).
   Vim.defineAction("vauLeader", action((cm) => {
     if (leaderOn() && beginKeys("Space")) return
-    // (No leader: Space moves right, as in Vim.)
     Vim.handleKey(cm as never, "l", "mapping")
   }))
   Vim.defineAction("vauWindow", action(() => { beginKeys("Ctrl+W") }))
@@ -163,7 +148,6 @@ export function installKeys(Vim: Vim) {
   Vim.mapCommand("gt", "action", "vauTabNext", {}, normal)
   Vim.mapCommand("gT", "action", "vauTabPrevious", {}, normal)
 
-  // : commands that drive the app.
   for (const ex of EX) {
     try {
       Vim.defineEx(ex.name, ex.short, (_cm, params) => {
@@ -174,8 +158,6 @@ export function installKeys(Vim: Vim) {
   }
 }
 
-// ---------- the system clipboard ----------
-/** What this page last put on the clipboard, or took from it: what p would paste anyway. */
 let wrote = ""
 function installClipboard(Vim: Vim) {
   const rc = Vim.getRegisterController() as unknown as {
@@ -185,13 +167,11 @@ function installClipboard(Vim: Vim) {
   const push = rc.pushText.bind(rc)
   rc.pushText = (name, op, text, linewise, blockwise) => {
     push(name, op, text, linewise, blockwise)
-    // Like clipboard=unnamed: what goes to the unnamed register goes to the system's too (not "_ or a named one).
     if (settings.get().clipboard === false || (name && name !== '"')) return
     const t = linewise && !text.endsWith("\n") ? `${text}\n` : text
     wrote = t
     navigator.clipboard?.writeText(t).catch(() => {})
   }
-  // Copied elsewhere: p pastes it, where the page may read the clipboard without asking.
   const take = (text: string) => {
     if (!text || text === wrote || text === rc.unnamedRegister.toString()) return
     wrote = text
@@ -200,17 +180,16 @@ function installClipboard(Vim: Vim) {
   const pull = async () => {
     if (settings.get().clipboard === false || !navigator.clipboard?.readText) return
     try {
-      // Without asking: the desktop app reads freely; a browser only once the page was allowed.
+      // A browser reads the clipboard without asking only once the page was allowed; the desktop app always may.
       if (!("vaultite" in window)) {
         const p = await navigator.permissions?.query({ name: "clipboard-read" as PermissionName })
         if (p?.state !== "granted") return
       }
       take(await navigator.clipboard.readText())
-    } catch { /* not allowed now */ }
+    } catch {}
   }
   addEventListener("focus", () => void pull())
   document.addEventListener("focusin", (e) => { if ((e.target as Element | null)?.closest?.(".cm-editor")) void pull() })
-  // Copied in the app outside an editor (⌘C on a page): what p pastes, even where the clipboard can't be read.
   const copied = () => setTimeout(() => {
     const sel = document.getSelection()?.toString()
     if (sel && !document.activeElement?.closest(".cm-editor")) take(sel)
@@ -219,7 +198,6 @@ function installClipboard(Vim: Vim) {
   document.addEventListener("cut", copied)
 }
 
-// ---------- the extension ----------
 const theme = EditorView.theme({
   "&.cm-editor .cm-panels.cm-panels-bottom": { background: "var(--background)", color: "var(--foreground)", borderTop: "1px solid var(--border)" },
   "&.cm-editor .cm-fat-cursor": { background: "var(--primary)", color: "var(--primary-foreground) !important" },
@@ -229,10 +207,8 @@ const theme = EditorView.theme({
   "& .cm-foldPlaceholder": { background: "var(--muted)", border: "none", color: "var(--muted-foreground)", padding: "0 4px", borderRadius: "4px" },
 })
 
-/** The editor that had the keyboard last: closed, the status bar's mode goes back to normal. */
 let lastView: EditorView | null = null
 
-/** The editor that has the keyboard tells the status bar its mode and the keys typed so far. */
 function tracker(cm: CM) {
   const view = viewOf(cm)
   const tell = () => {
@@ -249,7 +225,6 @@ function tracker(cm: CM) {
   return tell
 }
 
-/** Escape in normal mode, with nothing typed: back to reading, for a file switched to editing with i. */
 function peekBack(view: EditorView, e: KeyboardEvent) {
   if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false
   const path = paths.get(view)
@@ -261,11 +236,8 @@ function peekBack(view: EditorView, e: KeyboardEvent) {
   return true
 }
 
-/** Vim's Ctrl keys nothing else does (windows, scrolling, visual block, redo, numbers, insert's keys), kept off a Mac. */
 const VIM_CTRL = new Set(["KeyW", "KeyD", "KeyU", "KeyF", "KeyB", "KeyV", "KeyR", "KeyA", "KeyX", "KeyI", "KeyC"])
 
-/** Off a Mac Ctrl is the app's Mod: in normal mode its Ctrl shortcuts (palette, switcher, read) win over Vim's, as in
- *  Obsidian, but for VIM_CTRL. On a Mac they're ⌘ and never meet. */
 function appKey(view: EditorView, e: KeyboardEvent) {
   if (isMac || !e.ctrlKey || e.metaKey || e.altKey || !/^Key[A-Z]$/.test(e.code) || VIM_CTRL.has(e.code)) return false
   const v = (view as unknown as { cm?: CM }).cm?.state.vim
@@ -278,14 +250,12 @@ async function vimParts(): Promise<Extension> {
   if (parts) return parts
   const { vim, getCM } = await loadVim()
   parts = [
-    // Ahead of Vim's own keys: Escape back to reading, and the app's Ctrl keys off a Mac.
     Prec.highest(EditorView.domEventHandlers({ keydown: (e, view) => {
       if (appKey(view, e)) return true
       if (!peekBack(view, e)) return false
       e.preventDefault(); return true
     } })),
     vim({ status: false }),
-    // Visual block (Ctrl+V, then I or A) edits every line through a cursor on each.
     EditorState.allowMultipleSelections.of(true),
     drawSelection(),
     theme,
@@ -310,8 +280,6 @@ async function vimParts(): Promise<Extension> {
   return parts
 }
 
-// Every editor's compartment holds Vim while this device takes its keys and the editor is editable; a read-only one
-// leaves its keys to the app's Vim layer (app.tsx), which it would otherwise swallow.
 type Slot = { c: Compartment; on: boolean }
 const slots = new Map<EditorView, Slot>()
 const wanted = (view: EditorView) => deviceOn() && view.state.facet(EditorView.editable)
@@ -327,10 +295,8 @@ function refresh(view: EditorView) {
 }
 onState(() => { for (const v of slots.keys()) refresh(v) })
 
-/** The extension for one editor: a compartment holding Vim while this device takes its keys and it's editable. */
 export async function vimExtension(ctx: EditorCtx): Promise<Extension> {
   const c = new Compartment()
-  // (Loaded now when this device takes Vim's keys, so an editor that opens editable has them from its first key.)
   const inner = deviceOn() ? await vimParts() : []
   return [
     c.of([]),
@@ -338,7 +304,6 @@ export async function vimExtension(ctx: EditorCtx): Promise<Extension> {
       const slot: Slot = { c, on: false }
       slots.set(view, slot)
       paths.set(view, ctx.path)
-      // Vim in at once when the editor starts editable (not in a later transaction: the first key would miss it).
       if (wanted(view)) { slot.on = true; queueMicrotask(() => { if (slots.get(view) === slot && slot.on) view.dispatch({ effects: c.reconfigure(inner) }) }) }
       return {
         update(u) { if (u.startState.facet(EditorView.editable) !== u.state.facet(EditorView.editable)) queueMicrotask(() => refresh(view)) },

@@ -1,5 +1,3 @@
-// Errors: a small error tracker of the app's and server's errors, grouped by kind, kept on this machine (a crash loop would
-// churn iCloud) and never sent anywhere. The first time a kind happens, the user is told.
 import crypto from "node:crypto"
 import { bullets, fmtAgo, HTTPError, OpError, Plugin, section, type ServerError } from "../../../core/plugins.ts"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList, Source } from "./model.ts"
@@ -7,10 +5,8 @@ import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList, Source } from "./m
 export const plugin = new Plugin(import.meta.url)
 
 const MINUTE = 60_000, DAY = 86_400_000
-const BURST = 10_000 // the same error again within this long is counted on the next line written, not a line of its own
-const RECENT = 30 // times kept in memory per kind (the rest are in the files)
-
-// ---------- where it's kept
+const BURST = 10_000
+const RECENT = 30
 
 const log = plugin.dayLog<ErrorEvent>("errors")
 const append = (e: ErrorEvent) => log.append(e.t, [e])
@@ -20,15 +16,11 @@ function settings() {
   return { keep: Math.max(1, Number(s.keep_days) || 30), notify: s.notify !== false }
 }
 
-// ---------- kinds
-
-/** What varies between two times of the same error: line and column numbers, a build's hashed file names, ids, numbers,
- *  addresses. */
 const steady = (s: string) => s
-  .replace(/\?[^\s)]*/g, "") // a URL's query (?v=<hash>)
+  .replace(/\?[^\s)]*/g, "")
   .replace(/-[A-Za-z0-9_-]{8}\.(js|css)/g, ".$1") // Vite's hashed chunk names
-  .replace(/:\d+:\d+/g, "").replace(/:\d+\)/g, ")") // line and column
-  .replace(/https?:\/\/[^/\s]+/g, "") // the host the app was opened at
+  .replace(/:\d+:\d+/g, "").replace(/:\d+\)/g, ")")
+  .replace(/https?:\/\/[^/\s]+/g, "")
   .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>")
   .replace(/\b\d+(\.\d+)?\b/g, "<n>")
 /** The first frame of a stack that's the code's (Chrome's "    at f (x.js:1:2)", Safari's "f@x.js:1:2"). */
@@ -38,7 +30,7 @@ function kindOf(source: Source, message: string, stack?: string) {
 }
 
 let groups: Map<string, ErrorGroup> | null = null
-const recent = new Map<string, ErrorEvent[]>() // per kind, newest last
+const recent = new Map<string, ErrorEvent[]>()
 
 function add(e: ErrorEvent, live: boolean): ErrorGroup | null {
   const all = groups!
@@ -57,7 +49,6 @@ function add(e: ErrorEvent, live: boolean): ErrorGroup | null {
   return live && isNew ? g : null
 }
 
-/** Every kind kept, read from the files the first time it's asked (errors are few: all keep_days of them). */
 function loaded() {
   if (groups) return groups
   groups = new Map()
@@ -67,13 +58,8 @@ function loaded() {
   return groups
 }
 
-// ---------- recording
-
-/** The same error within BURST of the last line written for it: counted here and written with the next line. */
 const held = new Map<string, { at: number; n: number; last: ErrorEvent }>()
-// (flushing only while one is held: every 10 s with none, it woke an idle server for nothing)
 let flusher: ReturnType<typeof setInterval> | null = null
-/** The kinds of error a toast told of since the server started: one each, the rest only listed (Errors). */
 const toldOf = new Set<string>()
 
 function record(e: Omit<ErrorEvent, "id">) {
@@ -84,7 +70,6 @@ function record(e: Omit<ErrorEvent, "id">) {
   if (h && event.t - h.at < BURST && !event.fatal) {
     h.n++
     h.last = event
-    // Counted now (the list says so), written with the next line or when the burst ends.
     const g = groups!.get(event.id)
     if (g) { g.count++; g.last = event.t; g.latest = event }
     return
@@ -98,7 +83,6 @@ function record(e: Omit<ErrorEvent, "id">) {
   if (isNew) tell(isNew)
 }
 
-/** A burst's count, written as one line (its last time, `n` times). */
 function flushHeld(id: string) {
   const h = held.get(id)
   if (!h || !h.n) return
@@ -112,19 +96,16 @@ function flushOld() {
 }
 plugin.onUnload(() => { if (flusher) clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
 
-/** A new error: a toast saying only where (its text stays here), kept in the inbox, once per kind while the server runs;
- *  not for an older build's file, one the user was already told of, or one that ended the server. */
 const TOLD = new Set(["stale", "shown", "plugin", "hung"])
 function tell(g: ErrorGroup) {
   if (!settings().notify || TOLD.has(g.kind) || g.latest.fatal && g.source === "server") return
   const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Something went wrong in the app") : "Something went wrong in the server"
   if (toldOf.has(where)) return
   toldOf.add(where)
-  // After this turn: the error may have come from inside a write that holds the vault.
   setImmediate(() => {
     try {
-      void plugin.runOp("ui.notify", { text: `${where}. It's kept in Errors`, error: true, actionOpen: "view:errors" }).catch(() => { /* no window, no inbox */ })
-    } catch { /* unloaded meanwhile */ }
+      void plugin.runOp("ui.notify", { text: `${where}. It's kept in Errors`, error: true, actionOpen: "view:errors" }).catch(() => {})
+    } catch {}
   })
 }
 
@@ -133,8 +114,6 @@ plugin.onServerError((e: ServerError) => {
   record({ t: e.t, source: "server", kind: e.fatal ? "fatal" : "error", message: e.message, ...(e.stack ? { stack: e.stack } : {}),
     ...(e.where ? { where: e.where } : {}), ...(e.fatal ? { fatal: true } : {}) })
 })
-
-// ---------- the app's
 
 const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update", "hung"])
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
@@ -159,13 +138,10 @@ plugin.route("POST", "errors", (req) => {
   return { ok: true, recorded: n }
 })
 
-// ---------- reading
-
 function list(q: { source?: string; limit?: number; since?: number }): ErrorList {
   const all = [...loaded().values()]
   const since = q.since ?? 0
   const shown = all.filter((g) => (!q.source || g.source === q.source) && g.last >= since).sort((a, b) => b.last - a.last)
-  // (none yet: null, not now, so an unchanged list is the same answer: a 304 to the page polling it)
   const oldest = all.length ? all.reduce((m, g) => Math.min(m, g.first), Infinity) : null
   return { groups: shown.slice(0, Math.min(500, Math.max(1, q.limit ?? 50))), total: shown.length,
     events: shown.reduce((n, g) => n + g.count, 0), since: oldest }
@@ -177,7 +153,6 @@ function detail(id: string): ErrorDetail {
   return { group: g, events: [...(recent.get(g.id) ?? [])].reverse() }
 }
 
-/** Forget one kind (its lines in every file) or everything. */
 function forget(id?: string) {
   if (!id) {
     for (const d of log.days()) log.rewrite(d, [])
@@ -198,8 +173,6 @@ plugin.route("GET", "errors", (req) => list({ source: req.query.source || undefi
 plugin.route("GET", "errors/*", (req) => detail(req.arg(0)))
 plugin.route("DELETE", "errors", () => forget())
 plugin.route("DELETE", "errors/*", (req) => forget(req.arg(0)))
-
-// ---------- operations (core/ops.ts): `vau errors`, `vau errors show <id>`, `vau errors clear`
 
 const sourceLabel = (g: ErrorGroup) => (g.source === "app" ? `app${g.devices.length ? ` (${g.devices.join(", ")})` : ""}` : "server")
 const groupLine = (g: ErrorGroup) =>
@@ -229,7 +202,6 @@ server's machine for keep_days (default 30).
     : "No errors recorded.",
 })
 
-/** One time an error happened, in full. */
 function eventText(e: ErrorEvent) {
   const d = new Date(e.t)
   return [
@@ -282,8 +254,6 @@ plugin.op({
   },
   text: (r: { forgot: string }) => (r.forgot === "all" ? "Forgot every error." : `Forgot ${r.forgot}.`),
 })
-
-// ---------- the block as text (GET /api/render)
 
 plugin.block("errors", (ctx) => {
   const o = ctx.options

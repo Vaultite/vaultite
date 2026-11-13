@@ -1,5 +1,3 @@
-// Vim: Vim's keys in the whole app (the editor, reading views, lists, the canvas), Space as the leader and Ctrl+W for
-// panes, as commands the palette lists and hotkeys.json rebinds. Off until turned on, like any vault plugin.
 import { useEffect } from "react"
 import { addKeys, definePlugin, useVaultChange, type PluginCommand, type Store } from "@vaultite"
 import * as app from "./app"
@@ -9,7 +7,6 @@ import { appKeys, leaderOn, settings, useDeviceOn, VIMRC } from "./state"
 import { reloadVimrc } from "./vimrc"
 import { ModeChip, VimSettings } from "./ui"
 
-// ---------- outside the editor: its own commands ----------
 const on = () => appKeys()
 const cmd = (id: string, name: string, keys: string[], run: () => void): PluginCommand => ({ id: `vim:${id}`, name, keys, when: on, run })
 
@@ -37,8 +34,6 @@ const commands: PluginCommand[] = [
   ...lists.listCommands,
 ]
 
-// ---------- keys it gives the app's commands ----------
-// Space is the leader (like Spacemacs and LazyVim); others are Vimium's (o, x, H, L, gt) and Vim's (Ctrl+W h/j/k/l).
 const LEADER: Record<string, string[]> = {
   "switcher:open": ["Space Space", "Space F F"],
   "palette:open": ["Space P"],
@@ -63,7 +58,6 @@ const LEADER: Record<string, string[]> = {
   "split:focus-bottom": ["Space W J"],
   "split:focus-top": ["Space W K"],
   "split:focus-right": ["Space W L"],
-  // (the window keys close the pane while it has others; the tab's binding takes them on its last)
   "pane:close": ["Space W Q"],
   "tab:close": ["Space W Q"],
   "tab:close-others": ["Space W O"],
@@ -99,9 +93,7 @@ const merge = (...maps: Record<string, string[]>[]) => {
   return out
 }
 
-/** The plugin's work in the app: its settings into state.ts, its keys onto the app's commands, the overlays. */
 function Background({ store }: { store: Store }) {
-  // Its vimrc, again whenever it changes (Settings, an AI, the CLI).
   useVaultChange(() => void reloadVimrc(), [VIMRC])
   useEffect(() => setExStore(store), [store])
   const vim = settings.use()
@@ -115,7 +107,6 @@ function Background({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  // (CodeMirror's Vim and the editor's side loaded with the first editor, not at launch)
   editor: (ctx) => import("./editor").then((m) => m.vimExtension(ctx)),
   commands,
   keyGroups: {

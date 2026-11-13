@@ -1,4 +1,3 @@
-// What Vim draws in the app's own places: its mode and pending keys in the status bar's left corner, and its settings panel.
 import { ChevronRight } from "lucide-react"
 import { capitalize, cn, Group, openDetail, Segmented, SettingRow, Switch } from "@vaultite"
 import { changeSettings, deviceKeys, setDeviceKeys, settings, useDeviceOn, useEditorFocused, useEditorKeys, useEditorMode, VIMRC, type DeviceKeys } from "./state"
@@ -13,8 +12,6 @@ const MODES: Record<string, { label: string; color: string }> = {
   replace: { label: "Replace", color: "var(--red)" },
 }
 
-/** The status bar's Vim mode: the last editor's, dimmed while the keyboard is elsewhere (as its cursor goes hollow), and
- *  always there while Vim's keys are on, so nothing beside it moves as the user clicks around. Its keys follow it. */
 export function ModeChip() {
   const on = useDeviceOn()
   const mode = useEditorMode()
@@ -37,7 +34,6 @@ const DEVICE: { value: DeviceKeys; label: string }[] = [
   { value: "off", label: "Off" },
 ]
 
-/** Vim's settings sheet. */
 export function VimSettings() {
   const s = settings.use()
   const on = useDeviceOn()

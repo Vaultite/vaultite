@@ -1,8 +1,7 @@
 import { Replace } from "lucide-react"
 import { currentEditor, definePlugin } from "@vaultite"
 
-// Find and replace, ⌘F (⌥⌘F replaces; ⌘H is the Mac's Hide), in every editor; read-only ones
-// only find. Where no text file is on screen, ⌘F finds in the page (the pane or the sheet), not a terminal.
+// Replace is ⌥⌘F: ⌘H is the Mac's Hide.
 let loading: Promise<typeof import("./FindBar")> | null = null
 const load = () => (loading ??= import("./FindBar"))
 let paging: Promise<typeof import("./PageFind")> | null = null
@@ -13,7 +12,6 @@ const open = (replace: boolean) => {
   if (ed) load().then((m) => m.openFind(ed.view, replace))
   else loadPage().then((m) => m.openPageFind())
 }
-// (a terminal draws its own text: nothing for a find in the page there; a web page has the Browser's own)
 const page = () => {
   if (document.querySelector("dialog[open]")) return true
   const pane = document.getElementById("main-scroll")

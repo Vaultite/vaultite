@@ -1,5 +1,3 @@
-// The app's side of Errors in every window's background: the core's kept errors go to the server as they happen (and
-// on load, for one that stopped the app). A report that fails is dropped.
 import { useEffect } from "react"
 import { appDevice as DEVICE, onAppError, takeAppErrors } from "@vaultite"
 
@@ -12,13 +10,13 @@ function send() {
     method: "POST", keepalive: body.length < 60_000,
     headers: { "Content-Type": "application/json", "X-Vaultite-Client": `app/${DEVICE}` },
     body,
-  }).catch(() => { /* the server's down: they're lost, like the page */ })
+  }).catch(() => {})
 }
 
 export function Report() {
   useEffect(() => {
     let timer = 0
-    const soon = () => { if (!timer) timer = window.setTimeout(() => { timer = 0; try { send() } catch { /* never into the app */ } }, 1000) }
+    const soon = () => { if (!timer) timer = window.setTimeout(() => { timer = 0; try { send() } catch {} }, 1000) }
     soon()
     const stop = onAppError(soon)
     return () => { stop(); clearTimeout(timer) }

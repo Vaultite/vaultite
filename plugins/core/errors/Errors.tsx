@@ -1,5 +1,3 @@
-// The errors the app and server hit, one row per kind; opening one shows its stacks and each time it happened. Polls
-// every 10 s while the page shows.
 import { useState } from "react"
 import { AlertTriangle } from "lucide-react"
 import { Bar, cn, confirmDialog, copyText, del, Empty, fmtAgo, fmtStamp, List, Loading, notify, notifyError, Panel, plural, removals, Segmented, useKeptCount, useLive } from "@vaultite"
@@ -13,12 +11,10 @@ const KIND: Record<string, string> = {
   rejection: "unhandled rejection", stale: "an older build (reloaded)", error: "logged", fatal: "ended the server",
   shown: "told in a toast or a page", plugin: "a plugin couldn't start", update: "the app's updates",
 }
-/** Errors forgotten from here: gone at once, back if it fails. */
 const forgetting = removals()
 
 const whereOf = (g: ErrorGroup) => (g.source === "app" ? `App${g.devices.length ? ` (${g.devices.join(", ")})` : ""}` : "Server")
 
-/** Everything about one time, as text: what Copy puts on the clipboard (for a bug report or an agent). */
 function report(g: ErrorGroup, events: ErrorEvent[]) {
   const e = events[0] ?? g.latest
   return [
@@ -67,7 +63,6 @@ const line = "block truncate text-[13px] leading-[18px] text-muted-foreground"
 const ago = "shrink-0 pt-[1px] text-[13px] text-muted-foreground tabular-nums"
 
 const widths = ["66%", "50%", "74%", "58%", "45%"]
-/** Errors on their way: GroupRow's shape with bars for its lines. */
 function Skeleton({ count }: { count: number }) {
   return (
     <div className="loading-in" aria-busy>
@@ -148,7 +143,6 @@ export function ErrorsList({ options = {} }: { options?: Record<string, unknown>
   )
 }
 
-/** The view (view:errors): the list, the whole width. */
 export function ErrorsView() {
   return (
     <div className="pb-10" data-errors-view>

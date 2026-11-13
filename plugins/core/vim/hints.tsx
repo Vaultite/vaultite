@@ -1,5 +1,3 @@
-// Link hints, like Vimium's: f labels everything clickable in sight, typing a label clicks it (F: in a new tab). While
-// up they take every key; Escape, a click or a scroll puts them away.
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { setLayer } from "./layer"
@@ -7,14 +5,12 @@ import { isMac } from "@vaultite"
 
 const KEYS = "sadfjklewcmpgh"
 
-/** What can be clicked: the obvious elements, and links CodeMirror draws (opened on mousedown, livePreview.ts). */
 const CLICKABLE = [
   "a[href]", "button:not([disabled])", "summary", "select", "textarea", "input:not([type=hidden]):not([disabled])",
   "[role=button]", "[role=tab]", "[role=menuitem]", "[role=option]", "[role=link]", "[role=checkbox]", "[role=switch]",
   "[data-tree-path]", "[data-wiki]", "[data-url]", "[data-tag]", ".cm-task", "[tabindex]:not([tabindex='-1'])",
 ].join(",")
 
-/** Every element in sight that can be clicked, the topmost at its middle (not under a sheet or a menu). */
 function targets(): HTMLElement[] {
   const seen = new Set<HTMLElement>()
   const out: HTMLElement[] = []
@@ -23,7 +19,6 @@ function targets(): HTMLElement[] {
     if (seen.has(el)) return
     seen.add(el)
     if (el.closest("[aria-hidden=true], [inert]")) return
-    // (Not a button that only shows on hover: transparent or hidden, itself or what it's in.)
     if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return
     const r = el.getBoundingClientRect()
     if (r.width < 3 || r.height < 3 || r.bottom < 0 || r.right < 0 || r.top > vh || r.left > vw) return
@@ -33,8 +28,6 @@ function targets(): HTMLElement[] {
     out.push(el)
   }
   for (const el of document.querySelectorAll<HTMLElement>(CLICKABLE)) consider(el)
-  // Rows drawn as plain elements with a click handler: the pointer says so (only where their parent doesn't, so a
-  // row's icon isn't a second hint).
   for (const el of document.querySelectorAll<HTMLElement>("div, span, li, img, svg")) {
     if (seen.has(el) || getComputedStyle(el).cursor !== "pointer") continue
     const p = el.parentElement
@@ -42,7 +35,6 @@ function targets(): HTMLElement[] {
     if (el.closest(CLICKABLE)) continue
     consider(el)
   }
-  // One label where several elements sit on the same spot (a row and the button filling it).
   const spots = new Set<string>()
   return out.filter((el) => {
     const r = el.getBoundingClientRect()
@@ -53,7 +45,6 @@ function targets(): HTMLElement[] {
   })
 }
 
-/** Labels of the same length, as short as the number of targets allows. */
 function labels(n: number) {
   let len = 1
   while (KEYS.length ** len < n) len++
@@ -66,7 +57,6 @@ function labels(n: number) {
   return out
 }
 
-/** Click it as the pointer would: links in a note open on mousedown, the rest on click; ⌘ for a new tab. */
 function activate(el: HTMLElement, newTab: boolean) {
   const mods = { bubbles: true, cancelable: true, view: window, button: 0, metaKey: newTab && isMac, ctrlKey: newTab && !isMac }
   if (el.matches("input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, select, [contenteditable=true]")) {
@@ -111,7 +101,6 @@ export function Hints({ newTab }: { newTab: boolean }) {
       setTyped(next)
       if (left.length === 1 && left[0].label === next) {
         close()
-        // After the overlay is gone, so what it opens takes the keyboard.
         setTimeout(() => activate(left[0].el, newTab))
       }
     }

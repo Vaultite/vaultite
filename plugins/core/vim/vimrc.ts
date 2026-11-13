@@ -1,5 +1,3 @@
-// The vimrc (.vaultite/plugins/vim/init.vim; Obsidian's .obsidian.vimrc works): map/noremap and friends, unmap, set,
-// let mapleader, exmap, run in every editor before you type and again when it changes; a bad line is reported once.
 import { notify, openFile, post, readFile, notifyError } from "@vaultite"
 import type { CM, Vim } from "./editor"
 import { VIMRC } from "./state"
@@ -22,16 +20,13 @@ const SET = /^(se|set|setlocal|setglobal)$/
 
 let text: string | null = null
 let applied: string | null = null
-/** The editors open now: the vimrc runs again in one of them when it changes. */
 const open = new Set<CM>()
-/** An editor with Vim opened (true) or closed (false). */
 export function editorOpen(cm: CM, on: boolean) { if (on) open.add(cm); else open.delete(cm) }
 
 async function fetchText() {
   try { return (await readFile(VIMRC)).text } catch { return "" }
 }
 
-/** Run the vimrc's lines; the ones it couldn't run, with their line numbers. */
 function run(cm: CM, vim: Vim, src: string) {
   const problems: string[] = []
   let leader = "\\"
@@ -60,20 +55,17 @@ function run(cm: CM, vim: Vim, src: string) {
   return problems
 }
 
-/** Run the vimrc in Vim, if this text hasn't run yet (mappings are shared by every editor); `cm` is an editor's. */
 export async function applyVimrc(cm: CM) {
   text ??= await fetchText()
   if (applied === text) return
   const { installKeys, loadVim } = await import("./editor")
   const { Vim } = await loadVim()
-  // A vimrc that ran before: its mappings go (and this plugin's own keys come back) before the new one runs.
   if (applied !== null) { Vim.mapclear(); installKeys(Vim) }
   applied = text
   const problems = run(cm, Vim, text)
   if (problems.length) notify(`init.vim: ${problems.length === 1 ? "a line" : `${problems.length} lines`} Vim can't run (${problems.join("; ")})`, { kind: "error" })
 }
 
-/** The vimrc changed (on disk, in an editor): read it again and run it in the editors that are open. */
 export async function reloadVimrc() {
   const next = await fetchText()
   if (next === text) return
@@ -82,7 +74,6 @@ export async function reloadVimrc() {
   if (cm) await applyVimrc(cm)
 }
 
-/** Open the vimrc, making it first (with examples) when there's none. */
 export async function openVimrc() {
   try { await readFile(VIMRC) } catch {
     try { await post("file", { path: VIMRC, text: TEMPLATE }) } catch (e) { notifyError(e, `Couldn't make ${VIMRC}`); return }

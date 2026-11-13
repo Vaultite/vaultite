@@ -1,5 +1,3 @@
-// Vim's bars at the bottom of the focused pane outside the editor: find (/: n and N go on) and the command line (:, run
-// by ex.ts, Tab completes, ↑ ↓ go through history). Escape closes either; the keyboard goes back (useHeldFocus).
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { cn, getStore, plural, stem, useHeldFocus } from "@vaultite"
 import { EX, runEx } from "./ex"
@@ -7,8 +5,6 @@ import { go, search } from "./find"
 import { setLayer } from "./layer"
 import { focusedRoot } from "./scroll"
 
-/** Where a bar goes: along the bottom of the focused pane (or an open sheet), else of the window; above the status bar's
- *  corners where they're drawn over the pane's foot. */
 function useSpot() {
   const [spot, setSpot] = useState<{ left: number; width: number; bottom: number }>({ left: 0, width: innerWidth, bottom: 0 })
   useLayoutEffect(() => {
@@ -56,10 +52,8 @@ export function FindBar() {
 }
 
 const history: string[] = []
-/** What :e, :sp, :vs and :tabnew take: a file. */
 const TAKES_FILE = /^(e|edit|sp|split|vs|vsplit|tabe|tabedit|tabnew)\s+/
 
-/** What can complete the line as typed: command names, or file names after a command that opens one. */
 function completions(line: string): string[] {
   const m = TAKES_FILE.exec(line)
   if (m) {
@@ -78,7 +72,6 @@ function completions(line: string): string[] {
 export function ExLine() {
   useHeldFocus()
   const [line, setLine] = useState("")
-  // Tab's candidates for what was typed, and which is shown.
   const [tab, setTab] = useState<{ base: string; list: string[]; i: number } | null>(null)
   const back = useRef(history.length)
   const list = useMemo(() => (tab ? tab.list : []), [tab])
@@ -91,7 +84,6 @@ export function ExLine() {
       setLayer(null)
       if (!run) return
       if (history[history.length - 1] !== run) history.push(run)
-      // After the bar is gone and the keyboard is back where it was (a tab closed by :q is the one in focus).
       setTimeout(() => runEx(run), 30)
       return
     }

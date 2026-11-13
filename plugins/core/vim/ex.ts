@@ -1,14 +1,10 @@
-// Vim's : commands that drive the app, in the editor and outside it: :e, :sp, :vs, :q, :bn, :bp, :cmd (and Obsidian's
-// :obcommand). The editor saves as you type, so :w does nothing and :wq and :x only close.
 import { notify, openFile, openInSplit, resolver, runCommandById, runCommandNamed, type Store } from "@vaultite"
 import { showHelp } from "./app"
 import { openVimrc } from "./vimrc"
 
 let store: Store | null = null
-/** The store, for :e's names (the plugin's background component keeps it here). */
 export const setExStore = (s: Store) => { store = s }
 
-/** A file by the name you'd [[link]] it with: its path, or null. */
 function fileNamed(name: string) {
   if (!store) return null
   const t = resolver(store)(name.trim())
@@ -28,19 +24,16 @@ function open(name: string, how: "here" | "tab" | "right" | "down") {
   openFile(file, { newTab: how === "tab" })
 }
 
-/** Run a command of the palette by its id ("switcher:open") or its name, as listed ("Open quick switcher"). */
 function command(arg: string) {
   const want = arg.trim()
   if (!want) return runCommandById("palette:open")
   if (!runCommandNamed(want)) notify(`No command ${want}`, { kind: "error" })
 }
 
-/** Vim's :q closes its window: the pane, or the tab with its last pane (pane:close is offered only beside others). */
 const quit = () => { if (!runCommandById("pane:close")) runCommandById("tab:close") }
 
 export type Ex = { name: string; short: string; usage: string; help: string; run: (arg: string, bang: boolean) => void }
 
-/** The : commands, by full name and the shortest prefix that names them (Vim's :e, :sp...). */
 export const EX: Ex[] = [
   { name: "edit", short: "e", usage: ":e [name]", help: "Open a file by name, or the quick switcher", run: (a) => open(a, "here") },
   { name: "tabedit", short: "tabe", usage: ":tabe [name]", help: "Open a file in a new tab", run: (a) => open(a, "tab") },
@@ -63,12 +56,10 @@ export const EX: Ex[] = [
   { name: "help", short: "h", usage: ":help", help: "Show Vim's keys", run: () => showHelp() },
 ]
 
-/** The : command a name stands for: its full name, or a prefix at least as long as its short one. */
 export function exNamed(name: string) {
   return EX.find((x) => x.name === name || (name.length >= x.short.length && x.name.startsWith(name) && name.startsWith(x.short)))
 }
 
-/** Run a command line typed outside the editor (":e Alice Park", ":q"): false if it isn't one of these. */
 export function runEx(line: string) {
   const m = /^\s*:?\s*([a-zA-Z]+)(!?)\s*(.*)$/.exec(line)
   if (!m) return false

@@ -1,5 +1,3 @@
-// The find bar: CodeMirror's search with a panel of the app's own. On a computer, a card at the pane's top right over
-// the text, as Chrome's; on a phone or in a sheet, a strip sticking at the top. Loaded when an editor first needs it.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { createPortal, flushSync } from "react-dom"
@@ -13,8 +11,6 @@ import { cn, commandKeys, editorOf, keyHint, openAround, textRanges } from "@vau
 import { badField, countText, field, FindTools, floatingCard, floatingSpot, MAX, tool } from "./tools"
 
 type Spec = { search: string; replace: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
-/** A query that finds only what's shown: not in the frontmatter a note's editor hides, nor (outside source mode) in
- *  a link's address or what a view is drawn from. */
 const queryIn = (view: EditorView, q: Spec) => new SearchQuery({ search: q.search, replace: q.replace, caseSensitive: q.caseSensitive, regexp: q.regexp,
   wholeWord: q.wholeWord, test: (_m, state, from, to) => {
     const ed = editorOf(view)
@@ -23,7 +19,6 @@ const queryIn = (view: EditorView, q: Spec) => new SearchQuery({ search: q.searc
 
 type Count = { total: number; current: number; more: boolean }
 
-/** How many matches, and which one is selected (0: none is). */
 function countOf(state: EditorState, q: SearchQuery): Count {
   if (!q.search || !q.valid) return { total: 0, current: 0, more: false }
   const sel = state.selection.main
@@ -37,7 +32,6 @@ function countOf(state: EditorState, q: SearchQuery): Count {
   return { total, current, more: false }
 }
 
-/** Select the first match at or after the cursor (wrapping round to the top), as you type. */
 function seek(view: EditorView, q: SearchQuery) {
   if (!q.search || !q.valid) return
   const from = view.state.selection.main.from
@@ -48,10 +42,6 @@ function seek(view: EditorView, q: SearchQuery) {
   view.dispatch({ selection: range, effects: scrollTo(range, view), userEvent: "select.search" })
 }
 
-// Matches in drawn blocks (a table, a callout, a <details>), where CodeMirror can't mark or scroll: lit with CSS
-// highlights in what's drawn, the current one taken into view.
-
-/** The query as a pattern for text on screen, as CodeMirror matches it. */
 export function pattern(q: SearchQuery): RegExp | null {
   if (!q.search || !q.valid) return null
   let src = q.regexp ? q.search
@@ -63,8 +53,6 @@ export function pattern(q: SearchQuery): RegExp | null {
   return null
 }
 
-/** What each find open (an editor's bar, a page's) lights, joined into the page's two highlights (index.css colours
- *  them). */
 export const lit = new Map<object, { all: Range[]; current: Range | null }>()
 export function paintLit() {
   if (typeof CSS === "undefined" || !("highlights" in CSS)) return
@@ -73,7 +61,6 @@ export function paintLit() {
   if (cur.length) { const h = new Highlight(...cur); h.priority = 1; CSS.highlights.set("vau-find-current", h) } else CSS.highlights.delete("vau-find-current")
 }
 
-/** The nearest box around `el` that scrolls, `axis` being x or y. */
 export function scroller(el: Element | null, axis: "x" | "y", stop?: Element): HTMLElement | null {
   for (; el && el !== stop; el = el.parentElement) {
     const cs = getComputedStyle(el), o = axis === "x" ? cs.overflowX : cs.overflowY
@@ -82,14 +69,10 @@ export function scroller(el: Element | null, axis: "x" | "y", stop?: Element): H
   return null
 }
 
-/** Take a match drawn in a block into view: its <details> opened, a wide table scrolled sideways to it, and the pane
- *  scrolled to put it in the middle, as CodeMirror does with what it finds in text. */
 function show(view: EditorView, r: Range | Element) {
   reveal(r, view.contentDOM, scroller(view.scrollDOM, "y"), panels.get(view)?.card ?? view.dom.querySelector(".cm-panels-top"))
 }
 
-/** Take what was found into view: its <details> opened, what scrolls sideways inside `within` (a wide table) scrolled
- *  to it, and `sc` scrolled to put it in the middle of what shows below `bar`. */
 export function reveal(r: Range | Element, within: Element, sc: HTMLElement | null, bar?: Element | null) {
   const inside = r instanceof Range ? r.startContainer.parentElement : null
   if (r instanceof Range) openAround(r)
@@ -104,10 +87,8 @@ export function reveal(r: Range | Element, within: Element, sc: HTMLElement | nu
   sc.scrollTop += Math.round((m.top + m.bottom) / 2 - (top + s.bottom) / 2)
 }
 
-/** Nothing for CodeMirror to scroll: the find bar takes the match into view itself. */
 const shownByBar = StateEffect.define<null>()
 
-/** How a match is taken into view: by CodeMirror when it's text, by the bar when it's in a drawn block. */
 function scrollTo(range: SelectionRange, view: EditorView): StateEffect<unknown> {
   const panel = panels.get(view)
   const block = panel && editorOf(view)?.blocks?.().find((b) => b.from <= range.from && range.from < b.to)
@@ -117,9 +98,7 @@ function scrollTo(range: SelectionRange, view: EditorView): StateEffect<unknown>
 }
 
 type BarProps = { view: EditorView; query: SearchQuery; count: Count; readOnly: boolean; replacing: boolean; setReplacing: (on: boolean) => void
-  /** Bumped to put the keyboard in a field (find, or replace when it's asked for with text to find). */
   focus: { n: number; field: "find" | "replace" }
-  /** Drawn as a card over the pane (its element given to `card`), not a strip. */
   floating: boolean; card: (el: HTMLDivElement | null) => void }
 
 function Bar({ view, query, count, readOnly, replacing, setReplacing, focus, floating, card }: BarProps) {
@@ -182,11 +161,8 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus, flo
   )
 }
 
-/** Wide enough for the card (index.css's md): narrower, the strip, as on a phone. */
 const wide = typeof matchMedia === "undefined" ? null : matchMedia("(min-width: 768px)")
 
-/** The panel CodeMirror shows while the search is open: a React root drawn again when the query, the text, the
- *  selection or whether it can be written changes. Floating, it draws in its tab's overlay and the panel stays empty. */
 class FindPanel implements Panel {
   dom: HTMLElement
   top = true
@@ -197,12 +173,9 @@ class FindPanel implements Panel {
   count: Count = { total: 0, current: 0, more: false }
   counted: { query: SearchQuery; doc: unknown; sel: unknown } | null = null
   timer: ReturnType<typeof setTimeout> | null = null
-  /** A match in a drawn block to take into view once it's drawn. */
   target: { pos: number; tries: number } | null = null
   frame = 0
-  /** Blocks draw late (a section's React, a picture's height): light them again when they do. */
   watcher: MutationObserver
-  /** The card, while it floats. */
   card: HTMLDivElement | null = null
   redraw = () => this.draw(false)
 
@@ -221,11 +194,9 @@ class FindPanel implements Panel {
     this.light()
     const q = getSearchQuery(u.state), was = getSearchQuery(u.startState)
     const ro = u.state.readOnly !== u.startState.readOnly
-    // (typing moves the selection too: it waits like any typing, not counted on every keystroke)
     const typed = u.docChanged && u.transactions.some((t) => t.isUserEvent("input.type") || t.isUserEvent("delete"))
     if (!q.eq(was) || (u.selectionSet && !typed) || ro) { this.recount(); this.draw(false) }
     else if (u.docChanged) {
-      // Typing with the bar open: count again a moment after, not on every keystroke.
       if (this.timer) clearTimeout(this.timer)
       this.timer = setTimeout(() => { this.timer = null; this.recount(); this.draw(false) }, 150)
     }
@@ -241,8 +212,6 @@ class FindPanel implements Panel {
     const root = this.root
     setTimeout(() => root.unmount(), 0)
   }
-  /** Light what's found in the drawn blocks on screen (next frame, once however often it's asked), and take the
-   *  current match into view if it was just stepped to. */
   light() {
     if (this.frame) return
     this.frame = requestAnimationFrame(() => {
@@ -257,7 +226,6 @@ class FindPanel implements Panel {
         const found = textRanges(b.el.querySelector<HTMLElement>(".cm-block-body") ?? b.el, re, MAX)
         all.push(...found)
         if (!this.count.current || sel.from < b.from || sel.from >= b.to || !found.length) continue
-        // The current match is the block's k-th in its Markdown: the k-th drawn (what's found is what's shown).
         let k = 0
         const cur = q.getCursor(state, b.from, sel.from)
         for (let m = cur.next(); !m.done; m = cur.next()) if (m.value.from < sel.from) k++
@@ -270,14 +238,12 @@ class FindPanel implements Panel {
       const block = blocks.find((b) => b.from <= t.pos && t.pos < b.to)
       if (!block || ++t.tries > 4) { this.target = null; return }
       if (!block.el) {
-        // Off screen, so not drawn: scrolled to where the editor reckons it is, and the match in it once it's drawn.
         const sc = scroller(view.scrollDOM, "y")
         if (sc && t.tries === 1) sc.scrollTop += Math.round(view.documentTop + view.lineBlockAt(block.from).top - sc.getBoundingClientRect().top - sc.clientHeight / 3)
         return
       }
       this.target = null
       show(view, current ?? block.el)
-      // (the editor may still move it as it learns the heights of what it just drew: once more after)
       const again = current ?? block.el
       setTimeout(() => {
         const there = again instanceof Range ? !again.collapsed && again.startContainer.isConnected : again.isConnected
@@ -291,7 +257,6 @@ class FindPanel implements Panel {
     this.counted = { query: q, doc: s.doc, sel: s.selection }
     this.count = countOf(s, q)
   }
-  /** Where the card floats: over the pane, in its tab's overlay (Workspace.tsx); none in a sheet or on a phone. */
   host(): HTMLElement | null {
     const body = wide?.matches ? this.view.dom.closest<HTMLElement>("[data-tab-body]") : null
     return body?.parentElement?.querySelector<HTMLElement>(`:scope > [data-tab-overlay="${CSS.escape(body.dataset.tabBody ?? "")}"]`) ?? null
@@ -306,7 +271,6 @@ class FindPanel implements Panel {
     if (sync) flushSync(() => this.root.render(el)); else this.root.render(el)
   }
   setCard = (el: HTMLDivElement | null) => { this.card = el && el.closest("[data-tab-overlay]") ? el : null }
-  /** ⌘F / ⌥⌘F with the bar open: show replace or not, and the keyboard in the right field. */
   ask(replace: boolean) {
     if (replace && !this.view.state.readOnly) this.replacing = true
     const q = getSearchQuery(this.view.state)
@@ -316,14 +280,11 @@ class FindPanel implements Panel {
 }
 const panels = new WeakMap<EditorView, FindPanel>()
 
-/** Marks an editor that has the find bar (the plugin's extension may still be on its way when ⌘F is pressed). */
 const installed = StateField.define<boolean>({ create: () => true, update: (v) => v })
 
-/** What the plugin adds to every editor: the search, its matches' colours, the bar, and ⌘G / ⇧⌘G in the text. */
 export const findExtension: Extension = [
   installed,
   search({ top: true, createPanel: (view) => new FindPanel(view), scrollToMatch: scrollTo }),
-  // (what's found is taken into view below the card, as below the strip CodeMirror's panels make room for)
   EditorView.scrollMargins.of((view) => {
     const card = panels.get(view)?.card
     return card ? { top: Math.max(0, card.getBoundingClientRect().bottom - Math.max(0, view.scrollDOM.getBoundingClientRect().top)) } : null
@@ -341,7 +302,6 @@ export const findExtension: Extension = [
   }),
 ]
 
-/** Open the bar in `view` (⌘F), with replace (⌥⌘F) when it can be written. */
 export function openFind(view: EditorView, replace: boolean) {
   if (!view.state.field(installed, false)) return
   openSearchPanel(view)

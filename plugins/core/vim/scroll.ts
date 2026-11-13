@@ -1,5 +1,3 @@
-// Moving through what's on screen outside the editor: the scroller j/k move (a sheet's, else the focused pane's),
-// headings (a note's from its text, so undrawn ones count) and the note's editor itself, for `i`.
 import type { EditorView } from "@codemirror/view"
 import { currentFile, editorAt, glide, runCommandById, sightOf } from "@vaultite"
 import { setPeek } from "./state"
@@ -11,13 +9,10 @@ const scrollsY = (el: Element) => el.scrollHeight > el.clientHeight + 1 && /(aut
 const scrollsX = (el: Element) => el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)
 const shown = (el: Element) => (el as HTMLElement).offsetParent !== null || getComputedStyle(el).position === "fixed"
 
-/** An open sheet (the app's one sheet system draws a <dialog>), which keys go to before the panes under it. */
 export const openSheet = () => [...document.querySelectorAll<HTMLElement>("dialog[open]")].find(shown) ?? null
 
-/** Where the keys act: an open sheet, else the focused pane. */
 export const focusedRoot = (): HTMLElement | null => openSheet() ?? document.getElementById("main-scroll")
 
-/** The biggest element under `root` (itself included) that scrolls this way, or null. */
 function biggest(root: HTMLElement, test: (el: Element) => boolean) {
   if (test(root)) return root
   let best: HTMLElement | null = null, area = 0
@@ -29,7 +24,6 @@ function biggest(root: HTMLElement, test: (el: Element) => boolean) {
   return best
 }
 
-/** What j and k scroll. */
 export function scroller() {
   const root = focusedRoot()
   return root ? biggest(root, scrollsY) : null
@@ -53,8 +47,6 @@ export function scrollEdge(top: boolean) {
   el?.scrollTo({ top: top ? 0 : el.scrollHeight, behavior: "auto" })
 }
 
-/** The note's own editor in the focused pane (reading view is the editor too, read-only): the outermost one, not an
- *  embed's or a drawn block's. */
 export function mainEditor(root = document.getElementById("main-scroll")): EditorView | null {
   if (!root) return null
   for (const el of root.querySelectorAll<HTMLElement>(".cm-editor")) {
@@ -65,8 +57,6 @@ export function mainEditor(root = document.getElementById("main-scroll")): Edito
   return null
 }
 
-/** Each heading's distance from the top of the scroller's content, in order: a note's (from its text), else the
- *  page's (<h1>...<h6>: a dashboard's sections, a sheet's). */
 function headingTops(el: HTMLElement) {
   const box = el.getBoundingClientRect()
   const tops: number[] = []
@@ -82,7 +72,6 @@ function headingTops(el: HTMLElement) {
       tops.push(view.lineBlockAt(line.from).top + view.documentTop - box.top + el.scrollTop)
     }
   }
-  // (A note's title isn't one of its headings: with a note there, only its text's count.)
   if (!view) for (const h of el.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) {
     if (h.closest(".cm-content") || !shown(h)) continue
     tops.push(h.getBoundingClientRect().top - box.top + el.scrollTop)
@@ -90,11 +79,9 @@ function headingTops(el: HTMLElement) {
   return tops.sort((a, b) => a - b)
 }
 
-/** The next (1) or previous (-1) heading, scrolled to just below the top. */
 export function heading(dir: 1 | -1) {
   const el = scroller()
   if (!el) return
-  // (just below the bars drawn over it, the path bar's: a heading under one isn't seen)
   const below = Math.max(0, sightOf(el.firstElementChild ?? el).top - el.getBoundingClientRect().top) + 12
   const at = el.scrollTop + below
   const tops = headingTops(el)
@@ -102,7 +89,6 @@ export function heading(dir: 1 | -1) {
   if (to !== undefined) el.scrollTo({ top: Math.max(0, to - below), behavior: "auto" })
 }
 
-/** The first line in sight in a note's editor. */
 function lineInSight(view: EditorView, el: HTMLElement) {
   const top = el.getBoundingClientRect().top
   const height = Math.max(0, top - view.documentTop)
@@ -111,8 +97,6 @@ function lineInSight(view: EditorView, el: HTMLElement) {
   return block.from
 }
 
-/** Reading view: edit the note where you're reading (the cursor on the first line in sight; Escape in normal mode reads
- *  again). A note already in editing: into it, at its cursor when that's in sight. */
 export function editHere() {
   const path = currentFile()
   const view = mainEditor()
@@ -126,6 +110,5 @@ export function editHere() {
     return
   }
   runCommandById("view:toggle")
-  // (Not a note in reading view, a page drawn from blocks or a table: its own way of editing, if it has one.)
   if (view && path) setPeek(path)
 }

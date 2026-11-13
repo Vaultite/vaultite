@@ -1,5 +1,3 @@
-// Find on a page that isn't a text file (Today, a dashboard, a person's page, a list): what's drawn in the focused pane
-// or the open sheet, lit with CSS highlights, in a bar at the top of it. A note's editor has its own (FindBar).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { SearchQuery } from "@codemirror/search"
@@ -9,14 +7,12 @@ import { countText, FindField, FindTools, floatingBar, MAX } from "./tools"
 
 type Spec = { search: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
 
-/** Where a page find looks: an open sheet, else the focused pane; not a terminal (its text is drawn, not laid out). */
 export function pageRoot(): HTMLElement | null {
   const sheet = [...document.querySelectorAll<HTMLElement>("dialog[open]")].reverse().find((d) => d.getClientRects().length > 0)
   const root = sheet ?? document.getElementById("main-scroll")
   return root && !root.querySelector("[data-term]") ? root : null
 }
 
-/** The page find that's open: what it looks in, what it found and which one is current. */
 class PageFind {
   root: HTMLElement
   spec: Spec = { search: "", caseSensitive: false, regexp: false, wholeWord: false }
@@ -35,24 +31,19 @@ class PageFind {
     this.host = document.createElement("div")
     document.body.append(this.host)
     this.react = createRoot(this.host)
-    // What's drawn changes (a list loads, a section opens): found again a moment after.
     this.watcher = new MutationObserver(() => {
       if (this.timer) clearTimeout(this.timer)
       this.timer = setTimeout(() => { this.timer = null; this.find(false) }, 150)
     })
     this.watcher.observe(root, { childList: true, subtree: true, characterData: true })
-    // (another tab or pane: what was found was found there)
     this.unfollow = onTabLayoutChange(() => { if (!this.root.isConnected || pageRoot() !== this.root) close() })
   }
 
-  /** Find the query again; `seek`: the current match is the first in sight (as you type), else the one nearest the last. */
   find(seek: boolean) {
     const q = new SearchQuery(this.spec)
     this.valid = !this.spec.search || q.valid
     const re = pattern(q)
     const was = this.ranges[this.current]?.getBoundingClientRect().top
-    // (not the pane's bar, nor what's hidden, a tab kept drawn or a closed menu; but a closed <details>, opened when
-    // it's the current one)
     this.ranges = re ? textRanges(this.root, re, MAX, "[data-view-bar]").filter((r) => r.getClientRects().length || r.startContainer.parentElement?.closest("details:not([open])")) : []
     const sc = scroller(this.root, "y") ?? this.root
     const top = sc.getBoundingClientRect().top
@@ -93,7 +84,6 @@ class PageFind {
 
 let open: PageFind | null = null
 
-/** ⌘F where no text file is on screen: the page find, or the keyboard back in it. */
 export function openPageFind() {
   const root = pageRoot()
   if (!root) return
@@ -104,10 +94,8 @@ export function openPageFind() {
 }
 function close() { open?.destroy(); open = null }
 
-/** Where the bar goes: the top right of the pane (under its bar) or the sheet. */
 function spotOf(root: HTMLElement) {
   const box = root.getBoundingClientRect()
-  // (the pane's bar sits over the top of its scroller: as tall as an editor's find bar keeps clear of)
   const probe = document.createElement("div")
   probe.style.cssText = "position:absolute;visibility:hidden;height:var(--vau-panel-top,0px)"
   root.append(probe)

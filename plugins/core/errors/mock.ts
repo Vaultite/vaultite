@@ -1,4 +1,3 @@
-// Made-up answers for the Errors plugin's routes, for its preview (Plugins > Errors): times relative to now.
 import type { ErrorEvent, ErrorGroup, ErrorList } from "./model"
 
 const MIN = 60_000, HOUR = 3_600_000

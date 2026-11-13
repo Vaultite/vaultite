@@ -1,5 +1,3 @@
-// Vim's keys as a sheet (? outside the editor, :help): read from the commands as they are now (hotkeys.json included),
-// then the editor's additions and the : commands.
 import { useMemo, type ReactNode } from "react"
 import { Keyboard } from "lucide-react"
 import { keyCaps, keysOf, Section, SheetHead, useCommandList } from "@vaultite"
@@ -17,7 +15,6 @@ function Caps({ keys }: { keys: string }) {
   )
 }
 
-/** A command's keys, each one's caps together, "or" between them. */
 const alternatives = (keys: string[]) => keys.flatMap((k, i) => [
   ...(i ? [<span key={`or${i}`} className="self-center text-[12px] text-muted-foreground">or</span>] : []),
   <Caps key={k} keys={k} />,
@@ -36,10 +33,8 @@ function Rows({ rows }: { rows: { name: ReactNode; keys: ReactNode }[] }) {
   )
 }
 
-/** A step that types (no ⌘, ⌃ or ⌥), or Vim's ⌃W window keys: the keys Vim adds, not the app's own shortcuts. */
 const vimish = (keys: string) => /^(ctrl\+w |ctrl\+[dufb]$)/i.test(keys) || !/(^|\+)(mod|ctrl|alt)\+/i.test(keys.split(" ")[0])
 
-/** The editor's own keys, on top of Vim's (editor.ts), spelled like commands' keys. */
 const EDITOR: [string, string][] = [
   ["Next or previous heading", "] ]  ·  [ ["],
   ["Next or previous link", "G L  ·  G Shift+L"],

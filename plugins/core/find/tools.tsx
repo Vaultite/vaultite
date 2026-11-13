@@ -1,5 +1,3 @@
-// The parts every find bar shares (a note's, a page's, a terminal's): its field with the count, the options and the
-// buttons, so they look and read the same. No CodeMirror here: a terminal imports it.
 import type { KeyboardEvent, ReactNode, Ref } from "react"
 import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-react"
 import { cn, keyHint, numberText } from "@vaultite"
@@ -11,8 +9,7 @@ export const tool = "grid size-7 shrink-0 cursor-pointer place-items-center roun
 export const field = "h-7 w-full min-w-0 rounded-[6px] bg-card px-2 text-[13px] text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-primary/60 max-md:h-9 max-md:text-[16px]"
 /** A field whose text finds nothing (or isn't a valid expression). */
 export const badField = "ring-[color-mix(in_srgb,var(--red)_55%,transparent)] focus:ring-[color-mix(in_srgb,var(--red)_70%,transparent)]"
-/** A find's card floating over what it finds in (a page, a note, a terminal, a web page), placed by its owner: the
- *  popover's colour made solid, as glass-strong over a web page (index.css), or the text under it shows through. */
+/** A find's card over what it finds in (a page, a note, a terminal, a web page), placed by its owner. */
 export const floatingCard = "rounded-[8px] border-[0.5px] border-border [background:linear-gradient(var(--popover),var(--popover))_var(--background)] p-1 text-popover-foreground shadow-lg"
 /** Where a card goes in what it floats over (a pane, a terminal): its top right, as Chrome's. */
 export const floatingSpot = "absolute right-3 z-10 w-[min(440px,calc(100%-24px))]"
@@ -49,8 +46,7 @@ export function Toggle({ on, label, onClick, children }: { on: boolean; label: s
 
 export type FindOptions = { caseSensitive: boolean; wholeWord: boolean; regexp: boolean }
 
-/** The options and the buttons after a find field: a switch for each option `spec` has (a web page's find only
- *  matches case). */
+/** The options and the buttons after a find field: a switch for each option `spec` has. */
 export function FindTools({ spec, set, total, step, close }: { spec: Partial<FindOptions>; set: (o: Partial<FindOptions>) => void; total: number; step: (by: 1 | -1) => void; close: () => void }) {
   return (
     <>
