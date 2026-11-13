@@ -348,11 +348,16 @@ export default async ($: VaultTest) => {
     const [, w0] = await api("GET", "graph?patch=0"), a0 = JSON.parse(w0)
     const [, w1] = await api("GET", `graph?patch=${a0.v}`), a1 = JSON.parse(w1)
     write("Graph test/Alone.md", "Now it links to [[Far]].\n")
-    const [, w2] = await api("GET", `graph?patch=${a0.v}`), a2 = JSON.parse(w2)
-    const [, now] = await api("GET", "graph")
+    let w2 = "", a2: Any = null, now: Any = null
+    for (let i = 0; i < 20 && (!now || now.v !== a2.v); i++) {
+      ;[, w2] = await api("GET", `graph?patch=${a0.v}`)
+      a2 = JSON.parse(w2)
+      const [, w] = await api("GET", "graph?patch=0")
+      now = JSON.parse(w)
+    }
     check("graph patch: the whole graph first, with its version", typeof a0.v === "string" && a0.v !== "" && Array.isArray(a0.whole.nodes), Object.keys(a0))
     check("graph patch: nothing changed, nothing sent", a1.v === a0.v && a1.patch === null, a1)
-    check("graph patch: after an edit, a patch that makes the graph", a2.v !== a0.v && a2.since === a0.v && w2.length < w0.length / 2 && sameJson(applyPatch(a0.whole, a2.patch), now), w2.slice(0, 300))
+    check("graph patch: after an edit, a patch that makes the graph", a2.v !== a0.v && a2.since === a0.v && w2.length < w0.length / 2 && sameJson(applyPatch(a0.whole, a2.patch), now.whole), w2.slice(0, 300))
     write("Graph test/Alone.md", "No links at all.\n")
     // An edit redoes only its file's links and edges: the graph is the one a build from scratch makes.
     fs.writeFileSync(path.join(VAULT, "Graph test/pic.png"), "png")
