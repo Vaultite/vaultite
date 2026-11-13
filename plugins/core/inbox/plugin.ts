@@ -1,5 +1,6 @@
 // The Inbox's backend: each part registers its routes, ops and hooks, in this order; the services other plugins ask
 // for are here, where plugin-api.md reads their docs (tools/plugin_api_doc.ts).
+import type { Item } from "../../../core/vault.ts"
 import * as actions from "./actions.ts"
 import * as asked from "./asked.ts"
 import * as block from "./block.ts"
@@ -66,11 +67,11 @@ plugin.provide("inbox:handed", (terminal: string) => hand(terminal))
 plugin.provide("inbox:progress", progressOf)
 /** Add an event from another plugin's backend or the core (what it would POST); returns it. One asking the user, made
  *  in a session's request, says which session asked. */
-plugin.provide("inbox:event", postEvent)
+plugin.provide("inbox:event", (b: Item) => postEvent(b, true))
 /** Take away the event of this source and key (what it said isn't so anymore). */
 plugin.provide("inbox:drop", (source: string, key: string) => dropEvent(source, key))
 /** Mark the event of this source and key done (the core's notice of a paused plugin, once it's allowed again). */
-plugin.provide("inbox:done", (source: string, key: string) => markDone(new Set(list().filter((e) => sameKey(e, source, key)).map((e) => e.id))))
+plugin.provide("inbox:done", (source: string, key: string) => markDone(new Set(list().filter((e) => sameKey(e, source, key)).map((e) => e.id)), true, true))
 /** Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and
  *  watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer. */
 plugin.provide("inbox:ask", askGate)

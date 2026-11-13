@@ -224,7 +224,7 @@ export class App {
     const vps = this.vaultPlugins
     for (const vp of vps.found.values()) {
       const l = lock[vp.id], a = vps.trust.approval(vp.id)
-      if (!l?.history?.length || !a || a.edits || !asLocked(vp.dir, l, vp.digest.content) || vps.trust.approved(vp.id, vp.digest.content)) continue
+      if (!l?.history?.length || !a || a.edits || !asLocked(vp.dir, l, vp.digest.content) || vps.trust.approved(vp.id, vp.digest)) continue
       // (the lock could name another source, and the new version could say it does more: both the user's call)
       if (a.source !== l.source || !a.says || saysMore(a.says, disclosuresOf(vp.manifest))) continue
       if (!vps.enabled().has(vp.id) || vp.problems.length || !autoUpdates(this.vault.config("plugins"), vp.id, l.source)) continue
@@ -274,8 +274,7 @@ export class App {
 
   private pausedTold = new Set<string>() // plugins whose paused notice is in the inbox, done once allowed again
 
-  /** A plugin that changed after this machine allowed it stops until allowed again, its schedule too: say so once, in
-   *  the inbox as waiting on the user, since a toast nobody saw lets a morning job go quiet for days. */
+  /** A plugin changed since allowed stops till it is: in the inbox (one that stays: no cleanup settles it) and Errors. */
   private tellPaused() {
     const vps = this.vaultPlugins
     const paused = vps.paused()
@@ -284,13 +283,15 @@ export class App {
       this.pausedTold.delete(id)
       service(this.on(), "inbox:done")?.("plugins", `paused:${id}`)
     }
+    const add = service(this.on(), "inbox:event")
     for (const p of paused) {
-      if (!vps.trust.tellPaused(p.id)) continue
       const jobs = p.jobs.map((j) => `${j.name} (every ${j.every}${j.at ? ` at ${j.at}` : ""})`)
       const title = `${p.name} changed and is paused until you allow it again${jobs.length ? `: ${jobs.join(", ")} won't run` : ""}`
       const body = `Changed: ${p.changed.join(", ")}. Allow it: vau plugin allow ${p.id}`
-      this.notice({ source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}` }, "Review")
-        .then((e) => { if (e) this.pausedTold.add(p.id) }, () => { /* no window */ })
+      const e = { source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}`, stays: true }
+      const first = vps.trust.tellPaused(p.id)
+      if (first) { log.error(`${title}. ${body}`); if (!add) this.notice(e, "Review").catch(() => {}) }
+      if (add) Promise.resolve(add(e)).then(() => { this.pausedTold.add(p.id) }, () => {})
     }
   }
 

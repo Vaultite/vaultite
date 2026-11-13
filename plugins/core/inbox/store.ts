@@ -171,9 +171,9 @@ export function markUnread(ids: Set<string>) {
   return n
 }
 
-export function markDone(ids: Set<string>, done = true) {
+export function markDone(ids: Set<string>, done = true, source = false) {
   let n = 0
-  const next = list().map((e) => (ids.has(e.id) && (done ? e.state !== "done" : e.state === "done") ? (n++, doneAs(e, done)) : e))
+  const next = list().map((e) => (ids.has(e.id) && (done ? e.state !== "done" && (source || !e.stays) : e.state === "done") ? (n++, doneAs(e, done)) : e))
   if (n) changed(next)
   return n
 }

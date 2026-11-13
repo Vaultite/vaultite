@@ -98,7 +98,10 @@ export async function markManyDone(list: InboxItem[], done = true, pinned: boole
     { action: { label: "Undo", run: () => void markManyDone(now, !done, done ? ok.map((x) => !!x.was.pinned) : []) } })
 }
 
-export function markManyEventsDone(evs: InboxEvent[], done = true) {
+export function markManyEventsDone(all: InboxEvent[], done = true) {
+  const held = done ? all.filter((e) => e.stays && e.state !== "done") : []
+  const evs = all.filter((e) => !held.includes(e))
+  if (held.length && !evs.length) return notify(`“${held[0].title}” stays in the inbox until it's dealt with`)
   if (!evs.length) return
   void markEventsDone(evs.map((e) => e.id), done)
   notify(evs.length === 1 ? (done ? `Settled “${evs[0].title}”` : `Back in the inbox: “${evs[0].title}”`) : (done ? `Settled ${plural(evs.length, "item")}` : `Put back ${plural(evs.length, "item")} in the inbox`),

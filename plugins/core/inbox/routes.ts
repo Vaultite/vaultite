@@ -7,11 +7,18 @@ import { holdNow, owner, plugin } from "./server.ts"
 import { askerOf } from "./sessions.ts"
 import { addEvent, changed, eventOf, gates, list, markDone, markRead, markUnread, needing, pin, remotes, sameKey, shown, snooze, told, unread } from "./store.ts"
 
-export async function postEvent(b: Item) {
+export async function postEvent(b: Item, inner = false) {
   const e = eventOf(b)
+  if (inner && b.stays === true && e.key) {
+    e.stays = true
+    const open = list().find((x) => x.state !== "done" && sameKey(x, e.source, e.key!))
+    if (open?.stays && open.title === e.title) return open
+  }
   const from = e.kind === "waiting" && !(e.terminal || e.session) ? await askerOf() : undefined
   return addEvent(from ? { ...e, from } : e)
 }
+
+const stays = (e: InboxEvent) => `"${e.title}" stays in the inbox until it's dealt with${e.body ? ` (${e.body})` : ""}: settling it would hide it`
 
 export async function askGate(b: Item) {
   const e = eventOf({ ...b, kind: "waiting", ask: "permission" })
@@ -66,9 +73,11 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
     if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events are done")
     const done = b.done !== false
     const local = !!req.query.local
+    const held = done && b.ids.length === 1 ? shown(local).find((e) => e.id === String(b.ids[0]) && e.stays && e.state !== "done") : undefined
+    if (held) throw new HTTPError(409, stays(held))
     for (const [m, some] of byMachine(b.ids.map(String))) {
       if (!m) markDone(new Set(some), done)
-      else if (!local) await onMachine(m, "POST", "inbox/events/done?local=1", { ids: some, done }, (e) => (isOne(e, some) ? doneAs(e, done) : e))
+      else if (!local) await onMachine(m, "POST", "inbox/events/done?local=1", { ids: some, done }, (e) => (isOne(e, some) && !(done && e.stays) ? doneAs(e, done) : e))
     }
     return { needs: needing(local) }
   }],
@@ -123,9 +132,10 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   ["DELETE", "inbox/events", async (req) => {
     await owner(req)
     const done = !!req.query.done
-    changed(done ? list().filter((e) => e.state !== "done") : [])
+    const kept = (e: InboxEvent) => (e.stays && e.state !== "done") || (done && e.state !== "done")
+    changed(list().filter(kept))
     if (!req.query.local) await Promise.all([...remotes.keys()].map((m) => onMachine(m, "DELETE", `inbox/events?local=1${done ? "&done=1" : ""}`, null,
-      (e) => (done && e.state !== "done" ? e : null)).catch(() => {})))
+      (e) => (kept(e) ? e : null)).catch(() => {})))
     return { ok: true }
   }],
   ["DELETE", "inbox/events/*", async (req) => {
@@ -135,6 +145,8 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
       await onMachine(there, "DELETE", `inbox/events/${encodeURIComponent(id)}`, null, (e) => (isOne(e, [id]) ? null : e))
       return { ok: true }
     }
+    const held = list().find((e) => e.id === id && e.stays && e.state !== "done")
+    if (held) throw new HTTPError(409, stays(held))
     const before = list().length
     changed(list().filter((e) => e.id !== id))
     return { ok: list().length < before }

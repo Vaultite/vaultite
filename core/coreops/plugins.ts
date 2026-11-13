@@ -133,7 +133,7 @@ export function pluginOps(app: App): Op[] {
     const join = want && sections ? sectionsOf(p).filter((d) => !d.hidden && !sections.includes(d.key)).map((d) => d.key) : []
     if (join.length) app.vault.patchConfig("newtab", { sections: [...sections!, ...join] })
     const { on, aiOff } = onOff(ps, conf)
-    const waiting = want && p.tier === "vault" && !allowed && !app.vaultPlugins.trust.approved(p.id, app.vaultPlugins.found.get(p.id)?.digest.content ?? "")
+    const waiting = want && p.tier === "vault" && !allowed && !app.vaultPlugins.trust.approved(p.id, app.vaultPlugins.found.get(p.id)?.digest ?? { content: "", files: {} })
     return { id: p.id, name: p.name, on: on(p.id), switched: want, blockedBy: want && !on(p.id) ? p.requires.filter((r) => !on(r)) : [], waiting,
       ...(want && aiOff && p.ai ? { needsAi: true } : {}) }
   }
@@ -216,7 +216,7 @@ machine: ask the user first. One that requires another stays off until that one 
     summary: "Let a vault plugin run on this machine as its files are now (one that arrived by sync, a shared vault or a bundle, or changed).",
     help: `A vault plugin runs code on this machine, so it runs only once this machine's owner allowed it at its current
 version (a hash of its files, kept on this machine, not in the vault). Turning one on here allows it; one turned on
-elsewhere (another machine, a shared vault, a bundle) or whose files changed since waits: \`vau plugins\` says which. Ask
+elsewhere (another machine, a shared vault, a bundle) or whose code (not its notes, Markdown) changed waits: \`vau plugins\` says which. Ask
 the user first. \`--hash\`: only if its files are still the ones shown (GET /api/plugins' \`hash\`). \`--edits\`: while
 the user writes a plugin here, its later edits run without asking each time (anyone who can write the vault's files
 can then run code here through it: never for one from elsewhere).

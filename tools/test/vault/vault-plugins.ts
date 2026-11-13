@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { modesEnforced, skip } from "../lib.ts"
+import { notesKeepItRunning, pausedStays } from "./trust/paused.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, read, sleep, vault, write, TOOLS } = $
@@ -58,7 +59,7 @@ export default async ($: VaultTest) => {
     check("trust: each part of it that isn't what it should be reads as none", !t.approval("0") && t.ran("a") && !t.ran("1") && JSON.stringify(t.local("p")) === "{}")
     t = as(JSON.stringify({ plugins: { good: { hash: "h", files: {}, at: "2026-01-01T00:00:00Z", later: 1 }, bad: { edits: true } } }))
     check("trust: an approval reads as written (what a later version adds kept), one that doesn't read approves nothing",
-      t.approved("good", "h") && t.approval("good")?.later === 1 && !t.approved("bad", "h") && !t.approval("bad"))
+      t.approved("good", { content: "h", files: {} }) && t.approval("good")?.later === 1 && !t.approved("bad", { content: "h", files: {} }) && !t.approval("bad"))
     fs.rmSync(t.file)
   }
   {
@@ -98,21 +99,12 @@ export default async ($: VaultTest) => {
   }
   let [acode, aout] = await api("POST", "ops/plugin.allow", { id: "lighthouse", hash: lh.hash })
   check("trust: allowed at the hash shown, it loads", acode === 200 && aout.loaded && !(await vplugin()).approval, [acode, aout])
+  const logged = await notesKeepItRunning($, LH, lh.hash, vplugin)
   write(`${LH}/beam.ts`, read(`${LH}/beam.ts`) + "\n")
   lh = await vplugin()
   check("trust: its code changed (a sync), it's unloaded and waits again, saying which files changed", !lh.loaded && lh.approval?.state === "changed" &&
     JSON.stringify(lh.approval.changed) === '["beam.ts"]' && (await api("GET", "lighthouse"))[0] === 404, lh.approval)
-  {
-    const paused = async () => { await sleep(150); return ((await api("GET", "inbox/events"))[1].events as Any[]).filter((e) => e.key === "paused:lighthouse") }
-    let told = await paused()
-    check("trust: a plugin that changed after it was allowed tells the user it's paused, waiting on them", told.length === 1 && told[0].kind === "waiting" &&
-      told[0].title.startsWith("Lighthouse changed and is paused") && told[0].body.includes("beam.ts") && told[0].link === "detail:plugin/lighthouse" && !told[0].read, told)
-    const first = told[0]?.id
-    write(`${LH}/beam.ts`, read(`${LH}/beam.ts`) + "\n")
-    await vplugin()
-    told = await paused()
-    check("trust: ...once, not again for each later edit", told.length === 1 && told[0].id === first && !!app.vaultPlugins.trust.approval("lighthouse")?.paused, told)
-  }
+  await pausedStays($, LH, logged.stop)
   ;[acode, aout] = await api("POST", "ops/plugin.allow", { id: "lighthouse", edits: true })
   check("trust: allowed with edits, it loads, and later edits run (a plugin written here)", acode === 200 && aout.loaded && aout.edits, aout)
   await vplugin()

@@ -75,6 +75,7 @@ export type InboxEvent = {
   snoozed?: number
   /** Pinned on top of the inbox till it's done or unpinned. */
   pinned?: boolean
+  stays?: boolean
   /** A session's latest progress (inbox.progress), each replacing the last: shown on its row, never told. */
   progress?: string
   /** The session that delegated this one its task, by its name then (its own thread, if any, by its terminal or session). */

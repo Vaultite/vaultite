@@ -54,7 +54,9 @@
 ## Vault plugins
 - Same shape and rules; the backend imports the core as `@vaultite/core/plugins.ts`. Guide: `core/docs/vault-plugins.md`.
 - Off until turned on and allowed on this machine (`core/trust.ts`): plugins.json syncs and travels with shared vaults
-  and bundles, so what may run is this machine owner's yes to a plugin's content hash. Changed since, it waits again.
+  and bundles, so what may run is this machine owner's yes to a plugin's content hash. Its code changed since, it waits
+  again (its notes, Markdown no manifest command runs, and its settings don't count: text, never imported), in the
+  inbox as one that stays (only allowing it settles it) and in Errors, so a cleanup can't let it go quiet for days.
 - Once allowed it's code on the server's machine: the rules are hygiene, not a sandbox.
 - Another machine's update runs here only once its files match the source's, never on the lock's word.
 

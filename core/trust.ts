@@ -28,9 +28,23 @@ const Store = z.object({
 })
 type Store = z.infer<typeof Store>
 /** What's hashed of a plugin's folder (core/vaultplugins.ts digestOf). */
-export type Digest = { content: string; files: Record<string, string> }
+export type Digest = { content: string; files: Record<string, string>; note?: (file: string) => boolean }
+
+export function codeHash(files: Record<string, string>, note: (file: string) => boolean = () => false) {
+  return sha(Object.keys(files).filter((f) => !note(f)).sort().map((f) => `${f}\0${files[f]}`).join("\0"))
+}
 
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex")
+const Runs = listOf(z.looseObject({ command: z.array(z.string()) }))
+const Commands = z.looseObject({ ops: Runs, events: Runs, startup: Runs, schedule: Runs })
+
+/** Its notes: Markdown none of its commands names (a brief an agent reads, its pages). Text, never imported: editing
+ *  one needs no new yes (core/trust.ts). */
+export function notesOf(dir: string): (file: string) => boolean {
+  const r = readJson(path.join(dir, "manifest.json"), Commands)
+  const args = r.ok ? [r.value.ops, r.value.events, r.value.startup, r.value.schedule].flat().flatMap((c) => c.command) : []
+  return (f) => /\.md$/i.test(f) && !args.some((a) => a.includes(path.posix.basename(f)))
+}
 /** The store's file name in VAULTITE_LOCAL/trust/ for the vault at `vaultPath` (a copy of a vault has its own). */
 export const trustName = (vaultPath: string) => `${sha(vaultHere(vaultPath).real).slice(0, 12)}.json`
 
@@ -74,9 +88,10 @@ export class Trust {
 
   /** Whether this machine approved plugin `id` with this content, or its edits (an empty hash, a folder that couldn't be read,
    *  never is). */
-  approved(id: string, content: string) {
+  approved(id: string, d: Digest) {
     const a = this.approval(id)
-    return !!content && !!a && (a.hash === content || a.edits === true)
+    if (!d.content || !a) return false
+    return a.hash === d.content || a.edits === true || (!!d.note && codeHash(a.files, d.note) === codeHash(d.files, d.note))
   }
 
   /** Approve it as it is now; `edits`: whether later edits run without asking (left as it was when not given). */
@@ -116,7 +131,7 @@ export class Trust {
     const a = this.approval(id)
     if (!a) return { since: null, files: Object.keys(d.files).sort() }
     const names = new Set([...Object.keys(a.files), ...Object.keys(d.files)])
-    return { since: a.version ?? a.at.slice(0, 10), files: [...names].filter((f) => a.files[f] !== d.files[f]).sort() }
+    return { since: a.version ?? a.at.slice(0, 10), files: [...names].filter((f) => a.files[f] !== d.files[f] && !d.note?.(f)).sort() }
   }
 
   /** Something else a plugin runs that a vault setting names (a command): whether this machine said yes to it. */

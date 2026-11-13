@@ -51,7 +51,7 @@ export default async ($: VaultTest) => {
     ;[code, r] = await api("POST", "bundles/days/apply", { workspace: 1, allowCode: true })
     check("bundles: apply", code === 200 && r.applied === "Days", r)
     check("bundles: a plugin it installs is installed from Vaultite's plugins, on and allowed here", exists(".vaultite/plugins/books/manifest.json") &&
-      conf("plugins-lock")?.books?.source === "Vaultite/plugins/books" && !!app.vaultPlugins.trust.approved("books", app.vaultPlugins.found.get("books")?.digest.content ?? ""), conf("plugins-lock"))
+      conf("plugins-lock")?.books?.source === "Vaultite/plugins/books" && !!app.vaultPlugins.trust.approved("books", app.vaultPlugins.found.get("books")?.digest ?? { content: "", files: {} }), conf("plugins-lock"))
     if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
     const pj = conf("plugins"), look = conf("appearance")
     check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.custom === 1 && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)

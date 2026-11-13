@@ -52,6 +52,7 @@ export type InboxEvent = {
   snoozed?: number
   /** Pinned by the user: on top of the inbox whatever it waits on, until it's done or unpinned. */
   pinned?: boolean
+  stays?: boolean
   /** The session that delegated this one its task (Delegation), by its name then: the thread says "from" it. */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
   /** The session that asked (a gate's, a waiting ask's made in its request), by its name then: "Go to session" opens it. */
@@ -116,7 +117,7 @@ export function pinnedAs(e: InboxEvent, on: boolean): InboxEvent {
 }
 
 export function snoozedAs(e: InboxEvent, until: number | null): InboxEvent | null {
-  if (e.gate || e.state === "done" || (until !== null && e.state === "open" && e.ask === "permission")) return null
+  if (e.gate || e.state === "done" || (until !== null && e.stays) || (until !== null && e.state === "open" && e.ask === "permission")) return null
   if (until !== null) return { ...e, snoozed: until }
   if (!e.snoozed) return null
   const { snoozed: _, ...rest } = e

@@ -510,7 +510,7 @@ export default async ($: VaultTest) => {
       const waitFor = async (ok: () => Promise<boolean>) => { for (let i = 0; i < 100 && !await ok(); i++) await new Promise((r) => setTimeout(r, 100)); return ok() }
       await api("DELETE", "inbox/events")
       check("adopt: updated elsewhere, the same files as its source's: allowed here, running, said once", await waitFor(async () => (await vplugin("lantern")).loaded) &&
-        await light() === "steady" && app.vaultPlugins.trust.approved("lantern", now.hash) &&
+        await light() === "steady" && app.vaultPlugins.trust.approved("lantern", { content: now.hash, files: {} }) &&
         (await waitFor(async () => (await api("GET", "inbox/events"))[1].events[0]?.title === "Lantern updated to 1.2.0: Brighter at night")), [await vplugin("lantern"), (await api("GET", "inbox/events"))[1].events])
       write(".vaultite/plugins/lantern/plugin.ts", lts("lantern", "a stranger's"))
       await app.syncPlugins()
@@ -522,7 +522,7 @@ export default async ($: VaultTest) => {
       await app.syncPlugins()
       await waitFor(async () => !app.vaultPlugins.adopting.has("lantern"))
       const after = await vplugin("lantern")
-      check("adopt: files that aren't the source's (the lock agreeing) wait for the user", !after.loaded && after.approval?.state === "changed" && !app.vaultPlugins.trust.approved("lantern", forged), after)
+      check("adopt: files that aren't the source's (the lock agreeing) wait for the user", !after.loaded && after.approval?.state === "changed" && !app.vaultPlugins.trust.approved("lantern", { content: forged, files: {} }), after)
       // Its source's own files, but saying it does more than what was allowed here; or another source's, the lock naming it.
       const synced = async (files: Record<string, string>, entry: Any) => {
         for (const [f, t] of Object.entries(files)) write(`.vaultite/plugins/lantern/${f}`, t)
@@ -537,12 +537,12 @@ export default async ($: VaultTest) => {
       }
       let [sh, sv] = await synced({ "manifest.json": lm("lantern", "1.3.0", { disclosures: { network: ["lights.example.com"] } }), "plugin.ts": lts("lantern", "steady") },
         { version: "1.3.0", tag: "lantern/v1.3.0" })
-      check("adopt: its source's files, saying it does more now, wait for the user", !sv.loaded && !app.vaultPlugins.trust.approved("lantern", sh), sv)
+      check("adopt: its source's files, saying it does more now, wait for the user", !sv.loaded && !app.vaultPlugins.trust.approved("lantern", { content: sh, files: {} }), sv)
       const theirs = { "manifest.json": lm("lantern", "1.2.0"), "plugin.ts": lts("lantern", "another's"), "AGENTS.md": "## Lantern\n" }
       repo("mallory/lantern", theirs, "v1.2.0")
       write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: "all" }))
       ;[sh, sv] = await synced(theirs, { source: "mallory/lantern", repo: "mallory/lantern", version: "1.2.0", tag: "v1.2.0" })
-      check("adopt: the lock naming another source (its files that source's) waits for the user", !sv.loaded && !app.vaultPlugins.trust.approved("lantern", sh), sv)
+      check("adopt: the lock naming another source (its files that source's) waits for the user", !sv.loaded && !app.vaultPlugins.trust.approved("lantern", { content: sh, files: {} }), sv)
       write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: null }))
 
       for (const id of ["lantern", "buoy"]) await api("POST", "ops/plugin.uninstall", { id })

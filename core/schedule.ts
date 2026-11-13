@@ -79,7 +79,13 @@ export function nextRun(w: When, last: Last) {
 }
 
 export type Row = { id: string; plugin: string; name: string; every: string; at: string | null; machine: string | null
-  here: boolean; next: string | null; ran: string | null; ms: number | null; error: string | null; running: boolean; paused: string | null }
+  here: boolean; next: string | null; ran: string | null; ms: number | null; error: string | null; running: boolean; paused: string | null
+  missed: string | null }
+
+function missedRun(w: When, last: Last, now: number) {
+  const due = nextRun(w, last)
+  return now - due >= Math.max(periodOf(w.every)!, UNIT.h) ? due : null
+}
 
 export class Scheduler {
   private file: string
@@ -91,6 +97,7 @@ export class Scheduler {
   private saved = ""
   private running = new Set<string>()
   private timer: ReturnType<typeof setInterval> | null = null
+  private missedTold = new Map<string, number>()
 
   /** `file`: where last runs are kept on this machine; `jobs`: the ones of the plugins that are on; `here`: whether this
    *  machine runs a job naming `machine`; `before`: run before each tick (load the vault's plugins); `paused`: listed only. */
@@ -124,7 +131,21 @@ export class Scheduler {
       due.push(this.run(key, plugin, job, now))
     }
     this.save()
+    this.tellMissed(now)
     await Promise.all(due)
+  }
+
+  private tellMissed(now: number) {
+    for (const { plugin, job, why } of this.paused()) {
+      const key = `${plugin}/${job.name}`, last = this.state[key]
+      const missed = last ? missedRun(job, last, now) : null
+      if (missed === null || this.missedTold.get(key) === missed) continue
+      void this.here(job.machine).then((here) => {
+        if (!here || this.missedTold.get(key) === missed) return
+        this.missedTold.set(key, missed)
+        log.error(`${key} didn't run at ${new Date(missed).toLocaleString()}${last!.ran ? ` (last ran ${new Date(last!.ran).toLocaleString()})` : ""}: ${why}`)
+      }, () => {})
+    }
   }
 
   /** A job runs as its plugin acting on its own (run now too: it does what the schedule would), so its writes outside
@@ -166,7 +187,7 @@ export class Scheduler {
       const here = await this.here(job.machine)
       return { id: key, plugin, name: job.name, every: job.every, at: job.at ?? null, machine: job.machine ?? null, here,
         next: here && !why ? iso(Math.max(now, nextRun(job, last))) : null, ran: iso(last.ran), ms: last.ms ?? null, error: last.error ?? null,
-        running: this.running.has(key), paused: why }
+        running: this.running.has(key), paused: why, missed: why && here && this.state[key] ? iso(missedRun(job, last, now) ?? undefined) : null }
     }))
   }
 
@@ -188,7 +209,7 @@ export function scheduleOps(scheduler: () => Scheduler): Op[] {
     kind: "read",
     run: () => scheduler().list(),
     text: (rows: Row[]) => rows.length ? rows.map((r) => `- ${r.id}: ${when(r)}${r.machine ? ` on ${r.machine}` : ""}; ${r.running ? "running"
-      : r.paused ? `paused: ${r.paused}` : r.here ? `next ${r.next}` : "another machine runs it"}${r.ran ? `; last ${r.ran} (${r.error ? `failed: ${r.error}` : `${r.ms} ms`})` : ""}`).join("\n")
+      : r.paused ? `paused${r.missed ? `, missed its run at ${r.missed}` : ""}: ${r.paused}` : r.here ? `next ${r.next}` : "another machine runs it"}${r.ran ? `; last ${r.ran} (${r.error ? `failed: ${r.error}` : `${r.ms} ms`})` : ""}`).join("\n")
       : "No plugin has a schedule.",
   }), defineOp({
     id: "schedule.run",

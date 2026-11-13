@@ -16,7 +16,7 @@ import { groupOf } from "./categories.ts"
 import type { VaultEvent } from "./events.ts"
 import { hookProblems, Hooks, scheduleOf } from "./hooks.ts"
 import type { Op } from "./ops.ts"
-import { type Digest, trustOf, type Trust } from "./trust.ts"
+import { type Digest, notesOf, trustOf, type Trust } from "./trust.ts"
 import { official } from "./updates.ts"
 import { served } from "./webbuild.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
@@ -339,7 +339,7 @@ export function digestOf(dir: string, before = false): Digest {
     files[rel] = fileHash(fs.readFileSync(f))
     whole.update(`\0${rel}\0${files[rel]}`)
   }
-  return { content: whole.digest("hex").slice(0, 16), files }
+  return { content: whole.digest("hex").slice(0, 16), files, note: notesOf(dir) }
 }
 
 /** Names in an order where each comes after those it `deps` on (a cycle: as they are). */
@@ -394,7 +394,7 @@ export class VaultPlugins {
     this.tiers = new Map(app.map((p) => [p.id, p.tier]))
     this.hooks = new Hooks(vault)
     this.trust = trustOf(vault.path)
-    this.hooks.allowed = (vp) => { try { return this.trust.approved(vp.id, digestOf(vp.dir).content) } catch { return false } }
+    this.hooks.allowed = (vp) => { try { return this.trust.approved(vp.id, digestOf(vp.dir)) } catch { return false } }
   }
 
   /** An event (core/events.ts): the event hooks of the plugins that are loaded and on. */
@@ -494,7 +494,7 @@ export class VaultPlugins {
         this.found.set(name, vp)
       }
       vp.blocked = this.blocked(vp)
-      const want = on.has(name) && !vp.problems.length && !vp.blocked && this.trust.approved(name, vp.digest.content)
+      const want = on.has(name) && !vp.problems.length && !vp.blocked && this.trust.approved(name, vp.digest)
       if (!want) { vp.failed = {}; this.hooks.stopped(name) } // turned on again: tried again, its startup runs again
       if (vp.plugin && (!want || vp.loaded !== vp.hash)) { this.unload(vp); changed = true }
       if (want && !vp.plugin && vp.failed.load?.[0] !== vp.hash && (await this.load(vp))) changed = true
@@ -594,7 +594,7 @@ export class VaultPlugins {
 
   /** On in the vault, but not allowed on this machine at this version. */
   private waits(vp: VaultPlugin, on = this.enabled()) {
-    return on.has(vp.id) && !vp.problems.length && !vp.blocked && !this.trust.approved(vp.id, vp.digest.content)
+    return on.has(vp.id) && !vp.problems.length && !vp.blocked && !this.trust.approved(vp.id, vp.digest)
   }
 
   /** The ones this machine allowed that changed since, so they stopped until it allows them again (not one being
