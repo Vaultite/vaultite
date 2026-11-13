@@ -34,26 +34,27 @@ export default async ($: VaultTest) => {
     const mcp = app.plugins.find((p) => p.id === "mcp")!
     const fn = mcp.onEvent({ types: ["file"], path: "Evts/" }, (ev) => heard.push(ev))
     const c1 = bus.cursor
+    const done = (id: string) => bus.since(c1, { types: ["op.done"] }).events.filter((e) => e.id === id)
     write("Evts/One.md", "One.\n")
     await api("POST", "file/move", { from: "Evts/One.md", to: "Evts/Two.md" })
     await api("DELETE", "file?path=Evts/Two.md")
-    const moved = bus.since(c1, { types: ["file"] }).events
+    const moved = bus.since(c1, { types: ["file"], path: "Evts/" }).events
     check("events: a move and a delete through the API", moved.length === 2 && moved[0].type === "file.moved" && moved[0].from === "Evts/One.md" && moved[0].to === "Evts/Two.md" &&
       moved[1].type === "file.trashed" && moved[1].path === "Evts/Two.md", moved)
     const l = new Live(vault)
     l.add("Evts/Three.md")
-    for (let i = 0; i < 300 && !bus.since(c1, { types: ["file.changed"] }).events.length; i++) await sleep(10)
+    for (let i = 0; i < 300 && !bus.since(c1, { types: ["file.changed"], path: "Evts/" }).events.length; i++) await sleep(10)
     l.close()
-    const changed = bus.since(c1, { types: ["file.changed"] }).events
+    const changed = bus.since(c1, { types: ["file.changed"], path: "Evts/" }).events
     check("events: a change on disk is file.changed (core/live.ts)", changed.length === 1 && same(changed[0].paths, ["Evts/Three.md"]), changed)
     await sleep(20)
     check("events: a plugin hears its own (plugin.onEvent), after the emitter's turn", heard.length === 3 && heard[2].type === "file.changed", heard.map((e) => e.type))
     mcp.eventFns = mcp.eventFns.filter(([, f]) => f !== fn)
     let [st, body] = await api("POST", "ops/ui.command", { id: "sidebar:toggle" })
-    const opd = bus.since(c1, { types: ["op.done"] }).events
+    const opd = done("ui.command")
     check("events: a write op is op.done, with who and its parameters", st === 200 && opd.length === 1 && opd[0].id === "ui.command" && opd[0].ok === true && same(opd[0].params, { id: "sidebar:toggle" }), [st, body, opd])
     ;[st] = await api("POST", "ops/ui.open", {})
-    check("events: one that fails is op.done too, not ok", st === 400 && bus.last({ types: ["op.done"] }, 1)[0].ok === false && /path is missing/.test(String(bus.last({ types: ["op.done"] }, 1)[0].error)))
+    check("events: one that fails is op.done too, not ok", st === 400 && done("ui.open")[0]?.ok === false && /path is missing/.test(String(done("ui.open")[0]?.error)))
     const beforeRead = bus.cursor
     ;[st] = await api("POST", "ops/docs.list", {})
     const afterRead = bus.since(beforeRead, { types: ["op.done"] }).events
