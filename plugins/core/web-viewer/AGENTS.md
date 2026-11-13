@@ -208,7 +208,8 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   map those rather than restyling each part. The Shields menu has "Style for <site>" (the style the page gets: its host's
   own, docs.google.com.css, else its parent site's; off: setting `unstyled`) and "Edit its style…" ("Style this site…"
   for one without: its host's file from a template, opened beside the page); the palette's "Edit
-  this site's style" too. Agents: `vau browser style [site]` (`--css`, `--remove`).
+  this site's style" too. Agents: `vau browser style [site]` (`--css`, `--remove`); a page's dark mode fixed this way goes in
+  `@media (prefers-color-scheme: dark)` (its help says how).
 - Dark pages (setting `darkPages`, on by default): while the app's look is dark, pages follow it from their first
   frame, never white while they load. A page with a dark look of its own, by its site (pages are told the user prefers
   dark) or by a style of the vault's for it (above), shows it as it is: each page is judged as it looks with its style,

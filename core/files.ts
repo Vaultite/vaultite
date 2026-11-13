@@ -49,9 +49,9 @@ function splitext(rel: string): [string, string] {
 /** Advanced Slides' themes, read (never written) by a deck's `theme: css/….css`. */
 const SLIDE_THEMES = ".obsidian/plugins/obsidian-advanced-slides/css/"
 
-/** The app's settings files, reachable by exact path even with hidden files off: .vaultite/**.{json,md,vim}, and the
+/** The app's settings files, reachable by exact path even with hidden files off: .vaultite/**.{json,md,vim,css} (site styles), and the
  *  snippets and themes folders. */
-const SETTINGS = /^\.vaultite\/(?:(?:[^./][^/]*\/)*[^./][^/]*\.(?:json|md|vim)|(?:snippets|themes)(?:\/[^./][^/]*)*)$/
+const SETTINGS = /^\.vaultite\/(?:(?:[^./][^/]*\/)*[^./][^/]*\.(?:json|md|vim|css)|(?:snippets|themes)(?:\/[^./][^/]*)*)$/
 
 /** A safe vault-relative path, or a 400. Hidden ones only when Settings shows hidden files, or (`explicit`: opening
  *  one file by its path) the app's settings files, or (`trash`: restoring) something in .trash. */

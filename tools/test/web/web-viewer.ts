@@ -122,3 +122,20 @@ import { check } from "../lib.ts"
   check("blocked elements: … and leaves it with others", d.body.includes("## youtube.com\n\n- `youtube.com##ytd-reel-shelf-renderer` Shorts\n- `youtube.com###related`\n"), d.body)
   check("blocked elements: what isn't a rule isn't made one", makeRule("a\nb") === null && makeRule(".x", "not a site!") === null && makeRule("## heading") === null)
 }
+
+// ---------- Browser: site styles win over the site's own (plugins/core/web-viewer/sitestyles.ts) ----------
+{
+  const { winning } = await import("../../../plugins/core/web-viewer/sitestyles.ts")
+  const out = winning(`/* a; {comment} */ @import url("a;b.css");
+@media (prefers-color-scheme: dark) { body { background: var(--vault-background); background-image: none } a:link { color: red !important } }
+@keyframes spin { from { opacity: 0 } to { opacity: 1 } }
+@font-face { font-family: X; src: url("x;y.woff") }
+.box { color: blue; &:hover { color: green; } content: "a;}b" }`)
+  check("Browser: a site style's declarations are !important, a shorthand with a var() kept as written",
+    out.includes("background: var(--vault-background) !important;") && out.includes("background-image: none !important}")
+    && out.includes("color: red !important }") && !out.includes("!important !important"), out)
+  check("Browser: a site style's keyframes, font faces, imports and comments are left as they may be",
+    out.includes("from { opacity: 0 }") && out.includes(`src: url("x;y.woff") }`) && out.includes(`@import url("a;b.css");`) && !out.includes("comment"), out)
+  check("Browser: a site style's nested rules and strings with braces",
+    out.includes("color: blue !important;") && out.includes("color: green !important;") && out.includes(`content: "a;}b" !important}`), out)
+}

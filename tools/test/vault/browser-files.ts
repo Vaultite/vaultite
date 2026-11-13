@@ -60,6 +60,8 @@ export default async ($: VaultTest) => {
   check("browser style of a site without one: none yet, and what a new one starts as", r.site === "youtube.com" && r.css === null && r.template.includes("--vault-background"), r)
   ;[, r] = await api("POST", "ops/web-viewer.style", { site: "youtube.com", css: "html { background: var(--vault-background) }" })
   check("… writes its file", r.written && read(`${SITES}/youtube.com.css`) === "html { background: var(--vault-background) }\n", r)
+  ;[, r] = await api("GET", `file?path=${SITES}/youtube.com.css`)
+  check("… which opens by its path, as Edit its style does, with hidden files off", r.text === "html { background: var(--vault-background) }\n", r)
   const [code] = await api("POST", "ops/web-viewer.style", { site: "not a site" })
   check("… a site it can't be isn't one", code === 400, code)
   write(`${SITES}/notes.txt`, "not a style")

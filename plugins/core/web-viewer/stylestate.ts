@@ -2,7 +2,7 @@
 // as variables, told to the desktop app (electron/browser/sitestyles.ts) as either changes; a site's file edited beside it.
 import { useEffect, useState } from "react"
 import { getStore, notifyError, onLook, op, openInSplit, useStore, webPages } from "@vaultite"
-import { COLORS, FONTS, siteName, styleFile, template, type SiteStyle } from "./sitestyles"
+import { COLORS, FONTS, siteName, styleFile, template, winning, type SiteStyle } from "./sitestyles"
 import { settings } from "./state"
 
 const NONE: never[] = []
@@ -47,54 +47,6 @@ export function useLookBackground() {
   const [color, setColor] = useState(background)
   useEffect(() => onLook(() => setColor(background())), [])
   useEffect(() => { if (color) void webPages?.look?.(color).catch(() => {}) }, [color])
-}
-
-/** A declaration block's declarations, split at its top-level semicolons (not one in a string or a url()). */
-function declarations(text: string) {
-  const out: string[] = []
-  let cur = "", depth = 0, quote = ""
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (quote) {
-      cur += ch
-      if (ch === "\\") cur += text[++i] ?? ""
-      else if (ch === quote) quote = ""
-      continue
-    }
-    if (ch === "\"" || ch === "'") quote = ch
-    else if (ch === "(" || ch === "[") depth++
-    else if (ch === ")" || ch === "]") depth--
-    else if (ch === ";" && depth <= 0) { if (cur.trim()) out.push(cur.trim()); cur = ""; continue }
-    cur += ch
-  }
-  if (cur.trim()) out.push(cur.trim())
-  return out
-}
-
-const made = new Map<string, string>()
-/** `css` as the browser parses it, every declaration !important (the engine's layer then beats the page's own, even its
- *  !important); keyframes and font faces as they are (!important isn't allowed there). */
-export function winning(css: string) {
-  const had = made.get(css)
-  if (had !== undefined) return had
-  const sheet = new CSSStyleSheet()
-  try { sheet.replaceSync(css) } catch { return css }
-  const walk = (rules: CSSRuleList) => {
-    for (const r of rules) {
-      if (r instanceof CSSKeyframesRule || r instanceof CSSFontFaceRule) continue
-      const style = (r as CSSRule & { style?: unknown }).style
-      if (style instanceof CSSStyleDeclaration && style.length) {
-        style.cssText = declarations(style.cssText).map((d) => (/!\s*important\s*$/i.test(d) ? d : `${d} !important`)).join("; ")
-      }
-      const inner = (r as CSSRule & { cssRules?: unknown }).cssRules
-      if (inner instanceof CSSRuleList) walk(inner)
-    }
-  }
-  walk(sheet.cssRules)
-  const out = [...sheet.cssRules].map((r) => r.cssText).join("\n")
-  if (made.size > 200) made.clear()
-  made.set(css, out)
-  return out
 }
 
 const tell = (vars: string, styles: { site: string; css: string }[]) =>

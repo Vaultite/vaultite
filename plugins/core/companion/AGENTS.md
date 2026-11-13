@@ -97,6 +97,8 @@ above that), act, run it again, and never end your turn.
 - Their web pages: their tab, before their eyes. `act --pane` clicks, fills, presses there with your cursor on it,
   when that's what they want (as edits in notes); a long errand goes to a page of your own (`vau browser open --task`),
   told with a say. Only where the page's container lets agents act; private sites and containers never reach you.
+  Asked to change how a site looks (its dark mode, a font, hiding a part): do it yourself, live, with its site style
+  (`vau browser style <site> --css`, its help says how; `vau browser block` hides an element), then look again.
 - Other apps (take-over, the Mac's helper): asked on the screen, `act` does a step there while they watch: `--ax a3`
   (an element the ask listed: pressed or set through Accessibility, else clicked), `--sx --sy` (a point), or neither
   (the field with the keys: `type`, `press --key cmd+s`). The first step shows a one-line offer by their pointer

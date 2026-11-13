@@ -34,3 +34,43 @@ export const template = (site: string) => `/* ${site} in your vault's look: this
    html, body { background: var(--vault-background); color: var(--vault-foreground); font-family: var(--vault-font-ui); }
 */
 `
+
+type Block = "style" | "group" | "plain"
+const PLAIN = /^@(?:-webkit-)?(?:keyframes|font-face|property|counter-style|font-feature-values|font-palette-values|view-transition)\b/i
+const kindOf = (prelude: string, parent: Block): Block =>
+  parent === "plain" || PLAIN.test(prelude) ? "plain" : !prelude.startsWith("@") || /^@page\b/i.test(prelude) ? "style" : parent
+
+const made = new Map<string, string>()
+/** `css` with its style rules' declarations !important, to beat the page's own. As text: Chromium's CSSOM writes a var()
+ *  shorthand back as empty longhands once one of them follows it (background: var(--x); background-image: none). */
+export function winning(css: string) {
+  const had = made.get(css)
+  if (had !== undefined) return had
+  const stack: Block[] = []
+  let out = "", cur = "", quote = "", depth = 0
+  const end = (ch: string) => {
+    const d = cur.trim()
+    out += stack.at(-1) === "style" && /^-*[a-z][\w-]*\s*:/i.test(d) && !/!\s*important$/i.test(d) ? `${cur.trimEnd()} !important${ch}` : cur + ch
+    cur = ""
+  }
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i]
+    if (quote) {
+      cur += ch
+      if (ch === "\\") cur += css[++i] ?? ""
+      else if (ch === quote) quote = ""
+    } else if (ch === "/" && css[i + 1] === "*") {
+      const close = css.indexOf("*/", i + 2)
+      i = close < 0 ? css.length : close + 1
+    } else if (ch === "\"" || ch === "'") { quote = ch; cur += ch }
+    else if (ch === "(" || ch === "[") { depth++; cur += ch }
+    else if (ch === ")" || ch === "]") { depth = Math.max(0, depth - 1); cur += ch }
+    else if (depth || (ch !== "{" && ch !== ";" && ch !== "}")) cur += ch
+    else if (ch === "{") { stack.push(kindOf(cur.trim(), stack.at(-1) ?? "group")); out += `${cur}{`; cur = "" }
+    else { end(ch); if (ch === "}") stack.pop() }
+  }
+  out += cur
+  if (made.size > 200) made.clear()
+  made.set(css, out)
+  return out
+}

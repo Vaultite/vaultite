@@ -809,6 +809,12 @@ a canvas, white paper and black text onto the card and foreground in the dark, n
 site follows the vault's scheme. Prefer selectors that last (a custom element's name, an id, a semantic attribute). The
 user turns a site's style off in the page's Shields menu (setting unstyled).
 
+A page's dark mode: while the app is dark, a light page is darkened by Chromium's auto dark mode, which can leave a
+mid-light box (#ccc) light under text it made light. A style that makes the page dark itself replaces that: put it in
+@media (prefers-color-scheme: dark) to leave the light look alone, the page's background and boxes onto
+--vault-background and --vault-card, its text --vault-foreground, links --vault-primary. Read the page's colours first
+(vau browser evaluate <tab> with getComputedStyle), then check them again once written: it applies at once, no reload.
+
   vau browser style                          (the sites that have one)
   vau browser style youtube.com              (its CSS and file)
   vau browser style youtube.com --css "$(cat youtube.css)"
