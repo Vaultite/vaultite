@@ -49,14 +49,31 @@ export function sourceSnapshot(): Snapshot {
   }
 }
 
+const QUOTES = "\"'`"
+function stringEnd(src: string, i: number) {
+  const q = src[i]
+  for (i++; i < src.length && src[i] !== q; i++) if (src[i] === "\\") i++
+  return i
+}
+
 function braced(src: string, at: number) {
   let depth = 0
   for (let i = at; i < src.length; i++) {
     const ch = src[i]
-    if (ch === '"' || ch === "'" || ch === "`") {
-      for (i++; i < src.length && src[i] !== ch; i++) if (src[i] === "\\") i++
-    } else if (ch === "{") depth++
+    if (QUOTES.includes(ch)) i = stringEnd(src, i)
+    else if (ch === "{") depth++
     else if (ch === "}" && --depth === 0) return src.slice(at, i + 1)
+  }
+  return src.slice(at)
+}
+
+function valueAt(src: string, at: number) {
+  let depth = 0
+  for (let i = at; i < src.length; i++) {
+    const ch = src[i]
+    if (QUOTES.includes(ch)) i = stringEnd(src, i)
+    else if ("([{".includes(ch)) depth++
+    else if ((")]}".includes(ch) && depth-- === 0) || (ch === "," && depth === 0)) return src.slice(at, i)
   }
   return src.slice(at)
 }
@@ -160,14 +177,15 @@ export function commandList(vaultPlugins: PluginDir[]): CommandDef[] {
 
 function scanCommands(files: string[]): CommandDef[] {
   const out = new Map<string, CommandDef>()
-  const re = /\{\s*id:\s*"([\w-]+:[\w-]+)",\s*name:\s*"([^"]+)"(?:,\s*keys:\s*([^\n]*?)(?:,\s*(?:when|run):|\s*\}))?/g
+  const re = /\{\s*id:\s*"([\w-]+:[\w-]+)",\s*name:\s*"([^"]+)"(,\s*keys:\s*)?/g
   for (const f of files) {
     let src: string
     try { src = fs.readFileSync(f, "utf8") } catch { continue }
     for (const m of src.matchAll(re)) {
       if (out.has(m[1])) continue
-      const keys = [...(m[3] ?? "").matchAll(/"((?:[^"\\]|\\.)+)"/g)].map((k) => k[1].replace(/\\(.)/g, "$1"))
-      out.set(m[1], { id: m[1], name: m[2], keys, note: /desktopApp/.test(m[3] ?? "") ? "desktop app only" : undefined })
+      const expr = m[3] ? valueAt(src, m.index + m[0].length) : ""
+      const keys = [...new Set([...expr.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map((k) => k[1].replace(/\\(.)/g, "$1")))]
+      out.set(m[1], { id: m[1], name: m[2], keys, note: /desktopApp/.test(expr) ? "desktop app only" : undefined })
     }
   }
   return [...out.values()].sort((a, b) => a.id.localeCompare(b.id))
