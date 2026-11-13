@@ -9,6 +9,7 @@ import { sanitizeHtml } from "@/core/sanitize"
 import { joinText } from "../../core/dictationtext"
 import { CURSOR_SPRING, glide, type Glide } from "@/core/spring"
 import { makePilot, type PenScript, type Pilot } from "@/core/pilot"
+import { trackSoon } from "@/core/unsaved"
 import { type Sample, TRAIL, trailPieces } from "@/core/trail"
 import { type Cue, cueLength, playCue } from "@/core/cues"
 import { penSound } from "@/core/pensound"
@@ -75,6 +76,7 @@ function frame(t: number) {
 }
 let clockOff = Date.now() - performance.now()
 const clock = () => performance.now() + clockOff
+trackSoon("the cursor's motion", () => raf !== 0)
 const kick = () => { if (!raf) { clockOff = Date.now() - performance.now(); raf = requestAnimationFrame(frame) } }
 
 const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean; at: Point | null; sound: boolean; inked: { x: number; y: number; t: number } | null } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, at: null, sound: false, inked: null }

@@ -8,6 +8,7 @@ import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } 
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER, waitForPen } from "./pen"
 import type { Act, Shown } from "./index"
 import { HOLD } from "./hold"
+import { trackSoon } from "../core/unsaved"
 
 const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
 
@@ -33,8 +34,8 @@ export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: 
   useEffect(() => {
     const next = times.find((t) => t0 + t > now)
     if (next === undefined || !Number.isFinite(next)) return
-    const id = setTimeout(() => setNow(Date.now()), t0 + next - Date.now() + 5)
-    return () => clearTimeout(id)
+    const id = setTimeout(() => setNow(Date.now()), t0 + next - Date.now() + 5), off = trackSoon("a drawing's next beat", () => true)
+    return () => { clearTimeout(id); off() }
   }, [now, times, t0])
   const b0 = born.get(d.id)!, beat = b0.beat = Math.max(b0.beat ?? (Number.isFinite(times[0]) ? 0 : -1), times.filter((t) => t0 + t <= now).length - 1)
   const [naturals, setNaturals] = useState<Record<string, [number, number]>>({})
@@ -221,8 +222,8 @@ function Typed({ text, delay }: { text: string; delay: number }) {
   const [n, setN] = useState(() => (delay <= 0 || still() ? text.length : 0))
   useEffect(() => {
     if (n >= text.length) return
-    const id = setTimeout(() => setN((k) => k + 1), n === 0 ? delay : Math.min(30, 480 / text.length))
-    return () => clearTimeout(id)
+    const id = setTimeout(() => setN((k) => k + 1), n === 0 ? delay : Math.min(30, 480 / text.length)), off = trackSoon("a label typing in", () => true)
+    return () => { clearTimeout(id); off() }
   }, [n, text, delay])
   return <><span>{text.slice(0, n)}</span><span aria-hidden className="invisible">{text.slice(n)}</span></>
 }

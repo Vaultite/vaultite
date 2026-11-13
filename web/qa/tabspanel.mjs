@@ -3,7 +3,8 @@
 //   node web/qa/tabspanel.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
+import { qa, until } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/tabspanel-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -22,14 +23,15 @@ if (notes.length < 3) { console.error("needs the sandbox vault (vau sandbox <fol
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
   await page.goto(`${B}/#new`)
+  await ui.saved()
   await page.evaluate(() => localStorage.removeItem("vaultite.tabs"))
   await page.reload()
   await page.waitForSelector("[data-tabs-panel]")
   for (const p of notes) {
-    await page.click("[data-tab-bar] button[aria-label='New tab']"); await wait(200)
-    await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await wait(400)
+    await page.click("[data-tab-bar] button[aria-label='New tab']"); await ui.idle()
+    await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await ui.idle()
   }
   const rows = () => page.$$eval("[data-open-tabs] [data-open-tab]", (els) => els.map((e) => ({ id: e.dataset.openTab, label: e.textContent.trim(), on: e.className.includes("font-medium") })))
   const barTabs = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => els.map((e) => e.textContent.trim()))
@@ -60,19 +62,19 @@ try {
   // (a closed tab's row shrinks away, a new one grows in: 5ce778fd; measured once they're done, not scroll-driven ones)
   const still = () => page.evaluate(() => Promise.all(document.querySelector("[data-tabs-panel]").getAnimations({ subtree: true })
     .filter((a) => a.timeline === document.timeline && a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))))
-  const fill = (p) => page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p).then(() => wait(500))
+  const fill = (p) => page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p).then(() => ui.idle())
   await still()
   let g = await geo()
   check("a New tab row ends the tabs, a tab row's size and indent", g.row?.label.startsWith("New tab") && g.row.after && g.row.h === g.last.h && g.row.left === g.last.left && g.row.top > g.last.top, g)
   check("… the heading has no + of its own", !(await page.$("[data-tabs-panel] [data-heading=Tabs] button[aria-label='New tab']")))
-  await page.hover(NEW); await wait(400)
+  await page.hover(NEW); await ui.idle()
   const caps = await page.$eval(NEW, (e) => { const k = e.querySelector("kbd")?.parentElement; return k ? { text: k.textContent, opacity: getComputedStyle(k).opacity } : null })
   check("… its keys show on hover", caps?.opacity === "1" && caps.text.length > 1, caps)
   await page.screenshot({ path: `${OUT}new-tab-row.png` })
 
   // A click: a blank tab at the end, in the row's place, though the first tab is the one on screen.
   let before = await ids()
-  await page.click(`[data-open-tab="${before[0]}"]`); await wait(300)
+  await page.click(`[data-open-tab="${before[0]}"]`); await ui.idle()
   await page.click(NEW)
   let after = await until(async () => { const x = await ids(); return x.length === before.length + 1 ? x : null }, 3000)
   check("a click opens a blank tab at the list's end", after?.slice(0, -1).join() === before.join() && (await rows()).at(-1)?.on && await page.evaluate(() => location.hash) === "#new", [before, after])
@@ -84,7 +86,7 @@ try {
 
   // ⌘T (tab:new, its keys here) still opens it beside the tab on screen.
   before = await ids()
-  await page.click(`[data-open-tab="${before[0]}"]`); await wait(300)
+  await page.click(`[data-open-tab="${before[0]}"]`); await ui.idle()
   await page.keyboard.press("ControlOrMeta+Shift+KeyY")
   after = await until(async () => { const x = await ids(); return x.length === before.length + 1 ? x : null }, 3000)
   check("⌘T still opens one beside the tab on screen", after?.[0] === before[0] && after[1] !== before[1] && (await rows())[1]?.on, [before, after])
@@ -92,18 +94,17 @@ try {
 
   // The tab bar's + opens it at the end, where the + is, as in a browser.
   before = await ids()
-  await page.click(`[data-open-tab="${before[0]}"]`); await wait(300)
+  await page.click(`[data-open-tab="${before[0]}"]`); await ui.idle()
   await page.click("[data-tab-bar] button[aria-label='New tab']")
   after = await until(async () => { const x = await ids(); return x.length === before.length + 1 ? x : null }, 3000)
   check("the tab bar's + opens one at the end", after?.slice(0, -1).join() === before.join() && (await rows()).at(-1)?.on, [before, after])
   await fill(spare[4])
 
   // A double-click under the list (Tabs the sidebar's last panel: the room under it) opens one at the end too.
-  writeFileSync(sidebars.p, JSON.stringify({ left: ["pages:pages", "tabs:tabs"], right: [], collapsed: [] }) + "\n")
+  await ui.sees(".vaultite/sidebars.json", () => writeFileSync(sidebars.p, JSON.stringify({ left: ["pages:pages", "tabs:tabs"], right: [], collapsed: [] }) + "\n"))
   await until(() => page.evaluate(() => [...document.querySelectorAll("[data-sidebar-body=left] > [data-panel]")].at(-1)?.dataset.panel === "tabs:tabs"), 8000)
-  await wait(300)
   before = await ids()
-  await page.click(`[data-open-tab="${before[0]}"]`); await wait(300)
+  await page.click(`[data-open-tab="${before[0]}"]`); await ui.idle()
   const under = await page.evaluate(() => {
     const body = document.querySelector("[data-sidebar-body=left]").getBoundingClientRect(), row = document.querySelector("[data-tabs-panel] [data-new-tab-row]").getBoundingClientRect()
     const x = Math.round(body.left + 40), y = Math.round(Math.min(body.bottom - 12, row.bottom + 80))
@@ -116,9 +117,9 @@ try {
   await fill(spare[2])
 
   // newtab.json `opens: switcher`: the row opens the switcher (no tab yet), whose pick opens at the list's end.
-  writeFileSync(newtab.p, JSON.stringify({ opens: "switcher" }) + "\n"); await wait(1500)
+  await ui.sees(".vaultite/newtab.json", () => writeFileSync(newtab.p, JSON.stringify({ opens: "switcher" }) + "\n"))
   before = await ids()
-  await page.click(`[data-open-tab="${before[0]}"]`); await wait(300)
+  await page.click(`[data-open-tab="${before[0]}"]`); await ui.idle()
   await page.click(NEW)
   const SEARCH = '[role="dialog"][aria-label="Search"]'
   check("opens switcher: the row opens the switcher, no tab yet", !!(await until(() => page.$(SEARCH), 8000)) && (await ids()).length === before.length)
@@ -133,13 +134,13 @@ try {
   await until(() => page.evaluate(() => document.querySelector("[data-sidebar-body=left] > [data-panel]")?.dataset.panel === "tabs:tabs"), 8000)
 
   // A phone's drawer has the row too (no hover there: always drawn), and a tap opens a tab.
-  const phone = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }))
+  const phone = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })), onPhone = app(phone)
   await phone.goto(B)
-  await phone.locator("[data-phone-header] button[aria-label='Open sidebar']").tap({ timeout: 30000 }); await wait(700)
+  await phone.locator("[data-phone-header] button[aria-label='Open sidebar']").tap({ timeout: 30000 }); await onPhone.idle()
   const prow = phone.locator("[data-phone-drawer] [data-new-tab-row]")
   check("phone: the drawer's Tabs ends in the New tab row", await prow.isVisible(), await prow.count())
   await phone.screenshot({ path: `${OUT}phone-drawer.png` })
-  await prow.tap(); await wait(1200)
+  await prow.tap(); await onPhone.idle()
   check("phone: a tap opens a new tab", await phone.evaluate(() => location.hash) === "#new" && !(await phone.locator("[data-phone-drawer] [data-new-tab-row]").isVisible()), await phone.evaluate(() => location.hash))
   await phone.close()
 
@@ -152,14 +153,14 @@ try {
   check("its pane shows what its row says", (await title())?.startsWith(r.find((x) => x.on).label), [await title(), r])
   check("a pane alone has no strip of tabs: its row is its handle", !(await page.$("[data-pane-area] > section:not([data-away]) [data-place-strip]")))
   const other = r.find((x) => !x.on)
-  await page.click(`[data-open-tab="${other.id}"]`); await wait(300)
+  await page.click(`[data-open-tab="${other.id}"]`); await ui.idle()
   check("the panel still switches tabs", (await title())?.startsWith(other.label), await title())
   await page.screenshot({ path: `${OUT}bar-off.png` })
 
   // A split: one joined row, a half per pane.
-  await page.click(`[data-open-tab="${other.id}"]`); await wait(200)
-  await page.click(`[data-open-tab="${other.id}"]`, { button: "right" }); await wait(200)
-  await page.click("[role=menu] >> text=Split right"); await wait(400)
+  await page.click(`[data-open-tab="${other.id}"]`); await ui.idle()
+  await ui.menu.context(page.locator(`[data-open-tab="${other.id}"]`))
+  await ui.menu.pick("Split right")
   const halves = await page.$$eval(`[data-open-tab="${other.id}"] [data-ui^="pane:"]`, (els) => els.length)
   check("a split is one row with a half per pane", halves === 2, halves)
   check("…each pane with the strip of its tabs on top", !!(await until(async () => (await page.$$("[data-pane-area] > section:not([data-away]) > [data-place-strip]")).length === 2, 4000)))

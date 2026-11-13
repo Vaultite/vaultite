@@ -1,7 +1,8 @@
 // The keyboard into the text with Vim on (FileView's useTextFocus): ⌘E and ⌘O put the cursor where it should, and
 // `vau open` doesn't take the keys from a field. WRITES "Qa vimfocus/" and plugins.json's `enabled`: throwaway only.
 //   node web/qa/vimfocus.mjs <base url> [out dir]
-import { apiAt, palette, qa, SHOTS, until, wait, command } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
+import { apiAt, palette, qa, SHOTS, until, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const LONG = "Qa vimfocus/Long.md", TARGET = "Qa vimfocus/Target.md", OTHER = "Qa vimfocus/Other.md"
 const json = { "Content-Type": "application/json" }
@@ -23,12 +24,12 @@ await vim(true)
 const longText = await read(LONG)
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 })
-const page = watch(await ctx.newPage())
+const page = watch(await ctx.newPage()), ui = app(page)
 const top = () => page.evaluate(() => document.getElementById("main-scroll").scrollTop)
 const quick = async (name) => {
-  await page.keyboard.press("ControlOrMeta+o"); await wait(400)
-  await page.keyboard.type(name); await wait(400)
-  await page.keyboard.press("Enter"); await wait(1200)
+  await page.keyboard.press("ControlOrMeta+o"); await page.waitForSelector("[role=dialog] input:focus")
+  await page.keyboard.type(name); await ui.idle()
+  await page.keyboard.press("Enter"); await ui.idle()
 }
 /** Where the keys are: in a writable editor (and which file), and the cursor's line text and place on screen. */
 const keys = () => page.evaluate(() => {
@@ -43,14 +44,14 @@ const keys = () => page.evaluate(() => {
   return { inText, file, line, y, inSight: y !== null && s ? y >= s.top && y < s.bottom : false }
 })
 
-await page.goto(`${B}#file/${encodeURIComponent(LONG)}`); await wait(2000)
-await command(page, "Switch to reading", 800)
+await page.goto(`${B}#file/${encodeURIComponent(LONG)}`); await page.locator(".cm-content").first().waitFor(); await ui.idle()
+await command(page, "Switch to reading", 0); await ui.idle()
 check("the note is in reading view", await page.locator(".cm-content[contenteditable=false]").count() > 0)
 await page.evaluate(() => document.activeElement?.blur())
 
 // Reading: j scrolls. Then ⌘E: the cursor in the text, on a line in sight.
 for (let i = 0; i < 8; i++) await page.keyboard.press("j")
-await wait(300)
+await ui.idle()
 const t0 = await top()
 check(`j scrolls the reading view (${t0})`, t0 > 200)
 await page.keyboard.press("ControlOrMeta+e")
@@ -61,32 +62,32 @@ check("the cursor is on a line in sight", k.inSight)
 check(`the page stayed where it was read (${t0} -> ${await top()})`, Math.abs((await top()) - t0) < 80)
 // (down two lines: by where it's drawn, as its line may be one of the blank ones between)
 const was = k
-await page.keyboard.press("j"); await page.keyboard.press("j"); await wait(300)
+await page.keyboard.press("j"); await page.keyboard.press("j"); await ui.idle()
 k = await keys()
 check(`j in normal mode moves the cursor (${JSON.stringify(was.line)} at ${was.y} -> ${JSON.stringify(k.line)} at ${k.y})`, k.inText && k.y !== null && was.y !== null && k.y > was.y + 20)
-await wait(1500)
+await ui.saved()
 check("j typed nothing into the note", (await read(LONG)) === longText)
 await page.screenshot({ path: `${OUT}vimfocus-edit.png` })
 
 // ⌘E back to reading: j scrolls again.
-await page.keyboard.press("ControlOrMeta+e"); await wait(1000)
+await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 k = await keys()
 check("⌘E back to reading takes the keys out of the text", !k.inText && (await page.locator(".cm-content[contenteditable=true]").count()) === 0)
 const t1 = await top()
-await page.keyboard.press("j"); await page.keyboard.press("j"); await wait(300)
+await page.keyboard.press("j"); await page.keyboard.press("j"); await ui.idle()
 check(`j scrolls again in reading (${t1} -> ${await top()})`, (await top()) > t1 + 40)
-await page.keyboard.press("ControlOrMeta+e"); await wait(1000)
+await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 check("⌘E to editing again: the keys are in the text", (await keys()).inText)
 for (let i = 0; i < 4; i++) await page.keyboard.press("j")
-await wait(200)
+await ui.idle()
 const leftOn = (await keys()).line
 
 // ⌘O: the next note opens with the cursor in it, and coming back finds the cursor where it was left.
-await page.keyboard.press("Escape"); await wait(200)
+await page.keyboard.press("Escape"); await ui.idle()
 await quick("Target")
 k = await keys()
 check(`⌘O opens Target with the cursor in it (${JSON.stringify(k)})`, k.inText && k.file === TARGET)
-await page.keyboard.press("j"); await wait(200)
+await page.keyboard.press("j"); await ui.idle()
 check(`j moves down in Target (normal mode) (${(await keys()).line})`, (await keys()).line === "")
 await quick("Long")
 k = await keys()
@@ -94,21 +95,21 @@ check("⌘O back to Long: the cursor in it", k.inText && k.file === LONG)
 check(`the cursor is where it was left (${leftOn} / ${k.line})`, k.line === leftOn)
 
 // ⌘E switches only the pane in front: a split's other pane keeps its own view.
-await palette(page, "Split right"); await wait(800)
+await palette(page, "Split right", 0); await ui.idle()
 const panes = () => page.evaluate(() => [...document.querySelectorAll("[data-pane]")].map((p) => {
   const c = p.querySelector(".cm-content")
   return c ? c.contentEditable : null
 }))
 let ps = await panes()
 check(`two panes, both editing (${ps})`, ps.length >= 2 && ps.every((x) => x === "true"))
-await page.keyboard.press("ControlOrMeta+e"); await wait(1200)
+await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 ps = await panes()
 check(`⌘E in one pane: it reads, the other still edits (${ps})`, ps.length === 2 && ps.filter((x) => x === "false").length === 1 && ps.includes("true"))
-await page.keyboard.press("ControlOrMeta+e"); await wait(1200)
+await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 ps = await panes()
 check(`⌘E again: both edit (${ps})`, ps.every((x) => x === "true"))
 await page.screenshot({ path: `${OUT}vimfocus-split.png` })
-await command(page, "Close all other", 800)
+await command(page, "Close all other", 0); await ui.idle()
 
 // A file opened from outside doesn't take the keys from a field being typed in.
 await page.evaluate(() => {
@@ -117,7 +118,8 @@ await page.evaluate(() => {
   document.body.append(f); f.focus()
 })
 await fetch(`${B}api/ui`, { method: "POST", headers: json, body: JSON.stringify({ action: "open", path: OTHER }) })
-await wait(1500)
+await until(() => page.locator(`[data-path="${OTHER}"]`).count(), 8000)
+await ui.idle()
 const still = await page.evaluate(() => ({ id: document.activeElement?.id, shown: !!document.querySelector(`[data-path="Qa vimfocus/Other.md"]`) }))
 check("the file opened from outside is shown", still.shown)
 check(`the field being typed in keeps the keys (${still.id})`, still.id === "qa-field")

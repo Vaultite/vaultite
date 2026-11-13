@@ -17,6 +17,7 @@ import { share } from "@/core/share"
 import { SharedWith } from "@/components/SharedWith"
 import { selecting } from "@/core/select"
 import { signal } from "@/core/signal"
+import { trackSoon } from "@/core/unsaved"
 
 let out: Side | null = null
 const subs = signal()
@@ -77,8 +78,9 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
     if (side) { setDrawn(side); requestAnimationFrame(() => place(side, 1, 280)); return }
     if (!drawn) return
     place(drawn, 0, 240)
-    const t = setTimeout(() => { if (!out && !drag.current) { place(drawn, 0); setDrawn(null) } }, 260)
-    return () => clearTimeout(t)
+    let due = true
+    const t = setTimeout(() => { due = false; if (!out && !drag.current) { place(drawn, 0); setDrawn(null) } }, 260), off = trackSoon("the drawer closing", () => due)
+    return () => { clearTimeout(t); off() }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs only when a drawer opens or closes
   }, [side])
 

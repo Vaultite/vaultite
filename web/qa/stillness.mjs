@@ -4,8 +4,9 @@
 //   node web/qa/stillness.mjs <base url>
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { apiAt, command, openPalette, qa, until, wait } from "./lib/qa.mjs"
-const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
+import { app } from "./lib/app.mjs"
+import { apiAt, command, openPalette, qa } from "./lib/qa.mjs"
+const { args: [B], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const api = apiAt(B)
 const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^VAULTITE_/.test(k)))
 const vau = (...a) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...a], { env: { ...clean, VAULTITE_URL: B.replace(/\/$/, "") }, encoding: "utf8" })
@@ -54,65 +55,66 @@ async function pass(label, size, { reduce = false, pref = null }) {
   await fetch(`${B}api/workspaces/1`, { method: "DELETE" })
   const ctx = await browser.newContext({ ...size, reducedMotion: reduce ? "reduce" : "no-preference" })
   await ctx.addInitScript(recorder)
-  const page = watch(await ctx.newPage(), { console: true, label })
+  const page = watch(await ctx.newPage(), { console: true, label }), ui = app(page)
+  const cmd = async (name) => { await command(page, name, 0); await ui.idle() }
   const moved = {}
-  const step = async (what, act, settle = 600) => {
+  const step = async (what, act) => {
     await page.evaluate(() => { window.__moved.length = 0 })
     await act()
-    await wait(settle)
+    await ui.idle()
     moved[what] = await page.evaluate(() => [...new Set(window.__moved)])
   }
   const phone = size === PHONE
   await page.goto(`${B}#file/${encodeURIComponent(files[0])}`)
   await page.waitForSelector(phone ? "[data-phone-bar]" : "[data-tab-bar]")
-  await wait(1200)
+  await ui.idle()
   if (pref) check(`${label}: the app's setting is on the page`, await page.evaluate(() => document.documentElement.dataset.animation) === pref)
-  const toast = () => step("toast", async () => { vau("notify", "Still here"); await page.waitForSelector("[data-sonner-toast], [role=status]", { timeout: 5000 }).catch(() => {}) }, 900)
+  const toast = () => step("toast", async () => { vau("notify", "Still here"); await page.waitForSelector("[data-sonner-toast], [role=status]", { timeout: 5000 }).catch(() => {}) })
   if (!phone) {
     const tabs = page.locator("[data-tab-bar] [data-tab-id]")
     await step("new tab", () => page.click("[data-tab-bar] [data-slide=new]"))
     await step("open a file", () => page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(files[1])}`))
     await step("switch tabs", () => tabs.first().click())
-    await step("left sidebar off and on", async () => { await page.keyboard.press("ControlOrMeta+\\"); await wait(500); await page.keyboard.press("ControlOrMeta+\\") })
-    await step("right sidebar", async () => { await command(page, "Show right sidebar"); await wait(400); await command(page, "Hide right sidebar") })
-    await step("sheet", async () => { await command(page, "Open hotkeys"); await page.waitForSelector("dialog[open]"); await wait(500); await page.keyboard.press("Escape") })
-    await step("menu", async () => { await tabs.first().click({ button: "right" }); await page.waitForSelector("[role=menu]"); await wait(300); await page.keyboard.press("Escape") })
-    await step("palette", async () => { await openPalette(page); await page.waitForSelector("[role=dialog] input"); await wait(300); await page.keyboard.press("Escape") })
+    await step("left sidebar off and on", async () => { await page.keyboard.press("ControlOrMeta+\\"); await ui.idle(); await page.keyboard.press("ControlOrMeta+\\") })
+    await step("right sidebar", async () => { await cmd("Show right sidebar"); await cmd("Hide right sidebar") })
+    await step("sheet", async () => { await cmd("Open hotkeys"); await page.waitForSelector("dialog[open]"); await ui.idle(); await page.keyboard.press("Escape") })
+    await step("menu", async () => { await tabs.first().click({ button: "right" }); await page.waitForSelector("[role=menu]"); await ui.idle(); await page.keyboard.press("Escape") })
+    await step("palette", async () => { await openPalette(page); await page.waitForSelector("[role=dialog] input"); await ui.idle(); await page.keyboard.press("Escape") })
     await toast()
     await step("drag a tab", async () => {
       const b = await tabs.first().boundingBox()
       await page.mouse.move(b.x + 20, b.y + b.height / 2); await page.mouse.down()
-      for (let i = 1; i <= 12; i++) { await page.mouse.move(b.x + 20 + i * 20, b.y + b.height / 2); await wait(16) }
+      for (let i = 1; i <= 12; i++) { await page.mouse.move(b.x + 20 + i * 20, b.y + b.height / 2); await page.evaluate(() => new Promise(requestAnimationFrame)) }
       await page.mouse.up()
-    }, 900)
-    await step("split and close a pane", async () => { await command(page, "Split right"); await wait(500); await command(page, "Close pane") })
-    await step("close a tab", () => command(page, "Close tab"))
+    })
+    await step("split and close a pane", async () => { await cmd("Split right"); await cmd("Close pane") })
+    await step("close a tab", () => cmd("Close tab"))
     // (stacked tabs scroll their row to the one picked)
     await step("stacked tabs", async () => {
-      for (const f of files.slice(2, 6)) { await page.click("[data-tab-bar] [data-slide=new]"); await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await wait(300) }
-      await command(page, "Stack tabs"); await wait(600)
-      await command(page, "Go to tab #1", 600)
-    }, 900)
+      for (const f of files.slice(2, 6)) { await page.click("[data-tab-bar] [data-slide=new]"); await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await ui.idle() }
+      await cmd("Stack tabs")
+      await cmd("Go to tab #1")
+    })
   } else {
-    await step("new tab", () => page.click("[data-bar=new]"), 900)
+    await step("new tab", () => page.click("[data-bar=new]"))
     await step("open a file", () => page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(files[1])}`))
-    await step("tab list", async () => { await page.click("[data-tabs-button]"); await page.waitForSelector("dialog[open] [data-tabs-grid]"); await wait(600); await page.click("[data-sheet-done]") }, 900)
+    await step("tab list", async () => { await page.click("[data-tabs-button]"); await page.waitForSelector("dialog[open] [data-tabs-grid]"); await ui.idle(); await page.click("[data-sheet-done]") })
     await step("close a tab in the tab list", async () => {
-      await page.click("[data-tabs-button]"); await page.waitForSelector("dialog[open] [data-tabs-grid]"); await wait(600)
-      await page.locator("dialog[open] [data-tab-row] button[aria-label^='Close ']").first().click(); await wait(500)
+      await page.click("[data-tabs-button]"); await page.waitForSelector("dialog[open] [data-tabs-grid]"); await ui.idle()
+      await page.locator("dialog[open] [data-tab-row] button[aria-label^='Close ']").first().click(); await ui.idle()
       await page.click("[data-sheet-done]")
-    }, 900)
-    await step("back", () => page.click("[data-bar=back]"), 900)
-    await step("forward", () => page.click("[data-bar=forward]"), 900)
-    await step("left sidebar", async () => { await page.click("[aria-label='Open sidebar']"); await wait(500); await page.keyboard.press("Escape") })
+    })
+    await step("back", () => page.click("[data-bar=back]"))
+    await step("forward", () => page.click("[data-bar=forward]"))
+    await step("left sidebar", async () => { await page.click("[aria-label='Open sidebar']"); await ui.idle(); await page.keyboard.press("Escape") })
     if (await page.locator("[aria-label='Open right sidebar']").count())
-      await step("right sidebar", async () => { await page.click("[aria-label='Open right sidebar']"); await wait(500); await page.keyboard.press("Escape") })
+      await step("right sidebar", async () => { await page.click("[aria-label='Open right sidebar']"); await ui.idle(); await page.keyboard.press("Escape") })
     await step("sheet", async () => {
       const p = files.find((f) => f !== files[0]) ?? files[0]
       await page.evaluate((p) => { history.pushState({ sheet: 1 }, "", `${location.hash.split("/")[0]}/file/${encodeURIComponent(p)}`); dispatchEvent(new HashChangeEvent("hashchange")) }, p)
-      await page.waitForSelector("dialog[open]"); await wait(600); await page.click("[data-sheet-done]")
-    }, 900)
-    await step("menu", async () => { await page.click("[data-bar=menu]"); await page.waitForSelector("[role=menu]"); await wait(300); await page.keyboard.press("Escape") })
+      await page.waitForSelector("dialog[open]"); await ui.idle(); await page.click("[data-sheet-done]")
+    })
+    await step("menu", async () => { await page.click("[data-bar=menu]"); await page.waitForSelector("[role=menu]"); await ui.idle(); await page.keyboard.press("Escape") })
     await toast()
   }
   await ctx.close()

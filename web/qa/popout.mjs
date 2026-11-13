@@ -3,11 +3,15 @@
 //   node web/qa/popout.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"
-import { BACK_KEY, command, qa, until, wait } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
+import { BACK_KEY, command, qa, until } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 
 const [a, b, c] = readdirSync(path.join(VAULT, "Notes")).filter((f) => f.endsWith(".md")).slice(0, 3).map((f) => `Notes/${f}`)
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+const uis = new Map()
+ctx.on("page", (p) => uis.set(p, app(p)))
+const idle = (p) => uis.get(p).idle()
 const page = watch(await ctx.newPage())
 await page.goto(B)
 await page.waitForSelector("[aria-label='New tab']", { timeout: 30000 })
@@ -19,17 +23,18 @@ const listOf = (p, key) => p.evaluate((k) => {
 const leaves = (n) => (n.kids ? n.kids.flatMap(leaves) : [n])
 const focusedOf = (t) => leaves(t.root).find((x) => x.id === t.focus) ?? leaves(t.root)[0]
 const tabsOf = async (p, key) => (await listOf(p, key))?.tabs.map((t) => focusedOf(t).to.replace(/^file:/, "")) ?? null
-const hash = (p, f) => p.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`)
+const hash = async (p, f) => { await p.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await idle(p) }
+const cmd = async (p, name) => { const hit = await command(p, name, 0); await idle(p); return hit }
+const back = async (p) => { await p.keyboard.press(BACK_KEY); await idle(p) }
 
-await command(page, "Close all other tabs")
-await hash(page, a); await wait(400)
-await command(page, "Open new tab"); await hash(page, b); await wait(400)
-// b's history: c, then back to b.
-await hash(page, c); await wait(400); await page.keyboard.press(BACK_KEY); await wait(400)
+await cmd(page, "Close all other tabs")
+await hash(page, a)
+await cmd(page, "Open new tab"); await hash(page, b)
+await hash(page, c); await back(page)
 check("two tabs here", JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a, b]), await tabsOf(page, "main"))
 
 const popped = page.waitForEvent("popup")
-check("Move current tab to new window", await command(page, "Move current tab to new window"))
+check("Move current tab to new window", await cmd(page, "Move current tab to new window"))
 const pop = await popped
 watch(pop, { label: "popout" })
 await pop.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
@@ -42,26 +47,26 @@ check("its tab kept its history (Forward goes to where it was)", await until(asy
 }))
 
 // Its own tabs: a new one there leaves this window's as they are.
-await command(pop, "Open new tab"); await hash(pop, c); await wait(500)
+await cmd(pop, "Open new tab"); await hash(pop, c)
 check("a pop-out's tabs are its own", JSON.stringify(await tabsOf(pop, "pop")) === JSON.stringify([b, c]) && JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a]),
   [await tabsOf(pop, "pop"), await tabsOf(page, "main")])
 
 // Closing its last tab closes it.
-await command(pop, "Close current tab"); await wait(300)
+await cmd(pop, "Close current tab")
 const closed = pop.waitForEvent("close", { timeout: 5000 }).then(() => true, () => false)
-await command(pop, "Close current tab")
+await command(pop, "Close current tab", 0)
 check("closing a pop-out's last tab closes the window", await closed)
 
 // Back to the main window from the tab's menu.
 const menuItem = async (p, label) => {
   const it = p.locator("[role=menuitem]", { hasText: label }).first()
   if (!(await it.count())) { await p.keyboard.press("Escape"); return false }
-  await it.click(); await wait(300); return true
+  await it.click(); return true
 }
-await command(page, "Open new tab"); await hash(page, b); await wait(400)
-await hash(page, c); await wait(400); await page.keyboard.press(BACK_KEY); await wait(400)
+await cmd(page, "Open new tab"); await hash(page, b)
+await hash(page, c); await back(page)
 let popped3 = page.waitForEvent("popup")
-await command(page, "Move current tab to new window")
+await cmd(page, "Move current tab to new window")
 let pop3 = await popped3
 await pop3.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
 await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a]))
@@ -74,9 +79,9 @@ check("…its history came with it", await listOf(page, "main").then((l) => !!l?
 
 // Back by dragging it out of the pop-out onto the main window's tab bar, past the pop-out's right edge (the end of
 // the bar: it goes last).
-await page.locator("[data-tab-id]").nth(1).click(); await wait(200)
+await page.locator("[data-tab-id]").nth(1).click(); await idle(page)
 popped3 = page.waitForEvent("popup")
-await command(page, "Move current tab to new window")
+await cmd(page, "Move current tab to new window")
 pop3 = await popped3
 await pop3.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
 await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a]))
@@ -103,17 +108,17 @@ check("…and the emptied pop-out closed", await gone)
 // The tab bar's empty space: Hide tab bar (and Show tab bar on the title row left).
 const bar = await page.locator("[data-tab-strip]").first().boundingBox()
 const empty = async () => page.mouse.click(bar.x + bar.width - 60, bar.y + bar.height / 2, { button: "right" })
-await empty(); await wait(200)
+await empty(); await idle(page)
 check("the bar's empty space has Hide tab bar", await menuItem(page, "Hide tab bar"))
 check("…which hides it", await until(async () => (await page.locator("[data-tab-strip]").count()) === 0))
 // Hidden, with pane tab bars off, the note's bar is the window's title row: its empty part has the bar's menu.
 const fill = await page.locator("[data-view-bar-fill]:visible").first().boundingBox()
-await page.mouse.click(fill.x + fill.width - 4, fill.y + fill.height / 2, { button: "right" }); await wait(200)
+await page.mouse.click(fill.x + fill.width - 4, fill.y + fill.height / 2, { button: "right" }); await idle(page)
 check("…and Show tab bar brings it back", (await menuItem(page, "Show tab bar")) && await until(async () => (await page.locator("[data-tab-strip]").count()) === 1))
 
 // Open in new window: it stays here too.
 const popped2 = page.waitForEvent("popup")
-check("Open current tab in new window", await command(page, "Open current tab in new window"))
+check("Open current tab in new window", await cmd(page, "Open current tab in new window"))
 const pop2 = await popped2
 await pop2.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
 check("…and it's still here", JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a, b]), await tabsOf(page, "main"))
@@ -121,11 +126,11 @@ await pop2.close()
 
 // Torn off: a tab dragged out of the main window and let go clear of it goes on in a window of its own.
 const tb = await page.locator("[data-tab-id]").nth(1).boundingBox()
-const torn = page.waitForEvent("popup")
+const torn = page.waitForEvent("popup", { timeout: 5000 }).catch(() => null)
 await page.mouse.move(tb.x + 20, tb.y + tb.height / 2); await page.mouse.down()
 await page.mouse.move(tb.x + 40, tb.y + tb.height / 2, { steps: 3 })
 await page.mouse.move(1280 + 120, 400, { steps: 6 }); await page.mouse.up()
-const pop4 = await Promise.race([torn, wait(5000).then(() => null)])
+const pop4 = await torn
 check("a tab dragged out of the window and let go opens a window of its own", !!pop4)
 if (pop4) {
   await pop4.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
@@ -136,16 +141,16 @@ if (pop4) {
 
 // Tabs in the sidebar: the top of a pane is the tab on screen's (and the pane's), and a pop-out, which has no
 // sidebar, draws its tabs on top so they can be switched, right-clicked and dragged back.
-await command(page, "Open new tab"); await hash(page, b); await wait(400)
-check("Show tabs in the sidebar", await command(page, "Show tabs in the sidebar"))
+await cmd(page, "Open new tab"); await hash(page, b)
+check("Show tabs in the sidebar", await cmd(page, "Show tabs in the sidebar"))
 await until(async () => (await page.locator("[data-tab-strip]").count()) === 0)
 const top = await page.locator("[data-view-bar-fill]:visible").first().boundingBox()
-await page.mouse.click(top.x + top.width - 4, top.y + top.height / 2, { button: "right" }); await wait(200)
+await page.mouse.click(top.x + top.width - 4, top.y + top.height / 2, { button: "right" }); await idle(page)
 const topItems = await page.locator("[role=menuitem]").allInnerTexts()
 check("the top of a pane has the tab's menu", ["Close", "Split right", "Move to new window", "Copy path", "New tab", "Show tabs on top"].every((l) => topItems.includes(l)), topItems)
-await page.keyboard.press("Escape")
+await page.keyboard.press("Escape"); await idle(page)
 const popped5 = page.waitForEvent("popup")
-await command(page, "Move current tab to new window")
+await cmd(page, "Move current tab to new window")
 const pop5 = watch(await popped5, { label: "popout (tabs in the sidebar)" })
 check("a pop-out draws its tabs on top when they're in the sidebar", await until(async () => (await pop5.locator("[data-tab-strip] [data-tab-id]").count()) === 1, 15000))
 check("…while the main window keeps them in its sidebar", (await page.locator("[data-tab-strip]").count()) === 0)
@@ -153,14 +158,14 @@ await pop5.locator("[data-tab-id]").first().click({ button: "right" })
 const gone5 = pop5.waitForEvent("close", { timeout: 5000 }).then(() => true, () => false)
 check("…whose menu has Move to main window", await menuItem(pop5, "Move to main window"))
 check("…which brings it back", await gone5 && await until(async () => (await tabsOf(page, "main"))?.includes(b)), await tabsOf(page, "main"))
-check("Show tabs on top", await command(page, "Show tabs on top"))
+check("Show tabs on top", await cmd(page, "Show tabs on top"))
 
 // The other way: a main window's tab held over a pop-out shows there where it would land, as within a window, and
 // lands there (the pop-out torn off past the main window's right edge, so a point can be on it and off the main one).
-await page.bringToFront(); await wait(300)
-await command(page, "Close all other tabs"); await hash(page, a); await wait(400)
-await command(page, "Open new tab"); await hash(page, b); await wait(400)
-await command(page, "Open new tab"); await hash(page, c); await wait(400)
+await page.bringToFront(); await idle(page)
+await cmd(page, "Close all other tabs"); await hash(page, a)
+await cmd(page, "Open new tab"); await hash(page, b)
+await cmd(page, "Open new tab"); await hash(page, c)
 const tb7 = await page.locator("[data-tab-id]").nth(1).boundingBox()
 const torn7 = page.waitForEvent("popup")
 await page.mouse.move(tb7.x + 20, tb7.y + tb7.height / 2); await page.mouse.down()
@@ -173,12 +178,16 @@ await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stri
 {
   const cdp = await ctx.newCDPSession(pop7), { windowId } = await cdp.send("Browser.getWindowForTarget")
   const m = await page.evaluate(() => ({ x: screenX, w: outerWidth, y: screenY }))
-  await cdp.send("Browser.setWindowBounds", { windowId, bounds: { left: m.x + m.w + 40, top: m.y + 60 } }); await wait(300)
+  await cdp.send("Browser.setWindowBounds", { windowId, bounds: { left: m.x + m.w + 40, top: m.y + 60 } })
 }
-// Where the pop-out's page is on the screen, from its own pointer events, and the main page's.
+// Where the pop-out's page is on the screen, from its own pointer events once it's moved, and the main page's.
 await pop7.evaluate(() => addEventListener("pointermove", (e) => { window.__off = { x: e.screenX - e.clientX, y: e.screenY - e.clientY } }, true))
-await pop7.mouse.move(50, 50); await pop7.mouse.move(60, 60)
-const off7 = await pop7.evaluate(() => window.__off)
+const main7 = await page.evaluate(() => screenX + outerWidth)
+const off7 = await until(async () => {
+  await pop7.mouse.move(50, 50); await pop7.mouse.move(60, 60)
+  const o = await pop7.evaluate(() => window.__off)
+  return o?.x > main7 ? o : null
+}) ?? await pop7.evaluate(() => window.__off)
 await page.evaluate(() => addEventListener("pointermove", (e) => { window.__off = { x: e.screenX - e.clientX, y: e.screenY - e.clientY } }, true))
 const body7 = await pop7.locator("[data-pane-body]:visible").first().boundingBox()
 const tc = await page.locator("[data-tab-id]").nth(1).boundingBox()
@@ -202,10 +211,10 @@ await pop7.close()
 
 // Held over the main window, a pop-out's tab shows there where it would land, as a drag of its own would (a pane's
 // edge: a split), and lands there.
-await command(page, "Close all other tabs"); await hash(page, a); await wait(400)
-await command(page, "Open new tab"); await hash(page, b); await wait(400)
+await cmd(page, "Close all other tabs"); await hash(page, a)
+await cmd(page, "Open new tab"); await hash(page, b)
 const popped6 = page.waitForEvent("popup")
-await command(page, "Move current tab to new window")
+await cmd(page, "Move current tab to new window")
 const pop6 = watch(await popped6, { label: "popout (held over the main window)" })
 await pop6.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
 await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a]))

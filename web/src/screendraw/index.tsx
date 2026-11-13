@@ -1,6 +1,7 @@
 import { lazy, Suspense, useSyncExternalStore } from "react"
 import type { Drawing, Rect } from "../../../core/desktop/screenmarks"
 import type { PenScript } from "../core/pilot"
+import { trackSoon } from "../core/unsaved"
 import type { Here } from "./layout"
 
 export type Shown = Drawing & { here: Here }
@@ -22,6 +23,7 @@ bridge?.on((x) => {
   if (left.length) setTimeout(() => set({ ...view, gone: view.gone.filter((g) => !left.includes(g)) }), LEAVE)
   set({ up, gone: [...view.gone.filter((g) => !ids.has(g.id)), ...left] })
 })
+trackSoon("a drawing leaving", () => view.gone.length > 0)
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 
 export function ScreenDrawings({ pen }: { pen?: (s: PenScript | null) => void }) {
