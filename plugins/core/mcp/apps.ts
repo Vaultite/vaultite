@@ -1,5 +1,4 @@
-// MCP Apps (the io.modelcontextprotocol/ui extension, 2026-01-26): cards plugins offer for tools (service "mcp:apps"),
-// served as ui:// resources, linked from their tools' _meta.ui, drawn from a call's structuredContent.
+// MCP Apps: the io.modelcontextprotocol/ui extension, 2026-01-26.
 import type { Tool } from "./protocol.ts"
 
 export const UI_EXTENSION = "io.modelcontextprotocol/ui"
@@ -13,12 +12,10 @@ export type UiMeta = {
   prefersBorder?: boolean
 }
 
-/** What a card's data comes from: the call (tool, arguments), the op's result and text, and the app's address on the
- *  internet (Vaultite Cloud's), when it has one. */
+/** A card's data: the call, the op's result and text, and the app's address on the internet when it has one. */
 export type CardCall = { tool: string; args: Record<string, unknown>; result: unknown; text: string; app: string | null }
 
-/** A card a plugin offers. `tools` draw with it (their _meta.ui names it); `also` are tools it calls whose answers it
- *  reads, given its data without linking. */
+/** A card a plugin offers: `tools` draw with it; `also` are tools it calls whose answers it reads. */
 export type McpApp = {
   /** ui://vaultite/note */
   uri: string
@@ -37,7 +34,6 @@ export type McpApp = {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
-/** The cards the plugins that are on offer (each "mcp:apps" service answers a list), ui:// ones only, first wins. */
 export async function appsFrom(services: unknown[]): Promise<McpApp[]> {
   const out: McpApp[] = []
   for (const fn of services) {
@@ -50,14 +46,12 @@ export async function appsFrom(services: unknown[]): Promise<McpApp[]> {
   return out
 }
 
-/** Whether a client's initialize capabilities take MCP Apps' HTML. */
 export const takesUi = (caps: unknown) => {
   const ext = isObj(caps) && isObj(caps.extensions) ? caps.extensions[UI_EXTENSION] : undefined
   return isObj(ext) && Array.isArray(ext.mimeTypes) && ext.mimeTypes.includes(UI_MIME)
 }
 
-/** The tools with their cards: a drawn one's _meta.ui names it (and the flat key hosts read before the spec settled),
- *  each knows the card that reads its answers. */
+/** The tools with their cards; the flat _meta key too, which hosts read before the spec settled. */
 export function linked(tools: Tool[], apps: McpApp[]): Tool[] {
   if (!apps.length) return tools
   return tools.map((t) => {
@@ -70,23 +64,19 @@ export function linked(tools: Tool[], apps: McpApp[]): Tool[] {
   })
 }
 
-/** A card as resources/list names it. */
 export const listed = (a: McpApp) => ({ uri: a.uri, name: a.name, ...(a.description ? { description: a.description } : {}), mimeType: UI_MIME,
   ...(a.meta ? { _meta: { ui: a.meta } } : {}) })
 
-/** resources/read's answer for a card. */
 export async function contents(a: McpApp) {
   return { contents: [{ uri: a.uri, mimeType: UI_MIME, text: await a.html(), ...(a.meta ? { _meta: { ui: a.meta } } : {}) }] }
 }
 
-/** A call's structuredContent from its card, or undefined. */
 export async function cardData(a: McpApp, c: CardCall): Promise<Record<string, unknown> | undefined> {
   const d = a.data ? await a.data(c) : c.result
   return isObj(d) ? d : undefined
 }
 
-/** The spec's CSP for a card's page (Security Implications) from its declared domains, without 'self': served by the
- *  app, its 'self' would be the app's own API. */
+/** The spec's CSP for a card (Security Implications), without 'self': served by the app, 'self' would be its API. */
 export function cspOf(meta?: UiMeta) {
   const c = meta?.csp ?? {}, list = (xs?: string[]) => (xs ?? []).filter((x) => /^[\w*.:/-]+$/.test(x)).join(" ")
   const res = list(c.resourceDomains)

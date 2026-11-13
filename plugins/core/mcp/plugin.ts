@@ -1,5 +1,3 @@
-// MCP: every op marked `mcp` is a tool (plus `ops` and `call`), over HTTP here, stdio (cli.ts) or the internet (public.ts;
-// Vaultite Cloud: cloud.ts). Owner only, like a shell; the route is `lock: false`: each tool call holds the vault for a write.
 import crypto from "node:crypto"
 import { agentLines, APP_VERSION, HTTPError, OpError, Plugin, reply, type Request, Text, type Who } from "../../../core/plugins.ts"
 import { appsFrom, contents, cspOf } from "./apps.ts"
@@ -11,7 +9,6 @@ import { callTool, type Client, declared, handleBody, initializes, instructionsO
 
 export const plugin = new Plugin(import.meta.url)
 
-/** Sessions by Mcp-Session-Id: who the client said it was. In memory; the newest 200. */
 const sessions = new Map<string, Session>()
 
 
@@ -20,8 +17,6 @@ async function allowed(req: Request) {
   await plugin.ownerOnly(req, "Vaultite's MCP server")
 }
 
-/** allowed(), or the owner over Connect with owner tools off (true): for what only shows or takes access away (the
- *  connections' list, ending one). What lets an app in or gives it more stays allowed()'s. */
 async function seenOverConnect(req: Request) {
   if (plugin.isOff()) throw new HTTPError(404, "the MCP plugin is off (Plugins)")
   if (req.http && viaConnect(req.http)) return true
@@ -29,18 +24,13 @@ async function seenOverConnect(req: Request) {
   return false
 }
 
-/** A tool's context: ops in-process, as the client, for the request it came in (its owner checks apply: an op's
- *  `owner`, the routes an op calls), each call told to Activity as `mcp <tool>`. */
 function ctxFor(client: Who, tool: string, http: Request["http"]): ToolCtx {
   return { client, op: async (id, params) => plugin.host.call(id, params, client, { report: `mcp ${tool}`, http }) }
 }
 
-/** The cards of the plugins that are on (apps.ts), and the app's address on the internet for their links. */
 const apps = () => appsFrom(plugin.allServices("mcp:apps"))
 const appUrl = () => cloud.status().app
 
-/** What initialize tells a client: composed from the plugins that are on now (protocol.ts instructionsOf); `told`: its
- *  session has their lines already (an agent the app started), so they're left out. */
 const instructions = (told = false) => instructionsOf(told ? [] : agentLines(plugin.vault).map((l) => l.text), plugin.host.catalog())
 
 plugin.op({
@@ -53,7 +43,6 @@ plugin.op({
   text: (r) => r.text,
 })
 
-/** The server for one request: the catalog as it is now, tools run for that request. */
 const serverFor = (http: Request["http"]) => ({
   version: APP_VERSION,
   instructions,
@@ -91,8 +80,7 @@ plugin.route("DELETE", "mcp", async (req) => {
   return { ok: true }
 }, { lock: false })
 
-/** A tool by name for another plugin's route (one that doesn't hold the vault), as `client`, for request `req`: its
- *  Markdown answer, or an OpError/ToolError saying why not. */
+/** A tool by name for another plugin's route, as `client`: its Markdown answer, or an OpError/ToolError saying why not. */
 plugin.provide("mcp:tool", async (req: Request | null, name: string, args: Record<string, unknown>, client: { agent: string; label: string; source: string }) => {
   const who: Who = { client: "mcp", agent: client.agent, label: client.label, source: client.source }
   const tool = toolsOf(plugin.host.catalog()).find((t) => t.name === name)
@@ -102,8 +90,7 @@ plugin.provide("mcp:tool", async (req: Request | null, name: string, args: Recor
 })
 
 const toolNamed = async (name: string) => (await toolsWithApps({ tools: () => toolsOf(plugin.host.catalog()), apps })).find((x) => x.name === name)
-/** For a host drawing cards in the app (a plugin's block): a tool as tools/list declares it, its CallToolResult run as
- *  the request's caller (an in-app op's checks), and a card's resources/read with its page's CSP. */
+/** For a host drawing cards in the app: a tool's declaration, its CallToolResult as the caller, a card's page and CSP. */
 plugin.provide("mcp:app-host", () => ({
   tool: async (name: string) => {
     const t = await toolNamed(name)
@@ -120,8 +107,6 @@ plugin.provide("mcp:app-host", () => ({
   },
 }))
 
-/** MCP on the internet (public.ts): its own listener when this machine's data/config.json has its address, or for Vaultite
- *  Cloud (cloud.ts) once signed in, on any free port. */
 const settings = PublicMcp.settingsOf(plugin)
 let pub: PublicMcp | null = null
 function publicMcp() {
@@ -135,42 +120,32 @@ function publicMcp() {
   return pub
 }
 const cloud = new Cloud(plugin, () => publicMcp().ready)
-/** Connect: whether terminals, coding agents and the like answer the owner over the relay (data/config.json, this Mac's). */
 const ownerTools = () => (plugin.secrets().mcp as { connect?: { ownerTools?: boolean } } | undefined)?.connect?.ownerTools === true
 let signedIn = false
 let handle = cloud.stored()?.handle ?? null
 cloud.onChange = (s) => {
-  // Told once signed in, when the account's handle changed, and when it stops on its own (revoked, another machine):
-  // not every reconnect.
   const renamed = !!handle && !!s.handle && s.handle !== handle && !signedIn
   handle = s.handle
   const text = renamed ? `Your vault's MCP server moved to ${s.url}: add it again in your AI apps` : s.state === "connected" && signedIn ? `Your vault's MCP server is at ${s.url}` : s.state === "replaced" || (s.state === "off" && s.message) ? s.message : ""
   if (s.state !== "connecting") signedIn = false
-  if (text) try { void plugin.runOp("ui.notify", { text, actionOpen: "view:connections" }).catch(() => {}) } catch { /* still starting */ }
+  if (text) try { void plugin.runOp("ui.notify", { text, actionOpen: "view:connections" }).catch(() => {}) } catch {}
 }
 if (settings || cloud.stored()) publicMcp()
 
-/** This machine's addresses for shared folders' guests (plugins/core/share: its links, and the only hosts it answers
- *  them at), the first where new links go: Vaultite Cloud's share-<handle> while signed in, an own tunnel's mcp.public.url. */
+/** This machine's addresses for shared folders' guests, the first where new links go. */
 plugin.provide("mcp:guest-urls", (): string[] => [cloud.guestUrl(), PublicMcp.settingsOf(plugin)?.url].filter((u): u is string => !!u))
 
-/** A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload without the file), or null when the
- *  vault isn't on the internet. */
+/** A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload), or null off the internet. */
 plugin.provide("mcp:upload-link", (pending: Record<string, unknown>, who: Who) => pub?.uploadLink(pending, who) ?? null)
 cloud.start()
 plugin.onUnload(() => { pub?.stop(); cloud.stop() })
 
-/** The apps connected from the internet, the sign-ins waiting for their code (how many, and their apps), those finishing
- *  and those that failed lately, and Vaultite Cloud. */
 plugin.route("GET", "mcp/connections", async (req) => {
-  // Over Connect: the connections (names, access, dates: list() holds no token or client id) and Vaultite Cloud's state;
-  // sign-ins waiting and the own tunnel are this Mac's (`here`: the app shows what's done there as such).
   if (await seenOverConnect(req)) return { here: "connect", url: null, cloud: cloud.status(), connect: { ownerTools: false }, connections: pub?.list() ?? [], waiting: 0 }
   return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connect: { ownerTools: ownerTools() }, connections: pub?.list() ?? [],
     waiting: pub?.waiting() ?? 0, asking: pub?.asking() ?? [], finishing: pub?.finishing() ?? [], failed: pub?.failures() ?? [] }
 }, { lock: false })
 
-/** Connect's owner tools on or off: only from this Mac (or the owner's tailnet), never over the relay itself. */
 plugin.route("POST", "mcp/connect", async (req) => {
   await allowed(req)
   await plugin.ownerOnly(req, "Changing what answers over Vaultite Connect")
@@ -183,7 +158,6 @@ plugin.route("POST", "mcp/connect", async (req) => {
   return { ownerTools: on }
 }, { lock: false })
 
-/** Let in the app whose sign-in page shows this code. */
 plugin.route("POST", "mcp/connections", async (req) => {
   await allowed(req)
   if (!pub) throw new HTTPError(404, "MCP isn't on the internet here: sign in to Vaultite Cloud, or set mcp.public.url in data/config.json")
@@ -193,7 +167,6 @@ plugin.route("POST", "mcp/connections", async (req) => {
   return { ok: true, name }
 }, { lock: false })
 
-/** Rename a connection (Activity names it so after) or set its access: `read` or `write`. The owner's only (allowed). */
 plugin.route("PATCH", "mcp/connections/*", async (req) => {
   await allowed(req)
   const b = (req.body ?? {}) as { name?: unknown; access?: unknown }
@@ -204,14 +177,12 @@ plugin.route("PATCH", "mcp/connections/*", async (req) => {
   return { ok: true }
 }, { lock: false })
 
-/** End a connection: also over Connect, as it only takes access away. */
 plugin.route("DELETE", "mcp/connections/*", async (req) => {
   await seenOverConnect(req)
   if (!pub?.disconnect(req.arg(0))) throw new HTTPError(404, "no such connection")
   return { ok: true }
 }, { lock: false })
 
-// ---------- Vaultite Cloud's operations (vau cloud, the Connections view, onboarding)
 
 const CLOUD = "Vaultite Cloud's sign-in"
 
@@ -255,7 +226,7 @@ connects this machine to their account. Without a code: signed out, where to get
 
   vau cloud sign-in BCDF-GHJK`,
   kind: "write",
-  lock: false, // talks to Vaultite Cloud, holds nothing of the vault
+  lock: false,
   params: { code: { type: "string", description: "the code /connect shows (XXXX-XXXX)" } },
   args: ["code"],
   result: statusResult,

@@ -1,5 +1,3 @@
-// The Cloud panel: Claude Code on the web's sessions (cloud.ts), those needing you first, in the account picked on its
-// heading (as Sites picks logins) or each account's under its name. Not Terminals': these are claude.ai's pages.
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Archive, ChevronsUpDown, Cloud, Copy, GitPullRequestArrow, Globe, Pencil, Plus, SquareTerminal } from "lucide-react"
 import {
@@ -13,7 +11,6 @@ import {
 
 export const useCloud = () => useSyncExternalStore(subscribeCloud, getCloud)
 
-/** The accounts shown, the one picked in this workspace (undefined: all of them) and picking. */
 export function usePicked() {
   const s = useCloud()
   const set = settings.use()
@@ -22,14 +19,12 @@ export function usePicked() {
   return { s, shown, picked: pickedOf(shown, id), pick: (a: CloudAccount | null) => pick(a?.id ?? undefined), hidden: set.hidden }
 }
 
-/** The sessions shown: the picked account's, else every shown one's; none on their way to the archive. */
 export function useShown(s: CloudState, shown: CloudAccount[], picked: CloudAccount | undefined) {
   const list = useMemo(() => s.sessions.filter((c) => (picked ? c.account === picked.id : !c.account || shown.some((a) => a.id === c.account) || !s.accounts.some((a) => a.id === c.account))),
     [s, shown, picked])
   return leaving.use(list, (c) => c.id)
 }
 
-/** The orgs a Claude Code account here is signed in to: a session of one can be continued here. */
 export function useTeleportable() {
   const claude = useAgents().some((a) => a.name === "claude")
   const [orgs, setOrgs] = useState<string[]>([])
@@ -37,7 +32,6 @@ export function useTeleportable() {
   return (c: CloudSession) => claude && !c.remote && !!c.account && orgs.includes(c.account)
 }
 
-/** A session's menu: open it, continue it here, its work on GitHub, rename, copy its link, archive. */
 export function sessionMenu(c: CloudSession, here: boolean): MenuItem[] {
   const diff = diffUrl(c)
   return [
@@ -50,7 +44,6 @@ export function sessionMenu(c: CloudSession, here: boolean): MenuItem[] {
   ]
 }
 
-/** A session's row in the sidebar: Claude Code's icon, its dot (working, needs you, unread), its page on a click. */
 function Row({ c, open, tab, named }: { c: CloudSession; open: boolean; tab: string; named: boolean }) {
   const a = useAgents().find((x) => x.name === "claude")
   const s = useCloud(), account = named ? accountOf(s, c) : undefined
@@ -71,7 +64,6 @@ function Row({ c, open, tab, named }: { c: CloudSession; open: boolean; tab: str
 const subhead = "flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium text-tertiary max-md:h-8 max-md:text-[13px]"
 const quiet = "flex h-7 min-w-0 cursor-pointer items-center truncate rounded-[5px] pl-1.5 text-left text-[13px] whitespace-nowrap max-md:min-h-11 max-md:text-[15px]"
 
-/** One account's rows (under its name when `named`), the older ones behind Show older. */
 function Rows({ account, list, named, open, tab, first }: { account?: CloudAccount; list: CloudSession[]; named: boolean; open: boolean; tab: string; first: boolean }) {
   const [older, setOlder] = useState(false)
   const g = useMemo(() => cloudListed(list), [list])
@@ -94,7 +86,6 @@ function Rows({ account, list, named, open, tab, first }: { account?: CloudAccou
   )
 }
 
-/** Asked once a profile is signed in to claude.ai: reading the user's sessions with their logins waits for a yes. */
 export function Ask() {
   const answer = (yes: boolean) => void settings.set({ read: yes }).catch((e) => notifyError(e, "Couldn't save that"))
   return (
@@ -109,13 +100,11 @@ export function Ask() {
   )
 }
 
-/** The + button: a new session in the account picked, the one shown, else a menu of them. */
 export function newMenu(e: MouseEvent, accounts: CloudAccount[], picked?: CloudAccount) {
   if (picked || accounts.length <= 1) return newSession(picked ?? accounts[0])
   menuBelow(e, accounts.map((a) => ({ label: `New session in ${a.label}`, icon: Plus, run: () => newSession(a) })))
 }
 
-/** Whose sessions show: all accounts or one, and which accounts show at all (the rest aren't read). */
 export function accountsMenu(e: MouseEvent, s: CloudState, shown: CloudAccount[], picked: CloudAccount | undefined, pick: (a: CloudAccount | null) => void, hidden: string[] | undefined) {
   menuBelow(e, [
     { label: "Sessions in", caption: true, run: () => {} },
@@ -126,12 +115,10 @@ export function accountsMenu(e: MouseEvent, s: CloudState, shown: CloudAccount[]
   ])
 }
 
-/** The account picker: the one shown, a menu on a click (as the Sites panel's). */
 export function Picker({ big }: { big?: boolean }) {
   const { s, shown, picked, pick, hidden } = usePicked()
   if (s.accounts.length < 2) return null
   const name = picked?.label ?? "All accounts"
-  // (the sidebar's is short: an email's name before the @, when no other account shown has it)
   const local = picked?.label.split("@")[0] ?? ""
   const short = picked && local !== picked.label && !shown.some((a) => a !== picked && a.label.split("@")[0] === local) ? local : name
   const open = (e: MouseEvent) => accountsMenu(e, s, shown, picked, pick, hidden)
@@ -147,8 +134,6 @@ export function Picker({ big }: { big?: boolean }) {
   )
 }
 
-/** Nothing until there's something to show (a desktop app signed in to claude.ai); in the rail, the sessions' icons. */
-/** The sessions in groups: the picked account's, else each shown one's under its name. */
 function useGroups() {
   const { s, shown, picked } = usePicked()
   const { list } = useShown(s, shown, picked)
@@ -182,7 +167,6 @@ export function CloudPanel({ open, tab }: SidebarCtx) {
   )
 }
 
-/** The sessions on a blank tab's page, a size up. */
 export function CloudList() {
   const { groups, named } = useGroups()
   if (settings.use().read !== true) return null

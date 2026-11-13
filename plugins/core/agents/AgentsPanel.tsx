@@ -1,5 +1,3 @@
-// The Agents panel: every coding agent on every machine (core/agentruns.tsx) in one quiet list, as T3 Code's threads:
-// a glyph says where each stands, a short time ends it, the rest is in its tooltip. What's done and read folds away.
 import { Fragment, memo, useContext, type ReactNode, useMemo, useRef, type MouseEvent } from "react"
 import { Cloud, ListFilter, MessageCircle, Plus, SquareTerminal, type LucideIcon } from "lucide-react"
 import {
@@ -21,7 +19,6 @@ const FILTER = "agents:filter"
 const EARLIER = "agents:earlier"
 const KEPT = "agents:agents"
 
-/** The runs, the filter picked in this workspace (all when what it picked has none now) and the kinds there are. */
 export function useAgentList(on = true) {
   const { runs: all, loading, feeds } = useAgentRuns(on)
   const { hide } = useView()
@@ -34,7 +31,6 @@ export function useAgentList(on = true) {
   return { runs, shown, loading, feeds, kinds, every, filter, pick: (f: Filter) => pick(f === "all" ? undefined : f) }
 }
 
-/** Machines by id, their names (said in a row's tooltip, and on the tab's rows when there's more than one machine). */
 function useWhere() {
   const machines = useMachines()
   return useMemo(() => {
@@ -57,14 +53,10 @@ const LEAD: Record<Lead, string> = {
   ask: "bg-[var(--yellow)] dot-ping", working: "bg-foreground/70 breathe motion-reduce:animate-none", error: "bg-[var(--red)]",
   unread: "bg-[var(--blue)]", rest: "border-[1.5px] border-current opacity-40",
 }
-/** A row's lead in the open panel: its state as a glyph in the icon's place (amber asking, breathing at work, blue unread,
- *  red failed, a faint ring at rest: Badged's colours), so no icon and dot compete. */
 const GLYPHS = Object.fromEntries((Object.keys(LEAD) as Lead[]).map((k) => [k, function Glyph({ className }: { className?: string }) {
   return <span aria-hidden className={cn(className, "grid place-items-center")} data-dot={k === "rest" ? undefined : k}><span className={cn("relative size-[7px] rounded-full", LEAD[k])} /></span>
 }])) as Record<Lead, (p: { className?: string }) => ReactNode>
 
-/** One agent's row: its state's glyph (in the rail its kind's icon and dot), what it's doing, how long ago; the rest
- *  (how it runs, which agent, where) in its tooltip. */
 function Row({ r, open: wide, tab, page, where }: { r: AgentRun; open: boolean; tab: string; page?: boolean; where?: string }) {
   const k = kindOf(r.kind)
   const tip = [r.title, r.step && r.step !== r.title ? r.step : "",
@@ -87,7 +79,6 @@ function Row({ r, open: wide, tab, page, where }: { r: AgentRun; open: boolean; 
 const none = "flex h-7 min-w-0 items-center truncate pl-1.5 text-[13px] whitespace-nowrap text-tertiary max-md:min-h-11 max-md:text-[15px]"
 
 const STATES: Record<AgentRun["state"], string> = { needs: "Needs you", working: "Working", done: "Done" }
-/** What a row's group is called, by what they're grouped by ("" when it says none). */
 function groupOf(by: Group, r: AgentRun, where: string | undefined) {
   if (by === "state") return STATES[r.state]
   if (by === "project") return r.project ?? ""
@@ -96,12 +87,10 @@ function groupOf(by: Group, r: AgentRun, where: string | undefined) {
   return ""
 }
 const OTHER: Record<Group, string> = { none: "", state: "", project: "No repository", machine: "This machine", account: "Other accounts" }
-/** The latest change of a row: when it came to rest, else its last. */
 const latest = (r: AgentRun) => Math.max(r.at, r.since ?? 0)
 const sortRuns = (list: AgentRun[], by: Sort) =>
   by === "recent" ? [...list].sort((a, b) => latest(b) - latest(a)) : ORDER.flatMap((s) => list.filter((r) => r.state === s))
 
-/** A group's heading in the list: its name and how many. */
 function GroupHeading({ name, count }: { name: string; count: number }) {
   return (
     <div className="flex h-7 min-w-0 items-center gap-2 truncate pt-1.5 pl-1.5 text-[12px] font-medium whitespace-nowrap text-tertiary max-md:min-h-11 max-md:text-[15px]"
@@ -111,8 +100,6 @@ function GroupHeading({ name, count }: { name: string; count: number }) {
   )
 }
 
-/** The rows by status (or the latest first), under a heading per group when grouped; in the panel, the ones that have
- *  asked nothing a while, with no tab, fold under Earlier (foldsAway). None moves while the user is in the list. */
 function Rows({ list, open, tab, page }: { list: AgentRun[]; open: boolean; tab: string; page?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const held = useHold(box)
@@ -122,7 +109,6 @@ function Rows({ list, open, tab, page }: { list: AgentRun[]; open: boolean; tab:
   const now = Date.now(), after = useFoldAfter(), view = useView()
   const sorted = useMemo(() => sortRuns(list, view.sort), [list, view.sort])
   const { front, earlier } = useSteady(sorted, held, (r) => !page && foldsAway(r, now, !!r.to && isViewOpen(r.to), after))
-  // (in the rail, no headings: only icons)
   const by: Group = open ? view.group : "none"
   const groups = useMemo(() => {
     if (by === "none") return null
@@ -131,7 +117,6 @@ function Rows({ list, open, tab, page }: { list: AgentRun[]; open: boolean; tab:
       const g = groupOf(by, r, where(r)) || OTHER[by]
       m.set(g, [...(m.get(g) ?? []), r])
     }
-    // (by state, in its own order; else in the order of each group's first row, the one ungrouped last)
     const keys = by === "state" ? ORDER.map((s) => STATES[s]).filter((k) => m.has(k)) : [...m.keys()].sort((a, b) => Number(a === OTHER[by]) - Number(b === OTHER[by]))
     return keys.map((k) => [k, m.get(k)!] as const)
   }, [by, front, where])
@@ -147,19 +132,15 @@ function Rows({ list, open, tab, page }: { list: AgentRun[]; open: boolean; tab:
   )
 }
 
-/** The + menu: a chat with Claude Code, or any coding agent in a terminal. */
 function newMenu(e: MouseEvent, agents: ReturnType<typeof useAgents>) {
   const chat = commandItems("claude-code:chat").map((it) => ({ ...it, label: "New chat with Claude Code", icon: MessageCircle }))
   const items: MenuItem[] = [...chat, ...agents.map((a, i) => ({ label: `New ${a.label} in a terminal`, icon: a.icon, sep: i === 0 && !!chat.length, run: () => openAgent(a.name) }))]
   if (items.length) menuBelow(e, items)
 }
 
-/** (only what it shows as props: the sidebar's store changing redraws nothing here) */
 export const AgentsPanel = memo(function AgentsPanel({ open, tab }: { open: boolean; tab: string }) {
   const fold = useContext(PanelFold)
   const folded = !!fold?.collapsed && open
-  // (folded, it asks nothing: no chat list polled for a panel nobody sees)
-  // (the panel lists every kind: the filter is the tab's)
   const { runs: all, loading, feeds } = useAgentRuns(!folded)
   const { hide } = useView()
   const shown = useMemo(() => (hide.length ? all.filter((r) => !hide.includes(r.kind)) : all), [all, hide])
@@ -185,7 +166,6 @@ export const AgentsPanel = memo(function AgentsPanel({ open, tab }: { open: bool
   )
 })
 
-/** The panel as a tab (view:agents): every row a size up, with what each says, where it runs and when, and the filter. */
 export function AgentsView() {
   const { runs, shown, loading, feeds, kinds, every, filter, pick } = useAgentList()
   const rows = useKeptCount(KEPT, loading ? undefined : runs.length, 0)

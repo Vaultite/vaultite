@@ -1,5 +1,3 @@
-// Connect: the whole app at https://<handle>.vaultite.app for its owner. Only requests Vaultite Cloud signed (HMAC in
-// `x-vaultite-cloud`) reach the app on loopback; what runs code stays off unless the owner turns it on (ownerTools).
 import crypto from "node:crypto"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import net from "node:net"
@@ -9,19 +7,13 @@ import { CONNECT_HEADER } from "../../../core/plugins.ts"
 export const SIGNED_HEADER = "x-vaultite-cloud"
 export type ConnectClaims = { sub: string; handle: string; role: string; exp: number; email?: string | null }
 
-/** MCP's own routes (public.ts, with their OAuth): never the app's, signed or not. Vaultite Cloud's list is the same. */
 export const MCP_PATHS = /^\/(mcp|register|token|authorize(\/status)?|\.well-known\/oauth-[a-z-]+(\/mcp)?|upload\/.*|icon\.svg|icon\.png|favicon\.ico)\/?$/
-/** What runs code or reaches the machine (as hosted vaults' proxy refuses them; ui runs palette commands), refused here
- *  too while ownerTools is off; the app's own owner checks (core/owner.ts) refuse them anyway. */
 const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|ui|file\/open|vaultite-cloud\/export|web-viewer\/(tabs|live))(\/|$)/
 const OWNER_OPS = /^(plugin|bundle|terminal|dispatch|screens|herdr|schedule|machines|vault-plugin|vaultite-cloud|settings)\.|^ui\.command$/
-/** CONNECT_HEADER's value on what Connect hands the app: only this process knows it, so a route can tell the owner
- *  Vaultite Cloud signed in (viaConnect) from a client sending the header itself, which only takes its rights away. */
 const MARK = crypto.randomBytes(24).toString("base64url")
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate", "host", "forwarded", "x-real-ip"])
 const OURS = /^(x-vaultite-|tailscale-|x-forwarded-|cf-)/
 
-/** The signed header's claims when it's this machine's key's, for its handle, the owner's and not expired; else null. */
 export function verifyConnect(key: string | null, token: unknown, handle: string | null, at = Math.floor(Date.now() / 1000)): ConnectClaims | null {
   if (!key || !handle || typeof token !== "string") return null
   const [body, sig] = token.split(".")
@@ -35,8 +27,6 @@ export function verifyConnect(key: string | null, token: unknown, handle: string
   } catch { return null }
 }
 
-/** Why Connect refuses this while owner tools are off, or "". Read as the app routes it (server.ts): empty parts
- *  dropped, each decoded, so `/api//ui` or `/api/%75i` is /api/ui. */
 export function ownerOnly(pathname: string): string {
   const parts = pathname.split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x) } catch { return x } })
   if (OWNER_PATHS.test(`/${parts.join("/")}`)) return "this only answers on this Mac (turn on owner tools over Connect in Connections)"
@@ -44,8 +34,6 @@ export function ownerOnly(pathname: string): string {
   return ""
 }
 
-/** Brought by Connect with owner tools off: the handle's owner, signed in through Vaultite Cloud (connect.ts' own mark).
- *  For the few routes that also answer there (seeing and ending connections); core/owner.ts refuses the rest. */
 export function viaConnect(req: IncomingMessage) {
   const v = req.headers[CONNECT_HEADER]
   return typeof v === "string" && v.length === MARK.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(MARK))
@@ -53,8 +41,6 @@ export function viaConnect(req: IncomingMessage) {
 
 export type ConnectOptions = { appPort: () => number; publicHost: () => string | null; ownerTools: () => boolean; from: (req: IncomingMessage) => string }
 
-/** The request's headers as the app gets them: ours, the tunnel's and hop-by-hop ones out; local Host. Without owner
- *  tools it comes as through a proxy, marked Connect's, so the app's owner checks refuse it. */
 function headersFor(req: IncomingMessage, o: ConnectOptions) {
   const out: Record<string, string | string[]> = {}
   for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !HOP.has(k) && !OURS.test(k) && k !== "origin") out[k] = v
@@ -68,14 +54,13 @@ function refused(req: IncomingMessage, o: ConnectOptions, pathname: string, sock
   const origin = req.headers.origin
   if (origin !== undefined && (socket || !["GET", "HEAD", "OPTIONS"].includes(req.method ?? "GET"))) {
     let host = ""
-    try { host = new URL(String(origin)).host.toLowerCase() } catch { /* "null" */ }
+    try { host = new URL(String(origin)).host.toLowerCase() } catch {}
     if (!host || host !== o.publicHost()) return [403, "the page asking isn't this vault's"]
   }
   const why = o.ownerTools() ? "" : ownerOnly(pathname)
   return why ? [403, why] : null
 }
 
-/** A signed request: to the app, its answer streamed back. */
 export function serveApp(req: IncomingMessage, res: ServerResponse, o: ConnectOptions) {
   const url = new URL((req.url ?? "/").replace(/^\/+/, "/"), "http://x")
   const no = refused(req, o, url.pathname, false)
@@ -97,7 +82,6 @@ export function serveApp(req: IncomingMessage, res: ServerResponse, o: ConnectOp
   req.pipe(up)
 }
 
-/** A signed WebSocket (the app's live channel): the same checks, then the bytes both ways. */
 export function upgradeApp(req: IncomingMessage, socket: Duplex, head: Buffer, o: ConnectOptions) {
   const url = new URL((req.url ?? "/").replace(/^\/+/, "/"), "http://x")
   const no = refused(req, o, url.pathname, true)

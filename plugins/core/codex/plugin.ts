@@ -1,5 +1,3 @@
-// Codex: what OpenAI's Codex (the CLI, the IDE extension and the desktop app share its files) does on this machine, read
-// from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, programOf, type AgentMeter, type AgentModels, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
@@ -14,8 +12,7 @@ const WIN = process.platform === "win32"
 const CODEX = process.env.CODEX_HOME || path.join(HOME, ".codex")
 plugin.folders(() => [CODEX])
 
-// US dollars per million tokens: input, cached input, output (reasoning is part of output), from the published API
-// list (LiteLLM's table). A model takes the longest id it starts with, a whole word (gpt-5.1-codex-max -> gpt-5.1).
+// US dollars per million tokens, the published API list (LiteLLM's table): input, cached input, output with reasoning.
 const price = priceList<[number, number, number]>({
   "gpt-6.1-sol": [2, 0.1, 10], "gpt-6-sol": [2, 0.2, 10], "gpt-6-luna": [0.1, 0.01, 0.5], "gpt-6-astra": [10, 1, 50],
   "gpt-5.6": [4, 0.4, 20], "gpt-5.6-sol": [4, 0.4, 20], "gpt-5.6-terra": [2, 0.2, 12], "gpt-5.6-luna": [0.2, 0.02, 1.2],
@@ -25,13 +22,11 @@ const price = priceList<[number, number, number]>({
   "gpt-5-mini": [0.25, 0.025, 2], "gpt-5-nano": [0.05, 0.005, 0.4], "o3": [2, 0.5, 8], "o4-mini": [1.1, 0.275, 4.4],
   "codex-mini": [1.5, 0.375, 6],
 }, "-")
-// ChatGPT plans (planType) and their monthly price, to compare the API value with.
 const PLANS: Record<string, [string, number | null]> = {
   free: ["Free", 0], go: ["Go", 8], plus: ["Plus", 20], pro: ["Pro", 200], team: ["Team", null], business: ["Business", null],
   enterprise: ["Enterprise", null], edu: ["Edu", null],
 }
 
-/** gpt-6.1-sol -> GPT-6.1 Sol, gpt-5.1-codex-max -> GPT-5.1 Codex Max, o4-mini -> o4 Mini. */
 function modelName(model: string) {
   const m = /^gpt-([\d.]+)(?:-(.*))?$/.exec(model)
   if (m) return [`GPT-${m[1]}`, ...(m[2] ?? "").split("-").filter(Boolean).map(cap)].join(" ")
@@ -39,16 +34,11 @@ function modelName(model: string) {
   return [first, ...rest.map(cap)].join(" ") || model
 }
 
-// ---------- the rollouts ($CODEX_HOME/sessions/**/rollout-*.jsonl, archived_sessions/), read as they grow
 // Tokens as ccusage counts them: only when a session's running total changed; forks replay their parent's, counted once.
 
-/** A response: when (epoch s), which model, where, which session, tokens (uncached input, cached input, output), the local day. */
 type Resp = { ts: number; model: string; cwd: string; session: string; n: [number, number, number]; day: string }
-/** What's known of a session from its file. */
 type Meta = { id: string; file: string; cwd: string; model: string; title: string; source: string; first: number; last: number
-  /** The last turn event: a turn started (it's working) or ended. */
   state: "started" | "complete" | ""; stateTs: number }
-/** Per file: where reading stopped, and what it needs to read on. */
 type FileState = { offset: number; meta: Meta; total: number[] | null; subagent: boolean }
 
 const FILE_ID = /rollout-[\dT-]+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
@@ -56,8 +46,8 @@ const USAGE_KEYS = ["input_tokens", "cached_input_tokens", "output_tokens", "rea
 const int = (v: unknown) => Math.max(Math.trunc(Number(v) || 0), 0)
 
 class Scan extends JsonlScan<Resp, FileState> {
-  names = new Map<string, string>() // session -> the name it was given
-  limits: { observed: number; rl: Item } | null = null // the newest rate limits a session saw
+  names = new Map<string, string>()
+  limits: { observed: number; rl: Item } | null = null
   protected extra() { return this.limits }
   protected restore(x: unknown) { if (x && typeof x === "object") this.limits = x as Scan["limits"] }
 
@@ -77,13 +67,12 @@ class Scan extends JsonlScan<Resp, FileState> {
         try {
           const d = JSON.parse(line)
           if (d?.id && typeof d.thread_name === "string") this.names.set(String(d.id), d.thread_name)
-        } catch { /* a partial line */ }
+        } catch {}
       }
-    } catch { /* none */ }
+    } catch {}
   }
 
   protected line(line: Buffer, f: FileState) {
-    // Cheap byte tests first: most lines are instructions, messages and tool output nobody needs here.
     let kind: string
     if (line.includes('"token_count"')) kind = "tokens"
     else if (line.includes('"task_started"') || line.includes('"task_complete"')) kind = "turn"
@@ -128,7 +117,6 @@ class Scan extends JsonlScan<Resp, FileState> {
         m.state = "complete"
         m.stateTs = ts ?? m.stateTs
         const ms = int(p.duration_ms) || (int(p.completed_at) - int(p.started_at)) * 1000
-        // By its id alone: a fork replays its parent's turns, which count once (for the first file read).
         const key = p.turn_id ? String(p.turn_id) : `${m.id}:${ts}`
         if (ms > 0 && ts && !this.turns.has(key)) this.turns.set(key, { ts, session: m.id, cwd: m.cwd, ms, day: dayOf(ts) })
       }
@@ -152,7 +140,6 @@ class Scan extends JsonlScan<Resp, FileState> {
     if (!this.resp.has(key)) this.resp.set(key, { ts, model, cwd: m.cwd, session: m.id, n: [Math.max(input - cached, 0), Math.min(cached, input), output], day: dayOf(ts) })
   }
 
-  /** Every session's meta, by id (a session's files: the newest wins). */
   sessions() {
     const out = new Map<string, Meta>()
     for (const f of this.files.values()) {
@@ -191,10 +178,8 @@ async function summary(days: number) {
   return t.result(modelName)
 }
 
-// ---------- sessions running now
 
-/** Codex processes (the CLI's native binary: the TUI or `codex exec`, not its app-server or the npm wrapper), with
- *  when each started and its folder. */
+/** Codex's native binary (the TUI or `codex exec`, not its app-server or npm wrapper), each one's start and folder. */
 const codexProcesses = () => plugin.memo(2, async function codexProcesses() {
   const out = (await processes()).flatMap(({ pid, started, command }) => {
     const [name, rest] = programOf(command)
@@ -206,8 +191,6 @@ const codexProcesses = () => plugin.memo(2, async function codexProcesses() {
   return out
 })
 
-/** Codex sessions open now: each process with the session it's writing (the newest in its folder since it started; a
- *  TUI not asked anything has none). `fresh`: rollouts read now, not 5 s ago (a turn ending may be its session's first). */
 async function live(fresh = false): Promise<Live[]> {
   await scan.refresh(fresh)
   const metas = [...scan.sessions().values()]
@@ -225,10 +208,8 @@ async function live(fresh = false): Promise<Live[]> {
   return out
 }
 
-// ---------- the plan and its limits
 
-/** Asks `codex app-server` (JSON-RPC over stdio, one JSON object per line) for the account and its rate limits; its npm
- *  wrapper needs node on PATH. */
+/** `codex app-server`: JSON-RPC over stdio, a JSON object a line; its npm wrapper needs node on PATH. */
 function appServer() {
   const bin = findBin("codex")
   if (!bin) return Promise.resolve(null)
@@ -247,8 +228,6 @@ function appServer() {
     } })
 }
 
-/** What ChatGPT says now, asked at most once a minute (a failure too, so a missing login isn't asked for every block).
- *  memo() tells its functions apart by name: these have one. */
 const account = () => plugin.memo(60, async function chatgptAccount() { return { at: Date.now() / 1000, got: await appServer() } })
 
 function label(minutes: number) {
@@ -272,7 +251,6 @@ async function limits() {
     })
     if (wins.length) return { source: "ChatGPT account", observed: isoOf(at * 1000), windows: wins, plan: String(snap.planType ?? got?.account?.planType ?? "") }
   }
-  // Without the app server: what the newest session was told.
   await scan.refresh()
   const seen = scan.limits
   if (!seen || now - seen.observed > 7 * 86400) return null
@@ -293,12 +271,10 @@ async function plan() {
   return { plan: planOf(lim?.plan ?? ""), limits: lim && { source: lim.source, observed: lim.observed, windows: lim.windows } }
 }
 
-// ---------- one session's conversation (the view tab: view:codex-session/<id>)
 
 const SESSION_ID = /^[0-9a-f-]{8,64}$/i
 const read = transcripts((file) => new Transcript(file, () => new Conversation(FILE_ID.exec(path.basename(file))?.[1] ?? path.basename(file, ".jsonl")), WANTED))
 
-/** A session's rollout: the one the scan knows, else found by its id in the file names (older than the scan keeps). */
 async function sessionFile(id: string): Promise<string | null> {
   if (!SESSION_ID.test(id)) return null
   await scan.refresh()
@@ -308,7 +284,7 @@ async function sessionFile(id: string): Promise<string | null> {
     try {
       const hit = (fs.readdirSync(path.join(CODEX, dir), { recursive: true }) as string[]).find((n) => n.endsWith(".jsonl") && n.includes(id))
       if (hit) return path.join(CODEX, dir, hit)
-    } catch { /* none */ }
+    } catch {}
   }
   return null
 }
@@ -318,51 +294,42 @@ async function transcript(id: string) {
   return file ? read(file) : null
 }
 
-/** A session's title, folder, times, model and conversation (the view tab: view:codex-session/<id>). */
 async function session(id: string) {
   const t = await transcript(id)
   return t && { ...t.talk.head, title: scan.names.get(id) || t.talk.head.title, entries: t.talk.entries }
 }
 
-/** A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service
- *  "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given. */
+/** A session's latest turn: the user's last message, Codex's last answer, the session's title. */
 plugin.provide("agent-turn:codex", async (terminal: string, session = "") => {
   const id = session || (terminal ? (await live(true)).find((l) => l.terminal === terminal)?.id ?? "" : "")
   const t = id ? await transcript(id) : null
   return t ? { session: id, title: scan.names.get(id) || t.talk.head.title, ...lastTurn(t.talk.entries), done: t.talk.done } : null
 })
 
-/** Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session
- *  ids. No meters: its rollouts don't say when a prompt cache expires. */
+/** Its sessions in the app's terminals, by terminal. No meters: its rollouts don't say when a prompt cache expires. */
 plugin.provide("agent-meters:codex", async (): Promise<AgentMeter[]> =>
   (await live()).flatMap((l) => (l.terminal && l.id ? [{ terminal: l.terminal, session: l.id }] : [])))
 
 // ---------- Terminal runs it (the service "agent:codex")
 
-/** `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without
- *  its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost. */
+/** `codex`, or `codex resume <id>`. No context or hooks: any `-c` runs it without its shared background server. */
 plugin.provide("agent:codex", async ({ resume, prompt, wsl, model, effort, allow, mode }: AgentStart): Promise<AgentCommand> => {
   // (inside WSL its sessions are the distro's own)
   const t = resume && !wsl ? await transcript(resume) : null
   if (resume && !t && !wsl) return notOnThisMachine("Codex", resume)
-  // (commands to run unasked, vau's: they reach the app's server, which its sandbox's network, off by default, blocks;
-  // it takes no list of commands)
+  // Codex's sandbox blocks the network vau needs, and takes no list of commands
   const how = [...(model ? ["-m", model] : []), ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []), ...(allow?.length ? ["-c", "sandbox_workspace_write.network_access=true"] : []),
     ...(mode ? SANDBOX[mode] : [])]
   const argv = ["codex", ...(resume ? ["resume", ...how, resume, ...(prompt ? [prompt] : [])] : [...how, ...(prompt ? ["--", prompt] : [])])]
   return { command: argv.map((x, i) => (i && !["resume", "--", "-m", "-c"].includes(x) ? shellQuote(x) : x)).join(" "), argv, cwd: t?.talk.head.cwd || null }
 })
 
-/** Claude Code's permission modes as Codex's sandbox and approvals: plan only reads, default asks before it writes,
- *  acceptEdits writes in its folder (asking for the rest), auto has its reviewer approve, bypass is everything. */
 const SANDBOX: Record<PermissionMode, string[]> = {
   plan: ["-s", "read-only", "-a", "never"], dontAsk: ["-s", "read-only", "-a", "never"], default: ["-s", "read-only", "-a", "on-request"],
   acceptEdits: ["-s", "workspace-write", "-a", "on-request"], auto: ["-s", "workspace-write", "--approve-for-me"],
   bypassPermissions: ["--dangerously-bypass-approvals-and-sandbox"],
 }
 
-/** A turn's approvals and sandbox as the permission mode they come to: full access is bypass (asking first: auto),
- *  writing in its folder is acceptEdits (with the reviewer, or never asking: auto), read-only is default (never: plan). */
 export function modeOf(approval: string, sandbox: string, reviewer = ""): PermissionMode | null {
   if (sandbox === "danger-full-access") return approval === "never" ? "bypassPermissions" : "auto"
   if (sandbox === "workspace-write") return approval === "never" || reviewer === "auto_review" ? "auto" : "acceptEdits"
@@ -370,8 +337,7 @@ export function modeOf(approval: string, sandbox: string, reviewer = ""): Permis
   return null
 }
 
-/** The mode a session runs in now, from its last turn's sandbox and approvals (the service "agent-mode:codex"): what a
- *  subagent it delegates to may have at most. The session in `terminal` when `session` isn't given; null: unknown. */
+/** The mode a session runs in now, from its last turn's sandbox and approvals; null: unknown. */
 plugin.provide("agent-mode:codex", async (terminal: string, session = ""): Promise<PermissionMode | null> => {
   const id = session || (terminal ? (await live(true)).find((l) => l.terminal === terminal)?.id ?? "" : "")
   const file = id ? await sessionFile(id) : null
@@ -389,24 +355,22 @@ plugin.provide("agent-mode:codex", async (terminal: string, session = ""): Promi
   return modeOf(String(c.approval_policy ?? ""), String((c.sandbox_policy as Item | undefined)?.type ?? ""), String(c.approvals_reviewer ?? ""))
 })
 
-/** The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take. */
+/** The models its picker lists ($CODEX_HOME/models_cache.json) and the efforts they take. */
 plugin.provide("agent-models:codex", (): AgentModels => {
   let list: Item[] = []
-  try { list = (JSON.parse(fs.readFileSync(path.join(CODEX, "models_cache.json"), "utf8")).models ?? []).filter((m: Item) => m.visibility === "list" && typeof m.slug === "string") } catch { /* none yet */ }
+  try { list = (JSON.parse(fs.readFileSync(path.join(CODEX, "models_cache.json"), "utf8")).models ?? []).filter((m: Item) => m.visibility === "list" && typeof m.slug === "string") } catch {}
   const efforts = (m: Item) => (Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.map((l: Item) => String(l.effort)) : [])
   return { models: sortBy(list, (m) => Number(m.priority) || 0).map((m) => ({ id: String(m.slug), label: modelName(String(m.slug)) })),
     efforts: list.length ? efforts(list[0]).filter((e: string) => list.every((m) => efforts(m).includes(e))) : ["low", "medium", "high", "xhigh"],
     modes: Object.keys(SANDBOX) as PermissionMode[] }
 })
 
-/** Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC
- *  7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No. */
+/** Its dialogs, by their last lines; before 0.163 (no OSC 7501, no hooks) its only blocked state. */
 plugin.provide("agent-asks:codex", (): AgentAsk[] => [
   { id: "trust", match: /Trust this folder\? Codex can/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\r"], deny: ["\x1b"] },
   { id: "permission", match: /Yes, proceed \(y\)[\s\S]*Press enter to confirm or esc to cancel/, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
 ])
 
-// ---------- blocks as text (GET /api/render)
 
 plugin.block("agent-limits", async () => {
   const lim = await limits()

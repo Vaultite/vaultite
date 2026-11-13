@@ -1,12 +1,8 @@
-// MCP's tools generated from the ops (`mcp` ones, hints from `kind`), plus `ops` and `call` for the rest, the same
-// for both adapters.
 import type { OpEntry, Schema } from "../../../core/plugins.ts"
 import { type Tool, ToolError } from "./protocol.ts"
 
-/** Names the two generic tools take (an op can't be served under them). */
 export const RESERVED = new Set(["ops", "call"])
 
-/** A short title from an op's summary: its first clause, at most 60 characters. */
 export function titleOf(e: OpEntry) {
   const first = e.summary.split(/[:;(]|\.\s|\.$/)[0].trim()
   return first.length > 60 ? `${first.slice(0, 57).replace(/\s+\S*$/, "")}...` : first || e.id
@@ -15,7 +11,7 @@ export function titleOf(e: OpEntry) {
 const hints = (kind: OpEntry["kind"]): Record<string, boolean> =>
   kind === "read" ? { readOnlyHint: true, destructiveHint: false } : { readOnlyHint: false, destructiveHint: kind === "destructive" }
 
-/** An op as a tool. Its `format: "file"` parameters are ones ChatGPT fills with a file from the chat. */
+/** `format: "file"` parameters are ones ChatGPT fills with a file from the chat. */
 export function toolOf(e: OpEntry): Tool {
   const files = Object.entries(e.params.properties ?? {}).filter(([, s]) => s.format === "file").map(([k]) => k)
   return {
@@ -29,13 +25,11 @@ export function toolOf(e: OpEntry): Tool {
   }
 }
 
-/** A parameter as a line of the `ops` tool's answer. */
 function paramLine(k: string, s: Schema, required: boolean) {
   const t = s.enum ? s.enum.map((x) => JSON.stringify(x)).join(" | ") : s.type === "array" ? `list of ${s.items?.type ?? "values"}` : s.format ?? s.type ?? "any"
   return `- \`${k}\` (${[t, required ? "required" : null].filter(Boolean).join(", ")}): ${s.description ?? ""}${s.default !== undefined ? ` Default: ${JSON.stringify(s.default)}.` : ""}`
 }
 
-/** One op explained, for the `ops` tool. */
 export function explain(e: OpEntry) {
   const props = e.params.properties ?? {}, req = e.params.required ?? []
   return [
@@ -47,7 +41,6 @@ export function explain(e: OpEntry) {
   ].filter(Boolean).join("\n\n")
 }
 
-/** The generic pair: `ops` and `call`. */
 function generic(entries: OpEntry[]): Tool[] {
   return [{
     name: "ops",
@@ -82,7 +75,6 @@ function generic(entries: OpEntry[]): Tool[] {
       id: { type: "string", description: "the operation's id (note.create, events.wait)" },
       params: { type: "object", description: "its parameters, as ops describes them" },
     }, required: ["id"], additionalProperties: false },
-    // Which operation it runs isn't known until it's called: it may change or delete things.
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     run: async (args, ctx) => {
       const id = typeof args.id === "string" ? args.id.trim() : ""
@@ -94,7 +86,6 @@ function generic(entries: OpEntry[]): Tool[] {
   }]
 }
 
-/** The tools for a catalog: its ops marked `mcp`, then `ops` and `call`. */
 export function toolsOf(entries: OpEntry[]): Tool[] {
   return [...entries.filter((e) => e.mcp && !RESERVED.has(e.mcp)).map(toolOf), ...generic(entries)]
 }

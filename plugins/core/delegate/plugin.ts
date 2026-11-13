@@ -1,5 +1,3 @@
-// Delegation: an agent hands a task to another (Claude Code as a chat, Codex or OpenCode in a terminal) and waits for its
-// answer or carries on. Its turns are heard through its inbox thread (inbox.event); it never gets more than its parent.
 import fs from "node:fs"
 import path from "node:path"
 import { agentModel, type AgentModels, type Asking, type Choice, agentName, HOME, KNOWN_AGENTS, newTerminalId, parseTerminal, PERMISSION_MODES, type PermissionMode,
@@ -11,7 +9,6 @@ import { cascade, childrenOf, clampMode, ended, known, type Party, same, type Ta
 export const plugin = new Plugin(import.meta.url)
 
 const TARGETS = ["claude", "codex", "opencode"]
-/** What an asking child waits on before it goes on. */
 const BLOCKED = new Set(["permission", "question", "auth", "plan"])
 const WAITS: Record<string, string> = { permission: "a permission", question: "an answer", auth: "a sign-in", plan: "a plan approved" }
 const KEEP_DAYS = 7, KEEP = 300
@@ -19,7 +16,6 @@ const str = (v: unknown) => (typeof v === "string" ? v : "")
 const nameOf = (agent: string) => agentName(agent) ?? (agent ? agent[0].toUpperCase() + agent.slice(1) : "An agent")
 const answers = () => plugin.settings({}).agents_answer !== false
 
-// ---------- the tasks, kept on this machine (sessions are its own)
 
 const file = () => path.join(plugin.localDir(), "tasks.json")
 let tasks: Task[] | null = null
@@ -40,16 +36,13 @@ function save() {
 }
 plugin.onUnload(() => { if (saving) { clearTimeout(saving); saving = null } })
 
-/** Who waits on each task's turn (delegate.start's wait, status --wait): told whenever it changes. */
 const waiting = new Map<string, Set<() => void>>()
 function changed(t: Task) {
   t.at = Date.now()
   save()
   for (const f of [...waiting.get(t.id) ?? []]) f()
 }
-/** Whether a waiter is done waiting: its turn ended, or it asks a question its parent may answer. */
 const settledFor = (t: Task) => ended(t) || (answers() && t.state === "waiting" && t.ask === "question")
-/** Waits for task `t` to settle, at most `ms`: true when it timed out. */
 function settle(t: Task, ms: number): Promise<boolean> {
   if (settledFor(t) || ms <= 0) return Promise.resolve(!settledFor(t))
   return new Promise((resolve) => {
@@ -62,7 +55,6 @@ function settle(t: Task, ms: number): Promise<boolean> {
   })
 }
 
-// ---------- the children's turns, as the inbox hears them (each agent's state signals: hooks, OSC 7501, the chat's host)
 
 plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
   if (ev.kind !== "session" || ev.machine) return
@@ -71,8 +63,7 @@ plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
   if (t && t.state !== "cancelled") void heard(t, p, str(ev.state), str(ev.ask)).catch((e) => console.error("delegate:", e))
 })
 
-// An agent in a terminal that tells nothing when its turn ends (Codex before 0.163: no OSC 7501, no hooks) says it in its
-// transcript (agent-turn's `done`): read when its terminal goes quiet (terminal:wait), not on a timer.
+// Codex before 0.163 tells nothing as its turn ends (no OSC 7501, no hooks): its transcript says, read once it's quiet.
 const reading = (t: Task) => t.state === "working" && !!t.child.terminal
 type Waited = { met: string | null; waited: number }
 const watching = new Map<string, AbortController>()
@@ -84,13 +75,11 @@ function watch(t: Task) {
   const stop = new AbortController()
   watching.set(t.id, stop)
   void (async () => {
-    // (quiet that isn't its turn's end, a long think: looked at less often till it prints again)
     let quiet = 3, failed = 0
     while (reading(t) && !stop.signal.aborted) {
       const wait = plugin.service("terminal:wait") as ((id: string, o: object) => Promise<Waited>) | null
       const r = wait ? await wait(t.child.terminal!, { for: ["quiet", "exit"], quiet, timeout: 600, signal: stop.signal }).catch(() => null) : null
       if (stop.signal.aborted || r?.met === "exit") return
-      // (its terminal not there yet, or the terminal plugin starting: its end is terminal.ended's to tell)
       if (!r) { if (++failed > 60) return; await new Promise((ok) => setTimeout(ok, 5000).unref?.()); continue }
       failed = 0
       if (r.met !== "quiet") continue
@@ -99,7 +88,6 @@ function watch(t: Task) {
     }
   })().catch((e) => console.error("delegate:", e)).finally(() => { if (watching.get(t.id) === stop) watching.delete(t.id) })
 }
-/** Whether its transcript says its turn ended: told as a host would. */
 async function turnOver(t: Task) {
   const turn = await plugin.ask<{ done?: boolean; at?: number; text?: string; prompt?: string; session?: string } | null>(`agent-turn:${t.child.agent}`, null,
     t.child.terminal, t.child.session ?? "")
@@ -109,7 +97,6 @@ async function turnOver(t: Task) {
     text: turn.text ?? "", prompt: turn.prompt ?? "" })
 }
 
-/** A child's terminal ended before its turn did. */
 plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
   const t = taskOf(all(), { agent: "", terminal: str(ev.id) })
   if (!t || ended(t)) return
@@ -119,9 +106,7 @@ plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
 })
 
 async function heard(t: Task, p: Party, state: string, ask: string) {
-  // (a terminal's session id, once its agent says it)
   if (!t.child.session && p.session) { t.child.session = p.session; save() }
-  // (a turn after its answer is the user's, who talked to it: only delegate.send gives it back to its parent)
   if (ended(t)) return
   if (state === "working") {
     if (t.state === "working") return
@@ -134,7 +119,6 @@ async function heard(t: Task, p: Party, state: string, ask: string) {
     return changed(t)
   }
   if (state !== "done" && state !== "open") return
-  // Its turn ended: its last message is the answer, read from its own transcript (the inbox keeps only a preview).
   const turn = await plugin.ask<{ text?: string; files?: string[]; at?: number } | null>(`agent-turn:${t.child.agent}`, null, t.child.terminal ?? "", t.child.session ?? "")
   if (ended(t)) return
   const text = str(turn?.text).trim()
@@ -145,8 +129,6 @@ async function heard(t: Task, p: Party, state: string, ask: string) {
   if (!awaited) await wake(t)
 }
 
-/** Tell a parent that its child is done, when nothing waited for it: typed into its terminal, or said to its chat (which
- *  resumes it). The user's tasks need nothing: the child's thread is in their inbox. */
 async function wake(t: Task) {
   const p = t.parent
   if (!known(p)) return
@@ -158,8 +140,6 @@ async function wake(t: Task) {
 }
 
 type Sent = { submitted?: boolean | null; why?: string }
-/** Types `text` into a parent's terminal as a message it takes: never while it asks the user something (that would answer
- *  it), and its Enter pressed again when the text stayed in its input (a survey or a dialog took it). */
 async function typeInto(id: string, text: string) {
   const wait = plugin.service("terminal:wait") as ((id: string, o: object) => Promise<Waited>) | null
   const blocked = async () => (await plugin.ask<{ state?: string } | null>("terminal:state", null, id))?.state === "blocked"
@@ -173,11 +153,9 @@ async function typeInto(id: string, text: string) {
   if (!again?.met) console.error(`delegate: ${id} may not have taken the result (${r.why}): it's in vau delegate status`)
 }
 
-/** Whether a parent hears its children by itself (wake reaches it): its app terminal, or a session its host talks to. */
 const wakeable = (p: Party) => !!p.terminal || (!!p.session && !!plugin.service(`agent-reply:${p.agent}`))
 
-/** A session in the graph, for the inbox ("delegate:lineage"): `parent` delegated it its task; `consumes`: this turn is
- *  that parent's to read, not the user's; `waits`: its own subagents still at work, which will tell it when done. */
+/** `consumes`: this turn is the parent's to read, not the user's; `waits`: its own subagents still at work. */
 export type Lineage = { parent: (Party & { task: string }) | null; consumes: boolean; waits: number }
 plugin.provide("delegate:lineage", (agent: string, terminal = "", session = ""): Lineage | null => {
   const p: Party = { agent, ...(terminal ? { terminal } : {}), ...(session ? { session } : {}) }
@@ -188,10 +166,7 @@ plugin.provide("delegate:lineage", (agent: string, terminal = "", session = ""):
   return parent || waits ? { parent, consumes: !!parent && t!.state !== "done" && t!.state !== "error", waits } : null
 })
 
-// ---------- who asks, and what they may
 
-/** Who the caller is: null for the user (the app, vau typed by hand); else its agent and session, as vau fills them in
- *  from its environment (a terminal's id only when it runs an agent). */
 function callerOf(p: Item, ctx: OpCtx): Party | null {
   if (byUser(ctx.who) || userSurface(ctx.who)) return null
   const t = str(p.terminal).trim(), s = str(p.session).trim()
@@ -202,15 +177,12 @@ function callerOf(p: Item, ctx: OpCtx): Party | null {
   return { agent, ...(terminal ? { terminal } : {}), ...(session ? { session } : {}) }
 }
 
-/** The mode a caller runs in, the most its child may have: undefined for the user (no ceiling), null when its agent
- *  can't say (counted as default). */
 async function ceilingOf(caller: Party | null): Promise<PermissionMode | null | undefined> {
   if (!caller) return undefined
   if (!known(caller)) return null
   return await plugin.ask<PermissionMode | null>(`agent-mode:${caller.agent}`, null, caller.terminal ?? "", caller.session ?? "")
 }
 
-/** Task `id`, if the caller may act on it: its parent (or the user, for any). */
 function taskFor(id: string, caller: Party | null): Task {
   const t = all().find((x) => x.id === id.trim())
   if (!t) throw new OpError(`no delegated task ${id} (vau delegate list)`, 404)
@@ -229,7 +201,6 @@ const MAX = 1800
 const TIMEOUT = { type: "number", minimum: 1, maximum: MAX, default: 100, description: "with wait, the seconds to wait at most (keep it under your shell's own timeout); then it goes on as async" } as const
 const MODE = { type: "string", enum: ["wait", "async"], default: "wait", description: "wait: answer once its turn ends (or it asks you something); async: answer at once, its result comes to you as a message when it's done" } as const
 
-// ---------- answers
 
 type View = ReturnType<typeof view>
 function view(t: Task, extra: { timedOut?: boolean; clamped?: boolean } = {}) {
@@ -243,7 +214,6 @@ function view(t: Task, extra: { timedOut?: boolean; clamped?: boolean } = {}) {
 
 const questionsText = (v: View) => (v.questions ?? []).map((q) => `${q.question}${q.multi ? " (any of them)" : ""}\n${q.options.map((o, i) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ""}`).join("\n")}`).join("\n\n")
 
-/** A task as an agent reads it: its answer once done, what it asks, else that it's on it and how its answer comes. */
 export function resultText(v: View) {
   const who = nameOf(v.agent), it = `"${v.title}" (${v.id})`
   const later = v.byUser ? "Its thread is in the inbox." : `Its answer comes to you as a message when it's done; or wait for it: vau delegate status ${v.id} --wait 300.`
@@ -259,9 +229,7 @@ export function resultText(v: View) {
   }
 }
 
-// ---------- ops
 
-/** A folder as given (~ for home), which must be there; else the caller's. */
 function folderOf(given: unknown) {
   const raw = str(given).trim()
   if (!raw) return plugin.vault.path
@@ -272,17 +240,14 @@ function folderOf(given: unknown) {
 
 const newId = () => `d${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
 
-/** What the child is told: the task, and (an agent's) that its last message goes back to whoever asked. */
 const promptFor = (t: Task) => (t.parent
   ? `${t.task}\n\n(${nameOf(t.parent.agent)} delegated this to you through Vaultite and reads your last message as your answer: end with the result, and the files you changed.)`
   : t.task)
 
-/** Task `o` started: kept, then its session (Claude Code's chat, else a terminal of the app). */
 async function launch(ctx: OpCtx, o: { parent: Party | null; agent: string; task: string; title?: string; cwd: string; model?: string; effort?: string; mode: PermissionMode | null }) {
   const now = Date.now()
   const t: Task = { id: newId(), parent: o.parent, child: { agent: o.agent }, task: o.task, title: o.title?.trim() || titleOf(o.task), cwd: o.cwd,
     ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode, state: "working", started: now, at: now, turn: now }
-  // (kept before it starts: what it says first finds it)
   all().unshift(t)
   try {
     if (o.agent === "claude") {
@@ -301,7 +266,6 @@ async function launch(ctx: OpCtx, o: { parent: Party | null; agent: string; task
   return t
 }
 
-/** A follow-up to task `t`: the same session goes on with `text`. */
 async function tellMore(ctx: OpCtx, t: Task, text: string) {
   if (t.state === "cancelled") throw new OpError(`${t.id} was cancelled: delegate it again`, 409)
   if (t.child.terminal) {
@@ -433,23 +397,19 @@ plugin.op({
     for (const x of cascade(all(), t.id)) {
       if (x.state === "cancelled" && x.id !== t.id) continue
       const busy = x.state === "working" || x.state === "waiting"
-      // (cancelled first: what its stopping says is heard as the parent's, quietly; one done keeps its answer)
       if (busy || x.id === t.id) {
         Object.assign(x, { state: "cancelled", ask: undefined, questions: undefined })
         changed(x)
         stopped.push(x.id)
       }
-      // (a session kept for a follow-up ends too)
       try {
         if (x.child.terminal) { if (await plugin.ask<boolean>("terminal:runs", false, x.child.terminal)) await ctx.op("terminal.end", { id: x.child.terminal }) }
         else if (x.child.session) {
           await ctx.op("claude-code.chat-stop", { id: x.child.session })
-          // (its thread settles: a chat stopped tells the inbox nothing)
           if (busy) await plugin.ask("inbox:session", null, { agent: x.child.agent, session: x.child.session, state: "done", text: "Cancelled." })
         }
       } catch (e) { if (!(e instanceof OpError && e.status === 404)) throw e }
     }
-    // (the user stopped the last one a parent waited for: its thread, working meanwhile, is its last turn's again)
     const up = t.parent
     if (!callerOf(p, ctx) && known(up) && !childrenOf(all(), up).some((c) => !ended(c))) {
       await plugin.ask("inbox:session", null, { agent: up.agent, ...(up.terminal ? { terminal: up.terminal } : {}), ...(up.session ? { session: up.session } : {}), state: "done" })
@@ -473,7 +433,6 @@ plugin.op({
     const children = (known(who) ? childrenOf(all(), who) : who ? [] : all()).slice(0, 50)
     const link = (x: Party) => x.terminal ? `view:terminal/${x.terminal}` : x.session ? `view:${x.agent}-session/${x.session}` : null
     const from = mine && known(mine.parent) ? mine.parent : null
-    // (what the parent's called: its agent's name for the session, else its terminal's title)
     const named = from ? str((await plugin.ask<{ title?: string } | null>(`agent-turn:${from.agent}`, null, from.terminal ?? "", from.session ?? ""))?.title) ||
       (from.terminal ? str((await plugin.ask<{ title?: string } | null>("terminal:info", null, from.terminal))?.title) : "") : ""
     return { parent: from ? { ...from, link: link(from), title: named || `${nameOf(from.agent)} session`, task: mine!.id } : null, children: children.map((t) => view(t)) }

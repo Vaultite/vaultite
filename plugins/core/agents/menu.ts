@@ -1,11 +1,8 @@
-// The Agents panel's view menu, as Claude Code on the web's: group by, sort by, which kinds show (view.ts), and whose
-// sessions notify (the Inbox's `muted`).
 import { accountsOf, agentsOn, notifyError, openMenu, type AgentRun, type MenuItem } from "@vaultite"
 import { GROUPS, inbox, settings, SORTS } from "./view"
 
 const save = (p: Promise<void>) => void p.catch((e) => notifyError(e, "Couldn't save that"))
 
-/** The panel's view menu, as Claude Code on the web's: group by, sort by, which kinds show, and whose sessions notify. */
 export async function viewMenu(r: DOMRect, kinds: { kind: AgentRun["kind"]; label: string }[]) {
   const claude = agentsOn().find((a) => a.name === "claude")
   const [accounts] = await Promise.all([claude ? accountsOf(claude, "") : [], settings.ready(), inbox.ready()])
@@ -31,7 +28,6 @@ export async function viewMenu(r: DOMRect, kinds: { kind: AgentRun["kind"]; labe
           save(settings.set({ hide: next.length ? next : null }))
         } })))
     }
-    // (only an agent with several accounts has any to tell apart; Claude Code's plugin says whose a session is)
     if (accounts.length > 1) {
       out.push({ label: "Notifications", sep: true, run: () => {}, items: [
         { label: "Sessions in these accounts notify you and show in the inbox", caption: true, run: () => {} },

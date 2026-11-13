@@ -1,5 +1,3 @@
-// HTML pages' server side: pages served sandboxed at /v/ and CDN files at /cdn/ (plugin.serve, so nothing runs while
-// it's off), plus `text:html` and `looks:html`. An artifact is framed by a wrapper (frame=1 asks for the page itself).
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { pathToFileURL } from "node:url"
@@ -19,12 +17,10 @@ plugin.serve("v", (req) => {
   const vault = plugin.vault
   const headers = { "Content-Security-Policy": CSP, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" }
   if (ARTIFACT.test(req.arg(0)) && req.query.frame !== "1") {
-    // (what the page would refuse, the wrapper refuses too)
     if (!isOutside(req.arg(0))) vaultPath(req.arg(0), true, vault)
     else try { outsidePath(req.arg(0)) } catch { throw new HTTPError(404, "not found") }
     return new Text(wrapper(req.rawPath, req.query.theme === "dark"), "text/html; charset=utf-8", { ...headers, "Content-Security-Policy": WRAP_CSP })
   }
-  // A page from outside the vault, one the desktop app allowed (only the .html itself: nothing next to it).
   if (isOutside(req.arg(0))) {
     const abs = outsidePath(req.arg(0))
     if (!ARTIFACT.test(abs)) throw new HTTPError(404, "not found")
@@ -43,7 +39,6 @@ plugin.serve("v", (req) => {
   }
 })
 
-// Anyone may read these (they're public files), which fonts and modules loaded from a sandboxed artifact need.
 plugin.serve("cdn", async (req) => {
   const q = req.rawPath.indexOf("?")
   const [where, search] = q < 0 ? [req.rawPath, ""] : [req.rawPath.slice(0, q), req.rawPath.slice(q)]
@@ -56,7 +51,6 @@ plugin.serve("cdn", async (req) => {
   }))
 })
 
-/** The user's name, as ME.md has it ("" when it doesn't). */
 function ownerName() {
   try {
     const me = plugin.service("me:file") as (() => string) | null
@@ -65,7 +59,6 @@ function ownerName() {
   } catch { return "" }
 }
 
-/** What a claude.ai artifact's runtime starts with: its data, version, whether it may ask Claude, the user's name. */
 function runtimeOf(rel: string) {
   return { data: dataOf(plugin.vault, rel), version: versionOf(plugin.vault, rel), name: ownerName(),
     sample: typeof plugin.service("sample") === "function", sampleAllowed: plugin.allows(sampleGrant(rel)) }
@@ -80,7 +73,6 @@ plugin.provide("html:guest", (rel: string, shown: string, query: Record<string, 
 
 plugin.route("POST", "artifact/data", (req) => saveData(plugin.vault, obj(req.body)))
 plugin.route("POST", "artifact/publish", (req) => publish(plugin.vault, obj(req.body)))
-// The owner's yes to a page asking Claude (its first call asks, in the app).
 plugin.route("POST", "artifact/allow", async (req) => {
   await plugin.ownerOnly(req, "Asking Claude")
   plugin.allow(sampleGrant(artifactIn(plugin.vault, obj(req.body).path)))
@@ -93,7 +85,6 @@ plugin.socket("artifact/sample", (ws) => sampleSocket(plugin, ws), {
   },
 })
 
-// Shared state (vau.shared()): a socket per view of a page; the user's devices are one person each.
 export const shared = sharedPages(() => plugin.vault)
 plugin.onUnload(() => shared.flush())
 const DEVICES: [RegExp, string][] = [[/iPhone/, "iPhone"], [/iPad/, "iPad"], [/Android/, "Android"], [/Macintosh/, "Mac"], [/Windows/, "Windows"], [/Linux|CrOS/, "Linux"]]
@@ -103,8 +94,6 @@ plugin.provide("html:shared", (ws: WebSocket, rel: string, v: { shown: string; i
   shared.join(ws, artifactIn(plugin.vault, rel), { shown: v.shown, person: { id: v.id, name: v.name, device: deviceOf(v.ua) }, watch: v.watch }))
 type Host = { m: Machine; folders: string[] }
 const inside = (rel: string, folder: string) => rel.startsWith(`${folder}/`)
-/** The machine whose rooms a page's shared state is in: another of the vault's that shares its folder (its guests are
- *  there), unless this one shares it too. */
 async function hostOf(rel: string) {
   if (((plugin.service("share:folders")?.() ?? []) as string[]).some((f) => inside(rel, f))) return null
   return (await plugin.ask<Host[]>("share:hosts", [], true)).find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some((f) => inside(rel, f)))?.m ?? null
@@ -114,7 +103,6 @@ plugin.socket("artifact/shared", (ws, req, { query }) => {
   const rel = artifactIn(plugin.vault, query.path), ua = String(req.headers["user-agent"] ?? query.ua ?? "")
   const id = /^[a-z0-9]{8,32}$/.test(query.device ?? "") ? query.device : `w${crypto.randomUUID().slice(0, 8)}`
   const here = () => shared.join(ws, rel, { shown: rel, person: { id, name: ownerName() || "Owner", device: deviceOf(ua) } })
-  // (another machine's view, here: never sent on again)
   if (String(req.headers["x-vaultite-client"] ?? "").startsWith("machine/")) return here()
   const early: RawData[] = [], hold = (d: RawData) => void early.push(d)
   ws.on("message", hold)
@@ -130,15 +118,12 @@ plugin.socket("artifact/shared", (ws, req, { query }) => {
   })
 }, { accept: (_req, { query }) => void artifactIn(plugin.vault, query.path) })
 
-// A page in a shared folder (here or on another machine): the folder its views may read in, since its guests set
-// what the page does. The innermost, when folders in folders are shared.
 plugin.route("GET", "artifact/scope", async (req) => {
   const rel = artifactIn(plugin.vault, req.query.path)
   const folders = [...(plugin.service("share:folders")?.() ?? []) as string[], ...(await plugin.ask<Host[]>("share:hosts", [])).flatMap((h) => h.folders)]
   return { folder: folders.filter((f) => inside(rel, f)).sort((a, b) => b.length - a.length)[0] ?? null }
 }, { lock: false, sync: false })
 
-/** An op's page: an artifact in the vault, else an OpError. */
 const pageOf = (p: unknown) => { try { return artifactIn(plugin.vault, p) } catch (e) { throw new OpError((e as Error).message) } }
 const pageParam = { type: "string", format: "path", required: true, description: "the page (.html), a vault path" } as const
 plugin.op({
@@ -211,7 +196,6 @@ copy's: a sandbox or dev server, never the user's live app).
   },
   text: (r: { files: { path: string; width: number; height: number; embed: string }[] }) =>
     `${r.files.map((f) => `Saved ${f.path} (${f.width}×${f.height}). Embed it with ${f.embed}`).join("\n")}\nLook at it before you show it: a picture that's wrong is worse than none.`,
-  // (the first, so an agent sees what it made)
   image: (r: { files: { path: string }[] }) => (r.files[0] ? { data: fs.readFileSync(plugin.vault.abs(r.files[0].path)).toString("base64"), mimeType: "image/png" } : null),
   did: (p) => ({ action: "create", text: `Drew a picture of ${p.path ?? p.url}` }),
 })

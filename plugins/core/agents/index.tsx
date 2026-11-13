@@ -1,5 +1,3 @@
-// The Agents panel (AgentsPanel.tsx), in a new vault's right sidebar; an older setup gets it offered once the first
-// agent runs in a terminal (the terminal plugin's index.tsx).
 import { Bot } from "lucide-react"
 import { definePlugin, Panel } from "@vaultite"
 import { AgentsPanel, AgentsView } from "./AgentsPanel"

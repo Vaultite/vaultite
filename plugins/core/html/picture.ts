@@ -1,13 +1,8 @@
-// A page as a picture: an HTML mockup in the vault, or a prototype a dev server serves, drawn in a headless Chrome and
-// saved as PNGs a note embeds. What a proposal shows its options with, instead of ASCII sketches.
 import { headless } from "../../../core/headless.ts"
 
 export type Shot = { png: Buffer; width: number; height: number }
-/** The most pictures one call takes (a selector matching many: each option of a mockup). */
 export const MOST = 12
 
-/** Pictures of page `url`: the window (`width`×`height`), the whole page (`full`), or each element `selector` matches.
- *  `scale` 2 is a Retina screen's, sharp in a note. Throws saying what it couldn't find. */
 export async function pictures(o: { url: string; width: number; height: number; selector?: string; full?: boolean; dark?: boolean; scale?: number }): Promise<Shot[]> {
   const scale = o.scale ?? 2
   const b = await headless({ width: o.width, height: o.height })
@@ -25,8 +20,6 @@ export async function pictures(o: { url: string; width: number; height: number; 
       if (r.exceptionDetails) throw new Error(`the page: ${r.exceptionDetails.text}`)
       return r.result?.value
     }
-    // (a page that draws itself after load, as an app does, and its web fonts: in before the picture; what's asked for,
-    // when it's elements, as text alone came before them on a slow machine)
     const drawn = o.selector
       ? `document.URL !== "about:blank" && [...document.querySelectorAll(${JSON.stringify(o.selector)})].some((e) => e.getBoundingClientRect().width > 0)`
       : `document.URL !== "about:blank" && !!document.body && document.body.innerText.trim().length > 0`

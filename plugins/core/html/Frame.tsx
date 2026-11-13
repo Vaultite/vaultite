@@ -1,11 +1,8 @@
-// An artifact in a sandboxed iframe, this side answering its bridge (reads, file list, storage, links, height, theme).
-// A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { askBeforeOpening, outsideVault } from "./links.ts"
 import { joinShared, type SharedLink } from "./sharing.ts"
 import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange } from "@vaultite"
 
-// Every view of one artifact (here and in the app's other windows) hears the others' db and storage writes.
 type Peer = (m: Record<string, unknown>) => void
 const peers = new Map<string, Set<Peer>>()
 const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("vaultite-artifacts")
@@ -17,8 +14,6 @@ const tell = (path: string, msg: Record<string, unknown>, self: Peer) => {
 const postJson = (url: string, body: unknown) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const failed = async (r: Response) => { try { return (await r.json()) ?? {} } catch { return {} } }
 
-// The app's colours an artifact can use, as --vau-<name> (so they follow the colour scheme), and plugins' tints
-// (--vau-today...).
 const TOKENS = [
   "background", "foreground", "card", "card-foreground", "muted", "muted-foreground", "border", "primary",
   "primary-foreground", "accent", "accent-foreground", "red", "orange", "yellow", "green", "teal", "blue", "indigo",
@@ -43,9 +38,7 @@ const src = (path: string, embed: boolean, n: number) =>
 
 export function ArtifactFrame({ path, page, height, className }: {
   path: string
-  /** The file itself, opened: at least as tall as the window below it. Otherwise it's shown inside another file. */
   page?: boolean
-  /** A fixed height (an embed's `![[x.html|400]]`); otherwise the frame is as tall as what it draws. */
   height?: number
   className?: string
 }) {
@@ -58,32 +51,25 @@ export function ArtifactFrame({ path, page, height, className }: {
   const reads = useRef(new Map<string, number | null>())
   const listening = useRef(false)
   const growth = useRef<number[]>([])
-  // Asking Claude: declined once, it stays declined while this view is open; the calls running, by their ask.
   const declined = useRef(false)
-  // Sites the user said yes to opening from it, while this view is open (links.ts).
   const opened = useRef(new Set<string>())
   const asking = useRef(new Map<number, WebSocket>())
-  // The page's shared state (vau.shared()), joined while this load of it lasts.
   const shared = useRef<SharedLink | null>(null)
   useEffect(() => () => { shared.current?.close(); shared.current = null }, [url])
   useEffect(() => { declined.current = false; scope.current = null }, [path])
-  // A page in a shared folder reads only inside it, here too: its guests set what it does (shared state). Unknown, its own.
   const scope = useRef<Promise<string> | null>(null)
   const scopeOf = () => scope.current ??= share ? Promise.resolve("") : fetch(`api/artifact/scope?path=${encodeURIComponent(path)}`)
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
     .then((b) => (typeof b.folder === "string" ? b.folder : ""), () => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""))
 
-  // The theme is read when the frame loads (no flash); later changes are sent to it.
   useEffect(() => { setUrl(src(path, !page, reloads)); setReady(false); reads.current.clear(); listening.current = false }, [path, page, reloads])
   const sendTheme = useCallback(() => frame.current?.contentWindow?.postMessage(themeMessage(), "*"), [])
-  // The app's light or dark, scheme, theme, snippets and fonts: sent again when they change, once applied.
   useEffect(() => {
     let t = 0
     const off = onLook(() => { cancelAnimationFrame(t); t = requestAnimationFrame(sendTheme) })
     return () => { off(); cancelAnimationFrame(t) }
   }, [sendTheme])
 
-  // Opened as a page: at least down to the bottom of the window.
   useLayoutEffect(() => {
     if (!page) return
     const fit = () => {
@@ -95,7 +81,6 @@ export function ArtifactFrame({ path, page, height, className }: {
     return () => removeEventListener("resize", fit)
   }, [page])
 
-  // Show it once it has drawn (the bridge says so), or after a moment anyway.
   useEffect(() => {
     if (ready) return
     const t = setTimeout(() => setReady(true), 1500)
@@ -110,8 +95,6 @@ export function ArtifactFrame({ path, page, height, className }: {
       if (!d || d.vau !== 1) return
       const reply = (value?: unknown, error?: string, code?: string, more?: Record<string, unknown>) =>
         win.postMessage({ vau: 1, type: "reply", id: d.id, value, error, code, more }, "*")
-      // A page from outside the
-      // vault (an absolute path) is anyone's: it gets nothing of the vault, keeps no storage, and opens only web links.
       const outside = outsideVault(path)
       if (d.type === "ready") { setReady(true); sendTheme() }
       else if (d.type === "height" && typeof d.h === "number") {
@@ -122,9 +105,8 @@ export function ArtifactFrame({ path, page, height, className }: {
       } else if (d.type === "listening") listening.current = true
       else if (d.type === "state" && d.data && typeof d.data === "object" && !outside && !share) {
         fetch("api/artifact/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, data: d.data }) })
-          .catch(() => { /* offline: it's kept until the next save */ })
+          .catch(() => {})
       } else if (d.type === "open") {
-        // (a shared folder's page opens no address for its guest: it would carry what it read out)
         if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) {
           if (share) return
           const site = askBeforeOpening(path, d.url, opened.current)
@@ -137,7 +119,6 @@ export function ArtifactFrame({ path, page, height, className }: {
       else if (d.type === "shared-set" && d.values && typeof d.values === "object") shared.current?.set(d.values)
       else if (d.type === "ask") {
         if (outside) return reply(undefined, "a page from outside the vault can't read the vault")
-        // (a shared folder's page, for its guest: its folder's files (their vault), its shared state; nothing of the user's)
         if (share && !["read", "files", "shared"].includes(String(d.op))) return reply(undefined, "a shared folder's page can't do that here", "unavailable")
         const args = (d.args ?? {}) as Record<string, unknown>
         const within = await scopeOf(), mayRead = (p: string) => !within || p.startsWith(`${within}/`)
@@ -214,8 +195,6 @@ export function ArtifactFrame({ path, page, height, className }: {
     }
   }, [path, page, sendTheme])
 
-  // Live: when the server says files changed (core/live.ts), the ones it read are checked (their mtimes, so the app's
-  // own no-op writes don't count): it's told, or reloaded. Its own file changing reloads it.
   const self = useRef<number | null | undefined>(undefined)
   const stat = async (paths: string[]): Promise<Record<string, number | null> | null> => {
     try {
@@ -245,7 +224,6 @@ export function ArtifactFrame({ path, page, height, className }: {
   const shown = height ?? Math.max(h ?? (page ? 0 : 160), min)
   return (
     <iframe ref={frame} src={url} title={stem(path)}
-      // (a shared folder's guest's: scripts only, as the server's policy says too)
       sandbox={share ? "allow-scripts" : "allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"}
       referrerPolicy="no-referrer" loading={page ? "eager" : "lazy"}
       className={cn("block w-full border-0 bg-transparent transition-opacity duration-150", ready ? "opacity-100" : "opacity-0", className)}

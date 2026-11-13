@@ -184,30 +184,30 @@ by its path.
 - `activity:report-url` (activity): The same as a URL its hook POSTs the JSON to, for an agent whose hooks can (Claude Code's http hooks on Windows).
 - `activity:changes` (activity)
 - `agent:claude` (claude-code)
-- `agent:codex` (codex): `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost.
+- `agent:codex` (codex): `codex`, or `codex resume <id>`. No context or hooks: any `-c` runs it without its shared background server.
 - `agent-account:claude` (claude-code): The account a session runs in (the Inbox mutes the ones the user muted); null when it can't be told.
 - `agent-accounts:claude` (claude-code): Its accounts' ids: what a job may ask to run in on this machine.
 - `agent-answer:claude` (claude-code)
 - `agent-asking:claude` (claude-code): What a session waits on: its AskUserQuestion or plan, else its terminal's dialog as a question; never a private account's.
 - `agent-asks:claude` (claude-code)
-- `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
+- `agent-asks:codex` (codex): Its dialogs, by their last lines; before 0.163 (no OSC 7501, no hooks) its only blocked state.
 - `agent-chat-new:claude` (claude-code)
 - `agent-context:claude` (claude-code): How full a session's context is now: its last request's tokens and its window.
 - `agent-edits:claude` (claude-code): The files a session changed after each message it was told and each of its words, from `from` on.
 - `agent-meters:claude` (claude-code)
-- `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
+- `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal. No meters: its rollouts don't say when a prompt cache expires.
 - `agent-mode:claude` (claude-code): The permission mode a session runs in now: what a subagent it delegates to may have at most; null: unknown.
-- `agent-mode:codex` (codex): The mode a session runs in now, from its last turn's sandbox and approvals (the service "agent-mode:codex"): what a subagent it delegates to may have at most. The session in `terminal` when `session` isn't given; null: unknown.
+- `agent-mode:codex` (codex): The mode a session runs in now, from its last turn's sandbox and approvals; null: unknown.
 - `agent-model:claude-code` (claude-code)
 - `agent-model-id:claude` (claude-code): A model as people say it ("Fable 5.2", "opus 55") as --model takes it, and its name.
 - `agent-models:claude` (claude-code)
-- `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
+- `agent-models:codex` (codex): The models its picker lists ($CODEX_HOME/models_cache.json) and the efforts they take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices`, or "chat": a digit picks (toggles in a multi-select, then Tab).
 - `agent-reply:claude` (claude-code)
 - `agent-said:claude` (claude-code): The user's own latest message in a session, not a notice or another session's message.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts: an hour when it wrote 1 h cache, else five minutes.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message (or `auto`), Claude's last answer, its background tasks running.
-- `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
+- `agent-turn:codex` (codex): A session's latest turn: the user's last message, Codex's last answer, the session's title.
 - `agents-used:companion` (companion): The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"): its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first.
 - `cloud-read:claude` (claude-code)
 - `cloud-ready:claude` (claude-code)

@@ -1,33 +1,22 @@
-// Connections (public.ts, cloud.ts): AiApps lists the apps, each opening its setup steps or, once connected, its page
-// (access, activity, rename, disconnect); RemoteAccess is Vaultite Cloud and the addresses. Polls, faster while connecting.
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
 import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, OnThisMac, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useAi, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
 
 type Access = "read" | "write"
-/** `actor`: the name Activity gives what it does. */
 type Connection = { id: string; name: string; created: string; used: string | null; access: Access; actor: string }
 type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; guests?: string | null; connectUrl: string; message?: string }
-/** `here`: "connect" when the app is used through Vaultite Cloud (Connect, owner tools off): the connections can be seen
- *  and ended there, and the rest is done on the Mac (plugin.ts seenOverConnect). */
 type State = { here?: "connect"; url: string | null; cloud: Cloud; connect?: { ownerTools: boolean }; connections: Connection[]; waiting: number
-  /** The apps whose sign-in page waits for its code. */
   asking?: string[]
-  /** Apps let in by their code that haven't finished signing in: a row each, till they're connections. */
   finishing?: { name: string; stuck?: string }[]
-  /** Those that didn't become connections lately, and why. */
   failed?: { name: string; why: string }[] }
 
-/** The last answer, for a sheet's title (details' titles are drawn from what's at hand). */
 let lastState: State | null = null
 
-// One version for every list and sheet: after a change each asks anew, and a sheet opened later never gets an older answer.
 let asked = 0
 const askers = new Set<() => void>()
 const askAgain = () => { asked++; askers.forEach((f) => f()) }
 const onAsk = (f: () => void) => { askers.add(f); return () => { askers.delete(f) } }
 
-/** Connections disconnected from here: gone at once, back if it fails. */
 const disconnecting = removals()
 
 function useConnections() {
@@ -42,7 +31,6 @@ function useConnections() {
   return { ...live, data, leaving, reload: askAgain }
 }
 
-/** The code field; in an app's sheet (`as`), the connection takes that app's name, whatever it signs in as. */
 function Connect({ waiting, onDone, as }: { waiting: number; onDone: () => void; as?: string }) {
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
@@ -75,7 +63,6 @@ const CLOUD_STATE: Record<Cloud["state"], string> = {
   offline: "Offline, trying again", replaced: "In use on another machine",
 }
 
-/** Signing in to Vaultite Cloud: its /connect page in the browser gives a code to type here. */
 function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => void; intro: string }) {
   const [busy, setBusy] = useState(false)
   const [entering, setEntering] = useState(false)
@@ -84,7 +71,6 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
     setBusy(true)
     try { await op<Cloud>("mcp.cloud-sign-in", { code }); setEntering(false); setCode(""); onDone() } catch (e) { notifyError(e) } finally { setBusy(false) }
   }
-  // Like the guides' links: the Browser when it's on (the desktop app), else the system browser.
   const openConnect = () => openWebLink(cloud.connectUrl)
   return (
     <>
@@ -113,7 +99,6 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
 
 const CLOUD_INTRO = "Off until you sign in. It gives your vault an address on vaultite.app, so your phone and AI apps on the web can reach it while this machine is on. Your files stay on this machine. Leave it off and Vaultite stays on your own network: everything else works the same."
 
-/** Vaultite Cloud, last on the page: signed out, a sign-in; else its state, the addresses and sign out. */
 function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
   const { cloud } = data
   const [busy, setBusy] = useState<string | null>(null)
@@ -143,7 +128,6 @@ function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
   )
 }
 
-/** Connect: the whole app at the handle's address, for its owner, while this Mac is on. */
 function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: boolean; onDone: () => void }) {
   const [tools, choose] = useChosen(ownerTools)
   const turn = (on: boolean) => choose(on, () => post("mcp/connect", { ownerTools: on }).then(onDone), "Couldn't change it")
@@ -164,11 +148,9 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
 
 const hostOf = (url: string | null | undefined) => { try { return url ? new URL(url).host : "" } catch { return "" } }
 
-/** Share & sync over Connect: where the app is reached, the Vaultite account (devices, plan, sign out), and what
- *  only the Mac sets. */
 function ThroughCloud({ cloud }: { cloud: Cloud }) {
   let account = ""
-  try { account = new URL(cloud.connectUrl).origin } catch { /* no relay */ }
+  try { account = new URL(cloud.connectUrl).origin } catch {}
   return (
     <Section title="Vaultite Cloud">
       <p className="pb-2 text-[15px] leading-[20px]" data-through-cloud>
@@ -186,12 +168,11 @@ function ThroughCloud({ cloud }: { cloud: Cloud }) {
 const copyAddress = (url: string) => copyText(url).then(() => notify("Copied the address", { id: "copied" }), (e) => notifyError(e))
 
 export type AppId = "claude" | "chatgpt" | "grok-bot" | "muse" | "other"
-/** One thing to do in the app, with what it needs: a text to copy or a page to open. */
 type Step = { text: ReactNode; copy?: { label: string; value: string }; open?: string }
 const NAME = "Vaultite"
 const B = ({ children }: { children: ReactNode }) => <b className="font-semibold">{children}</b>
 const RESULTS = "When you finish a task, save the result to my Vaultite inbox with inbox_add."
-/** How to add the address in each app, in the order its screens ask. Grok Bot and Muse add it when asked in a chat. */
+/** How to add the address in each app, in the order its screens ask; Grok Bot and Muse add it when asked in a chat. */
 const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: string; match: RegExp; steps: (address: string, icon: string) => Step[] }> = {
   claude: {
     name: "Claude", icon: "claude", tint: "var(--orange)", match: /claude|anthropic/i, sub: "On the web, the desktop app and the phone, once added on the web.",
@@ -254,7 +235,6 @@ function Guide({ id, address }: { id: AppId; address: string }) {
         <li key={i} className="flex min-h-9 items-center gap-3 text-[15px] leading-[20px]">
           <span className="grid size-5.5 shrink-0 place-items-center rounded-full bg-foreground/[0.08] text-[12px] font-semibold">{i + 1}</span>
           <span className="min-w-0 flex-1">{s.text}</span>
-          {/* (Copy last, so a step's copy buttons line up whether or not it has Open too) */}
           {s.open && <a href={s.open} target="_blank" rel="noreferrer" className={small} data-guide-open>Open<ExternalLink className="size-3.5" /></a>}
           {s.copy && (
             <button type="button" onClick={() => void copy(i, s.copy!.value)} className={small} data-guide-copy>
@@ -267,18 +247,13 @@ function Guide({ id, address }: { id: AppId; address: string }) {
   )
 }
 
-/** The sheet's detail path (`details` in index.tsx): connect-app/<app>. */
 export const SETUP_DETAIL = "connect-app"
-/** The apps Connections names, in order ("other" is the generic setup). */
 export const APPS: AppId[] = ["claude", "chatgpt", "muse", "grok-bot"]
 export const setupTitle = (id: string) => (id in GUIDES && id !== "other" ? `Set up ${GUIDES[id as AppId].name}` : "Set up another app")
 export const appIcon = (id: AppId): LucideIcon => (id === "other" ? Plug : iconNamed(GUIDES[id].icon) ?? Bot)
-/** The connection an app made, by the name it signed in with. */
 const connectionOf = (id: AppId, cs: Connection[]) => cs.find((c) => GUIDES[id].match.test(c.name))
-/** The known app a connection is, by its name, or null. */
 const appOf = (c: Connection) => APPS.find((id) => GUIDES[id].match.test(c.name)) ?? null
 
-/** An app's steps in a sheet: Vaultite Cloud's sign-in first when there's no address yet, then the steps and the code field. */
 export function SetupSheet({ id }: { id: AppId }) {
   const { data, error, reload } = useConnections()
   const g = GUIDES[id]
@@ -311,7 +286,6 @@ export function SetupSheet({ id }: { id: AppId }) {
   )
 }
 
-/** A blank tab's four apps, small cards: each opens its steps. */
 function AppCards() {
   return (
     <div className="grid grid-cols-2 gap-2" data-app-cards>
@@ -330,14 +304,12 @@ function AppCards() {
 }
 const small = "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] border-[0.5px] border-border px-2.5 text-[13px] font-medium hover:bg-foreground/[0.05]"
 
-/** A blank tab's section until an app is connected: the cards, small. */
 export function ConnectSection() {
   const { data } = useConnections(), ai = useAi()
   if (!data || data.connections.length || !ai) return null
   return (
     <div className="flex flex-col gap-1.5 pb-2" data-newtab-connect>
       <div className="pl-1.5 text-[12px] font-semibold text-muted-foreground">Connect your AI</div>
-      {/* (in from the rows' bleed: cards line up with the page's text and the pinned tiles) */}
       <div className="px-1.5"><AppCards /></div>
     </div>
   )
@@ -346,7 +318,6 @@ export function ConnectSection() {
 
 const INTRO = "Tell them what happened and it lands in your vault, from the web, their desktop apps and your phone."
 
-/** An app's mark in a list row, on a tile. */
 function AppMark({ icon: Icon, tint }: { icon: LucideIcon; tint?: string }) {
   return (
     <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-foreground/[0.06]">
@@ -355,7 +326,6 @@ function AppMark({ icon: Icon, tint }: { icon: LucideIcon; tint?: string }) {
   )
 }
 
-/** The sign-ins let in that aren't connections yet (saying where one waits, once it's slow) and those that failed lately. */
 function SignInRows({ data, lead }: { data: State; lead?: boolean }) {
   const mark = lead ? <AppMark icon={Bot} /> : undefined
   return (
@@ -372,7 +342,6 @@ function SignInRows({ data, lead }: { data: State; lead?: boolean }) {
 
 const usedText = (c: Connection) => [c.used ? `used ${fmtAgo(c.used)}` : null, c.access === "read" ? "read only" : null].filter(Boolean).join(" · ")
 
-/** A sign-in waiting for its code (the toast "wants to connect" opens Connections on it): what it's for and the field. */
 function Waiting({ data, onDone }: { data: State; onDone: () => void }) {
   const names = [...new Set(data.asking ?? [])]
   return (
@@ -387,15 +356,12 @@ function Waiting({ data, onDone }: { data: State; onDone: () => void }) {
   )
 }
 
-/** Everything about AI apps: a sign-in waiting, a row per app (connected: its page; else its steps), any other app
- *  connected, and the generic setup. `bare`: without its intro (Settings' AI section says what they're for). */
 export function AiApps({ bare }: { bare?: boolean }) {
   const { data, error, leaving, reload } = useConnections()
   const rows = useKeptCount("mcp:connections", data ? APPS.length + 1 + Math.max(0, data.connections.length - 1) : undefined)
   if (error && !data) return <Loading error={error} />
   const intro = bare ? null : <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
   if (!data) return <div aria-busy>{intro}<div className="rounded-[10px] bg-foreground/[0.04] px-3"><LoadingRows count={rows || APPS.length + 1} lead={<span className="skeleton size-8 shrink-0 rounded-[8px]" />} /></div></div>
-  // Each known app takes the first connection with its name; the rest are listed by theirs.
   const taken = new Set<string>()
   const known = APPS.map((id) => {
     const c = data.connections.find((x) => !taken.has(x.id) && GUIDES[id].match.test(x.name))
@@ -428,7 +394,6 @@ export function AiApps({ bare }: { bare?: boolean }) {
   )
 }
 
-/** AI apps over Connect: the connected ones, each opening its page (seen and ended there); setting up a new one is the Mac's. */
 function ConnectedApps({ data, intro, leaving }: { data: State; intro: ReactNode; leaving: ReturnType<typeof useConnections>["leaving"] }) {
   return (
     <div className="flex flex-col gap-3" data-ai-apps data-over-connect>
@@ -451,7 +416,6 @@ function ConnectedApps({ data, intro, leaving }: { data: State; intro: ReactNode
   )
 }
 
-/** Vaultite Cloud and the addresses this machine is reached at: the whole app from anywhere, MCP's for apps. */
 export function RemoteAccess() {
   const { data, error, reload } = useConnections()
   if (!data) return <Loading error={error} />
@@ -473,7 +437,6 @@ export function RemoteAccess() {
   )
 }
 
-/** view:connections: the apps, then Share & sync, each its own card. */
 export function ConnectionsView() {
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 p-4" data-connections>
@@ -483,16 +446,13 @@ export function ConnectionsView() {
   )
 }
 
-// ---------- a connected app's page
 
-/** The sheet's detail path (`details` in index.tsx): connection/<grant id>. */
 export const CONNECTION_DETAIL = "connection"
 export const connectionTitle = (id: string) => lastState?.connections.find((c) => c.id === id)?.name ?? "Connected app"
 
 type Event = { id: string; t: number; last?: number; action: string; text: string; paths?: string[] }
 type Gate = { id: string; title: string; gate?: boolean; answer?: string }
 
-/** How many changes of the app's wait for review (the review queue's op), or null without one. */
 function useReviewCount(by: string) {
   const [n, setN] = useState<number | null>(null)
   useEffect(() => {
@@ -519,7 +479,6 @@ function NameField({ c, onDone }: { c: Connection; onDone: () => void }) {
   )
 }
 
-/** A connected app's page: who it is, what it may do, what it did lately and waits on, its name, and disconnecting it. */
 export function ConnectionSheet({ id }: { id: string }) {
   const { data, error, reload } = useConnections()
   const c = data?.connections.find((x) => x.id === id)
@@ -533,10 +492,8 @@ export function ConnectionSheet({ id }: { id: string }) {
   return <ConnectionPage key={c.id} c={c} onDone={reload} remote={data.here === "connect"} />
 }
 
-/** `remote`: over Connect, where it's seen and ended; its access and name are changed on the Mac. */
 function ConnectionPage({ c, onDone, remote }: { c: Connection; onDone: () => void; remote: boolean }) {
   const app = appOf(c)
-  // (what was chosen shows at once; a change that fails goes back)
   const [chosen, setChosen] = useState<Access | null>(null)
   const access = chosen ?? c.access
   const on = useEnabled()

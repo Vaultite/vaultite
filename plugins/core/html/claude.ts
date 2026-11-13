@@ -1,5 +1,3 @@
-// What claude.ai artifacts get here (runtime.ts in the page): db and window.storage kept in a sidecar beside the
-// localStorage one, publish rewriting the .html, and sample through the service "sample" once the owner said yes.
 import fs from "node:fs"
 import path from "node:path"
 import type { WebSocket } from "ws"
@@ -9,20 +7,18 @@ import { type Item, readText, type Vault, writeAtomic } from "../../../core/vaul
 
 const ARTIFACT = /\.html?$/i
 
-/** Where an artifact's db and window.storage are kept (beside statePath's localStorage, so a move takes both). */
 export const dataPath = (rel: string) => `.vaultite/artifacts/${rel}.data.json`
 
 export type ArtifactData = { db: Record<string, Item>; storage: { shared: Record<string, string>; personal: Record<string, string> } }
 
 export function dataOf(vault: Vault, rel: string): ArtifactData {
   let d: Item = {}
-  try { d = JSON.parse(readText(vault.abs(dataPath(rel)))) } catch { /* none yet */ }
+  try { d = JSON.parse(readText(vault.abs(dataPath(rel)))) } catch {}
   const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v : {}) as Item
   const st = obj(d.storage)
   return { db: obj(d.db), storage: { shared: obj(st.shared), personal: obj(st.personal) } }
 }
 
-/** An artifact in the vault (not hidden, there), or a 400. */
 export function artifactIn(vault: Vault, rel: unknown) {
   const p = String(rel ?? "")
   if (!ARTIFACT.test(p) || p.split("/").some((s) => s.startsWith(".") || s === "..") || !fs.existsSync(vault.abs(p))) {
@@ -31,7 +27,6 @@ export function artifactIn(vault: Vault, rel: unknown) {
   return p
 }
 
-/** Its version, as /api/artifact/stat has it (ms). */
 export const versionOf = (vault: Vault, rel: string) => Number(fs.statSync(vault.abs(rel), { bigint: true }).mtimeNs / 1000000n)
 
 const DOC_PATH = /^[A-Za-z0-9_\-.~:@+]+$/
@@ -41,8 +36,6 @@ const docPath = (p: unknown) => {
   return s.join("/")
 }
 
-/** POST /api/artifact/data {path, db: [{path, data | null}], storage: [{shared, key, value | null}]}: writes applied in
- *  order (a document whole, or removed). */
 export function saveData(vault: Vault, body: Item) {
   const rel = artifactIn(vault, body.path)
   const d = dataOf(vault, rel)
@@ -64,7 +57,6 @@ export function saveData(vault: Vault, body: Item) {
   return { ok: true }
 }
 
-/** POST /api/artifact/publish {path, html, version}: the page rewrites itself, whole, unless it changed since it loaded. */
 export async function publish(vault: Vault, body: Item) {
   const rel = artifactIn(vault, body.path)
   const html = body.html
@@ -77,11 +69,8 @@ export async function publish(vault: Vault, body: Item) {
   return { version: String(versionOf(vault, rel)) }
 }
 
-/** The owner's yes to a page asking Claude, kept on this machine (a synced vault can't give it). */
 export const sampleGrant = (rel: string) => `sample ${rel}`
 
-/** A page asking Claude: one call per socket ({prompt, system, tier...} in; {t: "text", delta}..., then {t: "done"} or
- *  {t: "error", code} out). Closing it stops the call. */
 export function sampleSocket(plugin: Plugin, ws: WebSocket) {
   const ctl = new AbortController()
   const send = (m: Item) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
@@ -107,7 +96,6 @@ export function sampleSocket(plugin: Plugin, ws: WebSocket) {
   })
 }
 
-/** When an artifact moves, its data follows (statePath's move covers a folder). */
 export function movedData(vault: Vault, from: string, to: string | null) {
   const src = vault.abs(dataPath(from))
   if (!to || !fs.existsSync(src)) return

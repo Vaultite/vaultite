@@ -11,7 +11,6 @@ const here = () => { const f = currentFile() || activeFile()?.path || ""; return
 const reading = () => hasCloud() && settings.get().read === true
 const PANEL = "cloud-sessions:cloud"
 
-/** The account to start in: the one picked or shown, else the user's pick in the palette (null: dismissed). */
 function pickAccount(then: (a: CloudAccount | undefined) => void) {
   const s = getCloud(), shown = shownAccounts(s, settings.get().hidden), picked = pickedOf(shown, pickedNow().get())
   if (picked || shown.length <= 1) return then(picked ?? shown[0])
@@ -19,9 +18,8 @@ function pickAccount(then: (a: CloudAccount | undefined) => void) {
     onPick: (it) => then(shown.find((a) => a.id === it.id)) })
 }
 
-// (claude.ai takes the prompt in its address: a long note is cut to fit what its servers take)
+// claude.ai takes the prompt in its address: no longer than its servers take
 const MAX_PROMPT = 6000
-/** A new session on claude.ai with a note as its prompt, waiting in the box: the user picks the repository and sends. */
 async function sendNote(path: string) {
   try {
     const { body } = splitFm((await readFile(path)).text)
@@ -31,8 +29,6 @@ async function sendNote(path: string) {
   } catch (e) { notifyError(e, "Couldn't read the note") }
 }
 
-// The panel offered once (a sidebar setup saved before it existed doesn't list it), beside Terminals, when it first
-// has something to show; hidden after, it stays hidden.
 const offered = devicePref<boolean>("cloud-sessions:offered", false)
 function Watch() {
   const s = useSyncExternalStore(subscribeCloud, getCloud)
@@ -59,9 +55,7 @@ function Preview() {
 }
 
 export default definePlugin({
-  // (asked from the start, sidebar shown or not: the sessions' news reaches the Inbox as `session` events)
   background: () => <Watch />,
-  // The panel as a tab (drag its heading onto a pane, or the command).
   views: { cloud: { icon: Cloud, title: () => "Cloud sessions", render: () => <CloudView /> } },
   sidebar: { cloud: { title: "Cloud", names: ["cloud", "cloud sessions", "claude code on the web"], heading: false, needsHeading: true, sort: 31, view: "cloud", render: (ctx) => <CloudPanel {...ctx} /> } },
   newTab: { cloud: { title: "Cloud sessions", sort: 6, hidden: true, render: () => <CloudList /> } },
@@ -71,7 +65,6 @@ export default definePlugin({
     { id: "cloud-sessions:send-note", name: "Send note to a new cloud session", when: () => reading() && !!here(), icon: Send, run: () => void sendNote(here()) },
   ],
   fileMenu: (path) => (isNote(path) && reading() ? [{ label: "Send to a new cloud session", icon: Send, section: "actions", run: () => void sendNote(path) }] : []),
-  // Every session in the quick switcher and the search tab, by its title and account; picking one opens it.
   searchLive: {
     subscribe: subscribeCloud,
     docs: () => {
@@ -85,7 +78,6 @@ export default definePlugin({
       })
     },
   },
-  // Its sessions in the Agents panel with every other agent.
   agentRuns: useCloudRuns,
   preview: () => <Preview />,
 })

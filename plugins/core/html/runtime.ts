@@ -1,10 +1,8 @@
-// claude.ai's artifact runtime, so an artifact saved from Claude runs here as is: window.claude.use() (sample, db, artifact,
-// user, downloads, permissions; else null), complete() and window.storage. Injected as source: no imports or outer names.
+// claude.ai's artifact runtime (window.claude, window.storage), so an artifact saved from Claude runs here as is.
 
 type Doc = Record<string, unknown>
 export type DbQuery = { coll: string; where: [string, string, unknown][]; order: [string, "asc" | "desc"] | null; limit: number | null }
 
-/** The documents of `q.coll` (direct children only) that match its filters, in its order, limited: their paths. */
 export function queryDocs(docs: Map<string, Doc>, q: DbQuery): string[] {
   const depth = q.coll.split("/").length + 1
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
@@ -37,8 +35,6 @@ export function queryDocs(docs: Map<string, Doc>, q: DbQuery): string[] {
   return q.limit ? out.slice(0, q.limit) : out
 }
 
-/** A reply read as one JSON value: the whole of it, else one Markdown fence's body, else from the first { or [ to the
- *  last } or ]. undefined when none parses. */
 export function parseReply(text: string): unknown {
   const tryParse = (s: string) => { try { return { v: JSON.parse(s) } } catch { return null } }
   const whole = tryParse(text.trim())
@@ -52,17 +48,14 @@ export function parseReply(text: string): unknown {
 }
 
 type Io = {
-  /** Ask the app; `onEvent` hears what it sends before the answer (a sample's text). */
   ask: (op: string, args: Record<string, unknown>, onEvent?: (x: any) => void) => Promise<any> & { id: number }
   post: (m: Record<string, unknown>) => void
-  /** fn(data) for each message of `type` the app sends this page. */
   listen: (type: string, fn: (d: any) => void) => void
 }
 type RuntimeCfg = { framed: boolean; outside: boolean; path: string; title: () => string; version: number
   data: { db: Record<string, Doc>; storage: { shared: Record<string, string>; personal: Record<string, string> } }
   sample: boolean; sampleAllowed: boolean; name: string }
 
-/** window.claude and window.storage, answered by the app (Frame.tsx) through `io`. */
 export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<string, Doc>, q: DbQuery) => string[], parseReply: (t: string) => unknown) {
   const w = window as any
   const fail = (code: string, message: string, more: Record<string, unknown> = {}) => Promise.reject({ code, message, ...more })
@@ -70,7 +63,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
   const live = cfg.framed && !cfg.outside
   const later = (f: () => void) => setTimeout(f, 0)
 
-  // ---------- sample (and the older complete())
   const TIERS = ["default", "complex", "quick"]
   const SYSTEM = "You answer a request from an interactive web page (an artifact) the user is viewing. You have no tools " +
     "and can't browse or remember earlier calls. Reply with exactly what the request asks for."
@@ -155,7 +147,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
     limits: () => Promise.resolve({ maxPromptBytes: 262144 }),
   })
 
-  // ---------- db: the documents kept in the sidecar, mirrored here; writes go through the app, other views' come back
   const docs = new Map<string, Doc>(Object.entries(cfg.data.db))
   const SEG = /^[A-Za-z0-9_\-.~:@+]+$/
   const check = (p: unknown, even: boolean) => {
@@ -216,7 +207,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
       update: (data: unknown) => (!plain(data) ? fail("invalid_argument", "update() takes an object")
         : !docs.has(path) ? fail("invalid_argument", `no document at ${path} to update`) : write(path, merge(docs.get(path), data))),
       delete: () => write(path, null),
-      // One user: the lease is always theirs.
       acquire: (opts: any) => {
         const ttl = Math.min(Math.max(Number(opts?.ttlMs) || 30000, 1000), 600000)
         const done = { acquired: true, version: Date.now(), expiresAt: new Date(Date.now() + ttl).toISOString(), holder: String(opts?.holder ?? "") }
@@ -283,7 +273,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
     changed()
   })
 
-  // ---------- user: the viewer is the vault's owner
   const ME = "u_owner"
   const name = cfg.name || "You"
   const color = "#d97757"
@@ -298,7 +287,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
     search: (q: string) => Promise.resolve(!q || name.toLowerCase().includes(String(q).toLowerCase()) ? [profile(ME)] : []),
   })
 
-  // ---------- artifact (self): publish rewrites the .html file; the app reloads every view of it
   const artifact = Object.freeze({
     publish: (x: unknown) => {
       if (!live) return fail("not_granted", "this view can't save the page")
@@ -316,7 +304,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
     }))),
   })
 
-  // ---------- downloads: the sandbox may download
   const EXTS = "gif png jpg jpeg webp mp4 webm mov txt json md docx pptx epub csv ttf html svg pdf xlsx zip".split(" ")
   const downloads = Object.freeze({
     save: (r: any) => {
@@ -335,7 +322,6 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
     },
   })
 
-  // ---------- permissions: what's served is granted, but asking Claude, which asks once
   const served: Record<string, unknown> = live ? { ...(cfg.sample ? { sample } : {}), db, artifact, self: artifact, user, downloads } : {}
   const stateOf = (n: string) => (n === "permissions" || !(n in served) ? "unavailable" : n === "sample" ? consent : "granted")
   const permissions = Object.freeze({
@@ -358,9 +344,8 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
   // The older chat artifacts' flat API: complete(prompt) -> text.
   const complete = (prompt: unknown) => call("sample", typeof prompt === "string" ? prompt : String(prompt ?? ""))
     .then((r: any) => r.text, (e: any) => Promise.reject(new Error(e?.message ?? String(e))))
-  try { Object.defineProperty(w, "claude", { value: Object.freeze({ use, complete }), configurable: true }) } catch { /* the page's own */ }
+  try { Object.defineProperty(w, "claude", { value: Object.freeze({ use, complete }), configurable: true }) } catch {}
 
-  // ---------- window.storage (older artifacts): strings by key, the user's own or shared, in the same sidecar
   const kept = { true: new Map(Object.entries(cfg.data.storage.shared)), false: new Map(Object.entries(cfg.data.storage.personal)) }
   const save = (shared: boolean, key: string, value: string | null) =>
     live ? io.ask("storage", { writes: [{ shared, key, value }] }).catch((e: any) => Promise.reject(new Error(e?.message ?? "couldn't save"))) : Promise.resolve()
@@ -387,5 +372,5 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
   io.listen("storage", (d) => {
     for (const x of d.writes ?? []) { const m = kept[`${!!x.shared}` as "true"]; if (x.value === null) m.delete(x.key); else m.set(x.key, x.value) }
   })
-  try { Object.defineProperty(w, "storage", { value: storage, configurable: true }) } catch { /* the page's own */ }
+  try { Object.defineProperty(w, "storage", { value: storage, configurable: true }) } catch {}
 }

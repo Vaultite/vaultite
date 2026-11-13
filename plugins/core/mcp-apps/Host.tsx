@@ -1,12 +1,10 @@
-// A host for MCP Apps' cards (2026-01-26) in the app: the tool's card in a sandboxed frame served by this plugin (its own
-// CSP, an opaque origin), speaking the spec's JSON-RPC: theme, tool input and result, tools/call as the user, links, size.
+// A host for MCP Apps' cards (2026-01-26), speaking the spec's JSON-RPC.
 import { useEffect, useRef, useState } from "react"
 import { get, Loading, Markdown, onLook, openFile, post, useVaultChange } from "@vaultite"
 
 type Result = { content?: { type: string; text?: string }[]; structuredContent?: unknown; isError?: boolean }
 type Run = { tool: { name: string }; uri: string | null; result: Result }
 
-// The app's tokens as the spec's variables, so a card looks like the app (its colour scheme too).
 const VARS: Record<string, string> = {
   "--color-background-primary": "background", "--color-background-secondary": "muted", "--color-background-tertiary": "accent",
   "--color-text-primary": "foreground", "--color-text-secondary": "muted-foreground", "--color-text-tertiary": "muted-foreground",
@@ -27,7 +25,6 @@ function hostContext(width: number) {
 
 const textOf = (r: Result) => (r.content ?? []).map((c) => c.text ?? "").join("\n")
 
-/** Where a card's link goes: a vault file opens here, web links in a new tab, nothing else. */
 function openLink(url: string) {
   const app = /^vaultite:\/\/open\/(.+)$/.exec(url) ?? /#file\/([^?]+)$/.exec(url)
   if (app) { openFile(decodeURIComponent(app[1]).replace(/^\/+/, ""), { newTab: true }); return true }
@@ -46,7 +43,6 @@ export function McpAppBlock({ tool, args, height }: { tool: string; args: Record
   const load = () => post<Run>("mcp-apps/run", { tool, arguments: args }).then((r) => { setRun(r); setError("") }, (e: Error) => setError(e.message))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { ready.current = false; setRun(null); void load() }, [key])
-  // Live: the vault changing runs the tool again, and the card gets the new result.
   useVaultChange(() => { void load() })
 
   const uri = run?.uri
@@ -85,7 +81,6 @@ export function McpAppBlock({ tool, args, height }: { tool: string; args: Record
           return openLink(String(m.params?.url ?? "")) ? answer({}) : fail("Invalid URL")
         case "ui/request-display-mode":
           return answer({ mode: "inline" })
-        // No chat here to send to or give context to: taken, and nothing more.
         case "ui/message": case "ui/update-model-context": case "ping":
           return answer({})
         default:
@@ -103,7 +98,6 @@ export function McpAppBlock({ tool, args, height }: { tool: string; args: Record
 
   if (error) return <Loading error={error} />
   if (!run) return <Loading />
-  // A tool without a card: its text, as an agent reads it.
   if (!uri) return <Markdown text={textOf(run.result)} />
   return (
     <iframe ref={frame} src={`mcp-app/card?uri=${encodeURIComponent(uri)}`} title={run.tool.name} sandbox="allow-scripts"

@@ -1,5 +1,3 @@
-// Cloud sessions as a tab (view:cloud): a list page like a pull request list, grouped by where each stands, with its
-// repository, branch, summary and pull request; searched, narrowed to a repository, acted on from its row.
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { Archive, ChevronDown, Cloud, Ellipsis, GitBranch, GitMerge, GitPullRequestArrow, GitPullRequestClosed, GitPullRequestDraft, Monitor, Plus, SquareTerminal } from "lucide-react"
 import { Badged, Button, cn, Empty, FilterField, fmtAgo, HeadingButton, menuBelow, menuFor, PageHeader, plural, rightClickBelow, useAgents, useTick,
@@ -10,7 +8,6 @@ import { Ask, newMenu, Picker, sessionMenu, useCloud, usePicked, useShown, useTe
 const SECTIONS: { id: Status; title: string }[] = [
   { id: "needs", title: "Needs you" }, { id: "working", title: "Working" }, { id: "review", title: "Ready for review" }, { id: "done", title: "Recent" },
 ]
-/** How many of Recent show before Show more. */
 const RECENT = 20
 
 const PR = {
@@ -20,7 +17,6 @@ const PR = {
   closed: { icon: GitPullRequestClosed, color: "var(--red)", label: "Closed" },
 }
 
-/** What a search finds a session by: its title, where it stands, its repositories and branches, its account. */
 const haystack = (c: CloudSession, account?: string) => [c.title, c.summary, account, ...(c.repos ?? []).flatMap((r) => [r.repo, r.branch]), c.pr ? `#${c.pr.number}` : ""]
   .filter(Boolean).join(" ").toLowerCase()
 
@@ -93,8 +89,6 @@ function Section({ id, title, list, named, leaving }: { id: Status; title: strin
   )
 }
 
-/** A session as a row: its status icon, title, then its repository, branch and where it stands; at the right its
- *  account, pull request and when it last moved, under Continue, Archive and More on hover. Narrow, all wraps under. */
 function PageRow({ c, named, leaving }: { c: CloudSession; named: boolean; leaving: "" | undefined }) {
   const agent = useAgents().find((x) => x.name === "claude")
   const s = useCloud(), account = named ? accountOf(s, c) : undefined
@@ -141,7 +135,6 @@ function PageRow({ c, named, leaving }: { c: CloudSession; named: boolean; leavi
           </>}
         </div>
       </div>
-      {/* (on hover, what's done from here goes over the right end's account, pull request and time: nothing moves) */}
       <div className="relative flex shrink-0 items-center gap-3 self-center text-[12px] text-tertiary max-md:text-[13px] @max-2xl:self-start @max-2xl:pt-0.5">
         {account && <span className="max-w-[14em] truncate @max-2xl:hidden md:group-hover/row:invisible" data-cloud-account-of="">{account.label}</span>}
         {prChip("text-muted-foreground @max-2xl:hidden md:group-hover/row:invisible")}

@@ -1,4 +1,4 @@
-// The view's side of MCP Apps (2026-01-26): JSON-RPC over postMessage with the host, its theme, and its size.
+// The view's side of MCP Apps (2026-01-26): JSON-RPC over postMessage with the host.
 // Inlined into each card page, whose own script uses these globals.
 /* eslint-disable no-unused-vars */
 const mcp = (() => {
@@ -18,7 +18,7 @@ const mcp = (() => {
     if (m.method === "ui/notifications/host-context-changed") apply(m.params || {})
     const fn = handlers[m.method]
     const out = fn ? fn(m.params || {}) : undefined
-    if (m.id !== undefined) post({ id: m.id, result: {} }) // ui/resource-teardown, ping
+    if (m.id !== undefined) post({ id: m.id, result: {} })
     return out
   })
   const request = (method, params) => new Promise((resolve, reject) => {
@@ -28,7 +28,6 @@ const mcp = (() => {
   })
   const notify = (method, params) => post({ method, params })
 
-  // The host's theme: its variables over our fallbacks, its light or dark, its fonts.
   function apply(c) {
     ctx = { ...ctx, ...c }
     const root = document.documentElement
@@ -59,19 +58,16 @@ const mcp = (() => {
       new ResizeObserver(size).observe(document.body)
       size()
     },
-    /** A tool's CallToolResult; throws its text when it's an error. */
     async call(name, args) {
       const r = await request("tools/call", { name, arguments: args })
       if (r?.isError) throw new Error((r.content || []).map((c) => c.text || "").join("\n") || `${name} failed`)
       return r
     },
-    /** Open a link: the first of `urls` the host takes. */
     async open(...urls) {
-      for (const url of urls.filter(Boolean)) { try { await request("ui/open-link", { url }); return } catch { /* the next */ } }
+      for (const url of urls.filter(Boolean)) { try { await request("ui/open-link", { url }); return } catch {} }
     },
     text: (r) => (r?.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n"),
   }
 })()
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
-/** A line of Markdown as plain text: links by their text, no marks. */
 const plain = (s) => String(s ?? "").replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, "$2").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*_`~]|==/g, "")

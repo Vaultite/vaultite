@@ -1,5 +1,4 @@
-// `vau mcp`: the MCP server over stdio, its tools the running server's ops called as the client. Nothing else goes to
-// stdout; the MCP modules load only when it runs, since every vau command loads this file.
+// `vau mcp`: MCP over stdio, so nothing else may go to stdout.
 import { CliError, Ctx, done, homeEnv, type PluginCli } from "../../../core/cli.ts"
 
 export const cli: PluginCli = {
@@ -23,16 +22,10 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
       const { toolsOf } = await import("./catalog.ts")
       type Client = import("./protocol.ts").Client
       const session: import("./protocol.ts").Session = { client: null }
-      /** The ops whose answers are pictures too, as the catalog said last. */
       let pictured = new Set<string>()
-      /** Each op's parameters filled from this environment when not given (VAULTITE_TERMINAL...), as vau fills them. */
       let envs = new Map<string, [string, string][]>()
-      /** Each op's kind: what reads may be sent again after a restart cut it. */
       let kinds = new Map<string, string>()
-      /** Ops that reach the user: a job's worker on another machine sends them home (homeEnv). */
       let homes = new Set<string>()
-      /** The server's API as the client, each call told to Activity as `mcp <tool>`; its errors are the tool's. Unless one
-       *  was named, each call finds the server again: the desktop app's vault may open after the client started this. */
       const as = (agent: string | null, tool: string, env = c.env) => {
         const t = new Ctx({ url: env !== c.env ? env.VAULTITE_URL : c.fixed ? c.url : undefined, env, client: "mcp", agent: agent ?? undefined })
         t.command = `mcp ${tool}`
@@ -42,15 +35,12 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
             throw e
           }
         }
-        // (an op as vau sends it: again, where safe, while the server restarts)
         return Object.assign((method: string, route: string, body?: unknown) => asTool(() => t.call(method, route, body)),
           { op: (id: string, query: string, params: unknown) => asTool(() => t.callOp({ id, kind: kinds.get(id) ?? "write" }, query, params)) })
       }
       const server = {
         version: APP_VERSION,
-        // (a session the app started has the plugins' lines in its system prompt: VAULTITE_TOLD, set by its agent plugin)
         instructions: async () => String(await as(session.client?.agent ?? null, "initialize")("POST", "ops/mcp.instructions?as=text", c.env.VAULTITE_TOLD ? { told: true } : {}) ?? ""),
-        // The catalog as the server has it now (plugins turned on or off change it).
         tools: async () => {
           const entries = await as(session.client?.agent ?? null, "tools/list")("GET", "ops") as import("../../../core/plugins.ts").OpEntry[]
           pictured = new Set(entries.filter((e) => e.image).map((e) => e.id))
@@ -65,7 +55,6 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
             const params = { ...given }, home = homes.has(id) ? homeEnv(c.env, { home: true }) : null, env = home ?? c.env
             const call = home ? as(client.agent, tool, home) : here
             for (const [k, v] of envs.get(id) ?? []) if (params[k] === undefined && env[v]) params[k] = env[v]
-            // (an op whose answer is a picture too, a screenshot: both)
             if (!pictured.has(id)) return String(await call.op(id, "?as=text", params) ?? "")
             const r = await call.op(id, "?as=answer", params) as { text?: unknown; image?: { data: string; mimeType: string } } | null
             return { text: String(r?.text ?? ""), image: r?.image ?? null }
@@ -82,10 +71,10 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
           write({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error: a line that isn't JSON" } })
           return
         }
-        // In order, one at a time (a client may send the next before this one is answered).
+        // In order: a client may send the next before this one is answered.
         queue = queue.then(async () => {
           const out = await handleBody(msg, session, server)
-          // A client naming itself only as the SDK does ("mcp"): VAULTITE_AGENT, set where it was connected, says who it is.
+          // The SDK names a client only "mcp": VAULTITE_AGENT, set where it was connected, says who it is.
           const named = c.env.VAULTITE_AGENT?.trim()
           if (named && session.client && (!session.client.agent || session.client.agent === "mcp")) session.client = clientOf(named)
           if (out) write(out)

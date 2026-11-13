@@ -1,5 +1,3 @@
-// Vaultite Cloud: this machine signed in to cloud.vaultite.com (a one-time code from /connect, typed here), and a tunnel
-// forwarding <handle>.vaultite.app and its guests' share-<handle>.vaultite.app to the public listener, never the app's port.
 import { execFile } from "node:child_process"
 import http from "node:http"
 import os from "node:os"
@@ -9,10 +7,7 @@ import { RELAY_HEADER, RELAYED, RELAYED_GUEST } from "./public.ts"
 
 const RELAY = (process.env.VAULTITE_CLOUD || "https://cloud.vaultite.com").replace(/\/+$/, "")
 
-/** What's kept in data/config.json (mcp.cloud): never in the vault, never logged. */
 type Stored = { token: string; handle: string; url: string }
-/** `guest`: a request or socket to share-<handle>, for Sharing alone (the relay's word: no client sets it). `handle`,
- *  `url`: the account's handle and its address (`t: "handle"`), as the relay says on hello and when the account changes it. */
 type Frame = { t: string; id?: string; method?: string; path?: string; headers?: [string, string][]; body?: string; key?: string
   text?: string; data?: string; code?: number; reason?: string; guest?: boolean; handle?: string; url?: string }
 
@@ -20,28 +15,21 @@ type CloudState = "off" | "connecting" | "connected" | "reconnecting" | "offline
 export type CloudStatus = {
   state: CloudState
   handle: string | null
-  /** The MCP address to add as a connector (<url>/mcp). */
   url: string | null
-  /** Where the owner opens the app from anywhere (Connect), once Vaultite Cloud handed this machine its key. */
   app: string | null
-  /** Where shared folders' guests open them (share-<handle>), while this machine has the address. */
   guests: string | null
-  /** Where the user signs in and gets a code to type here. */
   connectUrl: string
-  /** Why it's off or down (revoked, replaced by another machine, the last error). */
   message?: string
 }
 
-/** Headers that are one connection's, not the request's. */
+/** HTTP's hop-by-hop headers: one connection's, not the request's. */
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate", "host", "content-length", "forwarded"])
-/** Headers only this machine's own proxies may set (Tailscale Serve, the app): never from the internet. Vaultite Cloud's
- *  signed one (Connect) goes on: public.ts checks its signature. */
+/** Headers only this machine's own proxies set (Tailscale Serve, the app): never from the internet. */
 const OURS = /^(tailscale-|x-vaultite-(?!cloud$))/
 /** A WebSocket's handshake headers, the ws package's own. */
 const WS_OWN = /^sec-websocket-(key|version|extensions|accept)$/
 const OFFLINE_AFTER = 30_000, MAX_BACKOFF = 60_000, SILENT = 75_000, HEARTBEAT = 30_000
 
-/** This machine's name as the user knows it (System Settings, Sharing), for the relay's list of devices. */
 function deviceName(): Promise<string> {
   return new Promise((resolve) => {
     if (process.platform !== "darwin") return resolve(os.hostname())
@@ -49,13 +37,12 @@ function deviceName(): Promise<string> {
   })
 }
 
-/** A close code a WebSocket may be closed with by its side (1000, 3000-4999), else 1000. */
+/** A close code a WebSocket's side may send (1000, 3000-4999), else 1000. */
 const closeCode = (c: unknown) => (typeof c === "number" && (c === 1000 || (c >= 3000 && c <= 4999)) ? c : 1000)
 
 export class Cloud {
   plugin: Plugin
   relay: string
-  /** The public listener's port: where every request goes. */
   target: () => Promise<number>
   state: CloudState = "off"
   message = ""
@@ -66,13 +53,9 @@ export class Cloud {
   down = 0
   seen = 0
   inflight = new Map<string, http.ClientRequest>()
-  /** WebSockets relayed for Connect (the app's live channel), by the relay's id. */
   sockets = new Map<string, WebSocket>()
-  /** Connect's key, handed over the tunnel by a relay that has it (memory only: the tunnel's up whenever it's used). */
   connectKey: string | null = null
-  /** The 4000's reason ("Replaced by <Mac>"), until connected again. */
   replacedBy = ""
-  /** Told when the state changes (plugin.ts: a notice for the owner). */
   onChange: (s: CloudStatus) => void = () => {}
 
   constructor(plugin: Plugin, target: () => Promise<number>, relay = RELAY) {
@@ -101,7 +84,6 @@ export class Cloud {
     }
   }
 
-  /** Its guests' address: share-<the handle's host>, the relay's (its README); none while another machine has the handle. */
   guestUrl(): string | null {
     const s = this.stored()
     if (!s || this.state === "replaced") return null
@@ -115,12 +97,9 @@ export class Cloud {
     if (changed) this.onChange(this.status())
   }
 
-  /** The account's handle and address, as the relay says them (it answers hello so, and says so when the account changes
-   *  its handle): kept in place of redeem's, so the MCP address, Connect's checks and the guests' address follow. */
   moved(f: Frame) {
     const s = this.stored()
     if (!s || typeof f.handle !== "string" || typeof f.url !== "string" || !/^[a-z0-9-]{3,30}$/.test(f.handle)) return
-    // (the same zone as before: <handle>.vaultite.app)
     let u: URL, zone: string
     try { u = new URL(f.url); zone = new URL(s.url).hostname.slice(s.handle.length + 1) } catch { return }
     if (u.protocol !== "https:" || u.hostname !== `${f.handle}.${zone}` || (f.handle === s.handle && f.url === s.url)) return
@@ -128,7 +107,6 @@ export class Cloud {
     this.onChange(this.status())
   }
 
-  /** Connects when this machine is signed in. */
   start() {
     if (this.stored()) this.connect()
   }
@@ -148,8 +126,6 @@ export class Cloud {
     return d
   }
 
-  /** Trades the one-time code from /connect for this machine's token, and connects (it replaces the machine signed in before).
-   *  Without a code, signed in: connects this machine again (after another took over). */
   async signIn(code = ""): Promise<CloudStatus> {
     const old = this.stored()
     if (!code.trim()) {
@@ -161,13 +137,12 @@ export class Cloud {
     this.close()
     this.connectKey = null
     this.save({ token: d.token, handle: d.handle, url: d.url })
-    if (old && old.token !== d.token) void this.post("/api/device/revoke", {}, old.token).catch(() => {}) // another account's, else gone already
+    if (old && old.token !== d.token) void this.post("/api/device/revoke", {}, old.token).catch(() => {})
     this.attempt = 0
     this.connect()
     return this.status()
   }
 
-  /** Revokes this machine's token and forgets it (forgotten even when Vaultite Cloud can't be reached). */
   async signOut(): Promise<CloudStatus> {
     this.replacedBy = ""
     const s = this.stored()
@@ -180,7 +155,6 @@ export class Cloud {
     return this.status()
   }
 
-  /** Signed out by Vaultite Cloud (the token was revoked, e.g. from its website). */
   revoked() {
     const why = this.replacedBy ? `${this.replacedBy}, which signed this machine out` : "Signed out: this machine's sign-in was ended on Vaultite Cloud"
     this.replacedBy = ""
@@ -221,9 +195,9 @@ export class Cloud {
       this.seen = Date.now()
       this.replacedBy = ""
       this.set("connected")
-      ws.send(JSON.stringify({ t: "hello", features: ["app", "share"] })) // a relay with Connect answers with its key
+      ws.send(JSON.stringify({ t: "hello", features: ["app", "share"] }))
       this.beat = setInterval(() => {
-        if (Date.now() - this.seen > SILENT) ws.terminate() // a connection gone quiet: start again
+        if (Date.now() - this.seen > SILENT) ws.terminate()
         else ws.ping()
       }, HEARTBEAT)
     })
@@ -247,7 +221,6 @@ export class Cloud {
       else if (f.t === "wsmsg") { const s = this.sockets.get(String(f.id)); if (s?.readyState === WebSocket.OPEN) s.send(typeof f.data === "string" ? Buffer.from(f.data, "base64") : String(f.text ?? ""), { binary: typeof f.data === "string" }) }
       else if (f.t === "wsclose") { const s = this.sockets.get(String(f.id)); this.sockets.delete(String(f.id)); s?.close(closeCode(f.code), String(f.reason ?? "").slice(0, 120)) }
       else if (f.t === "cancel") { const r = this.inflight.get(String(f.id)); this.inflight.delete(String(f.id)); r?.destroy() }
-      // (a request that can't be made, a header http refuses, is answered with why, not left to time out)
       else if (f.t === "req") this.forward(ws, f).catch((e) => {
         this.inflight.delete(String(f.id))
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "err", id: String(f.id), message: (e as Error).message }))
@@ -261,19 +234,16 @@ export class Cloud {
       for (const r of this.inflight.values()) r.destroy()
       this.inflight.clear()
       this.endSockets()
-      // "replaced by <the new Mac's name>"
       if (code === 4000) {
         this.replacedBy = reason.length ? String(reason).replace(/^replaced/i, "Replaced") : "Another machine took over"
         return this.set("replaced", this.replacedBy)
       }
       if (code === 4001) return this.revoked()
-      // The account changed its handle (it said the new one first): the relay that answers there takes this connection.
       if (code === 4002) { this.attempt = 0; return this.connect() }
       this.retry(this.message)
     })
   }
 
-  /** Again after a while: 1 s doubling to a minute, each with jitter so many Macs don't come back at once. */
   retry(why: string) {
     this.down ||= Date.now()
     this.attempt++
@@ -287,7 +257,6 @@ export class Cloud {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o), cb); else cb?.()
   }
 
-  /** The headers the relay sent, as the public listener gets them, marked as the relay's (a guest's: as theirs). */
   headersOf(f: Frame) {
     const headers: Record<string, string | string[]> = {}
     for (const [k, v] of Array.isArray(f.headers) ? f.headers : []) {
@@ -302,7 +271,6 @@ export class Cloud {
     return headers
   }
 
-  /** Connect: a WebSocket the relay opened (the app's live channel), to the public listener, its messages both ways. */
   async openSocket(ws: WebSocket, f: Frame) {
     const id = String(f.id)
     const path = String(f.path ?? "")
@@ -328,7 +296,6 @@ export class Cloud {
     s.on("close", (code, reason) => { if (live()) { this.sockets.delete(id); this.send(ws, { t: "wsclose", id, code, reason: String(reason) }) } })
   }
 
-  /** One request from the relay to the public listener, its answer streamed back as it comes (SSE too). */
   async forward(ws: WebSocket, f: Frame) {
     const id = String(f.id)
     const send = (o: object, cb?: () => void) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o), cb); else cb?.() }
@@ -347,7 +314,7 @@ export class Cloud {
       send({ t: "res", id, status: res.statusCode, headers: out })
       res.on("data", (c: Buffer) => {
         if (!live()) return
-        const full = ws.bufferedAmount > 1 << 20 // a slow relay: wait for this chunk to go out before reading on
+        const full = ws.bufferedAmount > 1 << 20
         send({ t: "data", id, chunk: c.toString("base64") }, full ? () => res.resume() : undefined)
         if (full) res.pause()
       })

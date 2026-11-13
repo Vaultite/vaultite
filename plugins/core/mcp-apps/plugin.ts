@@ -1,5 +1,3 @@
-// MCP Apps' cards for Vaultite's own tools (a note, tasks, a board), offered to the MCP plugin ("mcp:apps"), and the
-// host that draws them in notes (```block-mcp-app): the card served sandboxed at /mcp-app/, its tool run as the caller.
 import fs from "node:fs"
 import path from "node:path"
 import { Marked, type Tokens } from "marked"
@@ -9,12 +7,10 @@ export const plugin = new Plugin(import.meta.url)
 
 const CARDS = path.join(import.meta.dirname, "cards")
 const file = (name: string) => fs.readFileSync(path.join(CARDS, name), "utf8")
-/** A card's page: its body with the shared bridge and styles put in, self-contained. */
 const page = (name: string) => () => file(`${name}.html`).replace("/*card.css*/", file("card.css")).replace("/*bridge.js*/", file("bridge.js"))
 
 const decoded = (s: string) => { try { return decodeURI(s) } catch { return s } }
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
-// The note's own HTML is shown as text, links that run code aren't links, and images are their names (no network).
 const md = new Marked({ gfm: true, breaks: false, renderer: {
   html: ({ text }: Tokens.HTML | Tokens.Tag) => esc(text),
   image: ({ text, href }: Tokens.Image) => `<span class="img">${esc(text || href)}</span>`,
@@ -25,8 +21,6 @@ const md = new Marked({ gfm: true, breaks: false, renderer: {
   code: ({ text, lang }: Tokens.Code) => (/^block-/.test(lang ?? "") ? "" : `<pre><code>${esc(text)}</code></pre>`),
 } })
 
-/** A note's Markdown as the card's HTML: no frontmatter, [[links]] as links to the files they name (`resolve`: a
- *  target's path, or null), embeds as their names. */
 export function noteHtml(text: string, resolve: (target: string) => string | null = () => null) {
   const body = text.replace(/^---\n[\s\S]*?\n---\n?/, "")
     .replace(/!?\[\[([^[\]\n|]+?)(?:\|([^[\]\n]+?))?\]\]/g, (_all, target: string, shown?: string) => {
@@ -38,7 +32,6 @@ export function noteHtml(text: string, resolve: (target: string) => string | nul
 }
 
 const fmTitle = (text: string) => /^---\n[\s\S]*?^title:\s*["']?(.+?)["']?\s*$[\s\S]*?\n---/m.exec(text)?.[1]
-/** Where a vault file opens: the Mac's or iPhone's app (vaultite://), and the app on the internet when there's one. */
 const links = (p: string, app: string | null) => ({ open: `vaultite://open/${p.split("/").map(encodeURIComponent).join("/")}`,
   ...(app ? { web: `${app}/#file/${encodeURIComponent(p)}` } : {}) })
 
@@ -88,7 +81,6 @@ plugin.provide("mcp:apps", () => [{
   },
 }])
 
-// ---------- the host: cards drawn in notes
 
 type Host = {
   tool: (name: string) => Promise<{ declared: R; kind: string | null } | null>
@@ -102,7 +94,6 @@ const host = (): Host => {
 }
 const args = (v: unknown): R => (v && typeof v === "object" && !Array.isArray(v) ? v as R : {})
 
-/** A block's tool: one that only reads (a note drawn mustn't write), with the card that draws it. */
 async function blockTool(name: string) {
   const t = await host().tool(name)
   if (!t) throw new OpError(`no tool ${name || "(none)"}: \`vau ops\` lists the operations, each one's tool named`, 404)
@@ -110,8 +101,6 @@ async function blockTool(name: string) {
   return t
 }
 
-/** Run a block's tool: its declaration, the card it names (its _meta.ui, which answers leave out as private) and its
- *  CallToolResult. */
 plugin.route("POST", "mcp-apps/run", async (req) => {
   const b = args(req.body), name = String(b.tool ?? "")
   const t = await blockTool(name)
@@ -119,7 +108,6 @@ plugin.route("POST", "mcp-apps/run", async (req) => {
   return { tool: t.declared, uri, result: await host().call(req, name, args(b.arguments)) }
 }, { lock: false })
 
-/** A card's tools/call: any tool but `call` (which runs any op), as the caller, so an in-app op's checks apply. */
 plugin.route("POST", "mcp-apps/call", async (req) => {
   const b = args(req.body), name = String(b.name ?? "")
   if (name === "call" || !(await host().tool(name))) return { content: [{ type: "text", text: `no tool ${name} for cards` }], isError: true }
@@ -132,7 +120,6 @@ plugin.route("GET", "mcp-apps/resource", async (req) => {
   return { contents: r.contents }
 }, { lock: false })
 
-// The card's page, sandboxed by its own CSP (an opaque origin: none of the app's) with what its _meta.ui declares.
 plugin.serve("mcp-app", async (req) => {
   const r = await host().read(String(req.query.uri ?? ""))
   if (!r) throw new HTTPError(404, "no such card")
@@ -141,7 +128,6 @@ plugin.serve("mcp-app", async (req) => {
   })
 })
 
-// What the block shows an agent: its tool's text.
 plugin.block("mcp-app", async (ctx) => {
   const name = String(ctx.options.tool ?? "")
   try {

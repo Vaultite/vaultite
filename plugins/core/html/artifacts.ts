@@ -1,5 +1,3 @@
-// Artifacts run in an opaque-origin sandbox with no network (connect-src 'none'); the bridge through the app is their
-// only way out, and it only reads. So nothing they read can leave; an outside page gets nothing of the vault.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -10,12 +8,10 @@ import { claudeRuntime, parseReply, queryDocs } from "./runtime.ts"
 
 export const ARTIFACT = /\.html?$/i
 
-// ---------- the sandbox ----------
 
-/** For every file served under /v/: its own opaque origin (no allow-same-origin), no network, no popups. Forms fire
- *  their submit event (artifacts handle it) but never submit (form-action 'none'). */
+/** Forms fire their submit event but never submit (form-action 'none'). */
 export const CSP = [
-  "sandbox allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms", // (FLAGS)
+  "sandbox allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms",
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
@@ -30,12 +26,10 @@ export const CSP = [
   "base-uri 'self'",
 ].join("; ")
 
-/** The page the app frames instead: the artifact in a frame of its own, relaying messages both ways. A sandboxed frame
- *  may navigate itself anywhere, carrying what it read; this page's frame-src keeps it on this server. */
+/** A sandboxed frame may navigate itself anywhere, carrying what it read: this page's frame-src keeps it on this server. */
 const FLAGS = "allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"
 export const WRAP_CSP = `sandbox ${FLAGS}; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'self'; base-uri 'none'`
 
-/** The wrapper for the artifact at /v/<rawPath> (as requested: encoded, with its query); its frame asks with frame=1. */
 export function wrapper(rawPath: string, dark: boolean) {
   const q = rawPath.indexOf("?"), file = q < 0 ? rawPath : rawPath.slice(0, q), search = q < 0 ? "" : rawPath.slice(q)
   const inner = `${file.slice(file.lastIndexOf("/") + 1)}${search ? `${search}&` : "?"}frame=1`
@@ -56,7 +50,6 @@ export function wrapper(rawPath: string, dark: boolean) {
     `<script>(${relay.toString()})()</script></html>`
 }
 
-// ---------- public CDNs, through the local cache ----------
 
 export const CDN_HOSTS = [
   "cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com", "esm.sh", "cdn.skypack.dev", "ga.jspm.io",
@@ -65,11 +58,9 @@ export const CDN_HOSTS = [
 ]
 const HOST_RE = new RegExp(`(?:https?:)?//(${CDN_HOSTS.map((h) => h.replaceAll(".", "\\.")).join("|")})(?=[/"'\\s)?#]|$)`, "g")
 
-/** Links to CDN hosts pointed at /cdn/<host> (in HTML, CSS and JS). */
 export const viaCache = (text: string) => text.replace(HOST_RE, "/cdn/$1")
 
-/** Inside a file from a CDN, root-relative paths (esm.sh's `import "/react@18/..."`, a font's `url(/...)`) are that
- *  host's, not ours. */
+/** Root-relative paths in a CDN's file (esm.sh's `import "/react@18/..."`, a font's `url(/...)`) are that host's. */
 function rootRelative(text: string, host: string) {
   return text
     .replace(/((?:\bfrom|\bimport|\bexport\s*\*\s*from)\s*\(?\s*["'])\/(?!\/|cdn\/)/g, `$1/cdn/${host}/`)
@@ -79,7 +70,6 @@ function rootRelative(text: string, host: string) {
 const CACHE = () => path.join(LOCAL, "cache", "cdn")
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
 
-/** A CDN file: from the cache, or fetched and cached. */
 export async function cdn(host: string, rest: string): Promise<{ status: number; type: string; body: Buffer }> {
   if (!CDN_HOSTS.includes(host)) return { status: 404, type: "text/plain", body: Buffer.from(`${host} isn't a CDN artifacts may use`) }
   const url = `https://${host}/${rest}`
@@ -88,10 +78,9 @@ export async function cdn(host: string, rest: string): Promise<{ status: number;
   try {
     const m = JSON.parse(fs.readFileSync(meta, "utf8"))
     return { status: 200, type: m.type, body: fs.readFileSync(file) }
-  } catch { /* not cached yet */ }
+  } catch {}
   let res: Response, at = url
   try {
-    // (a redirect only to another of the CDNs, over https: the server fetches it, and anyone may read what it gets)
     for (let hops = 0; ; hops++) {
       res = await fetch(at, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(20_000) })
       const to = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null
@@ -118,9 +107,7 @@ export async function cdn(host: string, rest: string): Promise<{ status: number;
   return { status: 200, type, body }
 }
 
-// ---------- serving an artifact ----------
 
-/** Where an artifact's localStorage is kept. */
 export const statePath = (rel: string) => `.vaultite/artifacts/${rel}.json`
 
 function stateOf(vault: Vault, rel: string): Record<string, string> {
@@ -132,15 +119,10 @@ function stateOf(vault: Vault, rel: string): Record<string, string> {
   }
 }
 
-/** What claude.ai's runtime (runtime.ts) starts with (an outside page gets none of it); `shown`: the page's path as a
- *  shared folder's guest names it; `guest`: theirs, without what the page kept (its storage and data are the user's). */
 export type Runtime = { outside?: boolean; data?: ArtifactData; version?: number; name?: string; sample?: boolean; sampleAllowed?: boolean; shown?: string; guest?: boolean }
 
-/** The artifact's HTML with the bridge first in its <head> and CDN links pointed at the cache. An `outside` page runs
- *  the same way, but the app answers none of its vault requests and keeps none of its storage. */
 export function page(vault: Vault, rel: string, query: Record<string, string>, rt: Runtime = {}) {
   const outside = !!rt.outside
-  // (a guest's: no shadow root from its markup, where a frame would be out of guestOnly's sight, nor a link to reach out)
   const raw = viaCache(readText(outside ? rel : vault.abs(rel)))
   const html = rt.guest ? raw.replace(/\bshadowroot(mode)?(?=\s*=)/gi, "data-shadowroot").replace(/<link\b/gi, "<data-link") : raw
   const cfg = {
@@ -157,15 +139,14 @@ export function page(vault: Vault, rel: string, query: Record<string, string>, r
   return doctype ? doctype[0] + script + html.slice(doctype[0].length) : script + html
 }
 
-/** First in a shared folder's guest's page: no WebRTC (no policy of a browser's keeps it from a server), nor a frame
- *  where a fresh one runs, nor a link that reaches out. What it calls it holds first: the page may change the rest. */
+/** No WebRTC in a guest's page: no browser policy keeps it from a server. */
 function guestOnly() {
   const apply = Reflect.apply, define = Object.defineProperty, own = Object.getOwnPropertyDescriptor
   for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "RTCRtpSender", "RTCRtpReceiver", "RTCIceTransport"]) {
-    try { define(window, k, { value: undefined, writable: false, configurable: false }) } catch { /* not here */ }
+    try { define(window, k, { value: undefined, writable: false, configurable: false }) } catch {}
   }
   const unsafe: [object, string][] = [[Element.prototype, "setHTMLUnsafe"], [ShadowRoot.prototype, "setHTMLUnsafe"], [Document, "parseHTMLUnsafe"], [Document.prototype, "write"], [Document.prototype, "writeln"]]
-  for (const [o, k] of unsafe) try { define(o, k, { value: undefined, writable: false, configurable: false }) } catch { /* not here */ }
+  for (const [o, k] of unsafe) try { define(o, k, { value: undefined, writable: false, configurable: false }) } catch {}
   const OUT = "iframe, frame, object, embed, link, portal, fencedframe"
   const nodeType = own(Node.prototype, "nodeType")!.get!, added = own(MutationRecord.prototype, "addedNodes")!.get!, count = own(NodeList.prototype, "length")!.get!
   const { matches, querySelectorAll: all, remove } = Element.prototype, attach = Element.prototype.attachShadow
@@ -185,7 +166,7 @@ function guestOnly() {
 
 type Cfg = { path: string; dark: boolean; scheme: string; embed: boolean; state: Record<string, string>; claude: Record<string, any> }
 
-/** Runs first inside the artifact (its source is injected as is, so it must stand alone: no imports, no outer names). */
+/** Injected as source, so it stands alone: no imports, no outer names. */
 function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeof claudeRuntime, query: typeof queryDocs, reply: typeof parseReply) {
   const w = window as any
   const top = window.parent !== window ? window.parent : null
@@ -195,7 +176,6 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
   const listeners: Record<string, ((x: any) => void)[]> = {}
   const emit = (ev: string, x: unknown) => (listeners[ev] ?? []).forEach((f) => { try { f(x) } catch (e) { console.error(e) } })
 
-  // Theme: the app's light or dark (data-theme, color-scheme) and scheme, and its colours as --vau-<name>.
   const style = document.createElement("style")
   const theme = { dark: cfg.dark, scheme: cfg.scheme }
   const applyTheme = (t: { dark: boolean; scheme?: string; vars?: Record<string, string> }) => {
@@ -209,7 +189,7 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
   }
   applyTheme(theme)
 
-  // Storage: the sandbox has none, so localStorage is kept by the app (in the vault) and sessionStorage in memory.
+  // An opaque-origin sandbox has no storage: the app keeps localStorage, sessionStorage is in memory.
   let saving: ReturnType<typeof setTimeout> | null = null
   const storage = (init: Record<string, string>, keep: boolean): Storage => {
     const m = new Map(Object.entries(init))
@@ -228,10 +208,9 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     }
   }
   for (const [name, s] of [["localStorage", storage(cfg.state, true)], ["sessionStorage", storage({}, false)]] as const) {
-    try { Object.defineProperty(window, name, { value: s, configurable: true }) } catch { /* keep the browser's */ }
+    try { Object.defineProperty(window, name, { value: s, configurable: true }) } catch {}
   }
 
-  // Asking the app: vault files (read only), the file list.
   let seq = 0
   const waits = new Map<number, { ok: (x: any) => void; fail: (e: Error) => void; event?: (x: any) => void }>()
   const ask = (op: string, args: Record<string, unknown>, event?: (x: any) => void) => {
@@ -272,7 +251,6 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     },
   }
 
-  // Shared state: the page's JSON map, the same in every view of it, and who has it open (the app relays: sharing.ts).
   let joined: Promise<any> | null = null
   w.vau.shared = () => joined ??= new Promise((done) => {
     const state: Record<string, unknown> = {}, subs: Record<string, ((...a: any[]) => void)[]> = { change: [], people: [], online: [] }
@@ -291,7 +269,6 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
       set: (k: string | Record<string, unknown>, v?: unknown) => {
         const values: Record<string, unknown> = copy(k && typeof k === "object" ? k : { [k]: v ?? null })
         for (const x of Object.keys(values)) values[x] ??= null
-        // (sent before the page hears it: a set its "change" makes goes after this one)
         if (live) post({ type: "shared-set", values })
         take(values, me.id)
       },
@@ -306,17 +283,14 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
       if (typeof d.online === "boolean" && d.online !== online) { online = d.online; fire("online", online) }
       if (d.state) ready()
     })
-    // (outside the app, or where it can't be shared: this view keeps it to itself)
     if (live) ask("shared", {}).catch(() => { live = false; ready() })
     setTimeout(ready, live ? 4000 : 0)
   })
 
-  // claude.ai's runtime: window.claude and window.storage.
   runtime({ ...cfg.claude, framed: !!top, path: cfg.path, title: () => document.title } as any, {
     ask, post, listen: (type, f) => { (heard[type] ??= []).push(f) },
   }, query, reply)
 
-  // fetch() of a vault file (a relative URL: "Transactions.csv") is a read; anything else has no network.
   const realFetch = window.fetch.bind(window)
   w.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), location.href)
@@ -328,7 +302,6 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     return realFetch(input, init)
   }
 
-  // Links and window.open go through the app: vault files open in it, web links in a new tab.
   const openHref = (href: string) => {
     const url = new URL(href, location.href)
     if (url.host === location.host && url.pathname.startsWith("/v/")) post({ type: "open", path: resolve("/" + url.pathname.slice(3)) })
@@ -344,7 +317,6 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
   })
   w.open = (href?: string | URL) => { if (href) openHref(String(href)); return null }
 
-  // Its height, so the app can size the frame to it (content that fills the window stays the window's height).
   let last = 0
   const measure = () => {
     const b = document.body
@@ -379,10 +351,7 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
   })
 }
 
-// ---------- what the app asks ----------
 
-/** An artifact's name, icon and tint for the file tree and the sidebar: <title>, <meta name="vaultite:icon"> and
- *  <meta name="vaultite:tint">. Read once per version of the file. */
 const looked = new Map<string, { mtime: number; out: Item }>()
 export function looks(vault: Vault, rel: string, mtime: number): Item {
   const hit = looked.get(rel)
@@ -395,7 +364,7 @@ export function looks(vault: Vault, rel: string, mtime: number): Item {
       const buf = Buffer.alloc(16384)
       head = buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, 0)).toString("utf8")
       fs.closeSync(fd)
-    } catch { /* unreadable: no looks */ }
+    } catch {}
     const title = /<title[^>]*>([^<]*)<\/title>/i.exec(head)?.[1].trim()
     if (title) out.title = decodeEntities(title)
     for (const k of ["icon", "tint"]) {
@@ -410,7 +379,6 @@ export function looks(vault: Vault, rel: string, mtime: number): Item {
 
 const decodeEntities = (s: string) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 
-/** An artifact as text, for /api/render: its title, the words it shows before it runs, and the vault files it reads. */
 export function artifactText(vault: Vault, rel: string, html = readText(vault.abs(rel))) {
   const reads = new Set<string>()
   const folder = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/") + 1) : ""
@@ -431,7 +399,6 @@ export function artifactText(vault: Vault, rel: string, html = readText(vault.ab
   return out.join("\n\n")
 }
 
-/** POST /api/artifact/stat {paths}: each one's mtime (as /api/file has it), or null when it's missing or hidden. */
 export function stat(vault: Vault, body: Item) {
   const paths = Array.isArray(body.paths) ? body.paths.map(String).slice(0, 200) : []
   return Object.fromEntries(paths.map((p: string) => {
@@ -444,7 +411,6 @@ export function stat(vault: Vault, body: Item) {
   }))
 }
 
-/** PUT /api/artifact/state {path, data}: what an artifact keeps in localStorage, written only when it changed. */
 export function saveState(vault: Vault, body: Item) {
   const rel = String(body.path ?? "")
   if (!ARTIFACT.test(rel) || rel.split("/").some((s) => s.startsWith(".") || s === "..") || !fs.existsSync(vault.abs(rel))) {
@@ -456,18 +422,17 @@ export function saveState(vault: Vault, body: Item) {
   const file = vault.abs(statePath(rel))
   fs.mkdirSync(path.dirname(file), { recursive: true })
   let cur: string | null = null
-  try { cur = readText(file) } catch { /* new */ }
+  try { cur = readText(file) } catch {}
   if (cur !== text) writeAtomic(file, text)
   return { ok: true }
 }
 
-/** When an artifact moves, its storage follows (trashed, it keeps it: restoring brings it back). */
 export function moved(vault: Vault, from: string, to: string | null) {
   const pairs: [string, string | null][] = []
   const base = vault.abs(".vaultite/artifacts")
   const src = vault.abs(statePath(from))
   if (fs.existsSync(src)) pairs.push([src, to ? vault.abs(statePath(to)) : null])
-  const dir = path.join(base, from) // a folder that held artifacts
+  const dir = path.join(base, from)
   if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) pairs.push([dir, to ? path.join(base, to) : null])
   for (const [a, b] of pairs) {
     if (!b) continue

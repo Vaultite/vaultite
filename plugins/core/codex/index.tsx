@@ -1,15 +1,12 @@
 import { agentPlugin, definePlugin, type AgentSource } from "@vaultite"
 import { OpenAIIcon } from "./OpenAIIcon"
 
-// Codex draws the agent blocks (`agent: codex`) and its session tabs with the app's agent components (AgentUsage.tsx) on
-// GET /api/codex; its page is the Codex dashboard (pages/Codex.md).
 const SRC: AgentSource = {
   path: "codex", label: "Codex", icon: OpenAIIcon, tint: "var(--green)", agent: "codex", view: "codex-session",
   noLimits: "No limits yet. They come from ChatGPT through the codex CLI, or from Codex's last session on this machine.",
 }
 
 export default definePlugin(agentPlugin(SRC, {
-  // `icon: openai` in a file (its dashboard).
   icons: { openai: OpenAIIcon },
   blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   process: ["codex"],

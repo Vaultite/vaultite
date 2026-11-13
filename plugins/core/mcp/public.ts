@@ -1,5 +1,3 @@
-// MCP on the internet for apps connecting from their servers (claude.ai, ChatGPT), its own listener behind a tunnel (the
-// owner's, or Vaultite Cloud's: cloud.ts). Sign-in shows a code the owner types in the app; risky ops wait for their yes (gateOf).
 import crypto from "node:crypto"
 import fs from "node:fs"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
@@ -19,7 +17,6 @@ import { toolsOf } from "./catalog.ts"
 import { type ConnectOptions, MCP_PATHS, serveApp, SIGNED_HEADER, upgradeApp, verifyConnect } from "./connect.ts"
 import { handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
 
-/** Operations that can run code on this machine, or change what does: why each waits for the owner's yes. */
 const GATED: Record<string, string> = {
   "plugin.enable": "turn on a plugin (a vault plugin runs code on this machine)",
   "plugin.allow": "let a vault plugin run code on this machine",
@@ -34,13 +31,9 @@ const GATED: Record<string, string> = {
   "dispatch.run": "start a coding agent on your machine with a file",
 }
 const APP_FILES = /^\.vaultite(\/|$)/i
-/** A value as the vault path it would name, read as core/files.ts clean() reads one ("./.Vaultite\\x" is .vaultite/x on
- *  a Mac's disk), and every string a param holds, nested ones and keys too. */
 const asPath = (v: string) => v.replaceAll("\\", "/").trim().split("/").filter((x) => x !== "" && x !== ".").join("/")
-/** A value naming a hidden file or folder anywhere in it (.claude/settings.json, Notes/.git/hooks): where agents' and
- *  other apps' settings live, which run code. Words that only start with a dot (".NET notes") aren't; the archive isn't. */
 const hiddenPath = (v: string) => {
-  if (/[\r\n]/.test(v.trim())) return false // (text, not a path: clean() refuses one with a line break inside)
+  if (/[\r\n]/.test(v.trim())) return false
   const parts = asPath(v).split("/")
   return parts.some((p, i) => p.startsWith(".") && !p.startsWith("..") && p.length > 1 && p.toLowerCase() !== ARCHIVE_DIR && !(i === 0 && p === ".trash")
     && (i < parts.length - 1 || !/\s/.test(p)))
@@ -48,15 +41,12 @@ const hiddenPath = (v: string) => {
 const stringsIn = (v: unknown, depth = 0): string[] => typeof v === "string" ? [v]
   : !v || typeof v !== "object" || depth > 5 ? [] : Object.entries(v).flatMap(([k, x]) => [...(Array.isArray(v) ? [] : [k]), ...stringsIn(x, depth + 1)])
 
-/** Why a read-only app can't run this op, or "" when it may: it runs only ops that read. */
 export function accessRefusal(app: string, access: Access | undefined, entry: OpEntry | null, name: string): string {
   if (access !== "read" || entry?.kind === "read") return ""
   if (!entry) return `No operation '${name}'. Call ops for the list.`
   return `${app} has read-only access to this vault: the user can change it in Connections.`
 }
 
-/** Why an internet app needs the owner's yes for this op with these params, or "" if not. `code`: a path is a vault
- *  plugin's code, which runs only once allowed as it is (writing it needs no yes: allowing it does). */
 export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string, unknown>, code: (p: string) => boolean = () => false): string {
   if (id === "dispatch.run" && params.allow === true) return "run a shell command a setting names, on your machine"
   if (id === "plugin.allow" && params.edits === true) return "let a vault plugin run code on this machine, and its later edits without asking"
@@ -67,37 +57,28 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
   if (hidden) return `write ${asPath(hidden)}, a hidden file (agents' and apps' settings, which can run code, live in them)`
   if (id === "clipper.save" && typeof params.url === "string") {
     let host = ""
-    try { host = new URL(params.url).hostname } catch { /* not an address: the op says so */ }
+    try { host = new URL(params.url).hostname } catch {}
     if (host && blockedHost(host)) return `fetch ${host}, an address on this machine's network`
   }
-  // (the browser's pages on this machine, the app's own among them, are its owner's: a terminal is a click away)
   const page = id === "web-viewer.open" ? params.url : id === "web-viewer.navigate" ? params.to : undefined
   if (typeof page === "string" && /^https?:/i.test(page.trim()) && localUrl(page.trim())) return `open ${page.trim()}, an address on this machine's network, in your browser`
   return ""
 }
 
 const UPLOAD_TTL = 15 * 60_000
-/** The most a request's body may be read into memory here: this server is on the internet, so it's kept, and a file's
- *  bytes go through an upload link instead (streamed, any size). */
 const BODY_MAX = 4 << 20
 const REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.com", "agent.meta.ai"]
 const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_TTL = 120
-/** Seconds a let-in sign-in may take at a step before Connections says where it stands; how long a failed one shows. */
 const SLOW = 15, FAILED_TTL = 10 * 60
-const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789" // no vowels (no words), no 0/O, 1/I/L
+const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789"
 
-/** `tools`: the only tools apps get (null: all); `withhold`: plugins and ops they never get, through `call` neither. */
 type Settings = { url: string; port: number; redirectHosts: string[]; tools: string[] | null; withhold: string[]; approvalWait: number }
-/** A connected app: what it's called, when, what it may do (absent: write), and its refresh token's hash (the one before it
- *  too, for a while: an app that retries a refresh it already made isn't signed out). */
 type Grant = { name: string; client: string; created: string; used?: string; access?: Access; refresh: string; prev?: string; prevUntil?: number }
 export type Access = "read" | "write"
 type Stored = { public?: Partial<Settings>; key?: string; grants?: Record<string, Grant> }
 type App = { name: string; redirects: string[] }
 type SignIn = { id: string; code: string; app: App; clientId: string; redirect: string; state: string | null; challenge: string; started: number; from: string; base: string; done?: string; auth?: string }
-/** `back`: when its sign-in page took it back to the app (status), which then trades it for tokens. */
 type AuthCode = { clientId: string; app: App; redirect: string; challenge: string; until: number; approved: number; back?: number }
-/** A sign-in let in that never became a connection, and why, for Connections. */
 type Failed = { name: string; why: string; until: number }
 
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url")
@@ -105,8 +86,6 @@ const sha = (s: string) => crypto.createHash("sha256").update(s).digest("base64u
 const now = () => Math.floor(Date.now() / 1000)
 const same = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
 
-/** Marks a request Vaultite Cloud's tunnel forwarded (cloud.ts): only this process knows it, so only then are the
- *  forwarded host and address believed. A guest's (one the relay's frame marks `guest`: share-<handle>) has its own. */
 export const RELAY_HEADER = "x-vaultite-relay"
 export const RELAYED = crypto.randomBytes(24).toString("base64url"), RELAYED_GUEST = crypto.randomBytes(24).toString("base64url")
 
@@ -119,21 +98,14 @@ export class PublicMcp {
   failed: Failed[] = []
   sessions = new Map<string, Session>()
   hits = new Map<string, { n: number; until: number }>()
-  /** Requests that came with this process's relay mark (cloud.ts); `guests`: its guests' mark, for Sharing alone. */
   viaRelay = new WeakSet<IncomingMessage>()
   guests = new WeakSet<IncomingMessage>()
-  /** Upload links (file.upload without the file), by token: what to save the bytes as, for whom, until when. */
   uploads = new Map<string, { pending: Record<string, unknown>; who: Who; until: number }>()
-  /** The address each tool call's app reached (base), for links it's given: an app may know only one of them. */
   bases = new WeakMap<Who, string>()
   lastNotice = 0
-  /** Vaultite Cloud's address while this machine is signed in (cloud.ts). */
   cloudUrl: () => string | null = () => null
-  /** Where the owner opens the app from anywhere (Vaultite Connect), for cards' links. */
   appUrl: () => string | null = () => null
-  /** Connect (connect.ts): the key Vaultite Cloud signs the owner's requests with, its handle, whether owner tools are on. */
   connect: { key: () => string | null; handle: () => string | null; ownerTools: () => boolean } = { key: () => null, handle: () => null, ownerTools: () => false }
-  /** The port it listens on, once it does (mcp.public.port, or any free one for Vaultite Cloud alone). */
   ready: Promise<number>
   private listening!: (port: number) => void
 
@@ -143,7 +115,6 @@ export class PublicMcp {
     this.ready = new Promise((r) => { this.listening = r })
   }
 
-  /** The settings in data/config.json, or null when it's off (no url). */
   static settingsOf(plugin: Plugin): Settings | null {
     const p = PublicMcp.stored(plugin)
     if (!p?.url) return null
@@ -155,8 +126,6 @@ export class PublicMcp {
     }
   }
 
-  /** For Vaultite Cloud alone (no mcp.public.url): any free port, reached only through its tunnel; what apps may use is
-   *  mcp.public's all the same. */
   static cloudOnly(plugin?: Plugin): Settings {
     return { url: "", port: 0, redirectHosts: REDIRECT_HOSTS, ...PublicMcp.limitsOf(plugin && PublicMcp.stored(plugin)), approvalWait: 45 }
   }
@@ -170,7 +139,6 @@ export class PublicMcp {
   }
 
   start() {
-    // An app it signed in acts for the user, like the app's own requests (core/app.ts), not as this plugin on its own.
     this.server = http.createServer((req, res) => {
       byUser(() => this.handle(req, res)).catch((e) => {
         console.error("mcp public:", e)
@@ -178,8 +146,6 @@ export class PublicMcp {
         else res.end()
       })
     })
-    // Its port still held (the last server ending): tried again, a little later each time, so `ready` (which Vaultite
-    // Cloud's relay waits on) settles once it's free instead of never.
     const server = this.server
     let wait = 2000
     server.on("error", (e) => {
@@ -197,7 +163,6 @@ export class PublicMcp {
         }
         if (await this.plugin.ask("machines:upgrade", false, req, socket, head)) return
         if (!same(String(req.headers[RELAY_HEADER] ?? ""), RELAYED) && await this.plugin.ask("share:upgrade", false, req, socket, head)) return
-        // Machines not loaded yet (a server starting): a file agent waits and dials again.
         if (new URL(req.url ?? "/", "http://localhost").pathname.startsWith("/machines/dial/")) return socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         const signed = this.signedOwner(req)
         if (signed !== true) return socket.end(`HTTP/1.1 ${signed ? 401 : 404} ${signed ? "Unauthorized" : "Not Found"}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`)
@@ -212,7 +177,6 @@ export class PublicMcp {
     this.server = null
   }
 
-  // --- what's stored (data/config.json "mcp"): the signing key and the connections
 
   stored(): Stored {
     return (this.plugin.secrets().mcp as Stored | undefined) ?? {}
@@ -238,7 +202,6 @@ export class PublicMcp {
     return crypto.createHmac("sha256", this.key()).update(s).digest("base64url")
   }
 
-  /** `<payload>.<signature>`, the payload JSON. */
   token(kind: string, data: object) {
     const body = b64u(JSON.stringify({ k: kind, ...data }))
     return `${body}.${this.sign(body)}`
@@ -257,7 +220,6 @@ export class PublicMcp {
     return this.stored().grants ?? {}
   }
 
-  /** The connections, for the owner's view; `actor`: the name Activity gives what it does (its whoOf, as Activity names it). */
   list() {
     return Object.entries(this.grants()).map(([id, g]) => {
       const who = whoOf("mcp", g.name)
@@ -265,7 +227,6 @@ export class PublicMcp {
     })
   }
 
-  /** Rename a connection or change what it may do; false when there's no such connection. */
   update(id: string, change: { name?: string; access?: Access }) {
     if (!this.grants()[id]) return false
     this.save((s) => {
@@ -283,8 +244,6 @@ export class PublicMcp {
     return true
   }
 
-  /** Lets in the sign-in waiting with `code` (its page then takes the app back with an authorization code): its name,
-   *  or null if none waits. `as`: the app the owner set up (Grok Bot signs in as Cursor), its name here. */
   approve(code: string, as?: string) {
     const c = code.toUpperCase().replace(/[^A-Z0-9]/g, "")
     this.prune()
@@ -306,14 +265,11 @@ export class PublicMcp {
     return this.asking().length
   }
 
-  /** The apps whose sign-in page waits for its code, by the name each signed in with. */
   asking() {
     this.prune()
     return [...this.signIns.values()].filter((s) => !s.done).map((s) => s.app.name)
   }
 
-  /** The apps whose code the owner typed that haven't finished signing in (their authorization code not yet traded for
-   *  tokens), a connection about to show; `stuck`: where one waits that's taking long. */
   finishing() {
     this.prune()
     const t = now()
@@ -324,13 +280,11 @@ export class PublicMcp {
     })
   }
 
-  /** The sign-ins let in that didn't become connections in the last minutes, and why. */
   failures() {
     this.prune()
     return this.failed.map(({ name, why }) => ({ name, why }))
   }
 
-  /** Notes a sign-in that won't finish: the log says why, and so does Connections for a while. */
   fail(name: string, why: string) {
     console.error(`mcp public: ${name} didn't finish connecting: ${why}`)
     this.failed = [...this.failed.filter((f) => f.name !== name), { name, why, until: now() + FAILED_TTL }]
@@ -350,14 +304,12 @@ export class PublicMcp {
     for (const [k, h] of this.hits) if (h.until < t) this.hits.delete(k)
   }
 
-  // --- HTTP
 
   json(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
     res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers })
     res.end(JSON.stringify(body))
   }
 
-  /** At most `n` requests a minute from one address for one kind of request. */
   limited(req: IncomingMessage, kind: string, n: number) {
     const who = `${kind}:${this.from(req)}`
     const h = this.hits.get(who)
@@ -375,15 +327,12 @@ export class PublicMcp {
     return this.viaRelay.has(req)
   }
 
-  /** What the request says of who sent it, believed only for what a tunnel can't forge: Tailscale's and the app's own
-   *  headers go, and nothing that comes here is ever the owner (core/owner.ts). */
   untrusted(req: IncomingMessage) {
     const mark = String(req.headers[RELAY_HEADER] ?? "")
     if (same(mark, RELAYED)) this.viaRelay.add(req)
     else if (same(mark, RELAYED_GUEST)) {
       this.viaRelay.add(req)
       this.guests.add(req)
-      // (answered as at the address it came to, which the relay names: Sharing's links and Origin checks are by it)
       const host = String(req.headers["x-forwarded-host"] ?? "").toLowerCase()
       req.headers.host = /^[a-z0-9.-]+(:\d+)?$/.test(host) ? host : ""
     }
@@ -391,16 +340,12 @@ export class PublicMcp {
     fromInternet(req)
   }
 
-  /** A shared folder's guest through Vaultite Cloud (share-<handle>): marked so, then for Sharing only, never MCP, the
-   *  machines' routes or Connect. */
   guestOf(req: IncomingMessage) {
     if (!this.guests.has(req) && !same(String(req.headers[RELAY_HEADER] ?? ""), RELAYED_GUEST)) return false
     this.untrusted(req)
     return true
   }
 
-  /** Connect: true when Vaultite Cloud's tunnel brought this signed by the owner (a path that isn't MCP's), "bad" when its
-   *  signature doesn't hold, null when it isn't the app's. Reads the header before untrusted() drops it. */
   signedOwner(req: IncomingMessage): true | "bad" | null {
     const token = req.headers[SIGNED_HEADER]
     this.untrusted(req)
@@ -412,17 +357,15 @@ export class PublicMcp {
   connectOptions(): ConnectOptions {
     const port = Number(process.env.PORT || 8793)
     let host: string | null = null
-    try { host = new URL(this.cloudUrl() ?? "").host.toLowerCase() } catch { /* signed out */ }
+    try { host = new URL(this.cloudUrl() ?? "").host.toLowerCase() } catch {}
     return { appPort: () => port, publicHost: () => host, ownerTools: this.connect.ownerTools, from: (req) => this.from(req) }
   }
 
-  /** An operation by its id or CLI name, as host.call finds it. */
   entryOf(name: string) {
     const all = this.plugin.host.catalog()
     return all.find((e) => e.id === name) ?? all.find((e) => e.cli === name) ?? null
   }
 
-  /** The address the app reached: through Vaultite Cloud, the host it forwards for; else mcp.public.url. */
   base(req: IncomingMessage) {
     const h = req.headers
     if (this.relayed(req)) {
@@ -437,13 +380,11 @@ export class PublicMcp {
   async body(req: IncomingMessage): Promise<string> {
     let size = 0
     const parts: Buffer[] = []
-    // (past the limit the rest is read and dropped, so the sender gets the answer rather than a cut connection)
     for await (const c of req) if ((size += (c as Buffer).length) <= BODY_MAX) parts.push(c as Buffer)
     if (size > BODY_MAX) throw Object.assign(new Error("too big"), { status: 413 })
     return Buffer.concat(parts).toString("utf8")
   }
 
-  /** A form's or JSON's fields. */
   async fields(req: IncomingMessage): Promise<Record<string, string>> {
     const text = await this.body(req)
     if (String(req.headers["content-type"] ?? "").includes("json")) {
@@ -461,8 +402,6 @@ export class PublicMcp {
     const signed = this.signedOwner(req)
     if (signed === true) return serveApp(req, res, this.connectOptions())
     if (signed === "bad") return this.json(res, 401, { error: "sign_in", message: "Vaultite Cloud's sign-in for this Mac didn't check out: sign in again" })
-    // A shared folder's guest (plugins/core/share) at the owner's own tunnel: its own routes, never MCP's nor the app's;
-    // not on Vaultite Cloud's handle address, where the owner's app answers (its guests come to share-<handle>, above).
     if (!this.relayed(req) && await this.plugin.ask("share:public", false, req, res)) return
     const url = new URL(req.url ?? "/", "http://localhost")
     const p = url.pathname.replace(/\/+$/, "") || "/"
@@ -472,7 +411,7 @@ export class PublicMcp {
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
     res.setHeader("X-Content-Type-Options", "nosniff")
     if (req.method === "OPTIONS") { res.writeHead(204); return res.end() }
-    try { void this.plugin.host } catch { return this.json(res, 503, { error: "temporarily_unavailable" }, { "Retry-After": "2" }) } // still starting
+    try { void this.plugin.host } catch { return this.json(res, 503, { error: "temporarily_unavailable" }, { "Retry-After": "2" }) }
     const base = this.base(req)
     if (p === "/.well-known/oauth-protected-resource" || p === "/.well-known/oauth-protected-resource/mcp") {
       return this.json(res, 200, { resource: `${base}/mcp`, authorization_servers: [base], bearer_methods_supported: ["header"], scopes_supported: ["vault"], resource_name: "Vaultite" })
@@ -506,7 +445,6 @@ export class PublicMcp {
     this.json(res, 404, { error: "not_found" })
   }
 
-  // --- sign-in
 
   async register(req: IncomingMessage, res: ServerResponse) {
     if (this.limited(req, "register", 20)) return this.json(res, 429, { error: "slow_down" })
@@ -529,7 +467,7 @@ export class PublicMcp {
   redirectOk(r: string) {
     try {
       const u = new URL(r)
-      // A desktop app's own loopback (Grok Bot's, RFC 8252): the code still goes only to that machine, after the user's code.
+      // A desktop app's own loopback (Grok Bot's, RFC 8252): the code still goes only to that machine.
       if (u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) return true
       return u.protocol === "https:" && this.settings.redirectHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
     } catch { return false }
@@ -543,7 +481,6 @@ export class PublicMcp {
     const q = url.searchParams
     const app = this.appOf(q.get("client_id") ?? "")
     const redirect = q.get("redirect_uri") ?? ""
-    // Not the app's own address: never send anyone there (an open redirect), say so here.
     if (!app) return this.page(res, 400, "This app isn't registered", "Add the connector again from the app you're connecting.")
     if (!app.redirects.includes(redirect)) return this.page(res, 400, "This sign-in can't go on", "Its return address isn't the one the app registered.")
     const back = (error: string, description: string) => {
@@ -628,9 +565,7 @@ export class PublicMcp {
     }, { Pragma: "no-cache" })
   }
 
-  // --- MCP
 
-  /** The connection a request's Bearer token is for, or null. */
   grantOf(req: IncomingMessage): [string, Grant] | null {
     const m = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization ?? ""))
     const t = m && this.unsign<{ g: string; e: number }>("access", m[1])
@@ -663,8 +598,6 @@ export class PublicMcp {
       return this.json(res, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } })
     }
     this.touch(grant)
-    // Marked as come through
-    // a proxy, whatever the tunnel sends: an op or route only this machine's owner may use refuses it (core/owner.ts).
     req.headers["x-forwarded-for"] = this.from(req) || "public"
     const session: Session = { ...this.sessions.get(sid) ?? { client: null } }
     const out = await handleBody(body, session, {
@@ -672,7 +605,6 @@ export class PublicMcp {
       instructions: () => instructionsOf(agentLines(this.plugin.vault).map((l) => l.text), this.plugin.host.catalog(), grant[1].access === "read" ? [READ_ONLY] : [WAITS]),
       identity: { icons: [{ src: `${base}/icon.png`, mimeType: "image/png", sizes: ["256x256"] }, { src: `${base}/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] },
       ctx: (client, tool) => {
-        // Named as it signed in (Connections' name), not as its MCP client calls itself ("An MCP client", a skill's name).
         const who: Who = whoOf("mcp", grant[1].name)
         this.bases.set(who, base)
         return { client, op: this.opFor(grant, who, tool, req) }
@@ -692,15 +624,12 @@ export class PublicMcp {
     this.json(res, 200, out, headers)
   }
 
-  /** The tools an app gets: not what only the owner may run (unless it waits for their yes) nor what's withheld, only
-   *  reads when read-only. */
   toolsFor(g: Grant) {
     const allow = this.settings.tools && new Set(this.settings.tools)
     const entries = this.plugin.host.catalog().filter((e) => (!e.owner || GATED[e.id]) && !this.withheld(e) && (g.access !== "read" || e.kind === "read"))
     return toolsOf(entries).filter((t) => !allow || allow.has(t.name))
   }
 
-  /** Why apps may not run this op at all (mcp.public's withhold, or a tool of its own not among `tools`), or "". */
   limitOf(entry: OpEntry | null) {
     if (!entry) return ""
     if (this.withheld(entry)) return `${entry.id} isn't available to apps on the internet: the user withheld it (mcp.public.withhold).`
@@ -712,8 +641,6 @@ export class PublicMcp {
     return this.settings.withhold.some((x) => x === e.id || x === e.plugin)
   }
 
-  /** How an app's tool runs an op (its own, or `call`'s): refused when it's the owner's or past the app's access, after
-   *  the owner's yes when it's gated. */
   opFor([grantId, g]: [string, Grant], who: Who, tool: string, req?: IncomingMessage) {
     return async (name: string, params: Record<string, unknown>) => {
       const entry = this.entryOf(name)
@@ -724,20 +651,16 @@ export class PublicMcp {
       if (refused) throw new ToolError(refused)
       const id = entry?.id ?? name
       await this.approved(grantId, g.name, id, params)
-      // An owner's op they just said yes to runs as theirs: the request's owner checks would refuse it.
       return this.plugin.host.call(id, params, who, { report: `mcp ${tool}`, http: entry?.owner ? undefined : req })
     }
   }
 
-  /** Returns when an app may run this operation: at once, or once the owner said
-   *  yes (gateOf). Throws ToolError when they said no, or haven't answered yet (call again with the same arguments). */
   async approved(grant: string, app: string, id: string, params: Record<string, unknown>) {
     const entry = this.plugin.host.catalog().find((e) => e.id === id)
     const why = entry ? gateOf(id, entry.kind, params, await this.pluginCode()) : ""
     if (!why) return
     const ask = this.plugin.service("inbox:ask"), answerOf = this.plugin.service("inbox:answer")
     if (!ask || !answerOf) throw new ToolError(`This needs the user's yes (to ${why}), asked through Vaultite's Inbox, which is off: they can turn it on, or do it on their machine.`)
-    // (asked once per app, op and parameters, kept in the Inbox until answered: a restart or a slow yes doesn't lose it)
     const key = sha(JSON.stringify([grant, id, params])).slice(0, 40)
     const event = await ask({ source: "mcp", key, title: `${app} asks to ${why}`, body: await this.askBody(id, params) })
     const answer = await answerOf(event, this.settings.approvalWait * 1000)
@@ -748,8 +671,6 @@ export class PublicMcp {
     throw new ToolError(`Waiting for the user's yes: Vaultite asked them on their phone (and in its Inbox) whether you may ${why}. Tell them, and once they approve, call this again with exactly the same arguments: it then runs at once.`)
   }
 
-  /** Which paths are a vault plugin's code that runs only once this machine's owner allows it as changed: not the app's
-   *  plugins' settings, not its data.json or userFiles, not one whose edits run without asking (core/trust.ts). */
   async pluginCode() {
     const list = (await this.plugin.host.call("plugin.list", {})).result as { id: string; tier: string; edits?: boolean }[]
     const app = new Set(list.filter((p) => p.tier !== "vault").map((p) => p.id)), edits = new Set(list.filter((p) => p.edits).map((p) => p.id))
@@ -763,8 +684,6 @@ export class PublicMcp {
     }
   }
 
-  /** What the owner reads before saying yes: for a vault plugin to run, what it is, what it does beyond the vault and
-   *  which files changed since they last allowed it; else the operation and its parameters. */
   async askBody(id: string, params: Record<string, unknown>) {
     const raw = `${id} ${JSON.stringify(params, null, 2)}`
     if (id !== "plugin.allow" && id !== "plugin.enable") return raw
@@ -783,7 +702,6 @@ export class PublicMcp {
     ].filter(Boolean).join("\n")
   }
 
-  /** A one-time link for file.upload's bytes, 15 minutes, on the address the app reached; null when there's none. */
   uploadLink(pending: Record<string, unknown>, who: Who) {
     const base = this.bases.get(who) ?? (this.settings.url || this.cloudUrl())
     if (!base) return null
@@ -794,13 +712,11 @@ export class PublicMcp {
     return { url: `${base}/upload/${token}`, expires: new Date(now + UPLOAD_TTL).toISOString() }
   }
 
-  /** PUT /upload/<token>: the bytes saved as file.upload would (its parameters were gated when the link was made), once. */
   async upload(req: IncomingMessage, res: ServerResponse, token: string) {
     const u = this.uploads.get(token)
     if (!u || u.until < Date.now()) return this.json(res, 404, { error: "this upload link is used or expired: ask for a new one" })
     this.uploads.delete(token)
     try {
-      // (the bytes stream on into the vault, any size: file.upload's input)
       const r = await this.plugin.host.call("file.upload", u.pending, u.who, { report: "mcp upload", http: req, input: req })
       return this.json(res, 201, { ...(r.result as object), text: r.text })
     } catch (e) {
@@ -809,16 +725,13 @@ export class PublicMcp {
     }
   }
 
-  /** When a connection was last used, kept every 10 minutes at most. */
   touch([id, g]: [string, Grant]) {
     if (g.used && Date.now() - Date.parse(g.used) < 600_000) return
     this.save((s) => { if (s.grants?.[id]) s.grants[id].used = new Date().toISOString() })
   }
 
-  // --- pages
 
-  /** `origin`: the page's own, named as well as 'self': Vaultite Cloud sandboxes it (an opaque origin), and there
-   *  Safari's 'self' matches nothing, so its sign-in page could never ask whether it was let in. */
+  /** `origin` named beside 'self': in an opaque-origin sandbox (Vaultite Cloud's) Safari's 'self' matches nothing. */
   page(res: ServerResponse, status: number, title: string, text: string, extra = "", nonce = "", origin = "") {
     const own = origin ? ` ${origin}` : ""
     res.writeHead(status, {
@@ -863,7 +776,6 @@ poll()
   }
 }
 
-/** The web app's public files (its logo), from the repo or the packaged app. */
 const PUBLIC = path.resolve(import.meta.dirname, "../../../web/public")
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
@@ -877,11 +789,9 @@ h1{font-size:22px;line-height:1.3;margin:0 0 8px}p{margin:0 0 16px}.muted{color:
 .code span{user-select:all}.code button{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
 .code button:hover{background:var(--line);color:var(--fg)}.code svg{width:20px;height:20px}`
 
-// Lucide's copy and check icons, inline: the page's CSP loads no other files.
 const svg = (d: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`
 const COPY = svg(`<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>`)
 const CHECK = svg(`<path d="M20 6 9 17l-5-5"/>`)
 
-/** What the public server's instructions add: what waits for the user's yes here, or that the app only reads. */
 const READ_ONLY = "You have read-only access to this vault: the tools only read. The user can give you write access in Vaultite's Connections."
 const WAITS = `What can run code on the user's machine (turning a plugin on or allowing it, writing a hidden file or folder: .vaultite/ except a vault plugin's code, .claude/, .codex/..., bundles, settings, palette commands, dispatch.run: a coding agent given a note to work on) waits for their yes on their phone: if a tool says it's waiting, tell them, and call it again with the same arguments once they approve.`
