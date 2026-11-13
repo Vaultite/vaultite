@@ -15,8 +15,8 @@ export function fakeSdk() {
   const runs: Any[] = []
   const query = ({ prompt, options }: Any) => {
     const out: Any[] = []
-    let wake = null as (() => void) | null, done = false
-    const push = (m: Any) => { out.push(m); wake?.() }
+    let wake = () => {}, done = false
+    const push = (m: Any) => { out.push(m); wake() }
     const sid = options.sessionId ?? options.resume
     const run: Any = { options, model: options.model, mode: options.permissionMode, efforts: [], said: [], queued: [] }
     runs.push(run)
@@ -30,11 +30,11 @@ export function fakeSdk() {
       push({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: tu, content: r.behavior === "allow" ? "ok" : r.message, is_error: r.behavior !== "allow" }] }, uuid: crypto.randomUUID(), ...base })
       return r
     }
-    let more = null as (() => void) | null, drained = false
+    let more = () => {}, drained = false
     void (async () => {
-      for await (const m of prompt) { run.queued.push(m); more?.() }
+      for await (const m of prompt) { run.queued.push(m); more() }
       drained = true
-      more?.()
+      more()
     })()
     void (async () => {
       push({ type: "system", subtype: "init", model: options.model ?? "claude-sonnet-5", permissionMode: options.permissionMode ?? "default", cwd: options.cwd, ...base })
@@ -42,7 +42,7 @@ export function fakeSdk() {
         if (!run.queued.length) {
           if (drained) break
           await new Promise<void>((r) => { more = r })
-          more = null
+          more = () => {}
           continue
         }
         const m = run.queued.shift()
@@ -81,14 +81,14 @@ export function fakeSdk() {
         push({ type: "result", subtype: "success", is_error: false, duration_ms: 1200, result: "Done", uuid: crypto.randomUUID(), ...base })
       }
       done = true
-      wake?.()
+      wake()
     })()
     const gen = (async function* () {
       for (;;) {
         if (out.length) { yield out.shift(); continue }
         if (done) return
         await new Promise<void>((r) => { wake = r })
-        wake = null
+        wake = () => {}
       }
     })()
     return Object.assign(gen, {
@@ -123,7 +123,7 @@ export default async ($: VaultTest) => {
   const { TabMessage } = await import("../../../plugins/core/claude-code/chatprotocol.ts")
   const as = (client: string, agent: string | null = null) => request({ host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) }, { remote: "127.0.0.1" })
   const asApp = as("app/desktop")
-  const rows = async () => { await settled(); return (await api("GET", "inbox/events"))[1].events as Any[] }
+  const rows = async (): Promise<Any[]> => { await settled(); return (await api("GET", "inbox/events"))[1].events }
 
   // The entries: a streamed block grows, then its whole message takes its place under the same id (as a transcript's
   // line does), a tool call gets its result, and a user's message is its uuid.
@@ -138,11 +138,11 @@ export default async ($: VaultTest) => {
     r.feed({ type: "assistant", message: { id: "m1", content: [{ type: "text", text: "On it." }] } })
     r.feed({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test" } }] } })
     r.feed({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "1 failing", is_error: true }] } })
-    const all = [...r.entries.values()] as Any[]
+    const all = [...r.entries.values()]
     check("chat entries: what the user said (reminders out), the answer streamed then whole under one id, a tool call and its result",
       all.length === 3 && all[0].k === "user" && all[0].text === "Fix it" && all[0].id === "u1" && grew[0]?.text === "On it" && grew[0].live &&
-      all[1].id === "m1:0" && all[1].text === "On it." && !all[1].live && typing[0]?.summary === "npm te" &&
-      all[2].id === "t1" && all[2].summary === "npm test" && all[2].result === "1 failing" && all[2].error === true && r.text === "On it." && r.prompt === "Fix it", all)
+      all[1].k === "text" && all[1].id === "m1:0" && all[1].text === "On it." && !all[1].live && typing[0]?.summary === "npm te" &&
+      all[2].k === "tool" && all[2].id === "t1" && all[2].summary === "npm test" && all[2].result === "1 failing" && all[2].error === true && r.text === "On it." && r.prompt === "Fix it", all)
   }
   // A message sent mid-turn: its transcript line is an attachment, by the uuid it was sent with, where the turn took it.
   {
@@ -154,14 +154,14 @@ export default async ($: VaultTest) => {
     r.feed(q("<task-notification>done</task-notification>", "u3", "task-notification"))
     r.feed(q("<agent-message from=\"x\">hi</agent-message>", "u4"))
     r.feed({ type: "assistant", message: { id: "m2", content: [{ type: "text", text: "Both." }] } })
-    const all = [...r.entries.values()] as Any[]
+    const all = [...r.entries.values()]
     check("chat entries: a message sent mid-turn read back from its transcript in its place, under the id it was sent with; a task's notice and another session's message aren't the user's",
       all.map((e) => e.id).join() === "u1,t1,u2,m2:0" && all[2].k === "user" && all[2].text === "Also the phone", all)
   }
 
   // The keeper, run in this process with the stand-in SDK, where the plugin looks for it.
   const sdk = fakeSdk()
-  const host = new Host({ query: sdk.query as Any })
+  const host = new Host({ query: sdk.query })
   const served = listen(host, CHAT_SOCKET)
   await new Promise((r) => served.server.once("listening", r))
   const cc = app.plugins.find((p) => p.id === "claude-code")!
@@ -194,7 +194,7 @@ export default async ($: VaultTest) => {
       { ...o, env: o?.env?.CLAUDE_CONFIG_DIR, canUseTool: undefined })
     {
       // A lean session (the summoned companion's): its own prompt, none of the user's settings, few tools; its words told as written.
-      const sdk3 = fakeSdk(), host3 = new Host({ query: sdk3.query as Any })
+      const sdk3 = fakeSdk(), host3 = new Host({ query: sdk3.query })
       const lean = crypto.randomUUID(), told: Any[] = [], off = host3.on((e) => { if (e.t === "partial" && e.id === lean) told.push(e) })
       host3.start({ id: lean, resume: false, cwd: VAULT, env: {}, system: "Be brief.", builtins: ["Bash"], texts: true }, "Say hello")
       await waitFor(() => host3.list().find((s) => s.id === lean)?.state === "idle", 5000, 50)
@@ -207,7 +207,7 @@ export default async ($: VaultTest) => {
     }
     {
       // An idle session's process ends after a while, but not while something it started runs in the background.
-      const sdk4 = fakeSdk(), host4 = new Host({ query: sdk4.query as Any })
+      const sdk4 = fakeSdk(), host4 = new Host({ query: sdk4.query })
       host4.idleMs = 150
       const bg = crypto.randomUUID()
       host4.start({ id: bg, resume: false, cwd: VAULT, env: {} }, "Watch the QA run in the background")
@@ -240,7 +240,7 @@ export default async ($: VaultTest) => {
     check("chat: Approve in the inbox allows it in the session; an agent can't", byAgent === 403 && st === 200 && sdk.runs[0].permission?.behavior === "allow" &&
       !sdk.runs[0].permission.updatedPermissions, [byAgent, st, b, sdk.runs[0].permission])
     await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 3000, 50)
-    const ask = host.read(id)!.entries.find((e) => e.k === "ask") as Any
+    const ask = host.read(id)!.entries.find((e) => e.k === "ask")
     check("chat: the ask is an entry, answered, offering Always allow in words", ask?.kind === "permission" && ask.answer === "Allowed" && ask.always === "`rm` commands" &&
       ask.title === "Claude wants to run rm -rf build", ask)
 
@@ -322,8 +322,8 @@ export default async ($: VaultTest) => {
       host.list().find((s) => s.id === id)?.mode === "auto" && sdk.runs.length === 1, [st, sdk.runs[0].mode])
     await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 3000, 50)
     // The inbox's services for a session with no terminal: a reply, an answer.
-    const reply = cc.services["agent-reply:claude"] as (s: string, t: string) => Promise<boolean>
-    const answerIt = cc.services["agent-answer:claude"] as (s: string, a: Any) => Promise<boolean>
+    const reply: (s: string, t: string) => Promise<boolean> = cc.services["agent-reply:claude"]
+    const answerIt: (s: string, a: Any) => Promise<boolean> = cc.services["agent-answer:claude"]
     const took = await reply(id, "One more thing")
     await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 3000, 50)
     const none = await answerIt(id, { answer: "approve" })
@@ -344,7 +344,7 @@ export default async ($: VaultTest) => {
 
     // A resume or fork that gives the session a new id, told with its thread: still one row, following the new id.
     {
-      const tell = app.plugins.find((p) => p.id === "inbox")!.services["inbox:session"] as (b: Any) => Promise<Any>
+      const tell: (b: Any) => Promise<Any> = app.plugins.find((p) => p.id === "inbox")!.services["inbox:session"]
       const other = crypto.randomUUID(), threadId = (await rows()).find((x) => x.session === id)!.id
       const e = await tell({ agent: "claude", session: other, thread: threadId, state: "done", prompt: "Go on", text: "Went on" })
       const both = (await rows()).filter((x) => x.id === threadId || x.session === other || x.session === id)
@@ -396,7 +396,7 @@ export default async ($: VaultTest) => {
 
     // ---------- a turn's state, as the SDK sends messages: each the moment it's sent
     {
-      const sdk5 = fakeSdk(), host5 = new Host({ query: sdk5.query as Any }), states: string[] = []
+      const sdk5 = fakeSdk(), host5 = new Host({ query: sdk5.query }), states: string[] = []
       host5.idleMs = 150
       const sid = crypto.randomUUID(), off = host5.on((e) => { if (e.t === "state" && e.s.id === sid) states.push(e.s.state) })
       host5.start({ id: sid, resume: false, cwd: VAULT, env: {} }, "hold on")
@@ -418,13 +418,13 @@ export default async ($: VaultTest) => {
       await waitFor(() => host5.list().find((s) => s.id === sid)?.state === "waiting", 3000, 20)
       sdk5.runs[0].abort()
       await waitFor(() => host5.list().find((s) => s.id === sid)?.state === "idle", 3000, 20)
-      const ask = host5.read(sid)!.entries.find((e) => e.k === "ask") as Any
+      const ask = host5.read(sid)!.entries.find((e) => e.k === "ask")
       check("chat: an ask taken back leaves waiting (working, then its turn's end), answered Stopped", states.join().includes("waiting,working") &&
         states.at(-1) === "idle" && ask?.answer === "Stopped" && !host5.list().find((s) => s.id === sid)!.asks.length, [states, ask])
       // Stop takes back the messages queued behind the turn, given back to send again.
       states.length = 0
       host5.send(sid, "hold the line")
-      await waitFor(() => sdk5.runs[0].queued.length === 0 && host5.read(sid)!.entries.some((e) => e.k === "text" && (e as Any).live), 3000, 20)
+      await waitFor(() => sdk5.runs[0].queued.length === 0 && host5.read(sid)!.entries.some((e) => e.k === "text" && e.live), 3000, 20)
       const q = host5.send(sid, "and this, later")
       await waitFor(() => sdk5.runs[0].queued.length === 1, 3000, 10)
       const dropped: string[] = [], off2 = host5.on((e) => { if (e.t === "drop") dropped.push(e.e) })
@@ -509,7 +509,7 @@ export default async ($: VaultTest) => {
       const m1 = merge([e("user", "u1"), e("text", "a:0"), e("note", "n", { text: "Interrupted" }), e("user", "u2"), e("text", "b:0")],
         [e("ask", "ask:1"), e("text", "a:0", { text: "newer" }), e("note", "r1", { text: "Stopped" }), e("user", "u2"), e("result", "r2"), e("text", "b:0"), e("note", "r3", { text: "Failed" })])
       check("chat: merged, the keeper's own entries after the one before them (leading ones before the first shared), its newer copy in place, Stopped once beside Interrupted",
-        m1.map((x) => x.id).join() === "u1,ask:1,a:0,n,u2,r2,b:0,r3" && (m1[2] as Any).text === "newer", m1.map((x) => x.id))
+        m1.map((x) => x.id).join() === "u1,ask:1,a:0,n,u2,r2,b:0,r3" && m1[2].k === "text" && m1[2].text === "newer", m1.map((x) => x.id))
 
       // Another machine not answering: the tab is told so and tries again (refused is for good).
       const ms = app.plugins.find((p) => p.id === "machines")!.services, wasM = { ...ms }
@@ -555,10 +555,10 @@ export default async ($: VaultTest) => {
       const got = run.said.at(-1)?.content
       check("chat send: pictures alone reach the session as image blocks (no text block)", st === 200 && Array.isArray(got) && got.length === 2 && got[0].type === "image" &&
         got[0].source.media_type === "image/png" && got[0].source.data === png.data && got[1].source.media_type === "image/jpeg", [st, b, got?.map?.((c: Any) => c.type)])
-      const mine = host.read(w.id)!.entries.find((e) => e.id === b.uuid) as Any
+      const mine = host.read(w.id)!.entries.find((e) => e.id === b.uuid)
       check("chat: the message's entry has its pictures, no \"_(image)_\" text", mine?.k === "user" && mine.text === "" && mine.images?.length === 2 &&
         mine.images[0].src === `image/${b.uuid}/0`, mine)
-      ;[st, b] = await api("GET", `claude-code/chat/${w.id}/${mine.images[1].src}`)
+      ;[st, b] = await api("GET", `claude-code/chat/${w.id}/${mine?.k === "user" ? mine.images?.[1]?.src : ""}`)
       check("chat: a picture is served while the server keeps it", st === 200 && Buffer.isBuffer(b) && b.equals(JPEG), [st])
       // While it asks: the pictures go with the message, the ask answered by it.
       await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "idle", 3000, 20)
@@ -572,9 +572,9 @@ export default async ($: VaultTest) => {
       const r = new Reader()
       r.feed({ type: "user", uuid: "u-img", message: { content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png.data } }, { type: "text", text: "This one" }] } })
       r.feed({ type: "attachment", attachment: { type: "queued_command", commandMode: "prompt", source_uuid: "u-q", prompt: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png.data } }] } })
-      const [a, q] = [r.entries.get("u-img") as Any, r.entries.get("u-q") as Any]
+      const [a, q] = [r.entries.get("u-img"), r.entries.get("u-q")]
       check("chat entries: a transcript's pictures are the entry's, its text without \"_(image)_\"; a picture alone sent mid-turn too",
-        a?.text === "This one" && a.images?.[0]?.src === "image/u-img/0" && q?.text === "" && q.images?.length === 1, [a, q])
+        a?.k === "user" && a.text === "This one" && a.images?.[0]?.src === "image/u-img/0" && q?.k === "user" && q.text === "" && q.images?.length === 1, [a, q])
       const old = path.join(proj, `${w.id}.jsonl`)
       fs.writeFileSync(old, JSON.stringify({ type: "user", uuid: "u-old", cwd: VAULT, sessionId: w.id, message: { content: [{ type: "text", text: "Old" }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: JPEG.toString("base64") } }] } }) + "\n")
       ;[st, b] = await api("GET", `claude-code/chat/${w.id}/image/u-old/0`)
@@ -602,7 +602,7 @@ export default async ($: VaultTest) => {
     const cut = slow.id
     fs.writeFileSync(path.join(proj, `${cut}.jsonl`), JSON.stringify({ type: "user", uuid: crypto.randomUUID(), cwd: VAULT, sessionId: cut, message: { content: "A voice note" }, timestamp: new Date().toISOString() }) + "\n")
     await served.stop()
-    const sdk2 = fakeSdk(), host2 = new Host({ query: sdk2.query as Any }), served2 = listen(host2, CHAT_SOCKET)
+    const sdk2 = fakeSdk(), host2 = new Host({ query: sdk2.query }), served2 = listen(host2, CHAT_SOCKET)
     try {
       await new Promise((r) => served2.server.once("listening", r))
       const again = await waitFor(() => sdk2.runs.find((r: Any) => r.options.resume === cut && r.said.length), 9000, 100)

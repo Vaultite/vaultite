@@ -28,7 +28,7 @@ export default async ($: VaultTest) => {
       repo: "alicepark/harbor", apiVersion: 1, disclosures: { network: ["tides.example.com"] }, ...o }, null, 2)
     const PLUGIN_TS = 'import { Plugin } from "@vaultite/core/plugins.ts"\nexport const plugin = new Plugin(import.meta.url)\nplugin.route("GET", "harbor", () => ({ tide: "high" }))\n'
     const HARBOR = repo("harbor", { "manifest.json": manifest(), "plugin.ts": PLUGIN_TS, "AGENTS.md": "## Harbor\n", ".github/workflows/ci.yml": "on: push\n" }, "v1.0.0")
-    const harbor = async () => ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "harbor")
+    const harbor = async () => (await api("GET", "plugins"))[1].find((p: Any) => p.id === "harbor")
     let [ic, io] = await api("POST", "ops/plugin.install", { source: HARBOR })
     const lock = () => conf("plugins-lock")
     check("install: from a git repository at its newest version tag, off", ic === 200 && io.id === "harbor" && io.tag === "v1.0.0" && !io.untagged && exists(".vaultite/plugins/harbor/plugin.ts")
@@ -136,11 +136,11 @@ export default async ($: VaultTest) => {
     // A newer version: v1.1.0 changes plugin.ts and runs programs now.
     repo("harbor", { "manifest.json": manifest({ version: "1.1.0", disclosures: { network: ["tides.example.com"], shell: true } }), "plugin.ts": PLUGIN_TS.replace('"high"', '"low"') }, "v1.1.0")
     let [uc, uo] = await api("POST", "ops/plugin.update", {})
-    const row = (uo as Any[])?.find((r) => r.id === "harbor")
+    const row = uo?.find((r: Any) => r.id === "harbor")
     check("update: a newer tag, what it changes (files, disclosures), nothing applied", uc === 200 && row?.to === "1.1.0" && row.tag === "v1.1.0" && !row.applied &&
       row.files.includes("changed plugin.ts") && row.files.includes("changed manifest.json") && row.disclosures.includes("now runs programs on this machine") &&
       lock().harbor.version === "1.0.0" && (await api("GET", "harbor"))[1].tide === "high", uo)
-    check("update: one installed without tags and unchanged is up to date", (uo as Any[]).find((r) => r.id === "notags")?.current === true, uo)
+    check("update: one installed without tags and unchanged is up to date", uo.find((r: Any) => r.id === "notags")?.current === true, uo)
     ;[uc, uo] = await api("POST", "ops/plugin.update", { id: "harbor", apply: true })
     let h = await harbor()
     check("update: applied, its files are the new version's, its settings kept, the lock follows", uc === 200 && uo[0].applied && lock().harbor.version === "1.1.0" && lock().harbor.tag === "v1.1.0" &&
@@ -345,7 +345,7 @@ export default async ($: VaultTest) => {
       ;[bc] = await api("POST", "bundles/lights/apply", { fresh: true })
       check("bundles: installing runs code, so it needs allowCode", bc === 409 && !exists(".vaultite/plugins/beacon/manifest.json"), bc)
       ;[bc, bo] = await api("POST", "bundles/lights/apply", { allowCode: true, fresh: true })
-      const beacon = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "beacon")
+      const beacon = (await api("GET", "plugins"))[1].find((p: Any) => p.id === "beacon")
       check("bundles: applied, it's installed at its tag, on and running", bc === 200 && lock().beacon?.tag === "v1.0.0" && (conf("plugins").enabled ?? []).includes("beacon") && beacon?.loaded, [bo, beacon])
       ;[bc, bo] = await api("POST", "bundles/restore")
       check("bundles: restored, the plugin it installed is uninstalled", bc === 200 && !exists(".vaultite/plugins/beacon/manifest.json") && (!exists(".vaultite/plugins-lock.json") || !lock().beacon) && bo.trashed.includes(".vaultite/plugins/beacon"), bo)
@@ -405,7 +405,7 @@ export default async ($: VaultTest) => {
       check("browse: imported from its address, it's current", bo.bundles[0].imported === "desk" && bo.bundles[0].current === true && read(".vaultite/bundles/desk/appearance.json").includes("dracula"), bo.bundles[0])
       check("browse: a bundle can't take the route's id", (await api("GET", "bundles/browse"))[0] === 200 && !(await api("POST", "bundles", { name: "Browse" }))[1].bundle?.id?.match(/^browse$/))
       if (was === undefined) delete process.env.VAULTITE_PLUGIN_INDEX; else process.env.VAULTITE_PLUGIN_INDEX = was
-      for (const b of ((await api("GET", "bundles"))[1].bundles as Any[]).filter((x) => /^browse/.test(x.id))) await api("DELETE", `bundles/${b.id}`)
+      for (const b of (await api("GET", "bundles"))[1].bundles.filter((x: Any) => /^browse/.test(x.id))) await api("DELETE", `bundles/${b.id}`)
       await api("DELETE", "bundles/desk")
       const [, one] = await api("POST", "bundles/import", { vaultite: "bundle", format: 1, id: "night", files: { "bundle.json": { name: "Night" }, "appearance.json": { theme: "dark" } } })
       repo("night", { "night.bundle.json": (await api("GET", `bundles/${one.bundle.id}/export`))[1] }, null)
@@ -443,9 +443,9 @@ export default async ($: VaultTest) => {
       repo("boblee/buoy", { "manifest.json": lm("buoy", "1.1.0"), "plugin.ts": lts("buoy", "green") }, "v1.1.0")
       await api("DELETE", "inbox/events")
       let [ac, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      const lr = (ao as Any[]).find((r) => r.id === "lantern")
+      const lr = ao.find((r: Any) => r.id === "lantern")
       check("auto updates: by default only Vaultite's, applied and allowed here (it was before), running", ac === 200 && lr?.applied && lr.allowed &&
-        !(ao as Any[]).some((r) => r.id === "buoy") && await light() === "bright" && lock().buoy.version === "1.0.0", ao)
+        !ao.some((r: Any) => r.id === "buoy") && await light() === "bright" && lock().buoy.version === "1.0.0", ao)
       const hist = lock().lantern.history
       check("auto updates: the lock keeps it in its history, what's new from its folder's commits (upkeep left out)", hist?.length === 1 && hist[0].from === "1.0.0" &&
         hist[0].to === "1.1.0" && hist[0].how === "auto" && JSON.stringify(hist[0].notes) === '["Brighter at night","Flickers less"]', hist)
@@ -463,15 +463,15 @@ export default async ($: VaultTest) => {
       // A plugin's own choice over the vault's: buoy on its own, then all of them but buoy.
       write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updatesOn: ["buoy"] }))
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("auto updates: updatesOn takes one the policy leaves", (ao as Any[]).find((r) => r.id === "buoy")?.applied && lock().buoy.version === "1.1.0" &&
+      check("auto updates: updatesOn takes one the policy leaves", ao.find((r: Any) => r.id === "buoy")?.applied && lock().buoy.version === "1.1.0" &&
         (await api("GET", "buoy"))[1]?.tide === "green", ao)
       repo("boblee/buoy", { "manifest.json": lm("buoy", "1.2.0") }, "v1.2.0")
       write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: "all", updatesOn: null, updatesOff: ["buoy"] }))
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("auto updates: updatesOff keeps one out, even with all", !(ao as Any[]).some((r) => r.id === "buoy") && lock().buoy.version === "1.1.0", ao)
+      check("auto updates: updatesOff keeps one out, even with all", !ao.some((r: Any) => r.id === "buoy") && lock().buoy.version === "1.1.0", ao)
       write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: "off", updatesOff: null }))
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("auto updates: off, none", (ao as Any[]).length === 0, ao)
+      check("auto updates: off, none", ao.length === 0, ao)
       write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: null }))
 
       // Rolled back: the version before, still running; that version is skipped from now on, a newer one isn't.
@@ -479,16 +479,16 @@ export default async ($: VaultTest) => {
       check("rollback: back to the version before, allowed, its history says so, the newer one skipped", bc === 200 && bo.to === "1.0.0" && bo.allowed && await light() === "dim" &&
         lock().lantern.version === "1.0.0" && lock().lantern.skip === "1.1.0" && lock().lantern.history.at(-1).how === "rollback", [bo, lock().lantern])
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("rollback: updating on its own skips that version", (ao as Any[]).find((r) => r.id === "lantern")?.skipped === "1.1.0" && lock().lantern.version === "1.0.0", ao)
+      check("rollback: updating on its own skips that version", ao.find((r: Any) => r.id === "lantern")?.skipped === "1.1.0" && lock().lantern.version === "1.0.0", ao)
       ;[bc, bo] = await api("POST", "ops/plugin.rollback", { id: "lantern" })
       check("rollback: not twice in a row (nothing before a rollback to go back to)", bc === 409, [bc, bo])
       repo("Vaultite/plugins", { "lantern/manifest.json": lm("lantern", "1.2.0"), "lantern/plugin.ts": lts("lantern", "steady") }, "lantern/v1.2.0", "feat(lantern): a steady light")
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("rollback: a newer version is taken (what's new since the one it had), and the skip is gone", (ao as Any[]).find((r) => r.id === "lantern")?.applied && await light() === "steady" && !lock().lantern.skip &&
+      check("rollback: a newer version is taken (what's new since the one it had), and the skip is gone", ao.find((r: Any) => r.id === "lantern")?.applied && await light() === "steady" && !lock().lantern.skip &&
         JSON.stringify(lock().lantern.history.at(-1).notes) === '["Brighter at night","Flickers less","A steady light"]', [ao, lock().lantern])
       repo("Vaultite/plugins", { "lantern/manifest.json": lm("lantern", "1.3.0", { disclosures: { network: ["lights.example.com"] } }) }, "lantern/v1.3.0", "feat(lantern): weather")
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("auto updates: not one that says it does more beyond the vault now (that's the user's call)", /does more beyond the vault/.test((ao as Any[]).find((r) => r.id === "lantern")?.error) &&
+      check("auto updates: not one that says it does more beyond the vault now (that's the user's call)", /does more beyond the vault/.test(ao.find((r: Any) => r.id === "lantern")?.error) &&
         lock().lantern.version === "1.2.0", ao)
       // (where it comes from is the lock's, a vault file: one changed since this machine allowed it isn't taken on its own)
       repo("mallory/lantern", { "manifest.json": lm("lantern", "9.0.0"), "plugin.ts": lts("lantern", "evil") }, "v9.0.0")
@@ -496,7 +496,7 @@ export default async ($: VaultTest) => {
       write(".vaultite/plugins-lock.json", JSON.stringify({ ...lk, lantern: { ...lk.lantern, source: "mallory/lantern" } }))
       write(".vaultite/plugins.json", JSON.stringify({ ...pj0, updatesOn: ["lantern"] }))
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
-      check("auto updates: not from another source than the one this machine allowed it from", !(ao as Any[]).find((r) => r.id === "lantern")?.applied && await light() === "steady" &&
+      check("auto updates: not from another source than the one this machine allowed it from", !ao.find((r: Any) => r.id === "lantern")?.applied && await light() === "steady" &&
         lock().lantern.version === "1.2.0", ao)
       write(".vaultite/plugins-lock.json", JSON.stringify(lk))
       write(".vaultite/plugins.json", JSON.stringify(pj0))
@@ -646,19 +646,19 @@ export default async ($: VaultTest) => {
     last("hank/bad", H, "2026-08-01T00:00:00Z")
     const { index, skipped } = await buildIndex({ get, listed: { plugins: ["carol/listed", "not a repo"], bundles: ["Vaultite/plugins/bundles/agents", "dave/desk", "x/../y"] },
       blocked: { "boblee/oldboat": ["<1.0.0"], "Hank/Bad": ["abcdef1"] }, now })
-    const hb = index.plugins.find((p) => p.id === "harbor") as Any
+    const hb = index.plugins.find((p) => p.id === "harbor")
     check("index builder: a repo's manifest at its latest release, with its GitHub numbers", hb?.repo === "alicepark/harbor" && hb.version === "1.2.0" && hb.tag === "v1.2.0" && hb.stars === 120 &&
       hb.released === "2026-09-15T00:00:00Z" && hb.issues.open === 2 && hb.issues.closed === 8 && hb.author === "Alice Park" && hb.fundingUrl === "https://example.com/fund" &&
       JSON.stringify(hb.disclosures) === '{"network":["tides.example.com"]}', hb)
     check("index builder: a README's first prose, without badges or links' addresses", hb?.readme === "Shows the harbour's tides on a dashboard, and when the boats leave.", hb?.readme)
-    const ob = index.plugins.find((p) => p.id === "oldboat") as Any
+    const ob = index.plugins.find((p) => p.id === "oldboat")
     check("index builder: no release, its newest version tag (and the commit's date)", ob?.tag === "v0.10.0" && ob.released === "2024-02-01T00:00:00Z" && ob.author === "boblee", ob)
     check("index builder: left out, saying why: no tag, archived, a version that isn't its tag's, a copy's id, a folder gone", skipped.some((x) => x.startsWith("boblee/notag: no version tag")) &&
       skipped.some((x) => x.startsWith("boblee/gone: archived")) && skipped.some((x) => x.includes("carol/listed") && x.includes("isn't its tag's")) &&
       skipped.some((x) => x.startsWith("boblee/harbor-copy: id 'harbor'")) && skipped.some((x) => x.startsWith("carol/fleet/skiff: its manifest's version")) &&
       skipped.some((x) => x === "carol/fleet/raft: no longer in the repository") &&
       index.plugins.length === 3, skipped)
-    const dg = index.plugins.find((p) => p.id === "dinghy") as Any
+    const dg = index.plugins.find((p) => p.id === "dinghy")
     check("index builder: several plugins in one repository, each at its folder's newest tag", dg?.repo === "carol/fleet" && dg.dir === "dinghy" && dg.tag === "dinghy/v1.1.0" &&
       dg.version === "1.1.0" && dg.released === "2026-09-25T00:00:00Z" && dg.readme === "Small sails for small boats, and when to take them in.", dg)
     const fromIndex = (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins
@@ -667,15 +667,15 @@ export default async ($: VaultTest) => {
       fromIndex.find((p) => p.id === "dinghy")?.icon === dg.icon && fromIndex.find((p) => p.id === "harbor")?.tint === "teal", { hb: hb?.icon, dg: dg?.icon })
     check("index builder: a manifest's category, for Get plugins' filter", hb?.category === "life" && fromIndex.find((p) => p.id === "harbor")?.category === "life" && !dg?.category, hb?.category)
     check("index builder: listed.json's repos are asked for too", asked.includes("https://api.github.com/repos/carol/listed"))
-    check("index builder: sorted by score, the blocklist goes out, and the app reads it", index.plugins[0].id === "harbor" && (index.blocked as Any)["boblee/oldboat"][0] === "<1.0.0" &&
+    check("index builder: sorted by score, the blocklist goes out, and the app reads it", index.plugins[0].id === "harbor" && index.blocked["boblee/oldboat"][0] === "<1.0.0" &&
       (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins.length === 3)
-    const bs = index.bundles as Any[], desk = bs.find((b) => b.repo === "dave/desk"), agents = bs.find((b) => b.repo === "Vaultite/plugins"), night = bs.find((b) => b.repo === "erin/night")
+    const bs = index.bundles, desk = bs.find((b) => b.repo === "dave/desk"), agents = bs.find((b) => b.repo === "Vaultite/plugins"), night = bs.find((b) => b.repo === "erin/night")
     check("index builder: bundles by stars, the topic's and listed.json's (a folder too), each once", bs.map((b) => b.name).join() === "Writing desk,Agents,Night", bs)
     check("index builder: a bundle pinned at the commit that last changed it, with its address, what it installs, and its sketch (home: the first page it pins that it holds)",
       desk?.commit === D && desk.address === `dave/desk@${D}` && desk.updated === "2026-09-28T00:00:00Z" && desk.stars === 30 && desk.author === "dave" && desk.icon === "pen" &&
       desk.tint === "purple" && desk.runsCode && desk.installs[0]?.source === "Vaultite/plugins/tasks" && !("preview" in desk) && desk.kind === "layout" &&
-      desk.sketch.shape.tabBar === false && desk.sketch.shape.glass === "sidebars" && desk.sketch.panels.left.join() === "search:search,terminal:sessions" &&
-      desk.sketch.home.map((h: Any) => `${h.block}:${h.view}`).join() === "inbox:null,query:board", desk)
+      desk.sketch.shape.tabBar === false && desk.sketch.shape.glass === "sidebars" && desk.sketch.panels?.left.join() === "search:search,terminal:sessions" &&
+      desk.sketch.home?.map((h: Any) => `${h.block}:${h.view}`).join() === "inbox:null,query:board", desk)
     check("index builder: a listed folder's bundle, at its folder's last commit", agents?.dir === "bundles/agents" && agents.address === `Vaultite/plugins/bundles/agents@${A}` &&
       !agents.runsCode && agents.sketch.panels === null && agents.sketch.home?.length === 0 && agents.description === "", agents)
     check("index builder: one .bundle.json, read from its files (its vault plugin runs code)", night?.name === "Night" && night.description === "Dark." && night.runsCode && night.sketch.shape.tabBar === null, night)
@@ -688,7 +688,7 @@ export default async ($: VaultTest) => {
     check("index builder: an excerpt is cut at 280", excerpt("x".repeat(10) + " word".repeat(100)).length <= 280)
 
     // A plugin's own repository, checked as installing would (tools/check_plugins.ts --plugin; the author's CI).
-    const chk = (dir: string, ...more: string[]) => { try { return { code: 0, out: execFileSync(process.execPath, [path.join(TOOLS, "check_plugins.ts"), "--plugin", dir, ...more], { stdio: "pipe" }).toString() } } catch (e) { return { code: (e as Any).status, out: String((e as Any).stdout) } } }
+    const chk = (dir: string, ...more: string[]) => { try { return { code: 0, out: execFileSync(process.execPath, [path.join(TOOLS, "check_plugins.ts"), "--plugin", dir, ...more], { stdio: "pipe" }).toString() } } catch (e) { return { code: e instanceof Error && "status" in e ? e.status : null, out: e instanceof Error && "stdout" in e ? String(e.stdout) : "" } } }
     let ck = chk(HARBOR, "--tag", "v1.1.0")
     check("plugin check: a repository at its tag passes", ck.code === 0 && ck.out.includes("ok: harbor at v1.1.0"), ck)
     ck = chk(HARBOR, "--tag", "v2.0.0")

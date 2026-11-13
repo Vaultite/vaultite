@@ -12,8 +12,9 @@ import { isRecord } from "./inputs.ts"
 const CHAT = "The user wants to clarify these questions. They may have more context or questions for you: take their " +
   "response into account, then ask again if it still applies. Start by asking them what they would like to clarify."
 
+export type Running = AsyncIterable<SDKMessage> & Pick<Query, "interrupt" | "setModel" | "applyFlagSettings" | "setPermissionMode" | "close">
 export type Sdk = {
-  query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query
+  query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Running
   mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown, use?: string) => Promise<ToolResult> }[]) => McpServerConfig
 }
 
@@ -58,7 +59,7 @@ type Pending = { kind: AskKind; input: Record<string, unknown>; suggestions: Per
 
 class Session {
   spec: Spec
-  q: Query | null = null
+  q: Running | null = null
   queue: SDKUserMessage[] = []
   wake: (() => void) | null = null
   ended = false
