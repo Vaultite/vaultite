@@ -4,7 +4,7 @@ import { app, dialog, safeStorage, systemPreferences } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { acting, pageFor, record, serve, settle, taskOf } from "./agent.ts"
+import { SETTLE_MS, acting, pageFor, record, serve, settle, taskOf } from "./agent.ts"
 import { BY, type By } from "./agentwire.ts"
 import { allPages, handle, tellAll, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
@@ -275,12 +275,16 @@ async function login(p: EnginePage, o: Opts, who: By) {
   }
 }
 
+/** A submit's navigation may start late on a busy machine: read before it, the agent sees the login page still. */
+const SUBMIT_MS = 2500
+
 async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: By, approved: string) {
   const url = p.wc.getURL(), host = new URL(url).host
   const s = db.secrets(e.id)
   if (!s) throw new Error(`${named(e)} is gone from the agents' passwords`)
+  const since = Date.now()
   const filled = await fillLogin(p, e, s, { submit: o.submit === true, started: () => acting(p, who, `logging in to ${host}`) })
-  const r = await settle(p, url)
+  const r = await settle(p, url, since, o.submit === true ? SUBMIT_MS : SETTLE_MS)
   void record(p, who, { action: "login", value: named(e), site: host, result: `filled the ${filled.join(" and ")}${o.submit === true ? ", submitted" : ""}`, approved })
   return { status: "filled", ...r, site: host, entry: shown(e), filled, submitted: o.submit === true, approved }
 }

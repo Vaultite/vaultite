@@ -52,7 +52,7 @@ const handler = (req, res) => {
       if (form.get("password") !== SECRET) { res.statusCode = 401; return res.end(page("Wrong", "<h1>Wrong password</h1>")) }
       res.statusCode = 303; res.setHeader("Location", "/otp"); return res.end()
     }
-    if (u.pathname === "/otp") return res.end(page("Code", `<h1>Two-step</h1><form method="post" action="/verify"><label>Code <input name="code" autocomplete="one-time-code" inputmode="numeric"></label><button>Verify</button></form>`))
+    if (u.pathname === "/otp") return res.end(page("Code", `<h1>Two-step</h1><form method="post" action="/verify"><label>Code <input name="code" autocomplete="one-time-code" inputmode="numeric"></label><button>Verify</button></form><script>document.forms[0].addEventListener("submit", (e) => { e.preventDefault(); setTimeout(() => e.target.submit(), 600) })</script>`))
     if (u.pathname === "/split") return res.end(page("Code", `<h1>Enter the code</h1><form method="post" action="/verify">${[0, 1, 2, 3, 4, 5].map((i) => `<input name="d${i}" maxlength="1" aria-label="Digit ${i + 1}">`).join("")}<button>Verify</button></form>`))
     if (u.pathname === "/verify") {
       const code = form.get("code") ?? [0, 1, 2, 3, 4, 5].map((i) => form.get(`d${i}`) ?? "").join("")
@@ -170,7 +170,7 @@ await op("act", { tab: t, action: "click", ref: showRef })
 const sent = await op("act", { tab: t, action: "press", ref: pwRef, key: "Enter" })
 check("submitted: the site got the username and password", sent?.url?.endsWith("/otp") && saw.at(-1)?.user === "alice" && saw.at(-1)?.password === SECRET, [sent, saw.length])
 const code = await op("login", { tab: t, submit: true })
-check("on the page asking for a code: the app fills the one-time code and submits", code?.status === "filled" && code.filled?.join() === "one-time code" && code.submitted
+check("on the page asking for a code (its submit starting late): the app fills the one-time code, submits and waits for it", code?.status === "filled" && code.filled?.join() === "one-time code" && code.submitted
   && /Welcome alice/.test((await op("read", { tab: t }))?.text ?? ""), [code, saw.at(-1)])
 check("… the code isn't in what it answered", !JSON.stringify(code).includes(saw.at(-1)?.code ?? "none"), code)
 const ok = await op("evaluate", { tab: t, expression: "document.title" })
@@ -186,6 +186,7 @@ const digits = await op("snapshot", { tab: t })
 check("a code split in a box per digit: no box shows its digit", boxes?.status === "filled" && (digits?.snapshot ?? "").match(/textbox "Digit \d" \[ref=e\d+\]: •••/g)?.length === 6, digits?.snapshot)
 check("… nor a picture of them", /no picture of it now/.test(String((await op("screenshot", { tab: t })).error)), null)
 await op("act", { tab: t, action: "press", key: "Enter" })
+await op("wait", { tab: t, text: "Welcome alice", timeout: 10 })
 check("… and the site got each digit", /Welcome alice/.test((await op("read", { tab: t }))?.text ?? ""), [split, boxes, saw.at(-1)])
 
 // ---------- a GET form puts the password in the address: still never seen (in Work, which agents may act in too) ----------

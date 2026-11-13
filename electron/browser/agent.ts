@@ -280,9 +280,9 @@ async function waitWhile(p: EnginePage, going: () => boolean, events: string[], 
 }
 
 const LATE = new Set(["click", "dblclick", "press", "select", "check", "uncheck"])
-const SETTLE_MS = 400
-export async function settle(p: EnginePage, was: string, since = Date.now(), late = true) {
-  const until = Date.now() + 8000, soon = Date.now() + (late ? SETTLE_MS : 0)
+export const SETTLE_MS = 400
+export async function settle(p: EnginePage, was: string, since = Date.now(), grace = SETTLE_MS) {
+  const until = Date.now() + 8000, soon = Date.now() + grace
   await waitWhile(p, () => !p.wc.isLoading() && (navigated.get(p.wc) ?? 0) < since, ["did-start-loading", "did-start-navigation"], soon)
   await loaded(p, until)
   const started = () => (downloads.get(p.wc) ?? []).filter((d) => d.at >= since)
@@ -440,7 +440,7 @@ async function act(p: EnginePage, a: Act) {
   const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now(), had = new Set(allPages().map((x) => x.id)), doc = docOf(p.wc)
   if (a.fields) await fillForm(p, a.fields); else await step(p, a)
   const still = limit ? quiet(p, since, 2000) : null
-  const r = { ...await settle(p, was, since, a.fields ? false : LATE.has(a.action)), ...await openedBy(p, had) }
+  const r = { ...await settle(p, was, since, !a.fields && LATE.has(a.action) ? SETTLE_MS : 0), ...await openedBy(p, had) }
   if (!limit || p.wc.isDestroyed()) {
     const until = Date.now() + 3000
     if (fetching(p, since)) { while (fetching(p, since) && Date.now() < until) await new Promise((r) => setTimeout(r, 50)); await new Promise((r) => setTimeout(r, 150)) }
