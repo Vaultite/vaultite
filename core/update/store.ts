@@ -1,6 +1,6 @@
 // The root store: each commit the app runs made once into its own read-only folder (a code root), so each process keeps
 // a consistent tree while newer ones are made beside it. electron/shell/roots.mjs picks among them: the layout is its.
-import { execFile, spawn } from "node:child_process"
+import { execFile, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -21,8 +21,21 @@ const CACHES = [".tmp", ".vite"]
 
 /** Runs a command: its stdout; throws with its stderr's end when it fails. */
 export type Exec = (cmd: string, args: string[], o: { cwd: string; env?: NodeJS.ProcessEnv; timeout?: number }) => Promise<string>
-const execIn: Exec = async (cmd, args, o) => {
-  try { return (await exec(cmd, args, { cwd: o.cwd, env: o.env ?? process.env, timeout: o.timeout ?? 30 * MINUTE, maxBuffer: 64 << 20 })).stdout } catch (e) {
+
+const running = new Set<ChildProcess>()
+const tracked = <C extends ChildProcess>(c: C) => { running.add(c); c.once("exit", () => running.delete(c)); return c }
+export function stopRuns(signal: NodeJS.Signals = "SIGTERM") {
+  for (const c of running) c.kill(signal)
+  return running.size
+}
+process.once("exit", () => stopRuns("SIGKILL"))
+
+export const execIn: Exec = async (cmd, args, o) => {
+  try {
+    const run = exec(cmd, args, { cwd: o.cwd, env: o.env ?? process.env, timeout: o.timeout ?? 30 * MINUTE, maxBuffer: 64 << 20 })
+    tracked(run.child)
+    return (await run).stdout
+  } catch (e) {
     // (a build's warnings fill its stderr: the lines that say error are the why)
     const x = e as { stdout?: string; stderr?: string; message: string }, all = `${x.stdout ?? ""}\n${x.stderr ?? ""}`.split("\n").map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean)
     const errors = all.filter((l) => /\berror\b|\bERR!|failed|FAIL\b/i.test(l))
@@ -51,8 +64,8 @@ export const serverBoots: Step = {
     try {
       const vault = path.join(tmp, "vault"), port = await freePort()
       await c.exec(c.node, [path.join(c.root, "bin", "vau"), "sandbox", vault], { cwd: c.root, env: c.env, timeout: 2 * MINUTE })
-      const server = spawn(c.node, [path.join(c.root, "server.ts")], { cwd: c.root, stdio: ["ignore", "ignore", "pipe"],
-        env: { ...c.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: path.join(tmp, "local"), VAULTITE_QUIET: "1" } })
+      const server = tracked(spawn(c.node, [path.join(c.root, "server.ts")], { cwd: c.root, stdio: ["ignore", "ignore", "pipe"],
+        env: { ...c.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: path.join(tmp, "local"), VAULTITE_QUIET: "1" } }))
       let said = ""
       server.stderr.on("data", (b) => { said = (said + b).slice(-2000) })
       try {

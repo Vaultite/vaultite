@@ -290,6 +290,10 @@ await section("the app's updates as one machine: each event's move and effects (
   check("...while it stages: no build starts, no new offer, the toast stays", play([byHand, offered("install", D)], staging.s).ignored.join() === "check,offered"
     && statusOf(play([{ type: "looked", state: "current", why: "", quitting: false }], { ...staging.s, look: { kind: "store", byHand: true } }).s, "L")?.text === "Restarting to update…")
   check("...staged: it quits", play([{ type: "staged", ok: true }], staging.s).fx === "leave:quit")
+  const preparing = play([{ ...timer, via: "store" }, offered("relaunch"), stageable])
+  check("a relaunch while the store prepares a commit waits for it (its build never cut short), then is weighed again",
+    preparing.s.offer?.restart.kind === "waiting" && preparing.fx.endsWith("arm") && !preparing.fx.includes("hand-over")
+    && play([{ type: "looked", state: "current", why: "", quitting: false }], preparing.s).fx.endsWith("weigh"), preparing.fx)
   const unstaged = play([{ type: "staged", ok: false }], staging.s)
   check("...not staged: the offer dropped (not again until the next check), the toast down, said when by hand", unstaged.s.offer === null && unstaged.fx === "unnote status menu failed"
     && statusOf(unstaged.s, "L") === null && play([{ type: "weighed", auto: true, why: null }], unstaged.s).fx === "")

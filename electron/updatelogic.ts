@@ -55,6 +55,7 @@ export type Effect =
 type Step = { to: Updates; do: Effect[]; ignored?: true }
 
 export const AWAY_S = 10 * 60
+export const PREPARING = "an update is being prepared"
 
 export function restartWaitsOn(s: { othersOpen: boolean; pages: number; safe: number; idle: number; busy: string | null }): string | null {
   if (s.othersOpen) return "another machine's window is open"
@@ -118,7 +119,7 @@ function move(p: Updates, e: UpdateEvent): Step {
       const byHand = p.look.byHand, d: Effect[] = []
       if (byHand && e.state === "current" && !p.offer) d.push({ kind: "current", current: { via: "store", why: e.why } })
       else if (byHand && e.state === "failed" && !e.quitting) d.push({ kind: "failed", why: sentence(e.why) })
-      return go(look({ kind: "idle" }), ...d, ...when(byHand, { kind: "status" }), { kind: "menu" })
+      return go(look({ kind: "idle" }), ...d, ...when(byHand, { kind: "status" }), { kind: "menu" }, ...when(p.offer?.restart.kind === "waiting", { kind: "weigh" }))
     }
     case "release-found":
       if (p.look.kind !== "release") return refuse()
@@ -147,6 +148,7 @@ function move(p: Updates, e: UpdateEvent): Step {
       const o = p.offer
       if (!o || going(o)) return refuse()
       const to = (r: Restart): Updates => ({ ...p, offer: { ...o, restart: r } })
+      if (p.look.kind === "store" && o.how !== "install") return go(to({ kind: "waiting", on: PREPARING }), { kind: "arm" })
       const restarting = to({ kind: "restarting" })
       if (o.how === "worktree") return go(restarting, { kind: "hand-over" }, { kind: "begin-quit" }, { kind: "status" }, { kind: "leave", then: "relaunch" })
       if (o.how === "relaunch") return go(restarting, { kind: "hand-over" }, { kind: "begin-quit" }, { kind: "note", to: short(o.commit) }, { kind: "status" }, { kind: "leave", then: "relaunch-soon" })

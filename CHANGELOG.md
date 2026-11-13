@@ -10,6 +10,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   pages were offered FedCM with no account chooser and Google's button frame was told a different browser than its site.
 - **The Mac's traffic lights and the sidebar button sit at the window's top again**: with panes as cards and the left
   sidebar pinned, they no longer sit a gap low in the window's corner.
+- **An update being prepared is never cut short**: the app no longer relaunches or restarts its servers while it builds
+  the next commit, and a build still running when it quits ends with it rather than running on alone (and crashing).
 - **The companion and agents see where a page's links go**: what they read of a web page or a note (the text under the
   pointer, a page's text and snapshot, a panel) has each link's host and path beside its words, without tracking parameters.
 - **Stopping the companion as its session starts ends that session**: the session it was starting no longer stays up

@@ -7,9 +7,10 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { gitEnv } from "../core/gitenv.ts"
 import { holdRoot } from "../core/update/lease.ts"
-import type { Recipe, Root, RootStore } from "../core/update/store.ts"
+import { stopRuns, type Recipe, type Root, type RootStore } from "../core/update/store.ts"
 import type { Applied, Update, UpdaterOptions } from "../core/update/updater.ts"
 import { BRANCH, CODE, HOST, SHELL } from "./identity.ts"
+import { mainLog } from "./mainlog.ts"
 import { readJson, SHA, type StoreHost, userData } from "./storehost.ts"
 import { policyFor, SHELL_EVERY, storeDir } from "./storepolicy.ts"
 import { messageOf } from "./browser/errors.ts"
@@ -49,13 +50,15 @@ export async function look(h: StoreHost) {
 }
 let follows = ""
 /** Its servers restarted onto the current root once nothing a restart cuts short runs, once however many updates ask. */
-let restartWaits: Promise<void> | null = null
+let restartWaits: Promise<void> | null = null, preparing = 0
+process.once("exit", () => { const left = stopRuns("SIGKILL"); if (left) mainLog(`quit: ${left} process(es) a prepare still ran stopped`) })
 function restartWhenIdle(h: StoreHost) {
   if (restartWaits) return h.log("store: its servers restart once idle, as already asked")
+  const why = async () => (preparing ? "a commit is being prepared" : h.busy())
   restartWaits = (async () => {
-    for (let busy = await h.busy(), said = false; busy; busy = await h.busy()) {
+    for (let busy = await why(), said = false; busy; busy = await why()) {
       if (!said) { said = true; h.log(`store: its servers restart once idle (${busy})`) }
-      await new Promise((r) => setTimeout(r, 30_000))
+      await new Promise((r) => setTimeout(r, preparing ? 5000 : 30_000))
     }
   })().catch((e) => h.log(`store: whether it's idle wasn't told (${errText(e)}): its servers restart now`))
     .finally(() => { restartWaits = null; h.restartServers() })
@@ -67,7 +70,13 @@ const SHELL_AT = () => path.join(userData(), "shell-built")
 
 async function apply(h: StoreHost, store: RootStore, u: Update): Promise<Applied> {
   let r: Root
-  try { r = await store.prepare(u.to) } catch (e) { return { failed: errText(e), cause: e } }
+  preparing++
+  mainLog(`store: preparing ${u.to.slice(0, 7)}`)
+  try { r = await store.prepare(u.to) } catch (e) {
+    mainLog(`store: ${u.to.slice(0, 7)} wasn't prepared: ${errText(e)}`)
+    return { failed: errText(e), cause: e }
+  } finally { preparing-- }
+  mainLog(`store: prepared ${u.to.slice(0, 7)}`)
   if (r.fingerprint !== SHELL.fingerprint) {
     // (a new shell: the app built and signed again, from this root, then put in place as before)
     const at = Number(readJson<number>(SHELL_AT())) || 0

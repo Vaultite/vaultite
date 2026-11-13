@@ -6,7 +6,7 @@ import path from "node:path"
 import { check, exit, section, skip, summary, tempDir } from "./test/lib.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { rootsHeld } from "../core/update/lease.ts"
-import { type Recipe, rootStore } from "../core/update/store.ts"
+import { execIn, type Recipe, rootStore, stopRuns } from "../core/update/store.ts"
 import { fingerprint } from "../electron/shell/print.mjs"
 import * as roots from "../electron/shell/roots.mjs"
 const t0 = Date.now()
@@ -225,6 +225,12 @@ await section("migration: an older source clone moves in, with no download", asy
   check("its objects are the clone's: prepared offline, origin set to the app's url", r.commit === c2 && git(moved.repo, "remote", "get-url", "origin") === "https://github.invalid/Alice/lighthouse.git"
     && git(moved.repo, "config", "--get", "remote.origin.fetch") === "+refs/heads/*:refs/remotes/origin/*")
   check("a bare clone (no working tree to drift)", git(moved.repo, "rev-parse", "--is-bare-repository") === "true")
+})
+
+await section("a prepare's processes end with its host", async () => {
+  const build = execIn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { cwd: tmp }).then(() => "ended by itself", (e: Error) => e.message)
+  const stopped = stopRuns()
+  check("what a prepare still runs is stopped when its host goes (never left running on its own)", stopped === 1 && (await build) !== "ended by itself", [stopped, await build])
 })
 
 // (roots are read-only: writable again, so the temp folder goes)
