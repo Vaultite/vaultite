@@ -16,6 +16,29 @@ export default async ($: VaultTest) => {
   check("watches: a page's change is its lines gone and new, a navigation where it went", JSON.stringify(w.changes(page("a\nb"), page("a\nc"))) === JSON.stringify(["- b", "+ c"]) &&
     w.changes(page("a"), page("a", "https://a.com/2"))[0].startsWith("went to https://a.com/2"))
 
+  {
+    const { read: readSource } = await import("../../../plugins/core/watches/sources.ts")
+    const wasDesktop = w.plugin.desktop, asked: Any[] = []
+    w.plugin.desktop = async (name: string, ...args: Any[]) => {
+      asked.push(name)
+      if (name === "agent:tabs") return [{ tab: 4, pane: "p4", url: "https://shop.example.com/order", title: "Order", container: null, access: "read" }]
+      if (name === "agent:open") return { tab: 9, url: String(args[0]), title: "Opened" }
+      if (name === "agent:read") return { url: args[0] === 4 ? "https://shop.example.com/order" : "https://other.example.com/", title: args[0] === 4 ? "Order" : "", text: `page ${args[0]}` }
+      if (name === "agent:selection") return { selection: "  Shipped  " }
+      if (name === "agent:close") return null
+      throw new Error("no such call")
+    }
+    const ctx = { panes: () => [], private: () => false }
+    try {
+      const shown = await readSource(w.plugin, { kind: "site", ref: "https://shop.example.com/order" }, ctx, { pane: "p4" })
+      const opened = await readSource(w.plugin, { kind: "site", ref: "https://other.example.com/" }, ctx)
+      check("watches: a site's tab read where it's open, with its selection; else opened, read, closed, titled by its host",
+        JSON.stringify(shown) === JSON.stringify({ kind: "site", title: "Order", url: "https://shop.example.com/order", text: "page 4", selection: "Shipped" }) &&
+        JSON.stringify(opened) === JSON.stringify({ kind: "site", title: "other.example.com", url: "https://other.example.com/", text: "page 9" }) &&
+        asked.join() === "agent:tabs,agent:read,agent:selection,agent:tabs,agent:open,agent:read,agent:close", [shown, opened, asked])
+    } finally { w.plugin.desktop = wasDesktop }
+  }
+
   write("Notes/Order.md", "Status: packing\n")
   let [st, r] = await api("POST", "ops/watches.add", { source: "Notes/Order.md", until: "shipped", why: "Tell me when it ships" })
   check("watches: one added is a file in Watches/", st === 200 && exists("Watches/Watch Order.md") && /type: watch/.test(read("Watches/Watch Order.md")) && read("Watches/Watch Order.md").includes("Tell me when it ships"), [st, r])

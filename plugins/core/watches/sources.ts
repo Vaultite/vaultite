@@ -1,11 +1,15 @@
 import crypto from "node:crypto"
+import { z } from "zod"
 import type { Plugin } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 
 export type Kind = "note" | "terminal" | "site" | "pane" | "group"
 export type Source = { kind: Kind; ref: string }
 export type Read = { text: string; title: string; state?: string; url?: string; selection?: string; kind: Exclude<Kind, "pane" | "group">; missing?: boolean; parts?: Read[] }
-type BrowserTab = { tab: number; url: string; title: string; container: string | null; access: string; pane?: string }
+const Tabs = z.array(z.looseObject({ tab: z.number(), url: z.string(), title: z.string(), container: z.string().nullable(), pane: z.string().optional() }))
+const Opened = z.looseObject({ tab: z.number(), url: z.string(), title: z.string() })
+const Page = z.looseObject({ url: z.string(), title: z.string(), text: z.string() })
+const Selection = z.looseObject({ selection: z.string().optional() })
 
 const KINDS: readonly Kind[] = ["note", "terminal", "site", "pane", "group"]
 export function parseSource(s: string): Source | null {
@@ -48,20 +52,20 @@ export async function read(plugin: Plugin, s: Source, c: Context, o: { pane?: st
     const st = await plugin.ask<{ state?: string; msg?: string } | null>("terminal:state", null, s.ref)
     return { kind: "terminal", title: s.ref, text, ...(st?.state ? { state: `${st.state}${st.msg ? `: ${st.msg}` : ""}` } : {}) }
   }
-  const tabs = await plugin.desktop("agent:tabs", BY) as BrowserTab[]
+  const tabs = Tabs.parse(await plugin.desktop("agent:tabs", BY))
   let t = tabs.find((x) => o.pane && x.pane === o.pane) ?? tabs.find((x) => x.url === s.ref) ?? null
   if (t && c.private(t.url, t.container)) throw new Error(`${hostLabel(t.url)} is private`)
   if (!t && c.private(s.ref, null)) throw new Error(`${hostLabel(s.ref)} is private`)
   let opened = 0
   if (!t) {
     if (o.open === false) return { kind: "site", title: s.ref, text: "", url: s.ref, missing: true }
-    const p = await plugin.desktop("agent:open", s.ref, null, { ...BY, summary: `Checking ${hostLabel(s.ref)} for a watch` }) as { tab: number; url: string; title: string }
+    const p = Opened.parse(await plugin.desktop("agent:open", s.ref, null, { ...BY, summary: `Checking ${hostLabel(s.ref)} for a watch` }))
     opened = p.tab
-    t = { tab: p.tab, url: p.url, title: p.title, container: null, access: "act" }
+    t = { tab: p.tab, url: p.url, title: p.title, container: null }
   }
   try {
-    const r = await plugin.desktop("agent:read", t.tab) as { url: string; title: string; text: string }
-    const sel = o.pane ? await plugin.desktop("agent:selection", t.tab).then((x) => String((x as { selection?: string }).selection ?? ""), () => "") : ""
+    const r = Page.parse(await plugin.desktop("agent:read", t.tab))
+    const sel = o.pane ? await plugin.desktop("agent:selection", t.tab).then((x) => Selection.parse(x).selection ?? "", () => "") : ""
     return { kind: "site", title: r.title || hostLabel(r.url), url: r.url, text: r.text, ...(sel.trim() ? { selection: sel.trim() } : {}) }
   } finally { if (opened) await plugin.desktop("agent:close", opened).catch(() => {}) }
 }
