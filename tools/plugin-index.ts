@@ -7,14 +7,30 @@ import { kindFrom } from "../core/bundlekind.ts"
 import { homeBlocks, sketchOf } from "../core/bundlesketch.ts"
 import { bundleBlocked, disclosuresOf, ICON_FILE, ICON_MAX, iconOf, PLACE, REPO, svgIcon } from "../core/pluginmeta.ts"
 import { compareVersions, tagVersion } from "../core/version.ts"
+import { isObj, strings } from "../core/values.ts"
+import { z } from "zod"
 
 /** One GET: its status and body (JSON when it parses). */
 export type Get = (url: string, accept?: string) => Promise<{ status: number; body: unknown }>
-type Repo = { full_name: string; stargazers_count?: number; created_at?: string; pushed_at?: string; topics?: string[]; archived?: boolean; disabled?: boolean
-  owner?: { login?: string }; description?: string | null; default_branch?: string }
+const Repo = z.object({
+  full_name: z.string(), stargazers_count: z.number().optional(), created_at: z.string().nullish(), pushed_at: z.string().nullish(), topics: z.array(z.string()).optional(),
+  archived: z.boolean().optional(), disabled: z.boolean().optional(), owner: z.object({ login: z.string().optional() }).nullish(), description: z.string().nullish(),
+  default_branch: z.string().optional(),
+})
+type Repo = z.infer<typeof Repo>
+const Search = z.object({ items: z.array(Repo).optional() })
+const Tag = z.object({ name: z.string(), commit: z.object({ sha: z.string().optional() }).optional() })
+type Tag = z.infer<typeof Tag>
+const Commit = z.object({ commit: z.object({ committer: z.object({ date: z.string() }).nullish() }) })
+const HeadCommit = Commit.extend({ sha: z.string() })
+const Release = z.object({ tag_name: z.string(), published_at: z.string().nullish() })
+const Count = z.object({ total_count: z.number() })
+const Tree = z.object({ truncated: z.boolean().optional(), tree: z.array(z.object({ type: z.string(), path: z.string() })) })
+const Install = z.object({ source: z.string(), name: z.unknown().optional() })
 /** listed.json: repositories the topic searches miss. */
-export type Listed = { plugins?: string[]; bundles?: string[] }
-type Any = Record<string, unknown>
+const Listed = z.object({ plugins: z.array(z.string()).optional(), bundles: z.array(z.string()).optional() })
+export type Listed = z.infer<typeof Listed>
+const Blocked = z.record(z.string(), z.array(z.string()))
 
 const API = "https://api.github.com", RAW = "https://raw.githubusercontent.com"
 const STABLE = /^v?\d+\.\d+\.\d+$/
@@ -45,7 +61,7 @@ async function withTopic(get: Get, topic: string) {
   const repos = new Map<string, Repo>()
   for (let page = 1; page <= 10; page++) {
     const r = await get(`${API}/search/repositories?q=${encodeURIComponent(`topic:${topic}`)}&sort=stars&per_page=100&page=${page}`)
-    const items = r.status === 200 ? ((r.body as Any).items as Repo[] ?? []) : []
+    const items = r.status === 200 ? Search.parse(r.body).items ?? [] : []
     for (const it of items) repos.set(it.full_name.toLowerCase(), it)
     if (items.length < 100) break
   }
@@ -60,18 +76,17 @@ export async function buildIndex({ get, listed = {}, blocked = {}, now = Date.no
   for (const full of listed.plugins ?? []) {
     if (!REPO.test(full) || repos.has(full.toLowerCase())) continue
     const r = await get(`${API}/repos/${full}`)
-    if (r.status === 200) repos.set(full.toLowerCase(), r.body as Repo); else skipped.push(`${full}: not found (${r.status})`)
+    if (r.status === 200) repos.set(full.toLowerCase(), Repo.parse(r.body)); else skipped.push(`${full}: not found (${r.status})`)
   }
-  const plugins: Any[] = []
+  const plugins = []
   for (const repo of repos.values()) {
     const full = repo.full_name
     if (repo.archived || repo.disabled) { skipped.push(`${full}: archived`); continue }
-    type Tag = { name: string; commit?: { sha?: string } }
     const tags = await get(`${API}/repos/${full}/tags?per_page=100`)
-    const all = tags.status === 200 && Array.isArray(tags.body) ? tags.body as Tag[] : []
+    const all = tags.status === 200 && Array.isArray(tags.body) ? z.array(Tag).parse(tags.body) : []
     const dateOf = async (t: Tag) => {
       const c = t.commit?.sha ? await get(`${API}/repos/${full}/commits/${t.commit.sha}`) : null
-      return c?.status === 200 ? (((c.body as Any).commit as Any)?.committer as Any)?.date as string ?? null : null
+      return c?.status === 200 ? Commit.safeParse(c.body).data?.commit.committer?.date ?? null : null
     }
     // Its plugins: one at its top at the latest release, else the newest version tag; or one per folder, each at its
     // newest <folder>/v1.2.0 tag (a repository of several).
@@ -84,9 +99,9 @@ export async function buildIndex({ get, listed = {}, blocked = {}, now = Date.no
     for (const [dir, t] of newest) units.push({ dir, tag: t.name, ref: t.commit?.sha ?? `refs/tags/${t.name}`, released: await dateOf(t) })
     if (!units.length) {
       const rel = await get(`${API}/repos/${full}/releases/latest`)
-      if (rel.status === 200 && typeof (rel.body as Any).tag_name === "string" && STABLE.test((rel.body as Any).tag_name as string)) {
-        const tag = (rel.body as Any).tag_name as string
-        units.push({ dir: null, tag, ref: tag, released: ((rel.body as Any).published_at as string) ?? null })
+      const release = rel.status === 200 ? Release.safeParse(rel.body).data : undefined
+      if (release && STABLE.test(release.tag_name)) {
+        units.push({ dir: null, tag: release.tag_name, ref: release.tag_name, released: release.published_at ?? null })
       } else {
         const top = all.filter((t) => STABLE.test(t.name)).sort((a, b) => compareVersions(b.name, a.name)!)[0]
         if (top) units.push({ dir: null, tag: top.name, ref: top.name, released: await dateOf(top) })
@@ -95,7 +110,7 @@ export async function buildIndex({ get, listed = {}, blocked = {}, now = Date.no
     if (!units.length) { skipped.push(`${full}: no version tag (v1.0.0, or <folder>/v1.0.0 for several plugins) or release`); continue }
     const count = async (state: string) => {
       const r = await get(`${API}/search/issues?q=${encodeURIComponent(`repo:${full} type:issue state:${state}`)}&per_page=1`)
-      return r.status === 200 && typeof (r.body as Any).total_count === "number" ? (r.body as Any).total_count as number : 0
+      return r.status === 200 ? Count.safeParse(r.body).data?.total_count ?? 0 : 0
     }
     const open = await count("open"), closed = await count("closed")
     for (const { dir, tag, ref, released } of units) {
@@ -103,7 +118,7 @@ export async function buildIndex({ get, listed = {}, blocked = {}, now = Date.no
       // (a folder gone from the default branch, removed or renamed, keeps its old tags but isn't listed)
       if (dir && (await get(`${RAW}/${full}/HEAD/${dir}/manifest.json`)).status !== 200) { skipped.push(`${where}: no longer in the repository`); continue }
       const mf = await get(`${RAW}/${full}/${ref}/${dir ? `${dir}/` : ""}manifest.json`)
-      const m = (mf.status === 200 && mf.body && typeof mf.body === "object" ? mf.body : null) as Any | null
+      const m = mf.status === 200 && isObj(mf.body) ? mf.body : null
       if (!m) { skipped.push(`${where}: no manifest.json at ${tag}`); continue }
       if (typeof m.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(m.id)) { skipped.push(`${where}: its manifest's id isn't one`); continue }
       if (m.version !== tagVersion(tag)) { skipped.push(`${where}: its manifest's version (${String(m.version)}) isn't its tag's (${tag})`); continue }
@@ -131,12 +146,13 @@ export async function buildIndex({ get, listed = {}, blocked = {}, now = Date.no
     }
   }
   // One entry per id: the one with more stars (the others are copies or clashes).
-  const byId = new Map<string, Any>()
-  for (const p of plugins.sort((a, b) => (b.stars as number) - (a.stars as number))) {
-    if (byId.has(p.id as string)) skipped.push(`${p.repo as string}: id '${p.id as string}' is ${byId.get(p.id as string)!.repo as string}'s`)
-    else byId.set(p.id as string, p)
+  const byId = new Map<string, (typeof plugins)[number]>()
+  for (const p of plugins.sort((a, b) => b.stars - a.stars)) {
+    const was = byId.get(p.id)
+    if (was) skipped.push(`${p.repo}: id '${p.id}' is ${was.repo}'s`)
+    else byId.set(p.id, p)
   }
-  const out = [...byId.values()].sort((a, b) => (b.score as number) - (a.score as number) || (b.stars as number) - (a.stars as number))
+  const out = [...byId.values()].sort((a, b) => b.score - a.score || b.stars - a.stars)
   const bundles = await bundlesOf(get, listed.bundles ?? [], blocked, skipped)
   return { index: { format: 1, generated: new Date(now).toISOString(), plugins: out, bundles, blocked }, skipped }
 }
@@ -153,64 +169,65 @@ async function bundlesOf(get: Get, listed: string[], blocked: Record<string, str
     if (!places.has(p.toLowerCase())) places.set(p.toLowerCase(), { repo: null, full: `${owner}/${name}`, dir: rest.join("/") || null })
   }
   const lower = Object.fromEntries(Object.entries(blocked).map(([k, v]) => [k.toLowerCase(), v]))
-  const out: Any[] = []
+  const out = []
   for (const unit of places.values()) {
     const where = unit.dir ? `${unit.full}/${unit.dir}` : unit.full
     unit.repo ??= repos.get(unit.full.toLowerCase()) ?? null
     if (!unit.repo) {
       const r = await get(`${API}/repos/${unit.full}`)
       if (r.status !== 200) { skipped.push(`${where}: not found (${r.status})`); continue }
-      unit.repo = r.body as Repo
+      unit.repo = Repo.parse(r.body)
       repos.set(unit.full.toLowerCase(), unit.repo) // (another folder of it)
     }
     const repo = unit.repo, full = repo.full_name
     if (repo.archived || repo.disabled) { skipped.push(`${where}: archived`); continue }
     const last = await get(`${API}/repos/${full}/commits?sha=${encodeURIComponent(repo.default_branch ?? "HEAD")}${unit.dir ? `&path=${encodeURIComponent(unit.dir)}` : ""}&per_page=1`)
-    const head = last.status === 200 && Array.isArray(last.body) ? last.body[0] as Any | undefined : undefined
-    const commit = typeof head?.sha === "string" && /^[0-9a-f]{40}$/.test(head.sha) ? head.sha : null
-    if (!commit) { skipped.push(`${where}: no commit${unit.dir ? ` changes ${unit.dir}` : ""}`); continue }
+    const head = last.status === 200 ? z.array(HeadCommit).safeParse(last.body).data?.[0] : undefined
+    const commit = head && /^[0-9a-f]{40}$/.test(head.sha) ? head.sha : null
+    if (!head || !commit) { skipped.push(`${where}: no commit${unit.dir ? ` changes ${unit.dir}` : ""}`); continue }
     const place = unit.dir ? `${full}/${unit.dir}` : full
     if (bundleBlocked(lower, `${place}@${commit}`)) { skipped.push(`${where}: blocked`); continue }
     const tree = await get(`${API}/repos/${full}/git/trees/${commit}?recursive=1`)
-    const t = tree.status === 200 ? tree.body as Any : null
-    if (!t || t.truncated || !Array.isArray(t.tree)) { skipped.push(`${where}: its files can't be listed`); continue }
+    const t = tree.status === 200 ? Tree.safeParse(tree.body).data : undefined
+    if (!t || t.truncated) { skipped.push(`${where}: its files can't be listed`); continue }
     const prefix = unit.dir ? `${unit.dir}/` : ""
-    const paths = (t.tree as Any[]).filter((x) => x.type === "blob" && typeof x.path === "string" && (x.path as string).startsWith(prefix)).map((x) => (x.path as string).slice(prefix.length))
+    const paths = t.tree.filter((x) => x.type === "blob" && x.path.startsWith(prefix)).map((x) => x.path.slice(prefix.length))
     const raw = (f: string) => `${RAW}/${full}/${commit}/${prefix}${f}`
-    const getJson = async (f: string) => { const r = await get(raw(f)); return r.status === 200 && r.body && typeof r.body === "object" && !Array.isArray(r.body) ? r.body as Any : null }
+    const getJson = async (f: string) => { const r = await get(raw(f)); return r.status === 200 && isObj(r.body) ? r.body : null }
     // Its files: a folder (bundle.json at its top), or one export (<name>.bundle.json: {files: {path: content}})
     const getText = async (f: string) => { const r = await get(raw(f), "application/vnd.github.raw"); return r.status === 200 && typeof r.body === "string" ? r.body : "" }
-    let files: { json: (f: string) => Promise<Any | null>; text: (f: string) => Promise<string>; list: string[] }
+    let files: { json: (f: string) => Promise<Record<string, unknown> | null>; text: (f: string) => Promise<string>; list: string[] }
     if (paths.includes("bundle.json")) files = { json: getJson, text: getText, list: paths }
     else {
       const one = paths.filter((f) => !f.includes("/") && f.endsWith(".bundle.json"))
       const o = one.length === 1 ? await getJson(one[0]) : null
-      const all = o && typeof o.files === "object" && o.files ? o.files as Any : null
+      const all = o && isObj(o.files) ? o.files : null
       if (!all) { skipped.push(`${where}: no bundle (a bundle.json at its top, or one .bundle.json)`); continue }
       const parse = (v: unknown) => { if (typeof v !== "string") return v; try { return JSON.parse(v) } catch { return null } }
-      files = { json: async (f) => { const v = parse(all[f]); return v && typeof v === "object" && !Array.isArray(v) ? v as Any : null },
-        text: async (f) => (typeof all[f] === "string" ? all[f] as string : ""), list: Object.keys(all) }
+      files = { json: async (f) => { const v = parse(all[f]); return isObj(v) ? v : null },
+        text: async (f) => { const v = all[f]; return typeof v === "string" ? v : "" }, list: Object.keys(all) }
     }
     const m = await files.json("bundle.json")
     if (!m || typeof m.name !== "string" || !m.name.trim()) { skipped.push(`${where}: its bundle.json has no name`); continue }
     const pj = await files.json("plugins.json")
-    const install = pj?.install && typeof pj.install === "object" ? pj.install as Record<string, Any> : {}
-    const installs = Object.entries(install).filter(([id, x]) => /^[a-z][a-z0-9-]*$/.test(id) && x && typeof x.source === "string")
-      .map(([id, x]) => ({ id, name: typeof x.name === "string" ? x.name : id, source: x.source as string }))
+    const installs = Object.entries(isObj(pj?.install) ? pj.install : {}).flatMap(([id, x]) => {
+      const i = Install.safeParse(x).data
+      return i && /^[a-z][a-z0-9-]*$/.test(id) ? [{ id, name: typeof i.name === "string" ? i.name : id, source: i.source }] : []
+    })
     // (its picture's home: the first page it pins that it holds)
-    const pins = await files.json("pages.json"), pinned = Array.isArray(pins?.pinned) ? (pins.pinned as unknown[]).filter((x): x is string => typeof x === "string") : null
+    const pins = await files.json("pages.json"), pinned = Array.isArray(pins?.pinned) ? strings(pins.pinned) : null
     const page = pinned?.find((f) => files.list.includes(f))
     const sketch = sketchOf(await files.json("appearance.json"), await files.json("sidebars.json"), pinned && !pinned.length ? null : page ? homeBlocks(await files.text(page)) : [])
     const brings = files.list.some((f) => /^plugins\/[^/]+\/manifest\.json$/.test(f))
     out.push({
       name: m.name.trim(), description: typeof m.description === "string" ? m.description : repo.description ?? "", author: repo.owner?.login ?? full.split("/")[0],
       repo: full, ...(unit.dir ? { dir: unit.dir } : {}), commit, address: `${place}@${commit}`, stars: repo.stargazers_count ?? 0,
-      updated: ((head!.commit as Any)?.committer as Any)?.date ?? null, topics: repo.topics ?? [], runsCode: brings || installs.length > 0, installs,
+      updated: head.commit.committer?.date ?? null, topics: repo.topics ?? [], runsCode: brings || installs.length > 0, installs,
       ...(iconOf(m.icon) ? { icon: iconOf(m.icon) } : {}), ...(typeof m.tint === "string" && /^[a-z][a-z-]*$/.test(m.tint) ? { tint: m.tint } : {}),
       kind: kindFrom(m, files.list), sketch,
     })
   }
-  return out.sort((a, b) => (b.stars as number) - (a.stars as number) || String(b.updated ?? "").localeCompare(String(a.updated ?? "")))
+  return out.sort((a, b) => b.stars - a.stars || (b.updated ?? "").localeCompare(a.updated ?? ""))
 }
 
 /** GitHub over fetch (GITHUB_TOKEN when set). */
@@ -226,8 +243,8 @@ function githubGet(token = process.env.GITHUB_TOKEN): Get {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const flag = (n: string) => { const i = process.argv.indexOf(n); return i < 0 ? null : process.argv[i + 1] }
-  const json = (f: string | null, fallback: unknown) => (f && fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : fallback)
-  const { index, skipped } = await buildIndex({ get: githubGet(), listed: json(flag("--listed"), {}), blocked: json(flag("--blocked"), {}) })
+  const json = <T>(f: string | null, schema: z.ZodType<T>, fallback: T): T => (f && fs.existsSync(f) ? schema.parse(JSON.parse(fs.readFileSync(f, "utf8"))) : fallback)
+  const { index, skipped } = await buildIndex({ get: githubGet(), listed: json(flag("--listed"), Listed, {}), blocked: json(flag("--blocked"), Blocked, {}) })
   fs.writeFileSync(flag("--out") ?? "index.json", JSON.stringify(index, null, 2) + "\n")
   for (const s of skipped) console.log(`skipped ${s}`)
   console.log(`${index.plugins.length} plugins, ${index.bundles.length} bundles`)
