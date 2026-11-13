@@ -2,6 +2,7 @@
  *  when the key is let go; a response asked for while one runs waits for it (the API takes one at a time). */
 import { WebSocket } from "ws"
 import type { Usage } from "./realtimelogic.ts"
+import { z } from "zod"
 
 export type RealtimeConfig = { url: string; key: string; model: string; voice: string; instructions: string; tools: object[] }
 export type Done = { id: string; status: string; usage?: Usage; error?: string; account?: "quota" | "auth"; calls: { id: string; name: string; args: string }[] }
@@ -28,6 +29,17 @@ export type RealtimeEvents = {
   error: (e: { code?: string; message: string; fatal: boolean; account?: "quota" | "auth" }) => void
 }
 
+const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
+const ID = z.string().catch(""), N = opt(z.number()), TEXT = z.unknown().optional().transform((v) => String(v ?? ""))
+const SPLIT = opt(z.object({ text_tokens: N, audio_tokens: N }))
+const USAGE = opt(z.object({ input_tokens: N, output_tokens: N, output_token_details: SPLIT,
+  input_token_details: opt(z.object({ text_tokens: N, audio_tokens: N, cached_tokens: N, cached_tokens_details: SPLIT })) })) satisfies z.ZodType<Usage | undefined>
+const FAILURE = z.object({ code: opt(z.string()), type: opt(z.string()), message: opt(z.string()) })
+const CALL = z.object({ type: opt(z.string()), call_id: z.string(), name: z.string(), arguments: opt(z.string()) })
+const EVENT = z.object({ type: z.string(), delta: TEXT, response_id: ID, item_id: ID, call_id: ID, name: ID, arguments: TEXT,
+  item: opt(z.object({ type: opt(z.string()), call_id: ID, name: ID })), error: FAILURE.catch({}),
+  response: z.object({ id: ID, status: opt(z.string()), usage: USAGE, status_details: opt(z.object({ error: opt(FAILURE) })),
+    output: z.array(z.unknown()).catch([]).transform((xs) => xs.flatMap((x) => CALL.safeParse(x).data ?? [])) }).catch({ id: "", output: [] }) })
 export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) {
   const u = new URL(c.url)
   u.searchParams.set("model", c.model)
@@ -62,28 +74,31 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
   ws.on("close", () => fail("its socket closed"))
   let readied = false
   ws.on("message", (data) => {
-    let m: Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
-    try { m = JSON.parse(String(data)) } catch { return }
+    let json: unknown
+    try { json = JSON.parse(String(data)) } catch { return }
+    const parsed = EVENT.safeParse(json)
+    if (!parsed.success) return
+    const m = parsed.data
     switch (m.type) {
       case "session.updated": if (!readied) { readied = true; on.ready?.() } break
-      case "response.created": active = m.response?.id ?? "?"; on.began?.(active!, asking); break
+      case "response.created": active = m.response.id || "?"; on.began?.(active, asking); break
       // (the GA names, and the beta's)
       case "response.output_audio.delta": case "response.audio.delta":
-        on.audio?.(Buffer.from(String(m.delta ?? ""), "base64"), m.response_id, m.item_id); break
-      case "response.output_audio_transcript.delta": case "response.audio_transcript.delta": on.said?.(String(m.delta ?? ""), m.response_id); break
+        on.audio?.(Buffer.from(m.delta, "base64"), m.response_id, m.item_id); break
+      case "response.output_audio_transcript.delta": case "response.audio_transcript.delta": on.said?.(m.delta, m.response_id); break
       case "response.output_item.added": if (m.item?.type === "function_call") on.call?.({ id: m.item.call_id, name: m.item.name, args: "", rid: m.response_id }); break
-      case "response.function_call_arguments.done": on.call?.({ id: m.call_id, name: m.name, args: String(m.arguments ?? ""), rid: m.response_id }); break
+      case "response.function_call_arguments.done": on.call?.({ id: m.call_id, name: m.name, args: m.arguments, rid: m.response_id }); break
       case "response.done": {
-        const r = m.response ?? {}
+        const r = m.response
         if (active === r.id || active === "?") active = null
-        const calls = (r.output ?? []).filter((x: { type?: string }) => x.type === "function_call").map((x: { call_id: string; name: string; arguments?: string }) => ({ id: x.call_id, name: x.name, args: x.arguments ?? "" }))
+        const calls = r.output.flatMap((x) => (x.type === "function_call" ? [{ id: x.call_id, name: x.name, args: x.arguments ?? "" }] : []))
         const err = r.status_details?.error
         on.done?.({ id: r.id, status: r.status ?? "completed", usage: r.usage, calls, ...(err?.message ? { error: err.message } : {}), ...(err && accountError(err) ? { account: accountError(err)! } : {}) })
         next()
         break
       }
       case "error": {
-        const e = m.error ?? {}
+        const e = m.error
         // (a cancel with nothing running, a truncate past what was made: no matter)
         if (e.code === "response_cancel_not_active" || /truncat/i.test(String(e.message))) break
         // (the response asked for refused: the next may go)

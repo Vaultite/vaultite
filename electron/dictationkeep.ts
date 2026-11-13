@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { joinText } from "../core/dictationtext.ts"
+import { z } from "zod"
 
 export const KEEP_DAYS = 30
 /** Where its words were going: a note, a terminal or a field of the app's; another app (the helper's, `name`). */
@@ -12,7 +13,12 @@ export type Where = { kind: "note" | "terminal" | "field" | "app"; path?: string
 export type Landing = "in" | "front" | "origin" | "clipboard" | "cancelled" | "lost" | "live"
 export type Kept = { id: string; t: number; text: string; where: Where; landing: Landing; inbox?: boolean; why?: string }
 
-type Line = { t: number; id: string; ev: "start" | "words" | "pending" | "end" | "landed"; where?: Where; text?: string; in?: boolean; reason?: string; to?: string; name?: string; inbox?: boolean }
+const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
+const LINE = z.object({ t: z.number(), id: z.string(), ev: z.enum(["start", "words", "pending", "end", "landed"]), text: opt(z.string()), in: opt(z.boolean()), reason: opt(z.string()),
+  to: opt(z.string()), name: opt(z.string()), inbox: opt(z.boolean()),
+  where: opt(z.object({ kind: z.enum(["note", "terminal", "field", "app"]), path: opt(z.string()), name: opt(z.string()), bundle: opt(z.string()) })) })
+type Line = z.infer<typeof LINE>
+const MOVED = z.enum(["front", "origin", "clipboard"])
 const day = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` }
 const FILE = /^dictations-(\d{4}-\d{2}-\d{2})\.jsonl$/
 /** Words compared loosely: any case, no accents. */
@@ -45,13 +51,13 @@ export function dictationKeep(dir: () => string, now = Date.now) {
   function lines(): Line[] {
     prune()
     return files().flatMap((f) => {
-      try { return fs.readFileSync(path.join(dir(), f), "utf8").split("\n").flatMap((l) => { try { return l ? [JSON.parse(l) as Line] : [] } catch { return [] } }) } catch { return [] }
+      try { return fs.readFileSync(path.join(dir(), f), "utf8").split("\n").flatMap((l) => { try { return l ? LINE.safeParse(JSON.parse(l)).data ?? [] : [] } catch { return [] } }) } catch { return [] }
     })
   }
   /** The dictations kept, newest first, each folded from its lines; none with no words. */
   function all(): Kept[] {
     const by = new Map<string, Line[]>()
-    for (const l of lines()) if (typeof l.id === "string") by.set(l.id, [...(by.get(l.id) ?? []), l])
+    for (const l of lines()) by.set(l.id, [...(by.get(l.id) ?? []), l])
     const out: Kept[] = []
     for (const [id, ls] of by) {
       const start = ls.find((l) => l.ev === "start"), end = ls.find((l) => l.ev === "end"), landed = ls.findLast((l) => l.ev === "landed")
@@ -62,7 +68,7 @@ export function dictationKeep(dir: () => string, now = Date.now) {
       if (end?.reason === "moved" && !words.length) continue
       const settled = words.reduce((s, w) => s + joinText(s, w.text!), "")
       let landing: Landing, why: string | undefined
-      if (landed) landing = landed.to === "page" ? "in" : (["front", "origin", "clipboard"].includes(landed.to ?? "") ? landed.to as Landing : "in")
+      if (landed) landing = MOVED.safeParse(landed.to).data ?? "in"
       else if (words.length && words.every((w) => w.in)) landing = "in"
       else if (end?.reason === "cancel") landing = "cancelled"
       else if (!end && live.has(id)) landing = "live"

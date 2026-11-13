@@ -18,7 +18,8 @@ export function fakePointer() {
 
 /** What a quiet copy was asked to show and didn't, for the scripts: on globalThis, so this file keeps no state (the
  *  menu-bar helper reloaded from another code root runs its own copy of it). */
-const shownInstead = () => ((globalThis as { vaultiteQuiet?: { lookUps: number } }).vaultiteQuiet ??= { lookUps: 0 })
+declare global { var vaultiteQuiet: { lookUps: number } | undefined }
+const shownInstead = () => (globalThis.vaultiteQuiet ??= { lookUps: 0 })
 
 /** Page `wc` quiet, under VAULTITE_QUIET: Look up's popover, the system's over the user's work, only counted. */
 export function quietPage(wc: WebContents) {

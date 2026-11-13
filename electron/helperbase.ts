@@ -10,6 +10,7 @@ import type { Press } from "./presslog.ts"
 import type { Phase, PressMachine } from "./pressmachine.ts"
 import type { AppWindowInfo, Focus, Rect } from "./screen.ts"
 import { happened } from "./timeline.ts"
+import type { Place } from "./helperat.ts"
 import { asked, QUIET } from "./helperask.ts"
 import { z } from "zod"
 
@@ -40,9 +41,11 @@ export type HelperHost = {
 export let host: HelperHost | null = null
 /** The host's dictation (kept after a stop: what's still in flight there asks it). */
 let dictation: Dictation | null = null
-const via = <K extends keyof Dictation>(k: K) => ((...a: unknown[]) => (dictation![k] as (...a: unknown[]) => unknown)(...a)) as Dictation[K]
-export const dictate = via("dictate"), dictating = via("dictating"), keptLanded = via("keptLanded"), stopFor = via("stopFor"), dictationEngines = via("dictationEngines"),
-  expectedWords = via("expectedWords"), freeFor = via("freeFor"), handOver = via("handOver"), releaseMic = via("releaseMic")
+const d = () => dictation!
+export const dictate: Dictation["dictate"] = (...a) => d().dictate(...a), dictating: Dictation["dictating"] = () => d().dictating(),
+  keptLanded: Dictation["keptLanded"] = (...a) => d().keptLanded(...a), stopFor: Dictation["stopFor"] = (...a) => d().stopFor(...a),
+  dictationEngines: Dictation["dictationEngines"] = (...a) => d().dictationEngines(...a), expectedWords: Dictation["expectedWords"] = () => d().expectedWords(),
+  freeFor: Dictation["freeFor"] = (...a) => d().freeFor(...a), handOver: Dictation["handOver"] = (...a) => d().handOver(...a), releaseMic: Dictation["releaseMic"] = () => d().releaseMic()
 const manifest = (id: string) => {
   try { return JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "plugins", "core", id, "manifest.json"), "utf8")).settings ?? {} } catch { return {} }
 }
@@ -125,7 +128,7 @@ export type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | 
   /** Its words are in the timeline. */
   told?: boolean
   /** What's at the point let go at, gathered as its words are finished (not after). */
-  place?: Promise<{ w: AppWindowInfo | null; place: Record<string, unknown> }>
+  place?: Promise<{ w: AppWindowInfo | null; place: Place }>
   /** The display as the key went down: a toast or a menu there then may be gone by the let-go. */
   down?: Promise<Shot | null> }
 /** The exchange its answer is in: its box open by the point asked about (and the window there), since `since`. */

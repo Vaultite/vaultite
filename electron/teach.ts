@@ -1,7 +1,7 @@
 /** Teach by showing (companion/teach.ts' rules): "watch me" keeps the timeline for a lesson, each act on its thing and
  *  their words; "that's it" makes it a draft tour or skill (companion.teach), as does "make what I just did a skill". */
 import { ACTS, type El, type Kind } from "../core/desktop/screentimeline.ts"
-import { clickedThing, keptValue, recentStretch, teachCommand, type Act, type As } from "../core/desktop/teach.ts"
+import { clickedThing, isAct, keptValue, recentStretch, teachCommand, type Act, type As } from "../core/desktop/teach.ts"
 import type { Rect, Thing } from "../core/desktop/uimodel.ts"
 import type { WalkScene } from "../core/desktop/walks.ts"
 import { happened, queryTimeline, timelineOn } from "./timeline.ts"
@@ -128,7 +128,7 @@ async function finish(as?: As, byChip = false) {
   stop()
   if (!r.ok) return host.hint(`Couldn't keep what you showed me: ${r.why}`)
   // (Done pressed on the island: that click isn't a step)
-  const acts = (r.events as Act[]).filter((a) => !(byChip && a.kind === "click" && a.t > now - 1500))
+  const acts = r.events.filter(isAct).filter((a) => !(byChip && a.kind === "click" && a.t > now - 1500))
   await deliver({ acts, ...(l.about ? { about: l.about } : {}), ...(as ?? l.as ? { as: as ?? l.as } : {}) })
 }
 /** "Make what I just did a skill": the timeline's last minutes, back to their last pause. */
@@ -138,7 +138,7 @@ async function fromLast(as: As | undefined, title: string) {
   await settleTyping()
   const r = await queryTimeline({ last: 300, kinds: DOING })
   if (!r.ok) return host.hint(`Nothing kept: ${r.why}`)
-  await deliver({ acts: recentStretch(r.events as Act[]), ...(as ? { as } : {}), ...(title ? { title } : {}) })
+  await deliver({ acts: recentStretch(r.events.filter(isAct)), ...(as ? { as } : {}), ...(title ? { title } : {}) })
 }
 async function deliver(l: Parameters<TeachHost["deliver"]>[0]) {
   saving = true
@@ -196,7 +196,7 @@ async function settleTyping() {
   clearTimeout(x.timer)
   const f = await x.field
   if (!f) return
-  const things = await host.things(centre(f.frame), 60).catch(() => [] as Thing[])
+  const things = await host.things(centre(f.frame), 60).catch((): Thing[] => [])
   const now = things.filter((t) => t.role === f.el.role && off(t.frame, f.frame) < 60).sort((a, b) => off(a.frame, f.frame) - off(b.frame, f.frame))[0]
   happened({ t: x.t, kind: "field", el: f.el, value: keptValue(now?.state.value ?? ""), ...(f.window ? { window: f.window } : {}) })
   host.draw()

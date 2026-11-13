@@ -124,7 +124,7 @@ export function walkHeard(text: string, at = Date.now()) {
   return true
 }
 /** The chip's buttons and the op (`vau companion walk`): start, scratch, done, cancel, or how it goes. */
-export async function walkCall(what: string): Promise<Record<string, unknown>> {
+export async function walkCall(what: string) {
   const said = what === "start" ? startWalk() : what === "done" || what === "cancel" ? await endWalk(what === "done") : what === "scratch" ? (walk ? (scratch(), "Scratched the last item") : "No QA walk is on") : ""
   return { on: !!walk, ...(walk ? { items: walk.items.length, since: walk.since, clips: walk.clips, said: said || `A QA walk is on: ${countText(walk.items.length)}${walk.clips ? "" : ", words only (no screen recording)"}`, last: walk.items.slice(-3).map((i) => i.said) } : { said: said || "No QA walk is on" }) }
 }
@@ -183,7 +183,7 @@ function addItem(said: string, from: number, to: number) {
   if (!w) return
   w.last = Date.now()
   happened({ t: from, kind: "said", text: said })
-  const it = { n: w.items.length + 1, said, from, to, at: screen.getCursorScreenPoint(), place: {} } as Item
+  const it: Item = { n: w.items.length + 1, said, from, to, at: screen.getCursorScreenPoint(), place: {}, ready: Promise.resolve() }
   it.ready = fill(it, w.clips).catch((e) => log.error("a QA walk's item failed", e))
   w.items.push(it)
   say(`Noted: ${short(said)}`)

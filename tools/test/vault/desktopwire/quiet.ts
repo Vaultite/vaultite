@@ -10,14 +10,15 @@ export const J = JSON.stringify
 export const tick = (ms = 30) => new Promise((done) => setTimeout(done, ms))
 export async function until(ok: () => boolean, ms = 2000) { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick(10) }
 export const caught = <T,>(p: Promise<T>) => p.then((v) => v, (e: Error) => ({ threw: e.message }))
+export const tried = <T,>(f: () => T) => { try { return f() } catch (e) { return { threw: e instanceof Error ? e.message : String(e) } } }
 export const threw = () => [...new Set(crashes.splice(0))]
 export const ROOT = "../../../../electron"
 const noop = () => {}
 
-export async function quietHelper() {
+export async function quietHelper(homeWindow: () => { bounds: { x: number; y: number; width: number; height: number }; zoom: number } | null = () => null) {
   const H = await import(`${ROOT}/helper.ts`), home = await homeServer(), events: [string, unknown][] = []
   const dictation = new Proxy({}, { get: () => () => noop })
-  await H.startHelper({ dictation, home: () => ({ port: home.port, path: "/v", name: "Lighthouse" }), openHome: noop, focusedPage: () => null, homeWindow: () => null,
+  await H.startHelper({ dictation, home: () => ({ port: home.port, path: "/v", name: "Lighthouse" }), openHome: noop, focusedPage: () => null, homeWindow,
     event: (name: string, data: { bundle?: string }) => events.push([name, data]), prefs: () => ({}), setPrefs: noop, quit: noop, icon: "" })
   await until(() => home.sockets() > 0)
   await until(() => home.said.length >= 1)

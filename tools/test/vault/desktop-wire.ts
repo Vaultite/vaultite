@@ -30,4 +30,5 @@ export default async ($: VaultTest) => {
   const fakes = (name: string) => { const dir = path.join($.tmp, `fakes-${name}`); fs.mkdirSync(dir, { recursive: true }); return dir }
   await snapshot($.check, "swift.ts", "what the Swift helpers' lines do", { VAULTITE_FAKE_HELPERS: fakes("swift"), VAULTITE_CAPTURE: "1", VAULTITE_DICTATION_FILE: path.join($.tmp, "none.wav") })
   await snapshot($.check, "screen.ts", "what the screen helper tells the helper", { VAULTITE_FAKE_HELPERS: fakes("screen"), VAULTITE_QA_SCREEN: "1" })
+  await snapshot($.check, "ipc.ts", "what pages, the server and files hand the helper", { VAULTITE_FAKE_HELPERS: fakes("ipc") })
 }

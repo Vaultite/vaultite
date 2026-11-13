@@ -10,7 +10,7 @@ import { knockSaid, toPresence } from "./knockhelper.ts"
 import { closePanel, cue as playCue, drawingUp, endDrawing, openPanel, panelOpen, type PanelData } from "./overlay.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { pressMachine, type Phase } from "./pressmachine.ts"
-import type { AppWindowInfo, Rect } from "./screen.ts"
+import type { AppWindowInfo } from "./screen.ts"
 import { talkState } from "./talkstate.ts"
 import { teachHeard } from "./teach.ts"
 import { happened } from "./timeline.ts"
@@ -261,7 +261,7 @@ async function gather(s: Summon) {
   const [place, close] = await Promise.all([pointedAt(s.name, s.p, w?.window ? w : null, false), closeShot(s.p, drawn)]), down = await s.down
   if (close && place.shot && place.app !== "private") place.closeUp = close
   // (the screen changed as they spoke: the picture from the key-down too, what they meant may be only there)
-  if (down && place.shot && place.app !== "private" && shotChanged(down, { file: String(place.shot), frame: place.shotAt as Rect })) Object.assign(place, { shotDown: down.file, shotDownAt: down.frame })
+  if (down && place.shot && place.app !== "private" && place.shotAt && shotChanged(down, { file: place.shot, frame: place.shotAt })) Object.assign(place, { shotDown: down.file, shotDownAt: down.frame })
   return { w, place }
 }
 /** Where a summon is, as words for the realtime voice (it never sees the screen): the app and its window's title. */

@@ -1,6 +1,7 @@
 // The island: the agents in the background as one quiet mark by the notch and a knock's line as it comes, in a window at
 // the top of the user's display (right of the notch and any other island there), click-through but over it. screen.html#island.
 import { type BrowserWindow, ipcMain, screen, type Display } from "electron"
+import { z } from "zod"
 import path from "node:path"
 import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { quiet } from "./quiet.ts"
@@ -32,6 +33,7 @@ let sent = ""
 let faces: (Rect & { id: string })[] = []
 
 /** What the user does on it, heard once. */
+const FACE = z.looseObject({ id: z.string(), x: z.number(), y: z.number(), width: z.number(), height: z.number() })
 export function islandActs(a: IslandActs) {
   if (acts) { acts = a; return }
   acts = a
@@ -39,8 +41,7 @@ export function islandActs(a: IslandActs) {
   const mine = (e: Electron.IpcMainEvent) => !!win && !win.isDestroyed() && e.sender === win.webContents
   listen(ipcMain, "island:faces", (e, list: unknown) => {
     if (!mine(e) || !Array.isArray(list)) return
-    faces = list.flatMap((f: { id?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown }) =>
-      typeof f?.id === "string" && [f.x, f.y, f.width, f.height].every((n) => typeof n === "number") ? [f as Rect & { id: string }] : [])
+    faces = list.flatMap((f) => FACE.safeParse(f).data ?? [])
   })
   listen(ipcMain, "island:act", (e, m: { act?: unknown; id?: unknown; mute?: unknown }) => {
     if (!mine(e) || typeof m?.id !== "string") return

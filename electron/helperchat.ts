@@ -16,7 +16,7 @@ let chatWords: PanelData["words"] = undefined
 let wordsId = 0
 export function chatOf(name: string): PanelData | null {
   // (the companion not started yet: talking to it starts it, its box there meanwhile)
-  const a = live.state.agents.get(name) ?? (name === live.state.name ? { name, tint: "orange", state: "away" } as Agent : null)
+  const a: Agent | null = live.state.agents.get(name) ?? (name === live.state.name ? { name, tint: "orange", state: "away" } : null)
   if (!a) return null
   // (an exchange's box: only what was asked and said in it, its words as a caption)
   const since = exchange?.name === name ? exchange.since - 1000 : 0

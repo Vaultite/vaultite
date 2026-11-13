@@ -11,10 +11,10 @@ import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 import type { Keeping } from "./dictationkeep.ts"
 import { messageOf } from "./browser/messageof.ts"
 import type { Json } from "./linehelper.ts"
+import { objectOr, opt } from "./ipcwire.ts"
 
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null
-const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
 const WORDS = opt(z.string()), N = opt(z.number()), FLAG = opt(z.boolean())
 const DEVICE = z.object({ uid: z.string(), name: z.string(), transport: z.string(), input: z.boolean(), output: z.boolean() })
 const LINE = z.looseObject({ type: z.string(), id: N, text: WORDS, reason: WORDS, code: WORDS, message: WORDS, name: WORDS, why: WORDS, missing: FLAG, bluetooth: FLAG,
@@ -177,9 +177,9 @@ export const termsOf = (terms: string[]) => [...new Set(terms.filter((w) => !!w.
 const starts = new Set<() => void>()
 export const onDictating = (fn: () => void) => { starts.add(fn); return () => starts.delete(fn) }
 
-export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; keep?: unknown; tap?: boolean
-  microphone?: unknown; hold?: boolean
-  where?: unknown }
+const DICTATE = z.object({ engine: WORDS, language: WORDS, silence: opt(z.coerce.number()), keep: FLAG, tap: FLAG, microphone: WORDS, hold: FLAG, where: z.unknown().optional() })
+export type DictateOptions = z.infer<typeof DICTATE>
+const ROAM = z.object({ pending: WORDS, held: FLAG, free: FLAG, start: FLAG })
 async function listedDevices(ms = 400) {
   if (devices || !helper) return devices
   await new Promise<void>((done) => { listed.push(done); setTimeout(done, ms) })
@@ -195,7 +195,7 @@ export async function helperDevices() {
 }
 export async function dictate(sink: DictationSink, opts: DictateOptions): Promise<{ ok: boolean; code?: string; message?: string; engine?: string; why?: string; mic?: MicPick }> {
   let engine = opts.engine === "parakeet" ? "parakeet" : "apple"
-  const language = typeof opts.language === "string" ? opts.language : ""
+  const language = opts.language ?? ""
   if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE && !TEXT) return { ok: false, code: "quiet" }
   const [allowed, { cloud, why, terms, replacements, keep }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE || TEXT ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
@@ -214,8 +214,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   owner = sink
   keeping = keep !== false && opts.where ? (list ?? await loadList()).keepFor(sink, opts.where) : null
   swap = replacer(replacements.map(([s, w]) => `${s}: ${w}`))
-  const silence = Number(opts.silence)
-  send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
+  send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: opts.silence ?? 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
     ...(mic ? { mic: [mic.uid, ...mic.fallback].filter(Boolean), hold: opts.hold === true } : {}),
     words: termsOf(terms),
     ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
@@ -233,7 +232,7 @@ export const handOver = (from: DictationSink, to: DictationSink) => {
   if (keeping && list) { keeping.end("moved"); keeping = list.keepFor(to, { kind: "app" }) }
   return true
 }
-export type Roam = { pending?: string; held?: boolean; free?: boolean; start?: boolean }
+export type Roam = z.infer<typeof ROAM>
 let roamer: { take: (win: AppWindow, sink: DictationSink, o: Roam) => boolean; stop: () => boolean } | null = null
 export const onRoam = (r: typeof roamer) => { roamer = r }
 export const dictating = () => owner
@@ -241,8 +240,8 @@ export { engines as dictationEngines }
 
 export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   "dictation:engines": (_win, language) => engines(typeof language === "string" ? language : ""),
-  "dictation:start": (win, o) => (roamer?.stop() ? { ok: false, code: "roaming" } : dictate(sinkOf(win), (o && typeof o === "object" ? o : {}) as DictateOptions)),
-  "dictation:roam": (win, o) => roamer?.take(win, sinkOf(win), (o && typeof o === "object" ? o : {}) as Roam) ?? false,
+  "dictation:start": (win, o) => (roamer?.stop() ? { ok: false, code: "roaming" } : dictate(sinkOf(win), objectOr(DICTATE).parse(o))),
+  "dictation:roam": (win, o) => roamer?.take(win, sinkOf(win), objectOr(ROAM).parse(o)) ?? false,
   "dictation:free": (win) => freeFor(sinkOf(win)),
   "dictation:stop": (win) => stopFor(sinkOf(win)),
   "dictation:cancel": (win) => stopFor(sinkOf(win), true),

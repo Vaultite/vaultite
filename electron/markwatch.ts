@@ -1,6 +1,7 @@
 // The screen under the companion's marks (helper.ts samples it, small and grey, while a mark that points is up): a mark
 // on a thing that moved follows it (found again by Accessibility); changed for good there, a mark fades. No Electron.
 import { anchorOf, type Anchor, refind, type Seen } from "../core/desktop/anchor.ts"
+import { z } from "zod"
 import { type Drawing, lifeOf, type Rect, rectOf, spots } from "../core/desktop/screenmarks.ts"
 
 /** How often the areas are sampled (ms). */
@@ -109,9 +110,10 @@ export function followed(a: Area, now: Seen[]): { kind: "moved"; dx: number; dy:
 }
 
 /** Decode a sample from the helper's reply. */
+const SAMPLE = z.object({ w: z.number(), h: z.number(), px: z.string() })
 export function sampleFrom(v: unknown): Sample | null {
-  const o = v as { w?: number; h?: number; px?: string } | null
-  if (!o || typeof o.w !== "number" || typeof o.h !== "number" || typeof o.px !== "string") return null
+  const o = SAMPLE.safeParse(v).data
+  if (!o) return null
   const px = Uint8Array.from(Buffer.from(o.px, "base64"))
   return px.length === o.w * o.h ? { w: o.w, h: o.h, px } : null
 }

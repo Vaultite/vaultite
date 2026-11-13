@@ -1,5 +1,6 @@
 import { app, Menu, nativeImage, Notification, screen, Tray, type BrowserWindow } from "electron"
 import path from "node:path"
+import { messageOf } from "./browser/messageof.ts"
 import type { Presence } from "../core/desktop/knocks.ts"
 import { countText } from "../core/desktop/walks.ts"
 import { badgeOf, cursorBitmap, dottedBitmap, type HelperJob, jobNote, menuNow, type Point, TINT_RGB } from "./helperlogic.ts"
@@ -127,9 +128,10 @@ export function jobNotice(j: HelperJob) {
   n.on("action", (_e, i) => void op("companion.job-answer", { id: j.id, choice: String(i + 1) }, DONE).catch(() => openJob(j)))
   n.show()
 }
+const KEY_SAID = new Map(Object.entries({ fn: "fn", right_option: "right ⌥", right_command: "right ⌘", left_control: "left ⌃", right_control: "right ⌃", control_option: "⌃⌥", fn_control: "fn⌃" }))
 /** Keys as a Mac writes them: "fn⌃, right ⌥ or ⌃⌥". */
 export function keysSaid(keys: string[]) {
-  const said = keys.map((k) => ({ fn: "fn", right_option: "right ⌥", right_command: "right ⌘", left_control: "left ⌃", right_control: "right ⌃", control_option: "⌃⌥", fn_control: "fn⌃" } as Record<string, string>)[k]).filter(Boolean)
+  const said = keys.flatMap((k) => KEY_SAID.get(k) ?? [])
   return said.length ? said.length > 1 ? `${said.slice(0, -1).join(", ")} or ${said.at(-1)}` : said[0] : "No keys picked"
 }
 export function login(on: boolean) {
@@ -165,7 +167,7 @@ export function showTray(file: string) {
   tray.setToolTip(app.getName())
   // (its section headers, Companion and Jobs, read as bold titles: menus.m)
   void macAddon("menus", path.join(app.getPath("userData"), "bin")).then((m) => m.call({ cmd: "boldHeaders" }, z.unknown()))
-    .catch((e) => log.warn(`the menu's headers stay AppKit's (${(e as Error).message})`))
+    .catch((e) => log.warn(`the menu's headers stay AppKit's (${messageOf(e)})`))
   tray.on("click", () => tray?.popUpContextMenu(Menu.buildFromTemplate(menuItems())))
 }
 export function hideTray() {

@@ -3,14 +3,23 @@ import { nativeImage } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { changedBoxes } from "../core/desktop/framediff.ts"
-import type { Rect } from "./screen.ts"
 import { queryTimeline } from "./timeline.ts"
 import { walkCall } from "./walk.ts"
 import { screenAsk, SHOTS, windowShot } from "./helperask.ts"
-import { TEXT, WINDOW } from "./screenwire.ts"
+import { RECT, TEXT, WINDOW } from "./screenwire.ts"
+import { z } from "zod"
+import { KINDS } from "../core/desktop/screentimeline.ts"
+import { objectOr, opt, yes } from "./ipcwire.ts"
 import { hidden } from "./helperbase.ts"
 import { talkNow } from "./helpertalk.ts"
 import { speaker, stopVoice } from "./helpervoice.ts"
+
+const WINDOW_NUMBER = z.number().int().catch(0)
+const VOICE_CALL = objectOr(z.object({ text: opt(z.string()), provider: opt(z.enum(["elevenlabs", "soniox"])), after: yes }))
+const TIMELINE_CALL = objectOr(z.object({ last: opt(z.number()), from: opt(z.number()), to: opt(z.number()), said: opt(z.string()), clip: yes, box: opt(RECT),
+  kinds: opt(z.array(z.unknown()).transform((ks) => ks.flatMap((k) => z.enum(KINDS).safeParse(String(k)).data ?? []))) }))
+const CHANGED_CALL = objectOr(z.object({ before: opt(z.string()), window: WINDOW_NUMBER, settle: z.unknown().optional() }))
+const SCREEN_CALL = objectOr(z.object({ app: z.string().catch(""), window: WINDOW_NUMBER, max: z.unknown().optional(), do: z.unknown().optional() }))
 
 /** Whether its voice and the Talk key's exchange went quiet within `ms`: nothing said, listened for or worked on. */
 async function quiet(ms: number) {
@@ -20,26 +29,23 @@ async function quiet(ms: number) {
 }
 /** The server's calls to its voice (companion.voice-sample): a sample said aloud now, for the user to hear. */
 export async function voiceCall(name: string, args: unknown[]) {
-  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { text?: unknown; provider?: unknown; after?: unknown }
-  if (name !== "voice:sample" || typeof o.text !== "string" || !o.text.trim()) throw new Error(`no voice call ${name}`)
+  const o = VOICE_CALL.parse(args[0])
+  if (name !== "voice:sample" || !o.text?.trim()) throw new Error(`no voice call ${name}`)
   // (news, a job's: said once its answer is, never over it; a sample asked for is said now)
-  if (o.after === true && !await quiet(60_000)) return { said: false, why: "it was still speaking" }
+  if (o.after && !await quiet(60_000)) return { said: false, why: "it was still speaking" }
   stopVoice()
-  return speaker.sample(o.text.slice(0, 2000), o.provider === "elevenlabs" || o.provider === "soniox" ? o.provider : undefined)
+  return speaker.sample(o.text.slice(0, 2000), o.provider)
 }
 /** The timeline asked (screen.timeline): a stretch of what happened, its clip saved only when asked. */
 async function timelineCall(a: unknown) {
-  const o = (a && typeof a === "object" ? a : {}) as Record<string, unknown>
-  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined), r = o.box as Rect | undefined
-  const box = r && [r.x, r.y, r.width, r.height].every((n) => typeof n === "number") ? r : undefined
-  return queryTimeline({ last: num(o.last), from: num(o.from), to: num(o.to), said: typeof o.said === "string" ? o.said : undefined,
-    kinds: Array.isArray(o.kinds) ? o.kinds.map(String) as never : undefined, clip: o.clip === true, ...(box ? { box } : {}) })
+  const { box, ...q } = TIMELINE_CALL.parse(a)
+  return queryTimeline({ ...q, ...(box ? { box } : {}) })
 }
 /** What changed in a window since its picture `before` (companion.live: an ask's change once its page reloads): pictures
  *  taken till two agree (its reload and animations done, `settle` ms at most), the boxes that differ in screen points. */
 async function changedCall(a: unknown) {
-  const o = (a && typeof a === "object" ? a : {}) as { before?: unknown; window?: unknown; settle?: unknown }
-  const before = typeof o.before === "string" ? path.resolve(o.before) : "", window = Number.isInteger(o.window) ? o.window as number : 0
+  const o = CHANGED_CALL.parse(a), window = o.window
+  const before = o.before !== undefined ? path.resolve(o.before) : ""
   // (only its own pictures are read)
   if (!before.startsWith(SHOTS() + path.sep) || !fs.existsSync(before) || !window) return { ok: false, why: "no-window" }
   const w = await screenAsk("window", { window, bundle: "" }, WINDOW)
@@ -68,9 +74,9 @@ async function changedCall(a: unknown) {
 export async function screenCall(name: string, args: unknown[]) {
   if (name === "screen:timeline") return timelineCall(args[0])
   if (name === "screen:changed") return changedCall(args[0])
-  if (name === "screen:walk") return walkCall(String((args[0] as { do?: unknown } | undefined)?.do ?? "status"))
-  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { app?: unknown; window?: unknown; max?: unknown }
-  const window = Number.isInteger(o.window) ? o.window as number : 0, bundle = typeof o.app === "string" ? o.app : ""
+  const o = SCREEN_CALL.parse(args[0])
+  if (name === "screen:walk") return walkCall(String(o.do ?? "status"))
+  const { window, app: bundle } = o
   // (whose window it is first: a private app's is never read)
   const w = await screenAsk("window", { window, bundle }, WINDOW)
   if (!w.window) return { ok: false, why: "no-window" }

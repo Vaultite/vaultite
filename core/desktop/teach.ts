@@ -1,6 +1,7 @@
 // Teach by showing, as the desktop app watches it (electron/teach.ts): the words that start and end it, what it keeps of
 // what the user did (the timeline's clicks, keys and fields, each on the thing it acted on). No Node: the tests read it.
 import type { Inside, Rect } from "./uimodel.ts"
+import { ACTS, type Happened } from "./screentimeline.ts"
 
 /** A thing acted on, as the timeline keeps it (the ui model's role, words, frame and what it's in). */
 export type El = { role: string; label: string; frame: Rect; inside?: Inside[] }
@@ -12,6 +13,7 @@ export type Act = { t: number } & (
   | { kind: "app"; app: string; name: string; title?: string; private?: boolean }
   | { kind: "said"; text: string })
 export type As = "tour" | "skill"
+export const isAct = (e: Happened): e is Extract<Happened, { kind: Act["kind"] }> => ACTS.has(e.kind)
 
 // ---------- their words
 

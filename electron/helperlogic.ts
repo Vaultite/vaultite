@@ -138,7 +138,7 @@ export function inkOf(strokes: Point[][]) {
     const len = k.slice(1).reduce((n, p, i) => n + Math.hypot(p.x - k[i].x, p.y - k[i].y), 0)
     const ends = Math.hypot(k[0].x - k.at(-1)!.x, k[0].y - k.at(-1)!.y), size = Math.max(1, Math.hypot(box.width, box.height))
     const shape = len < 6 ? "dot" : at >= 0 || (ends < size * 0.3 && len > size * 1.5) ? "ring" : len < ends * 1.25 ? (box.width > box.height * 3 ? "underline" : "line") : "scribble"
-    return { shape, box, points: simplify(k, 2.5).slice(0, 40).map((p) => [Math.round(p.x), Math.round(p.y)] as [number, number]) }
+    return { shape, box, points: simplify(k, 2.5).slice(0, 40).map((p): [number, number] => [Math.round(p.x), Math.round(p.y)]) }
   })
 }
 /** A stroke's points with the ones a line through their neighbours would draw anyway left out (Ramer-Douglas-Peucker). */

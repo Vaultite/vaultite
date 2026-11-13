@@ -5,13 +5,14 @@ import { type BoxAt, boxesSince, boxMoved, boxOf, captureCommand, type Narration
 import { type Clip, holdVideo, onVideoStopped, REAL, saveClip, stopVideo, videoAt } from "./recorder.ts"
 import { happened, queryTimeline, timelineOn, timelineRefollow } from "./timeline.ts"
 import { messageOf } from "./browser/messageof.ts"
+import type { Place } from "./helperat.ts"
 
 /** What helper.ts lends it. */
 export type CaptureHost = {
   /** Window numbers never recorded (the overlay's, a private app's), and private apps' bundle ids. */
   exclude: () => Promise<number[]>; bundles: () => string[]
   /** What's at a point now (its app, window and its frame, title, what's under it), as an ask has it. */
-  placeAt: (p: Point) => Promise<Record<string, unknown>>
+  placeAt: (p: Point) => Promise<Place>
   /** The capture handed to the server; answers where it went, in a few words. */
   deliver: (c: Capture) => Promise<string>
   hint: (text: string) => void
@@ -20,7 +21,7 @@ export type CaptureHost = {
   draw: () => void
 }
 /** What's sent: the clip and its frames (files on this Mac), their words as it played, the box, what was there. */
-export type Capture = Omit<Clip, "file"> & { kind: "recording" | "replay"; clip: string; narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown>
+export type Capture = Omit<Clip, "file"> & { kind: "recording" | "replay"; clip: string; narration: Narration[]; box: Rect; at: number; place: Place; end?: Place
   /** The job it's for (Still broken after its proof), else the one on that surface. */
   job?: string }
 export { REAL }
@@ -32,7 +33,7 @@ let region: Box | null = null
 let boxes: BoxAt[] = []
 /** A drag with the Talk key held, as it goes: from where it began. */
 let dragging: { from: Point; display: Rect; was: Box | null } | null = null
-let recording: { since: number; narration: Narration[]; place: Record<string, unknown>; timer: ReturnType<typeof setTimeout>; job?: string } | null = null
+let recording: { since: number; narration: Narration[]; place: Place; timer: ReturnType<typeof setTimeout>; job?: string } | null = null
 let saving = false
 /** A recording asked for and on its way (its video starting): a second ask meanwhile isn't another. */
 let opening = false
@@ -112,7 +113,7 @@ export function captureHeard(text: string, at: number) {
 /** The box to record: theirs, else the window under the pointer, else the display. */
 async function boxNow(): Promise<Rect> {
   if (region) return region.rect
-  const p = screen.getCursorScreenPoint(), f = (await host!.placeAt(p).catch(() => ({} as Record<string, unknown>))).frame as Rect | undefined, d = screen.getDisplayNearestPoint(p).bounds
+  const p = screen.getCursorScreenPoint(), f = (await host!.placeAt(p).catch(() => null))?.frame, d = screen.getDisplayNearestPoint(p).bounds
   return (f && boxOf({ x: f.x, y: f.y }, { x: f.x + f.width, y: f.y + f.height }, d)) || d
 }
 
@@ -169,7 +170,7 @@ async function replay(said: string) {
 }
 
 /** A clip made (`make`) and handed on; the box stays for the next. */
-async function send(kind: Capture["kind"], at: number, narration: Narration[], place: Record<string, unknown>, make: () => Promise<(Clip & { narration?: Narration[] }) | { why: string }>, job?: string) {
+async function send(kind: Capture["kind"], at: number, narration: Narration[], place: Place, make: () => Promise<(Clip & { narration?: Narration[] }) | { why: string }>, job?: string) {
   saving = true
   host!.draw()
   try {

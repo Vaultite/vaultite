@@ -17,6 +17,16 @@ import { type Agent, draw, front, hidden, host, type Shot } from "./helperbase.t
 import { live } from "./helperlive.ts"
 import { ELEMENTS, type ScreenEvent, TEXT, UNDER, WINDOW, WINDOWS } from "./screenwire.ts"
 import type { LiveMessage } from "./homewire.ts"
+import { z } from "zod"
+
+const SAID = z.union([z.string(), z.number()]).optional().catch(undefined)
+const IN_APP = z.object({ path: SAID, line: SAID, find: SAID, selection: SAID, pane: SAID, ui: SAID, row: SAID, x: SAID, y: SAID, under: SAID, title: SAID, notices: SAID, chrome: SAID,
+  near: z.array(z.unknown()).optional().catch(undefined) })
+type InApp = z.infer<typeof IN_APP>
+const PLACE_TOLD = z.object({ id: z.number(), place: IN_APP.nullish().catch(null) })
+export type Place = Omit<InApp, "near"> & { app?: string; appName?: string; window?: number; sx?: number; sy?: number; screen?: string; shot?: string; shotAt?: Rect
+  shotWindow?: number; near?: (Near & { id: string })[]; floating?: ReturnType<typeof floatingOver>; displays?: Rect[]; frame?: Rect
+  closeUp?: NonNullable<Awaited<ReturnType<typeof closeShot>>>; shotDown?: string; shotDownAt?: Rect }
 
 /** A closer look at what an ask points at (helperlogic.ts closeCrop): what they drew round, else by the pointer, at more
  *  pixels a point than its picture, for what's too small to read there (a logo, an icon); their rings or pointer on it. */
@@ -140,7 +150,7 @@ export async function nearAt(p: Point) {
 }
 /** What's at a point asked about: its window (its cursor left there, `parks`), what it says, what's under and near the
  *  point, and the display's picture. A private app's ask is only what they said: not even which app. */
-export async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks = true): Promise<Record<string, unknown>> {
+export async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks = true): Promise<Place> {
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { app: "private" }
   if (parks && win?.frame) park(name, win.window, offsetIn(win.frame, p))
@@ -156,9 +166,9 @@ export async function pointedAt(name: string, p: Point, w: AppWindowInfo | null,
 }
 /** What's at a screen point of the home vault's window, as its page knows it (a note's line, a pane's row, the app's UI):
  *  a Talk key's ask there is about that too. Null off it, or when the page doesn't say in time. */
-const placeAsked = new Map<number, (place: Record<string, unknown> | null) => void>()
+const placeAsked = new Map<number, (place: InApp | null) => void>()
 let placeAsks = 0
-function inAppAt(p: Point): Promise<Record<string, unknown> | null> {
+function inAppAt(p: Point): Promise<InApp | null> {
   const w = host?.homeWindow(), b = w?.bounds
   if (!w || !b || w.page.isDestroyed() || p.x < b.x || p.y < b.y || p.x >= b.x + b.width || p.y >= b.y + b.height) return Promise.resolve(null)
   const id = ++placeAsks
@@ -168,7 +178,6 @@ function inAppAt(p: Point): Promise<Record<string, unknown> | null> {
     w.page.send("vaultite:place-at", { id, x: (p.x - b.x) / w.zoom, y: (p.y - b.y) / w.zoom })
   })
 }
-const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title", "notices", "chrome"])
 /** The page's elements near the point (CSS px of its window) as an ask's, in screen points, by id: what `--ax` and a
  *  drawing's `el` point at, as in another app. */
 function pageNear(els: unknown[]): (Near & { id: string })[] {
@@ -185,12 +194,11 @@ function pageThings(els: unknown[]): (Near & { id: string })[] | null {
   }).map((e, i) => ({ ...e, id: `a${i + 1}` }))
 }
 /** The home window's page answering inAppAt: only what a place has (its elements near, as they are). */
-export function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
-  if (from !== host?.homeWindow()?.page || typeof m?.id !== "number") return
-  const got = m.place && typeof m.place === "object" ? m.place as Record<string, unknown> : null
-  const place = got ? { ...Object.fromEntries(Object.entries(got).filter(([k, v]) => PLACE_KEYS.has(k) && (typeof v === "string" || typeof v === "number"))),
-    ...(Array.isArray(got.near) ? { near: got.near } : {}) } : null
-  placeAsked.get(m.id)?.(place && Object.keys(place).length ? place : null)
+export function placeTold(from: WebContents, told: unknown) {
+  const m = PLACE_TOLD.safeParse(told)
+  if (from !== host?.homeWindow()?.page || !m.success) return
+  const place = m.data.place && Object.fromEntries(Object.entries(m.data.place).filter(([, v]) => v !== undefined))
+  placeAsked.get(m.data.id)?.(place && Object.keys(place).length ? place : null)
 }
 /** What a walk's item was over (never the display's picture: that's walk.ts', only with screen recording allowed). */
 export async function walkPlace(p: Point): Promise<{ place: WalkPlace; near: Thing[]; window?: Rect; private?: boolean }> {
