@@ -1,5 +1,3 @@
-// Sharing: a folder shared with one guest by a link of their own (gateway.ts, at the guests' address MCP gives:
-// "mcp:guest-urls"). Shares are kept in this machine's data/config.json ("share"), each link only as its hash.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -22,38 +20,31 @@ function save(fn: (all: Record<string, Share>) => void) {
   plugin.saveSecrets(s)
   mirror()
 }
-/** This machine's addresses for guests (MCP's: Vaultite Cloud's share-<handle>, an own tunnel's), the first where links go. */
 const guestUrls = (): string[] => {
   const urls = plugin.service("mcp:guest-urls")?.()
   return Array.isArray(urls) ? urls.map((u) => String(u).replace(/\/+$/, "")).filter(Boolean) : []
 }
-/** Where this machine's links are made, "" when it isn't on the internet. */
 const guestUrl = () => guestUrls()[0] ?? ""
 const others = machines(plugin, guestUrl)
 
-/** Who each folder is shared with, for the app (/api/state's `sharedFolders`: the tree marks them): never a link's hash.
- *  This machine's shares, and the ones the vault's machine on the internet keeps (`kept`, asked now and then). */
 type People = Record<string, { guest: string; role: Role; expires: string }[]>
 let kept: Shared[] = []
 const mirror = () => plugin.keep("folders", [...Object.entries(shares()).map(([id, s]) => listed(id, s)), ...kept].filter((s) => !s.expired)
   .reduce<People>((out, s) => ((out[s.folder] ??= []).push({ guest: s.guest, role: s.role, expires: s.expires }), out), {}))
-/** What another machine keeps for this one (its shares, whether links can be made) asked again. */
 async function refresh() {
   try {
     const w = await others.where()
     plugin.keep("links", w ? linkBase(w) : "")
     kept = w && "host" in w ? await others.passOn<Shared[]>(w.host, "share.list", {}) : []
-  } catch { /* it doesn't answer: as it was */ }
+  } catch {}
   mirror()
 }
 plugin.onSync(() => { mirror(); if (!guestUrl()) void refresh() })
 const refresher = setInterval(() => { if (!guestUrl()) void refresh() }, 120_000)
 refresher.unref()
 plugin.onUnload(() => clearInterval(refresher))
-// (`shareLinks`: the guests' address links are made at: this machine's, or another of the user's on the internet; "": none)
 plugin.state(() => ({ sharedFolders: plugin.kept<People>("folders", {}), shareLinks: guestUrl() || plugin.kept<string>("links", "") }))
 
-// (when a guest was last here, written at most every 10 minutes)
 const seen = new Map<string, number>()
 const gateway = new Gateway(plugin, shares, (id) => {
   if (Date.now() - (seen.get(id) ?? 0) < 600_000) return
@@ -67,16 +58,13 @@ plugin.onChange((paths) => gateway.changed(paths))
 const sharedFolders = () => [...new Set(Object.values(shares()).filter((s) => !expired(s)).map((s) => s.folder))]
 /** The folders shared now (not expired): the vault's other machines type in their notes here, with the guests. */
 plugin.provide("share:folders", sharedFolders)
-/** The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked, as a note opens:
- *  what was asked as this server started knows nothing of a folder shared since). */
+/** The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked). */
 plugin.provide("share:hosts", async (fresh?: boolean) => (await others.othersNow(!!fresh)).filter((o) => o.same && o.folders.length).map(({ m, folders }) => ({ m, folders })))
 plugin.route("GET", "share/folders", async (req) => {
   await plugin.ownerOnly(req, "The shared folders")
-  // (`relayed`: the shares a machine on the internet passes on, by their links' hashes)
   return { folders: sharedFolders(), links: guestUrl() || null,
     relayed: Object.entries(shares()).filter(([, s]) => s.via && !expired(s)).map(([id, s]) => ({ id, hash: s.token })) }
 }, { lock: false, sync: false })
-// A guest's request or socket the machine on the internet passed on, for a share kept here: answered as at its address.
 for (const method of ["GET", "POST", "PUT"]) plugin.route(method, "share/relay", async (req) => {
   await plugin.ownerOnly(req, "Passing on shared folders")
   if (!req.http) throw new HTTPError(400, "only over HTTP")
@@ -89,7 +77,6 @@ plugin.socket("share/relay", (ws, req) => gateway.attachRelayed(ws, req), {
     if (!gateway.admitRelayed(req)) throw new HTTPError(403, "not a guest's socket")
   },
 })
-// Sockets of shares revoked or expired since they opened close; the rest are kept alive through the tunnel.
 const pinger = setInterval(() => {
   for (const [ws, { g }] of gateway.sockets) {
     if (!gateway.holds(g)) ws.terminate()
@@ -99,7 +86,6 @@ const pinger = setInterval(() => {
 pinger.unref()
 plugin.onUnload(() => clearInterval(pinger))
 
-/** A folder that can be shared: there, not hidden, not the vault itself, and not a link out of it; as it's named on disk. */
 function folderOf(p: unknown) {
   const rel = String(p ?? "").replaceAll("\\", "/").split("/").filter((x) => x && x !== ".").join("/")
   if (!rel) throw new OpError("name a folder: the whole vault is never shared")
@@ -111,33 +97,25 @@ function folderOf(p: unknown) {
   return path.relative(root, real).split(path.sep).join("/")
 }
 
-/** A name that's an agent's (Claude, Codex...), or the app's own words for people ("You", "Owner"): never a guest's. */
 function reserved(name: string) {
   const who = whoOf("cli", name), companion = String(plugin.peer("companion")?.settings().name ?? "")
   return who.source !== name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)
     || /^(you|owner|guest|companion|claude|codex|gemini|cursor|chatgpt|agent)$/i.test(name.trim()) || (!!companion && companion.toLowerCase() === name.trim().toLowerCase())
 }
 
-/** Where a link is made (machines.ts): here, the vault's machine on the internet, or one that passes it on. */
 async function where(ctx: OpCtx) {
   const w = await others.where(ctx)
   if (!w) throw new OpError("sharing needs a machine of yours on the internet: sign it in to Vaultite Cloud (Settings, Share & sync; vau cloud sign-in), or give it an own tunnel (mcp.public in data/config.json, vau docs mcp)", 409)
   return w
 }
-/** The address a link made through `w` starts with. */
 const linkBase = (w: Where) => ("here" in w ? w.here : w.url)
-/** The vault's machine that keeps this one's shares, when there is one (this one has no public address). */
 async function hostOf(ctx: OpCtx) {
   const w = guestUrl() ? null : await others.where(ctx)
   return w && "host" in w ? w.host : null
 }
-/** The kept list again, after an op passed on changed it. */
 const changed = () => void refresh()
 
-/** An agent (not the user's own hand: the app, vau typed by them) sharing or unsharing waits for the user's yes, asked
- *  in the Inbox and on their phone, as an app on the internet's risky ops do. */
 async function yes(ctx: OpCtx, op: string, params: Record<string, unknown>, what: string) {
-  // (a machine passing one on asked there first)
   if (byUser(ctx.who) || ctx.who.client?.startsWith("machine/")) return
   const ask = plugin.service("inbox:ask"), answerOf = plugin.service("inbox:answer")
   if (!ask || !answerOf) throw new OpError(`${what} needs the user's yes, asked in the Inbox, which is off: they can do it themselves (a folder's menu, Share…)`, 403)
@@ -150,7 +128,6 @@ async function yes(ctx: OpCtx, op: string, params: Record<string, unknown>, what
   throw new OpError(`Waiting for the user's yes: Vaultite asked them in the Inbox and on their phone whether you may ${what}. Tell them, and run this again with the same arguments once they approve.`, 409)
 }
 
-/** A share as listed: never its link's hash. `here`: its guest has the folder open now (a window of theirs, live). */
 const listed = (id: string, s: Share) => ({ id, folder: s.folder, guest: s.guest, role: s.role, created: s.created, expires: s.expires, expired: expired(s), used: s.used ?? null,
   here: gateway.here(id) })
 type Shared = ReturnType<typeof listed>
@@ -173,7 +150,7 @@ of the vault; read, comment (margin threads) or edit (its notes). \`days\` it la
     days: { type: "number", default: 30, description: "how many days the link works (1 to 365)" },
   },
   args: ["folder"],
-  lock: false, // (an agent's call waits for the user's yes)
+  lock: false,
   run: async ({ folder, guest, role = "read", days = 30 }, ctx) => {
     const rel = folderOf(folder), name = String(guest).trim().slice(0, 60)
     if (!name) throw new OpError("`guest`: who it's for")
@@ -183,7 +160,6 @@ of the vault; read, comment (margin threads) or edit (its notes). \`days\` it la
     if (!(n >= 1 && n <= 365)) throw new OpError("`days`: 1 to 365")
     const w = await where(ctx)
     await yes(ctx, "share.create", { folder: rel, guest: name, role, days: n }, `share ${rel} with ${name} (${role}, ${n} days) over the internet`)
-    // (the vault's machine on the internet keeps it, serving the folder itself)
     if ("host" in w) {
       const made = await others.passOn<Shared & { link: string }>(w.host, "share.create", { folder: rel, guest: name, role, days: n })
       changed()
@@ -254,7 +230,6 @@ plugin.op({
     if (!s) throw new OpError(`no share ${id} (vau share list)`, 404)
     const was = s.role
     save((all) => { all[id] = { ...all[id], ...(role ? { role } : {}), ...(n ? { expires: new Date(Date.now() + n * 86_400_000).toISOString() } : {}) } })
-    // (their open pages come back with what they may do now)
     if (role && role !== was) gateway.close(id)
     return listed(id, shares()[id])
   },
@@ -288,7 +263,6 @@ to the same person. Its id is in \`vau share list\`.
     }
     s = shares()[id]
     if (!s) throw new OpError(`no share ${id} (vau share list)`, 404)
-    // (at the address its link was made at: here, or the machine that passes it on)
     const w = await where(ctx)
     if ("host" in w) throw new OpError(`${w.host.label} keeps this vault's shares now: this one can't make its links`, 409)
     const token = crypto.randomBytes(32).toString("base64url")

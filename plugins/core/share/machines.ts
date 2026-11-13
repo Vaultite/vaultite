@@ -1,17 +1,10 @@
-// Sharing across the user's machines: who shares what (GET share/folders), where a link comes from (here, the vault's
-// machine on the internet, or one that passes its guests on), and ops passed on to the vault's machine keeping shares.
 import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 
-/** Another machine with Sharing: the folders it shares (`same`: of this vault), its public address, and its shares a
- *  machine on the internet passes on (their links' hashes, to find them by). */
 export type Other = { m: Machine; same: boolean; folders: string[]; links: string | null; relayed: { id: string; hash: string }[] }
-/** Where this machine's links come from: here (at its guests' address), the vault's machine on the internet (`host`, at
- *  its address `url`: it keeps them), or one that passes them on (`via`, at its address `url`: they're kept here). */
 export type Where = { here: string } | { host: Machine; url: string } | { via: Machine; url: string }
 
 const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [])
 
-/** `guestUrl`: this machine's guests' address (MCP's), "" when it has none. */
 export function machines(plugin: Plugin, guestUrl: () => string) {
   let at = 0, others: Promise<Other[]> = Promise.resolve([])
 
@@ -30,14 +23,11 @@ export function machines(plugin: Plugin, guestUrl: () => string) {
     return got.filter((o) => !!o)
   }
 
-  /** The others, asked at most every 10 seconds (`fresh`: every second, for a share none was known to have). */
   const othersNow = (fresh = false) => {
     if (Date.now() - at > (fresh ? 1_000 : 10_000)) { at = Date.now(); others = ask().catch(() => []) }
     return others
   }
 
-  /** Where a link is made; null when nowhere can (no machine of the user's on the internet), or for a call another machine
-   *  passed on (it runs here or not at all). */
   async function where(ctx?: OpCtx): Promise<Where | null> {
     const url = guestUrl()
     if (url) return { here: url }
@@ -49,7 +39,6 @@ export function machines(plugin: Plugin, guestUrl: () => string) {
     return via ? { via: via.m, url: via.links! } : null
   }
 
-  /** Op `id` run by the vault's machine that keeps its shares: its server checks its owner again. */
   async function passOn<T>(m: Machine, id: string, params: object): Promise<T> {
     const r = await fetch(`${m.url}/api/ops/${id}?as=both`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
       body: JSON.stringify(params), signal: AbortSignal.timeout(60_000) }).catch(() => null)
@@ -59,12 +48,10 @@ export function machines(plugin: Plugin, guestUrl: () => string) {
     return out.result as T
   }
 
-  /** The machine that keeps the share a guest's address names (its id, or its link's hash), when another one does. */
   async function keeper(test: (r: { id: string; hash: string }) => boolean) {
     const find = (os: Other[]) => os.find((o) => o.relayed.some(test))?.m ?? null
     const hit = find(await othersNow())
     if (hit) return hit
-    // (a link made a moment ago: asked again once a second has passed since the last asking)
     const since = Date.now() - at
     if (since < 1000) await new Promise((ok) => setTimeout(ok, 1000 - since))
     return find(await othersNow(true))

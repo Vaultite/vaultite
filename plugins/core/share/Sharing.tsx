@@ -1,21 +1,15 @@
-// Sharing's sheet and the Shared page, loaded when one opens: a link for one person, shown once, and who has access, to
-// change or remove; the Shared page (view:shared) has every share at once, with the guests' address.
 import { useEffect, useState } from "react"
 import { CalendarPlus, Check, ChevronDown, Copy, Globe, Link2, Share2, UserMinus } from "lucide-react"
 import { Button, confirmDialog, copyText, dateText, Empty, fmtAgo, Group, Loading, menuBelow, notify, notifyError, OnThisMac, op, openFolder, openView, Panel, Row, Section, Segmented, SettingRow, SheetHead, useOverConnect, useStoreWith, useTick, type MenuItem } from "@vaultite"
 
 type Role = "read" | "comment" | "edit"
-/** A share as share.list gives it; `here`: its guest has the folder open now. */
 type Shared = { id: string; folder: string; guest: string; role: Role; created: string; expires: string; expired: boolean; used: string | null; here?: boolean }
-/** A link just made, shown only now. */
 type Fresh = { guest: string; url: string }
 const ROLES: { value: Role; label: string }[] = [{ value: "read", label: "Can view" }, { value: "comment", label: "Can comment" }, { value: "edit", label: "Can edit" }]
 const DAYS = [{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]
 const DAY = { day: "numeric", month: "short" } as const
 const name = (folder: string) => folder.split("/").pop() ?? folder
 
-/** The shares (one folder's, or all), asked again after a change and, for who's in one now, every 20 seconds in sight.
- *  Not through Vaultite Connect, where sharing is the Mac's (`over`). */
 function useShares(folder?: string) {
   const over = useOverConnect()
   const [list, setList] = useState<Shared[] | null>(null)
@@ -31,12 +25,9 @@ function useShares(folder?: string) {
   return { list, error, over, reload: () => setAgain((n) => n + 1) }
 }
 
-/** What a person's access is: until when, and whether they're in it now or when they last were. */
 const accessMeta = (s: Shared) => [s.expired ? "Link expired" : `Until ${dateText(new Date(s.expires), DAY)}`,
   s.here ? "here now" : s.used ? `opened ${fmtAgo(s.used)}` : "not opened yet"].join(" · ")
 
-/** A person's access, as ShareSheet and the Shared page list it: who, until when, and its menu (what they may do, more
- *  days, a new link, removing it). `fresh`: a new link made, to show once. */
 function AccessRow({ s, title, done, fresh }: { s: Shared; title?: string; done: () => void; fresh: (l: Fresh) => void }) {
   const folder = name(s.folder)
   const remove = async () => {
@@ -56,7 +47,6 @@ function AccessRow({ s, title, done, fresh }: { s: Shared; title?: string; done:
     } catch (e) { notifyError(e, "Couldn't make a new link") }
     done()
   }
-  // (as shared documents have it: what they may do, a menu; Remove access, at its foot)
   const menu = (): MenuItem[] => [
     ...ROLES.map((r) => ({ label: r.label, checked: s.role === r.value, run: () => { if (s.role !== r.value) void change({ role: r.value }) } })),
     { label: s.expired ? "Turn on for 30 days" : "Keep for 30 more days", icon: CalendarPlus, sep: true, run: () => void change({ days: 30 }) },
@@ -72,7 +62,6 @@ function AccessRow({ s, title, done, fresh }: { s: Shared; title?: string; done:
   )
 }
 
-/** A link just made: copied at once (the click that made it is still the user's), shown only now. */
 function FreshLink({ link }: { link: Fresh }) {
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -92,7 +81,6 @@ function FreshLink({ link }: { link: Fresh }) {
   )
 }
 
-/** The guests' address links are made at ("" none, undefined not known yet). */
 const useGuestAddress = () => useStoreWith((st) => st?.shareLinks)
 
 export function ShareSheet({ folder }: { folder: string }) {
@@ -118,7 +106,6 @@ export function ShareSheet({ folder }: { folder: string }) {
   )
 }
 
-/** Who it's for, what they may do and for how long; `made`: their link, to show only now. */
 function NewLink({ folder, made }: { folder: string; made: (l: Fresh) => void }) {
   const [guest, setGuest] = useState("")
   const [role, setRole] = useState<Role>("comment")
@@ -148,7 +135,6 @@ function NewLink({ folder, made }: { folder: string; made: (l: Fresh) => void })
   )
 }
 
-/** view:shared: every folder shared and with whom, by folder (its name opens it), and the guests' address. */
 export function SharedView() {
   const { list, error, over, reload } = useShares()
   const [fresh, setFresh] = useState<Fresh | null>(null)

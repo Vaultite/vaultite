@@ -1,5 +1,3 @@
-// A shared folder for its guest, on MCP's public listener at this machine's guests' address: /s/<token> lets them in (a cookie), /s/<id>/ is the app,
-// /s/<id>/api/ the few routes a guest may use, on paths inside the folder only. Everything else is refused.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import type { IncomingMessage, ServerResponse } from "node:http"
@@ -10,37 +8,26 @@ import { contentType, guestRefusal, HTTPError, type Machine, MACHINE_CLIENT, OpE
 import type { Item } from "../../../core/vault.ts"
 
 export type Role = "read" | "comment" | "edit"
-/** A share as kept in data/config.json: `token` is the link's hash, never the link. */
 export type Share = { folder: string; guest: string; role: Role; created: string; expires: string; token: string; used?: string
-  /** The machine on the internet its link is at, which passes its guests on to this one (machines.ts). */
   via?: string
-  /** The most the folder may hold, its notes and their bytes, past what it had when shared: an edit guest stops there. */
   room?: { notes: number; bytes: number } }
 type Guest = { id: string; share: Share }
 
 const DIST = path.join(ROOT, "web", "dist")
-/** Excalidraw's fonts, as its plugin serves them to the user's app (the app's own package). */
 const FONTS = path.join(ROOT, "node_modules", "@excalidraw", "excalidraw", "dist", "prod", "fonts")
 const BODY_MAX = 1 << 20
-const WRITES = 300, NEW_NOTES = 30, SAYS = 30, SEARCHES = 60, TYPES = 1200, QUERIES = 60 // a minute, per share
+const WRITES = 300, NEW_NOTES = 30, SAYS = 30, SEARCHES = 60, TYPES = 1200, QUERIES = 60
 const NOTE_MAX = 256_000, SOCKETS = 12
-/** What an edit guest may add to a folder: notes, and bytes. */
 export const ROOM = { notes: 500, bytes: 20 << 20 }
-/** The guest's page runs only its own scripts (`scripts`: its inline ones' hashes) and loads only from this address. */
 const csp = (scripts: string[]) => `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' ${scripts.join(" ")}; style-src 'self' 'unsafe-inline'; ` +
   "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 export const ID = /^[A-Za-z0-9_-]{11}$/, TOKEN = /^[A-Za-z0-9_-]{43}$/
-/** The vault's own plugins whose views only read the folder (their queries scoped to it): drawn for guests too. */
 const VIEWS = ["kanban", "excalidraw", "dataview"]
-/** Of a vault plugin, what the guest's app draws it with. */
 const PLUGIN_FIELDS = ["id", "name", "description", "requires", "enhances", "runsOnServer", "tint", "category", "group", "icon", "replaces", "marks", "on", "loaded",
   "pages", "blocks", "draws", "settings", "bundle", "version"]
-/** A shared folder's HTML page runs in a frame of its own: scripts, nothing else; no address to reach, not even this one. */
 const PAGE_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; " +
   "img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
-/** ...framed by a page that keeps its frame on its own address (`at`: /s/<id>/v/). */
 const wrapCsp = (at: string) => `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src ${at}; base-uri 'none'; frame-ancestors 'self'`
-/** The app's plugins a guest's app runs: reading, writing and comments (Sharing's: their first tab); never agents, terminals or settings. */
 export const GUEST_PLUGINS = ["share", "files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion", "html", ...VIEWS]
 
 export const sha = (s: string) => crypto.createHash("sha256").update(s).digest("base64url")
@@ -48,12 +35,9 @@ const same = (a: string, b: string) => a.length === b.length && crypto.timingSaf
 export const expired = (s: Share, t = Date.now()) => Date.parse(s.expires) <= t
 const inside = (top: string, p: string) => p === top || p.startsWith(top + path.sep)
 
-/** A shared folder as its guest sees it: their paths are relative to it, and nothing hidden in it, nor any link out
- *  of it (the vault follows linked folders and files), is theirs. */
 export class Folder {
   vaultDir: string
   folder: string
-  /** Its real path, in the vault's real one (root); "" when it's gone (or a link out of the vault). */
   top = ""
   root = ""
   constructor(vaultDir: string, folder: string) {
@@ -62,18 +46,15 @@ export class Folder {
     try {
       const root = fs.realpathSync.native(vaultDir), real = fs.realpathSync.native(path.join(vaultDir, folder))
       if (inside(root, real) && real !== root) { this.root = root; this.top = real }
-    } catch { /* gone */ }
+    } catch {}
   }
 
-  /** The guest's path for a vault path, or null when it isn't theirs. */
   see(rel: string): string | null {
     const mine = rel.startsWith(`${this.folder}/`) ? rel.slice(this.folder.length + 1) : null
     if (!this.top || !mine || mine.split("/").some((x) => x.startsWith("."))) return null
-    try { return inside(this.top, fs.realpathSync.native(path.join(this.vaultDir, rel))) ? mine : null } catch { return mine } // (gone: a change to it)
+    try { return inside(this.top, fs.realpathSync.native(path.join(this.vaultDir, rel))) ? mine : null } catch { return mine }
   }
 
-  /** The vault path for a path the guest names: no hidden or `..` parts, and (what isn't there yet: its nearest folder
-   *  that is) not a link out of the folder. */
   at(p: unknown): string {
     const parts = String(p ?? "").replaceAll("\\", "/").split("/").filter((x) => x !== "" && x !== ".")
     if (!this.top) throw new HTTPError(404, "this folder isn't there any more")
@@ -81,18 +62,16 @@ export class Folder {
     const rel = `${this.folder}/${parts.join("/")}`
     let at = path.join(this.root, rel), real = ""
     while (!fs.existsSync(at) && at !== this.root) at = path.dirname(at)
-    try { real = fs.realpathSync.native(at) } catch { /* gone meanwhile */ }
+    try { real = fs.realpathSync.native(at) } catch {}
     if (!real || !inside(this.top, real)) throw new HTTPError(404, "not a file in this folder")
     return rel
   }
 
-  /** The tree (GET files) as the guest's: their files and folders, by their paths. */
   tree(t: { files: Item[]; others: Item[]; folders: string[] }) {
     const rows = (list: Item[]) => list.flatMap((r) => { const p = this.see(String(r.path)); return p === null ? [] : [{ ...r, path: p }] })
     return { files: rows(t.files), others: rows(t.others), folders: t.folders.flatMap((f) => { const p = this.see(f); return p === null ? [] : [p] }) }
   }
 
-  /** An error's words without the folder's place in the vault. */
   scrub(text: string) {
     return text.replaceAll(`${this.folder}/`, "").replaceAll(this.folder, this.folder.split("/").pop()!)
   }
@@ -107,11 +86,8 @@ export class Gateway {
   hits = new Map<string, { n: number; until: number }>()
   wss = new WebSocketServer({ noServer: true, maxPayload: 64 << 10 })
   sockets = new Map<WebSocket, { g: Guest; kind: "events" | "threads" | "page" }>()
-  /** The machine that keeps a share this one doesn't (by its id, or its link's token): its guests are passed on there. */
   keeper: (x: string) => Promise<Machine | null>
-  /** Requests and sockets the machine on the internet passed on (share/relay): as at its address, their guest's IP. */
   passed = new WeakMap<IncomingMessage, string>()
-  /** This machine's guests' addresses (MCP's "mcp:guest-urls"): the only hosts shares answer at. */
   addresses: () => string[]
 
   constructor(plugin: Plugin, shares: () => Record<string, Share>, used: (id: string) => void, keeper: (x: string) => Promise<Machine | null> = async () => null,
@@ -127,7 +103,6 @@ export class Gateway {
     return new Folder(this.plugin.vault.path, g.share.folder)
   }
 
-  /** A guest's request on the public listener: true when it was one (/s/...), answered. */
   async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
     const url = new URL(req.url ?? "/", "http://x")
     const m = /^\/s\/([^/]+)(\/.*)?$/.exec(url.pathname)
@@ -158,7 +133,6 @@ export class Gateway {
     return true
   }
 
-  /** A WebSocket for a guest's app (its live changes, its threads): true when it was one, taken or refused. */
   async upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<boolean> {
     const p = new URL(req.url ?? "/", "http://x").pathname
     if (!p.startsWith("/s/") || !this.ours(req)) return false
@@ -174,54 +148,43 @@ export class Gateway {
     return true
   }
 
-  /** A guest's socket asked for: whose and what (a page's: which), or null when it's refused. */
   admit(req: IncomingMessage) {
     const url = new URL(req.url ?? "/", "http://x"), p = url.pathname
     const m = /^\/s\/([A-Za-z0-9_-]{11})\/api\/(events|companion\/live|artifact\/shared)$/.exec(p)
     const g = m && this.sameSite(req) ? this.guestOf(req, m[1]) : null
-    // (an HTML page's shared state: one of their folder's pages, there)
     let page = ""
-    if (g && m![2] === "artifact/shared") try { page = this.folderOf(g).at(url.searchParams.get("path")) } catch { /* refused below */ }
+    if (g && m![2] === "artifact/shared") try { page = this.folderOf(g).at(url.searchParams.get("path")) } catch {}
     const join = this.plugin.service("html:shared")
-    // (a share's sockets are counted: a guest's limits are per socket, so not as many as they like)
     if (!g || [...this.sockets.values()].filter((s) => s.g.id === g.id).length >= SOCKETS
       || (m![2] === "artifact/shared" && (!/\.html?$/i.test(page) || !fs.existsSync(this.plugin.vault.abs(page)) || typeof join !== "function"))) return null
     return { g, page, kind: m![2] === "events" ? "events" as const : m![2] === "artifact/shared" ? "page" as const : "threads" as const }
   }
 
-  /** A guest's socket taken (admit's), as its kind has it. */
   attach(ws: WebSocket, req: IncomingMessage, { g, page, kind }: NonNullable<ReturnType<Gateway["admit"]>>) {
     const join = this.plugin.service("html:shared")
     this.sockets.set(ws, { g, kind })
     ws.on("close", () => this.sockets.delete(ws))
     ws.on("error", () => ws.close())
     if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v(), role: g.share.role }))
-    // (one person a share, whichever device; a guest who may only view sees the page live and changes nothing)
     if (kind === "page") return (join as (ws: WebSocket, rel: string, v: object) => void)(ws, page, { shown: this.folderOf(g).see(page) ?? "",
       id: `g_${g.id}`, name: g.share.guest, ua: String(req.headers["user-agent"] ?? ""), watch: g.share.role === "read" ? "you can only view this folder" : undefined })
-    // (Companion's: threads for a guest who may comment, who's in a note and its text as typed, in their folder, by their paths)
     const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
     if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS), holds: () => this.holds(g),
       may: (rel: string, before: string, after: string) => this.mayWrite(g, rel, before, after), slow: () => this.limited(`type:${g.id}`, TYPES) })
     else ws.send(JSON.stringify({ t: "state", mode: "quiet", name: "", agents: [], notes: [], said: [] }))
   }
 
-  // ---------- shares another machine keeps: this one on the internet passes their guests on (machines.ts)
-
-  /** The machine keeping `x` (a share's id or a link's token) when this one doesn't. */
   async elsewhere(x: string) {
     if (TOKEN.test(x) ? Object.values(this.shares()).some((s) => same(sha(x), s.token)) : !ID.test(x) || x in this.shares()) return null
     return this.keeper(x).catch(() => null)
   }
 
-  /** What another machine needs of a guest's request to answer it as here: its path, address and the guest's headers. */
   guestHeaders(req: IncomingMessage): Record<string, string> {
     const h = req.headers, pick = (k: string) => (typeof h[k] === "string" ? h[k] as string : undefined)
     return Object.fromEntries(Object.entries({ path: req.url, host: pick("host"), cookie: pick("cookie"), origin: pick("origin"), ua: pick("user-agent"),
       "fetch-site": pick("sec-fetch-site"), proto: this.https(req) ? "https" : "http", ip: this.ipOf(req) }).filter(([, v]) => v).map(([k, v]) => [`x-share-${k}`, String(v)]))
   }
 
-  /** A guest's request passed on to the machine keeping its share, its answer back as it is. */
   async passOn(req: IncomingMessage, res: ServerResponse, m: Machine) {
     const method = req.method ?? "GET"
     let body: Buffer | undefined
@@ -245,8 +208,6 @@ export class Gateway {
     Readable.fromWeb(r.body as import("node:stream/web").ReadableStream).on("error", () => res.destroy()).pipe(res)
   }
 
-  /** A request share/relay got as the guest's (`passed`), or null when it isn't one. A socket's is a copy: its own
-   *  headers stay for the upgrade. */
   unwrap(req: IncomingMessage, copy = false): IncomingMessage | null {
     if (this.passed.has(req)) return req
     const had = this.copies.get(req)
@@ -263,7 +224,6 @@ export class Gateway {
   }
   copies = new WeakMap<IncomingMessage, IncomingMessage>()
 
-  /** share/relay: a guest's request, answered here as at the address it came to. */
   async relayed(http: IncomingMessage) {
     const req = this.unwrap(http)
     if (!req) throw new HTTPError(400, "not a guest's request")
@@ -283,7 +243,6 @@ export class Gateway {
     this.attach(ws, req, a)
   }
 
-  /** A share's guest by its cookie: the share, while it's neither revoked nor expired. */
   guestOf(req: IncomingMessage, id: string): Guest | null {
     const share = this.shares()[id]
     const token = cookies(req)[`vs_${id}`]
@@ -291,7 +250,6 @@ export class Gateway {
     return { id, share }
   }
 
-  /** The link: its share's cookie set, then its app. */
   invite(req: IncomingMessage, res: ServerResponse, token: string) {
     if (this.limited(`invite:${this.ipOf(req)}`, 30)) return this.page(res, 429, "Too many tries", "Wait a minute and try again.")
     const h = sha(token)
@@ -305,7 +263,6 @@ export class Gateway {
     this.redirect(res, `/s/${id}/`)
   }
 
-  /** The app's files (its build), the same for anyone; its page only for a guest. */
   file(req: IncomingMessage, res: ServerResponse, id: string, rest: string) {
     if (req.method !== "GET" && req.method !== "HEAD") return this.json(res, 405, { error: "not here" })
     let name: string
@@ -315,15 +272,13 @@ export class Gateway {
       if (!g) return this.page(res, 403, "This folder isn't shared with you", "Open the link you were sent again; if it doesn't work, ask for a new one.")
       let html: string
       try { html = fs.readFileSync(path.join(DIST, "index.html"), "utf8") } catch { return this.json(res, 503, { error: "the app isn't built" }) }
-      // (the app knows it's a guest's before its code runs: web/src/core/share.ts)
       const said = JSON.stringify(this.guestInfo(g)).replace(/</g, "\\u003c")
       const page = html.replace("<head>", () => `<head>\n    <script>window.vaultiteShare = ${said}</script>`)
-      // (every inline one, the build's import map too: one left out is refused, and its files then never load)
+      // CSP refuses an inline script it has no hash for, the import map's too
       const scripts = [...page.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${crypto.createHash("sha256").update(m[1]).digest("base64")}'`)
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": csp(scripts) })
       return res.end(page)
     }
-    // (the app's code and its icons: nothing else of its build)
     const abs = path.resolve(DIST, name)
     if (!abs.startsWith(DIST + path.sep) || name.split("/").some((x) => x.startsWith(".")) || !/^(assets\/[^/]+|icon[\w-]*\.(svg|png)|apple-touch-icon\.png|manifest\.webmanifest)$/.test(name)) {
       return this.json(res, 404, { error: "not found" })
@@ -331,11 +286,10 @@ export class Gateway {
     this.send(res, abs, name.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache")
   }
 
-  /** A shared folder's HTML page (its app's frame asks): the wrapper, then the page itself (`frame=1`), sandboxed. */
   artifact(req: IncomingMessage, res: ServerResponse, id: string, rest: string, url: URL) {
     let shown: string
     try { shown = decodeURIComponent(rest) } catch { return this.json(res, 400, { error: "bad address" }) }
-    // (the page itself is asked for by the sandboxed wrapper, which no cookie goes with: the wrapper's key for it instead)
+    // a sandboxed frame's request carries no cookie
     const q = Object.fromEntries(url.searchParams), share = this.shares()[id]
     const g = q.frame === "1" ? (share && !expired(share) && this.keyed(id, shown, q.k) ? { id, share } : null) : this.guestOf(req, id)
     const make = this.plugin.service("html:guest")
@@ -345,13 +299,11 @@ export class Gateway {
     const out = make(rel, shown, q) as { page: string; wrapper: (rawPath: string) => string }
     const at = `${this.https(req) ? "https" : "http"}://${req.headers.host}/s/${id}/v/`
     const head = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-DNS-Prefetch-Control": "off" }
-    // (framed by the sandboxed wrapper, whose origin is no one's: only a page with the guest's cookie gets it anyway)
     res.removeHeader("X-Frame-Options")
     if (q.frame === "1") res.writeHead(200, { ...head, "Content-Security-Policy": PAGE_CSP }), res.end(out.page)
     else res.writeHead(200, { ...head, "Content-Security-Policy": wrapCsp(at) }), res.end(out.wrapper(`${rest}${url.search || "?"}${url.search ? "&" : ""}k=${this.key(id, shown)}`))
   }
 
-  /** A key to one page of one share for a few minutes (its wrapper's, for its frame). */
   key(id: string, shown: string, until = Date.now() + 600_000) {
     return `${until}.${crypto.createHmac("sha256", this.secret).update(`${id}\n${shown}\n${until}`).digest("base64url")}`
   }
@@ -370,26 +322,21 @@ export class Gateway {
     res.end(body)
   }
 
-  // ---------- the guest's API: each route allowed here, on paths in their folder; anything else is refused
-
   async api(req: IncomingMessage, res: ServerResponse, g: Guest, route: string, url: URL) {
     const method = req.method ?? "GET"
     if (method !== "GET" && !this.sameSite(req)) return this.json(res, 403, { error: "the page asking isn't this folder's" })
     this.used(g.id)
     const q = Object.fromEntries(url.searchParams)
     const f = this.folderOf(g), role = g.share.role
-    // (Activity names the guest for what they do)
     const api = (m: string, r: string, body?: unknown) => this.plugin.host.api(m, r, body, guestWho(g.share), m === "GET" ? {} : { report: `share ${m} ${r.split("?")[0]}` })
     const theirs = (x: Item) => ({ ...x, path: f.see(String(x.path)), problems: [] })
     const key = `${method} ${route}`
     if (key === "GET state") return this.json(res, 200, { v: this.v(), state: await this.state(g, f) })
     if (key === "GET file") return this.json(res, 200, theirs(await api("GET", `file?path=${encodeURIComponent(f.at(q.path))}`) as Item))
     if (key === "GET file/info") return this.json(res, 200, theirs(await api("GET", `file/info?path=${encodeURIComponent(f.at(q.path))}`) as Item))
-    // (as the app asks for it: api/raw/<its name>?path=..., the name only for the browser's sake)
+    // api/raw/<its name>?path=...: the name only for the browser's sake
     if (method === "GET" && (route === "raw" || route.startsWith("raw/"))) return this.raw(req, res, f.at(q.path), q.download === "1")
     if (key === "GET file/linked") {
-      // Their files linking to it, and its own links as written (never resolved here: that would tell what's outside
-      // the folder).
       const rel = f.at(q.path), t = await api("GET", `file/linked?path=${encodeURIComponent(rel)}`) as { linked: { path: string; line: string }[] }
       const linked = t.linked.flatMap((l) => { const p = f.see(l.path); return p === null ? [] : [{ ...l, path: p }] })
       return this.json(res, 200, { path: f.see(rel), linked, links: linkTargets(this.plugin.vault.entries.get(rel)?.body ?? "") })
@@ -397,7 +344,6 @@ export class Gateway {
     if (key === "GET search") {
       if (this.limited(`search:${g.id}`, SEARCHES)) return this.json(res, 429, { error: "too many searches at once: wait a moment" })
       if (!plainQuery(q.q ?? "")) throw new HTTPError(400, "search here takes words and phrases, not /regular expressions/, path: or folder:")
-      // (only their files are looked at: what isn't theirs is never matched, nor timed)
       const tree = f.tree(await api("GET", "files") as Parameters<Folder["tree"]>[0]), under = q.folder ? `${String(q.folder).replace(/^\/+|\/+$/g, "")}/` : ""
       const only = [...tree.files, ...tree.others].map((r) => String(r.path)).filter((p) => p.startsWith(under)).map((p) => `${f.folder}/${p}`)
       const found = await api("GET", `search?${new URLSearchParams({ ...pick(q, ["q", "lines", "case", "sort", "context", "offset", "limit"]), total: "1", only: only.join("\n"), ...(q.path ? { path: f.at(q.path) } : {}) })}`) as Item
@@ -405,16 +351,14 @@ export class Gateway {
       return this.json(res, 200, q.total === "1" ? { results: page, files: found.files, lines: found.lines } : page)
     }
     if (key === "POST artifact/stat") {
-      // (when what a page read changed: their paths, each the vault's for it)
       const asked = (await this.body(req) as Item).paths, rels = new Map<string, string>()
-      for (const x of Array.isArray(asked) ? asked.slice(0, 200) : []) try { rels.set(f.at(x), String(x)) } catch { /* not theirs */ }
+      for (const x of Array.isArray(asked) ? asked.slice(0, 200) : []) try { rels.set(f.at(x), String(x)) } catch {}
       const now = await this.plugin.host.api("POST", "artifact/stat", { paths: [...rels.keys()] }) as Record<string, number | null>
       return this.json(res, 200, Object.fromEntries([...rels].map(([rel, x]) => [x, now[rel] ?? null])))
     }
     if (key === "GET config/plugin") return this.json(res, 200, Object.fromEntries(String(q.ids ?? "").split(",").filter(Boolean).slice(0, 100).map((x) => [x, {}])))
     if (key === "GET loading") return this.json(res, 200, { ready: true, downloading: [] })
     if (method === "GET" && ["ops", "vaults", "plugins", "blocks"].includes(route)) return this.json(res, 200, route === "vaults" ? { vaults: [] } : [])
-    // The views that only read (VIEWS): their code, Excalidraw's fonts, and Dataview's queries over the folder alone.
     const code = method === "GET" && /^plugins\/([a-z0-9-]+)\/[^/]+\/[\w.-]+\.js$/.exec(route)
     if (code && VIEWS.includes(code[1])) {
       const js = await this.plugin.host.api("GET", route)
@@ -436,28 +380,24 @@ export class Gateway {
       if (this.limited(`write:${g.id}`, WRITES) || (method === "POST" && this.limited(`new:${g.id}`, NEW_NOTES))) return this.json(res, 429, { error: "too many changes at once: wait a moment" })
       const body = await this.body(req) as Item
       const rel = f.at(body.path)
-      // (an editor's save sends only its edit of the text it had: the text it makes is checked here, the core applies it)
       const edit = method === "PUT" && typeof body.text !== "string" ? body.edit as { at?: unknown; cut?: unknown; add?: unknown } | undefined : undefined
       let text = typeof body.text === "string" ? body.text : null
       if (edit && typeof body.baseHash === "string") {
         let cur = ""
-        try { cur = fs.readFileSync(this.plugin.vault.abs(rel), "utf8") } catch { /* the core says it's gone */ }
+        try { cur = fs.readFileSync(this.plugin.vault.abs(rel), "utf8") } catch {}
         const { at, cut, add } = edit
         if (Number.isInteger(at) && Number.isInteger(cut) && typeof add === "string" && Number(at) >= 0 && Number(cut) >= 0 && Number(at) + Number(cut) <= cur.length)
           text = cur.slice(0, Number(at)) + add + cur.slice(Number(at) + Number(cut))
       }
       if (!/\.md$/i.test(rel) || text === null) throw new HTTPError(400, "only notes' text can be written here")
       if (text.length > NOTE_MAX) throw new HTTPError(413, "a note this long can't be written here")
-      // (a PUT to a note that isn't there makes one: as a POST, it counts as a new note; a new note's dates take room too)
       const fresh = method === "POST" || !fs.existsSync(this.plugin.vault.abs(rel))
       if (fresh && method === "PUT" && this.limited(`new:${g.id}`, NEW_NOTES)) return this.json(res, 429, { error: "too many changes at once: wait a moment" })
       const has = folderSize(this.plugin.vault, f.folder), room = g.share.room ?? { notes: has.notes + ROOM.notes, bytes: has.bytes + ROOM.bytes }
       const grows = Buffer.byteLength(text) + (fresh ? 512 : -(this.plugin.vault.entries.get(rel)?.stat.size ?? 0))
       if ((fresh && has.notes >= room.notes) || (grows > 0 && has.bytes + grows > room.bytes)) throw new HTTPError(507, "this folder is full: ask whoever shared it")
-      // (the file route checks what lands, as a guest's: core/guests.ts)
       const sent: Item = { path: rel, ...(edit ? { edit } : { text }), ...pick(body, method === "PUT" ? ["base", "baseHash", "lean"] : ["unique"]) }
       try { return this.json(res, method === "POST" ? 201 : 200, theirs(await api(method, "file", sent) as Item)) } catch (e) {
-        // (a save that couldn't merge: the file as it is, so the editor shows it)
         if ((e as { status?: number }).status === 409 && method === "PUT") return this.json(res, 409, { error: "the note changed meanwhile", ...theirs(await api("GET", `file?path=${encodeURIComponent(rel)}`) as Item) })
         throw e
       }
@@ -469,12 +409,10 @@ export class Gateway {
     return `${this.boot}:${this.plugin.vault.version}`
   }
 
-  /** Whether a guest's share still holds: not revoked, made again or expired. */
   holds(g: Guest, cur: Share | undefined = this.shares()[g.id]): cur is Share {
     return !!cur && cur.token === g.share.token && !expired(cur)
   }
 
-  /** Why a guest's change to a note, typed live (Companion's rooms), can't land: as a write of theirs would be checked. */
   mayWrite(g: Guest, rel: string, before: string, after: string) {
     const cur = this.shares()[g.id]
     if (!this.holds(g, cur)) return "this folder isn't shared with you any more"
@@ -486,13 +424,11 @@ export class Gateway {
     return guestRefusal(this.plugin.vault, rel, before, after)
   }
 
-  /** The state the guest's app starts from: their folder's files and the defaults, nothing of the vault's own. */
   async state(g: Guest, f: Folder) {
     return {
       vault: { path: g.share.folder.split("/").pop(), problems: [] },
       files: f.tree(await this.plugin.host.api("GET", "files") as Parameters<Folder["tree"]>[0]),
       config: { appearance: {}, plugins: { disabled: [], enabled: [] }, hotkeys: {}, sidebars: { left: ["files:files"], right: [], collapsed: [] } },
-      // (what draws it, not where it came from or what the owner was told of it)
       vaultPlugins: (await this.plugin.host.api("GET", "plugins") as Item[]).filter((p) => VIEWS.includes(p.id) && p.on && p.loaded)
         .map((p) => ({ ...Object.fromEntries(PLUGIN_FIELDS.filter((k) => k in p).map((k) => [k, p[k]])), folder: "", problems: [], warnings: [] })),
     }
@@ -502,7 +438,6 @@ export class Gateway {
     return { guest: g.share.guest, role: g.share.role, folder: g.share.folder.split("/").pop(), expires: g.share.expires, plugins: GUEST_PLUGINS }
   }
 
-  /** A file's bytes (an image in a note), as the app's /api/raw serves them, never run as a page. */
   raw(req: IncomingMessage, res: ServerResponse, rel: string, download = false) {
     const abs = path.join(this.plugin.vault.path, rel)
     let st: fs.Stats
@@ -515,7 +450,6 @@ export class Gateway {
     fs.createReadStream(abs).on("error", () => res.destroy()).pipe(res)
   }
 
-  /** The vault changed: each guest's app hears of what changed in its folder (/api/events' `change`). */
   changed(paths: string[] | null) {
     for (const [ws, { g, kind }] of this.sockets) {
       if (ws.readyState !== ws.OPEN || kind !== "events") continue
@@ -526,18 +460,14 @@ export class Gateway {
     }
   }
 
-  /** Whether a share's guest has its folder open now (their app's live socket, here or passed on to here). */
   here(id: string) {
     for (const { g, kind } of this.sockets.values()) if (g.id === id && kind === "events") return true
     return false
   }
 
-  /** A share turned off: its guests' sockets close. */
   close(id: string) {
-    for (const [ws, { g }] of this.sockets) if (g.id === id) ws.terminate() // (at once: a close waits on the guest)
+    for (const [ws, { g }] of this.sockets) if (g.id === id) ws.terminate()
   }
-
-  // ---------- HTTP
 
   async body(req: IncomingMessage): Promise<unknown> {
     let size = 0
@@ -547,15 +477,12 @@ export class Gateway {
     try { return JSON.parse(Buffer.concat(parts).toString("utf8")) } catch { throw new HTTPError(400, "send JSON") }
   }
 
-  /** A write or a socket from this folder's own page: its Origin, when it sends one, is this address. */
   sameSite(req: IncomingMessage) {
     const o = req.headers.origin
     if (o === undefined) return req.headers["sec-fetch-site"] === undefined || req.headers["sec-fetch-site"] === "same-origin"
     try { return new URL(String(o)).host.toLowerCase() === String(req.headers.host ?? "").toLowerCase() } catch { return false }
   }
 
-  /** Asked at one of this machine's guests' addresses, the ones links name (Vaultite Cloud's share-<handle>, an own
-   *  tunnel's): shares answer only there (or as there, passed on from the machine on the internet). */
   ours(req: IncomingMessage) {
     if (this.passed.has(req)) return true
     const host = String(req.headers.host ?? "").toLowerCase()
@@ -566,12 +493,10 @@ export class Gateway {
     return req.headers["x-forwarded-proto"] === "https" || (!this.passed.has(req) && "cf-connecting-ip" in req.headers)
   }
 
-  /** The guest's address (rate limits): the tunnel's header, the passing machine's word, else the socket's. */
   ipOf(req: IncomingMessage) {
     return this.passed.get(req) || String(req.headers["cf-connecting-ip"] ?? req.socket?.remoteAddress ?? "")
   }
 
-  /** Over `n` this minute for `key`. */
   limited(key: string, n: number) {
     const t = Date.now()
     for (const [k, h] of this.hits) if (h.until < t) this.hits.delete(k)
@@ -599,11 +524,10 @@ export class Gateway {
   }
 }
 
-/** The headers of a passed on answer kept (not its length or encoding: fetch undid that). */
+// not its length or encoding: fetch undid that
 const PASSED = ["content-type", "cache-control", "content-security-policy", "content-disposition", "location", "x-content-type-options", "referrer-policy",
   "x-frame-options", "x-dns-prefetch-control", "etag", "vary"]
 
-/** An answer kept whole (share/relay's), as the gateway writes one to a response. */
 class Kept extends Writable {
   status = 200
   headers: Record<string, string> = {}
@@ -621,27 +545,22 @@ class Kept extends Writable {
   override _write(c: Buffer | string, _enc: BufferEncoding, done: () => void) { this.chunks.push(Buffer.from(c)); done() }
 }
 
-/** How many notes a folder holds, and their bytes. */
 export function folderSize(vault: { entries: Map<string, { stat: { size: number } }> }, folder: string) {
   let notes = 0, bytes = 0
   for (const [rel, e] of vault.entries) if (rel.startsWith(`${folder}/`)) { notes++; bytes += e.stat.size }
   return { notes, bytes }
 }
 
-/** Who a guest's writes are by (Activity, Provenance): a person, not the user nor an agent. */
 export const guestWho = (s: Share): Who => ({ client: "guest", agent: s.guest, label: `${s.guest} (guest)`, source: "guest" })
 
-/** A search of words, phrases and their operators: no regular expression (it could hold the server), and no path: or
- *  folder: (they'd say where the folder is). */
 function plainQuery(q: string) {
   let node
-  try { node = parseSearch(q) } catch { return true } // (the search says what's wrong)
+  try { node = parseSearch(q) } catch { return true }
   const ok = (n: Item): boolean => n.t === "folder" ? false : n.t === "term" ? n.field !== "path" && !String(n.m?.label ?? "").startsWith("/")
     : n.t === "prop" ? !n.value || ok(n.value) : (n.kids ?? (n.kid ? [n.kid] : [])).every(ok)
   return ok(node as Item)
 }
 
-/** An answer with the folder's paths as the guest's: every text that starts with it, and the folder itself (their root). */
 function theirPaths(v: unknown, folder: string): unknown {
   if (typeof v === "string") return v === folder ? "" : v.startsWith(`${folder}/`) ? v.slice(folder.length + 1) : v
   if (Array.isArray(v)) return v.map((x) => theirPaths(x, folder))

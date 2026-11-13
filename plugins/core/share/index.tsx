@@ -1,20 +1,15 @@
-// Sharing's app side: Share… opens a folder's sheet, as shared documents have it: a link for one person, shown once, and
-// who has access, to change or remove. The Shared page (view:shared) has every share at once, with the guests' address.
 import { lazy, Suspense, useEffect } from "react"
 import { Share2 } from "lucide-react"
 import { activePane, currentFile, definePlugin, detailPath, fileRowsChanged, getStore, openDetail, openView, share, useStoreWith, type FileRow } from "@vaultite"
 import type { SharedFolders } from "./types.ts"
 
-// (the sheet and the page load when one opens: the app starts without them)
 const ShareSheet = lazy(() => import("./Sharing").then((m) => ({ default: m.ShareSheet })))
 const SharedView = lazy(() => import("./Sharing").then((m) => ({ default: m.SharedView })))
 const name = (folder: string) => folder.split("/").pop() ?? folder
 
-/** A folder that can be shared from the app: not hidden, and not in a guest's own app. */
 const shareable = (path: string) => !share && !!path && !path.split("/").some((x) => x.startsWith("."))
 const openShare = (folder: string) => openDetail(detailPath("share", folder))
 
-/** The folder in sight: a folder's tab, else the open file's. */
 function folderHere() {
   const to = activePane()?.to ?? ""
   if (to.startsWith("view:folder/")) return to.slice("view:folder/".length)
@@ -22,7 +17,6 @@ function folderHere() {
   return f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : ""
 }
 
-// The tree marks a shared folder after its name, as Finder and Drive do; its tooltip says with whom.
 const USERS = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
 let marked: { from: SharedFolders | undefined; rows: Record<string, FileRow> } = { from: undefined, rows: {} }
 function sharedRows(): Record<string, FileRow> {
@@ -42,7 +36,6 @@ function sharedRows(): Record<string, FileRow> {
   marked = { from, rows }
   return rows
 }
-/** The tree drawn again when what's shared changes. */
 function Marks() {
   const from = useStoreWith((s) => s?.sharedFolders)
   useEffect(() => { fileRowsChanged() }, [from])
@@ -58,7 +51,6 @@ export default definePlugin({
     { id: "share:shared", name: "Open shared folders", words: "sharing guests links people access", icon: Share2, when: () => !share, run: () => openView("shared", { newTab: true }) },
   ],
   fileRows: () => (share ? {} : sharedRows()),
-  // (a guest's first tab: the folder shared with them, as a shared folder's link opens)
   home: () => (share ? "view:folder" : null),
   background: () => (share ? null : <Marks />),
 })

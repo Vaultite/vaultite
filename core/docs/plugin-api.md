@@ -280,7 +280,7 @@ by its path.
 - `share:upgrade` (share)
 - `share:gateway` (share)
 - `share:folders` (share): The folders shared now (not expired): the vault's other machines type in their notes here, with the guests.
-- `share:hosts` (share): The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked, as a note opens: what was asked as this server started knows nothing of a folder shared since).
+- `share:hosts` (share): The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `sync:conflicts` (sync): The served vault's clashes sync kept, for the note's banner: by path ({id, at, from}), or one file's with their text and base.
 - `sync:settle` (sync): Settle one (the user merged it in or kept the note as it is): a version on the file that says so, on every device.
