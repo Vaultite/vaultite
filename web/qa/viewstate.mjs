@@ -1,5 +1,5 @@
 // Where you left a place (core/viewstate.ts): scroll and Properties' folds coming back, and the same line on top across
-// views, on a computer and a phone. WRITES a long note: throwaway server only.
+// views (components/viewSwitch.ts, components/useViewSwitch.ts), on a computer and a phone. WRITES a long note: throwaway.
 //   node web/qa/viewstate.mjs <base url> <vault path>
 import { readFileSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -84,6 +84,22 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
     const now = (await until(async () => { const h = await heading(n); return h !== null && Math.abs(h - was) <= 3 ? h : null }, 4000)) ?? await heading(n)
     check(`switched to ${name}: Section ${n} stays where it was (${was} -> ${now})`, now !== null && Math.abs(now - was) <= 3)
   }
+  const viewNow = () => page.evaluate(() => document.querySelector("[role=status] button[aria-label^='Current view']")?.getAttribute("aria-label") ?? "")
+  const stays = async (want) => (await until(async () => { const h = await heading(n); return /reading/i.test(await viewNow()) === (want === "reading") && h !== null && Math.abs(h - was) <= 3 ? h : null }, 5000)) ?? await heading(n)
+  {
+    const other = await ctx.newPage()
+    await other.goto(`${B}${hash(LONG)}`)
+    await other.waitForSelector("#main-scroll .cm-content")
+    await other.keyboard.press("ControlOrMeta+e")
+    const now = await stays("editing")
+    check(`another window switches the view: this one follows, Section ${n} where it was (${was} -> ${now}, ${await viewNow()})`, now !== null && Math.abs(now - was) <= 3 && !/reading/i.test(await viewNow()))
+    await other.close()
+  }
+  await page.keyboard.press("ControlOrMeta+e")
+  check(`back to reading for the properties (${await stays("reading")})`, /reading/i.test(await viewNow()))
+  await page.evaluate((p) => dispatchEvent(new CustomEvent("vau:properties", { detail: p })), LONG)
+  const shownProps = await stays("editing")
+  check(`a block's "This file's properties" from reading: editing, Section ${n} where it was (${was} -> ${shownProps}, ${await viewNow()})`, shownProps !== null && Math.abs(shownProps - was) <= 3 && !/reading/i.test(await viewNow()))
   await palette("Switch to live preview")
   // A person file opens with its ```block-person drawn: the cursor goes into the text, never into a block at the top
   // (it would show its Markdown until a click elsewhere), and ⌘E back to editing does the same.
