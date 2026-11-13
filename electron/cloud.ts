@@ -4,6 +4,7 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { Session, WebContents } from "electron"
+import { z } from "zod"
 import { strings } from "../core/values.ts"
 import type { AppWindow } from "./appwindow.ts"
 
@@ -25,13 +26,36 @@ export type CloudState = { signedIn: boolean; accounts: CloudAccount[]; sessions
 /** What the app asks for: the profiles to look in, whether they may be read (the user's yes), accounts not to read. */
 type CloudWant = { profiles: string[]; read: boolean; hidden: string[] }
 
+export type CloudMessage = ({ type: "cloud" } & CloudState)
+  | { type: "session"; id: number; profile: string; site: string; url: string; kind: "done" | "waiting"; title: string; body: string }
+
+const Want = z.object({ profiles: z.unknown().optional(), read: z.unknown().optional(), hidden: z.unknown().optional() }).catch({})
+const Answer = z.object({ status: z.number(), json: z.unknown().optional() })
+const Org = z.object({ uuid: z.string(), name: z.unknown().optional(), capabilities: z.array(z.unknown()) })
+const Listed = z.object({ data: z.array(z.unknown()) })
+const Summary = z.object({ status_category: z.unknown().optional(), needs_action: z.unknown().optional(), status_detail: z.unknown().optional(), recent_action: z.unknown().optional() })
+const NO_GIT = { repo: "", branches: [] }
+const Outcome = z.object({ git_info: z.object({ repo: z.string().catch(""), branches: z.array(z.unknown()).catch([]) }).catch(NO_GIT) }).catch({ git_info: NO_GIT })
+const Source = z.object({ url: z.unknown().optional() }).catch({ url: undefined })
+const Context = z.object({ outcomes: z.array(Outcome).catch([]), sources: z.array(Source).catch([]) }).partial().catch({})
+export const RAW_SESSION = z.object({
+  id: z.string(), title: z.unknown().optional(), session_status: z.unknown().optional(), updated_at: z.unknown().optional(), created_at: z.unknown().optional(), unread: z.unknown().optional(), origin: z.unknown().optional(), environment_kind: z.unknown().optional(),
+  post_turn_summary: Summary.optional().catch(undefined),
+  external_metadata: z.object({ post_turn_summary: Summary.optional().catch(undefined) }).optional().catch(undefined),
+  session_context: Context.optional(),
+})
+type RawSession = z.infer<typeof RAW_SESSION>
+const ForAccount = z.object({ account: z.string() })
+const PrNode = z.object({ number: z.number(), url: z.string().regex(/^https:\/\//), state: z.unknown().optional(), isDraft: z.unknown().optional() })
+const Prs = z.object({ data: z.record(z.string(), z.object({ pullRequests: z.object({ nodes: z.array(z.unknown()) }) }).nullable().catch(null)) })
+
 /** What it needs of the browser (web.ts): a profile's claude.ai page if one is open, its session, whether it was ever
  *  used, and telling a window. */
 export type CloudHost = {
   page: (profile: string, site: string) => WebContents | undefined
   session: (profile: string) => Promise<Session>
   used: (profile: string) => boolean
-  tell: (win: AppWindow, msg: Record<string, unknown>) => void
+  tell: (win: AppWindow, msg: CloudMessage) => void
   profileOf: (x: unknown) => string
 }
 
@@ -60,7 +84,7 @@ export function cloudHandlers(host: CloudHost) {
   const site = siteOfHost(hostOf(BASE))
   let want: CloudWant = { profiles: [], read: false, hidden: [] }
   const wantOf = (x: unknown): CloudWant => {
-    const w = (x && typeof x === "object" ? x : {}) as Record<string, unknown>
+    const w = Want.parse(x)
     return { profiles: [...new Set(strings(w.profiles).filter((p) => p === "" || host.profileOf(p) === p))].slice(0, 50), read: w.read === true, hidden: strings(w.hidden) }
   }
   /** The windows that asked (`web:cloud`): they're told the state as it changes, and its news. */
@@ -83,11 +107,11 @@ export function cloudHandlers(host: CloudHost) {
 
   /** `url` asked with a profile's logins: from one of its claude.ai pages when one is open (the site's own origin: what
    *  its pages ask is never turned away), else with the session's cookies from here, like accountOf. */
-  async function ask(profile: string, url: string, headers: Record<string, string>, method = "GET", body?: unknown): Promise<{ status: number; json: unknown }> {
-    const init = { method, credentials: "include", headers: body === undefined ? headers : { ...headers, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }
+  async function ask(profile: string, url: string, headers: Record<string, string>, method = "GET", body?: unknown): Promise<z.infer<typeof Answer>> {
+    const init: RequestInit = { method, credentials: "include", headers: body === undefined ? headers : { ...headers, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }
     const page = host.page(profile, site)
-    if (page) return await page.executeJavaScriptInIsolatedWorld(1003, [{ code: `fetch(${JSON.stringify(url)}, ${JSON.stringify(init)}).then(async (r) => ({ status: r.status, json: r.ok ? await r.json().catch(() => null) : null }))` }])
-    const r = await (await host.session(profile)).fetch(url, init as RequestInit)
+    if (page) return Answer.parse(await page.executeJavaScriptInIsolatedWorld(1003, [{ code: `fetch(${JSON.stringify(url)}, ${JSON.stringify(init)}).then(async (r) => ({ status: r.status, json: r.ok ? await r.json().catch(() => null) : null }))` }]))
+    const r = await (await host.session(profile)).fetch(url, init)
     return { status: r.status, json: r.ok ? await r.json().catch(() => null) : null }
   }
 
@@ -110,8 +134,10 @@ export function cloudHandlers(host: CloudHost) {
     try {
       const r = await ask(profile, CLOUD.orgs, { accept: "application/json" })
       if (!Array.isArray(r.json)) throw new Error(String(r.status))
-      list = (r.json as Record<string, unknown>[]).flatMap((o) => typeof o?.uuid === "string" && Array.isArray(o.capabilities) && o.capabilities.includes("chat")
-        ? [{ id: o.uuid, name: typeof o.name === "string" ? o.name : "" }] : [])
+      list = r.json.flatMap((x) => {
+        const o = Org.safeParse(x)
+        return o.success && o.data.capabilities.includes("chat") ? [{ id: o.data.uuid, name: typeof o.data.name === "string" ? o.data.name : "" }] : []
+      })
     } catch { wait = 60_000 }
     orgs.set(profile, { at: Date.now() + wait, orgs: list })
     return list
@@ -121,7 +147,7 @@ export function cloudHandlers(host: CloudHost) {
   async function readAccount(profile: string, account: string): Promise<CloudSession[] | null> {
     const due = next.get(account)
     if (due && Date.now() < due.at) return null
-    let r: { status: number; json: unknown }
+    let r: z.infer<typeof Answer>
     try { r = await ask(profile, CLOUD.list, CLOUD.headers(account)) } catch { r = { status: 0, json: null } }
     if (r.status === 401 || r.status === 403 || r.status === 404) {
       // (signed out since: its organizations are asked again; turned away: none here)
@@ -130,8 +156,8 @@ export function cloudHandlers(host: CloudHost) {
       lists.delete(account)
       return null
     }
-    const data = (r.json as { data?: unknown } | null)?.data
-    if (!Array.isArray(data)) {
+    const listed = Listed.safeParse(r.json)
+    if (!listed.success) {
       // (a failure: asked again later and later, up to five minutes; the list stays as it was)
       const wait = Math.min(300_000, (due?.wait ?? CLOUD.idle) * 2)
       next.set(account, { at: Date.now() + wait, wait })
@@ -139,8 +165,10 @@ export function cloudHandlers(host: CloudHost) {
     }
     none.delete(account)
     const had = new Map((lists.get(account) ?? []).map((c) => [c.id, c]))
-    const list = (data as Record<string, unknown>[]).flatMap((x): CloudSession[] => {
-      if (typeof x?.id !== "string") return []
+    const list = listed.data.data.flatMap((raw): CloudSession[] => {
+      const parsed = RAW_SESSION.safeParse(raw)
+      if (!parsed.success) return []
+      const x = parsed.data
       if (x.session_status === "archived") { archived.delete(x.id); return [] }
       if ((archived.get(x.id) ?? 0) > Date.now() - 60_000) return []
       const s = sessionOf(x, profile, account)
@@ -226,7 +254,7 @@ export function cloudHandlers(host: CloudHost) {
     const recent = [...lists.values()].flat().filter((c) => Date.now() - c.updated < 14 * 86_400_000)
     const refs = [...new Set(recent.flatMap((c) => branchOf(c) ? [branchOf(c)!] : []))].slice(0, 40)
     if (refs.length) {
-      const got = await askGitHub(gh, refs.map((k) => k.split(" ") as [string, string]))
+      const got = await askGitHub(gh, refs.map((k): [string, string] => [k.slice(0, k.indexOf(" ")), k.slice(k.indexOf(" ") + 1)]))
       if (got) for (const k of refs) prsKnown.set(k, { at: Date.now(), pr: got.get(k) ?? null })
     }
     for (const [id, list] of lists) lists.set(id, list.map((c) => {
@@ -242,7 +270,7 @@ export function cloudHandlers(host: CloudHost) {
     const sid = typeof id === "string" && /^session_\w{1,80}$/.test(id) ? id : ""
     if (!sid) throw new Error("no such session")
     const at = accountFor(sid)
-    const org = at?.[0] ?? (typeof value === "object" && value && typeof (value as { account?: unknown }).account === "string" ? (value as { account: string }).account : "")
+    const org = at?.[0] ?? ForAccount.safeParse(value).data?.account ?? ""
     const acct = accounts.find((a) => a.id === org)
     if (!acct) throw new Error("that session's account isn't read here")
     const before = JSON.stringify(state())
@@ -257,7 +285,7 @@ export function cloudHandlers(host: CloudHost) {
     if (action === "archive") { archived.set(sid, Date.now()); lists.set(org, list.filter((c) => c.id !== sid)) }
     else if (action === "unarchive") {
       archived.delete(sid)
-      const s = r.json && typeof r.json === "object" ? sessionOf(r.json as Record<string, unknown>, acct.profiles[0], org) : null
+      const raw = RAW_SESSION.safeParse(r.json), s = raw.success ? sessionOf(raw.data, acct.profiles[0], org) : null
       if (s && !list.some((c) => c.id === sid)) lists.set(org, [...list, s])
     } else lists.set(org, list.map((c) => (c.id === sid ? { ...c, title: String(value).trim().slice(0, 200) } : c)))
     // (read again soon: claude.ai's own word on it)
@@ -293,26 +321,25 @@ const REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/
 const BRANCH = /^[\w./-]{1,200}$/
 
 /** A session as claude.ai's list has it, in ours. */
-function sessionOf(x: Record<string, unknown>, profile: string, account: string): CloudSession {
+export function sessionOf(x: RawSession, profile: string, account: string): CloudSession {
   const at = Date.parse(String(x.updated_at ?? "")), made = Date.parse(String(x.created_at ?? ""))
-  const sum = (x.post_turn_summary ?? (x.external_metadata as Record<string, unknown> | undefined)?.post_turn_summary) as Record<string, unknown> | undefined
-  const cat = sum?.status_category, ctx = (x.session_context ?? {}) as Record<string, unknown>
+  const sum = x.post_turn_summary ?? x.external_metadata?.post_turn_summary
+  const cat = sum?.status_category, ctx = x.session_context ?? {}
   const repos: { repo: string; branch?: string }[] = []
-  for (const o of Array.isArray(ctx.outcomes) ? ctx.outcomes as Record<string, unknown>[] : []) {
-    const g = o?.git_info as Record<string, unknown> | undefined, repo = typeof g?.repo === "string" ? g.repo : ""
-    const branch = Array.isArray(g?.branches) && typeof g.branches[0] === "string" && BRANCH.test(g.branches[0]) ? g.branches[0] : undefined
-    if (REPO.test(repo) && !repos.some((r) => r.repo === repo)) repos.push({ repo, ...(branch ? { branch } : {}) })
+  for (const { git_info: g } of ctx.outcomes ?? []) {
+    const first = g.branches[0], branch = typeof first === "string" && BRANCH.test(first) ? first : undefined
+    if (REPO.test(g.repo) && !repos.some((r) => r.repo === g.repo)) repos.push({ repo: g.repo, ...(branch ? { branch } : {}) })
   }
-  for (const s of Array.isArray(ctx.sources) ? ctx.sources as Record<string, unknown>[] : []) {
-    const repo = /github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(String(s?.url ?? ""))?.[1] ?? ""
+  for (const s of ctx.sources ?? []) {
+    const repo = /github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(String(s.url ?? ""))?.[1] ?? ""
     if (REPO.test(repo) && !repos.some((r) => r.repo === repo)) repos.push({ repo })
   }
   const origin = x.origin === "web_claude_ai" ? "web" : x.origin === "claude_code_cli" ? "cli" : x.origin === "ios" || x.origin === "android" ? "phone" : undefined
   const summary = text(cat === "need_input" ? sum?.needs_action || sum?.status_detail : sum?.status_detail || sum?.recent_action, 280)
   return {
-    id: String(x.id), title: text(x.title) ?? "Claude Code session",
+    id: x.id, title: text(x.title) ?? "Claude Code session",
     state: x.session_status === "running" ? "running" : x.session_status === "requires_action" ? "waiting" : "idle",
-    updated: Number.isFinite(at) ? at : 0, url: CLOUD.page(String(x.id)), profile, account,
+    updated: Number.isFinite(at) ? at : 0, url: CLOUD.page(x.id), profile, account,
     ...(summary ? { summary } : {}),
     ...(cat === "completed" ? { outcome: "done" as const } : cat === "need_input" ? { outcome: "input" as const } : cat === "review_ready" ? { outcome: "review" as const } : {}),
     ...(x.unread === true ? { unread: true } : {}),
@@ -340,7 +367,7 @@ function branchOf(c: CloudSession) {
 }
 
 /** Each ref's newest pull request, in one GraphQL query; null when GitHub couldn't be asked (no login, offline). */
-function askGitHub(gh: string, refs: [string, string][]): Promise<Map<string, CloudPr> | null> {
+export function askGitHub(gh: string, refs: [string, string][]): Promise<Map<string, CloudPr> | null> {
   const vars: string[] = [], parts: string[] = [], decl: string[] = []
   refs.forEach(([repo, branch], i) => {
     const [owner, name] = repo.split("/")
@@ -351,13 +378,15 @@ function askGitHub(gh: string, refs: [string, string][]): Promise<Map<string, Cl
   const query = `query(${decl.join(", ")}) { ${parts.join(" ")} }`
   return new Promise((done) => execFile(gh, ["api", "graphql", "-f", `query=${query}`, ...vars], { timeout: 20_000, maxBuffer: 4 << 20 }, (_e, out) => {
     // (a repository it can't see answers null among the rest: the others still count)
-    let data: Record<string, { pullRequests?: { nodes?: Record<string, unknown>[] } } | null>
-    try { data = JSON.parse(out).data } catch { return done(null) }
-    if (!data || typeof data !== "object") return done(null)
+    let answer: unknown
+    try { answer = JSON.parse(out) } catch { return done(null) }
+    const prs = Prs.safeParse(answer)
+    if (!prs.success) return done(null)
     const got = new Map<string, CloudPr>()
     refs.forEach(([repo, branch], i) => {
-      const n = data[`r${i}`]?.pullRequests?.nodes?.[0]
-      if (!n || typeof n.number !== "number" || typeof n.url !== "string" || !/^https:\/\//.test(n.url)) return
+      const node = PrNode.safeParse(prs.data.data[`r${i}`]?.pullRequests.nodes[0])
+      if (!node.success) return
+      const n = node.data
       const state = n.state === "MERGED" ? "merged" : n.state === "CLOSED" ? "closed" : n.isDraft ? "draft" : "open"
       got.set(`${repo} ${branch}`, { number: n.number, url: n.url, state })
     })

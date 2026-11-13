@@ -96,7 +96,24 @@ async function hangs(check: Check) {
   check("hangs: at most a few looks are kept", Array.from({ length: 30 }, (_, i) => at(i, "", null)).reduce(H.sampled, H.hangStarted(0)).samples.length === H.MAX_SAMPLES)
 }
 
+async function cloudSessions(check: Check) {
+  const C = await import("../../../electron/cloud.ts")
+  const read = C.RAW_SESSION.safeParse
+  const of = (r: ReturnType<typeof read>) => (r.success ? C.sessionOf(r.data, "p1", "org1") : null)
+  const full = of(read({ id: "session_abc", title: "  Fix   the\nbug ", session_status: "requires_action", updated_at: "2026-11-12T10:00:00Z", unread: true, origin: "ios", environment_kind: "bridge",
+    external_metadata: { post_turn_summary: { status_category: "need_input", needs_action: "Which branch?" } },
+    session_context: { outcomes: [{ git_info: { repo: "alice/lighthouse", branches: ["feat/x"] } }, { git_info: { repo: "bad repo" } }, null, { git_info: { repo: "alice/other", branches: ["bad branch!"] } }],
+      sources: [{ url: "https://github.com/alice/web.git" }, { url: 5 }] } }))
+  check("cloud sessions: claude.ai's session read into ours, what's malformed in it left out",
+    JSON.stringify(full) === JSON.stringify({ id: "session_abc", title: "Fix the bug", state: "waiting", updated: Date.parse("2026-11-12T10:00:00Z"), url: "https://claude.ai/code/session_abc", profile: "p1", account: "org1",
+      summary: "Which branch?", outcome: "input", unread: true, repos: [{ repo: "alice/lighthouse", branch: "feat/x" }, { repo: "alice/other" }, { repo: "alice/web" }], origin: "phone", remote: true }), full)
+  const bare = of(read({ id: "session_c", title: 3, post_turn_summary: { status_category: "review_ready", recent_action: "Opened a PR" }, origin: "claude_code_cli", session_context: { outcomes: "x" } }))
+  check("cloud sessions: a session with little in it, and none without an id",
+    JSON.stringify(bare) === JSON.stringify({ id: "session_c", title: "Claude Code session", state: "idle", updated: 0, url: "https://claude.ai/code/session_c", profile: "p1", account: "org1", summary: "Opened a PR", outcome: "review", origin: "cli" }) &&
+    of(read({ title: "x" })) === null && of(read(null)) === null, bare)
+}
+
 export default async ($: VaultTest) => {
   winspawnFirst($.check)
-  for (const t of [bridge, clipboard, snapshots, accounts, hangs]) await t($.check)
+  for (const t of [bridge, clipboard, snapshots, accounts, hangs, cloudSessions]) await t($.check)
 }
