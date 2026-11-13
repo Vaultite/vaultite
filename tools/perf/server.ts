@@ -99,7 +99,8 @@ const stats = (xs: number[]) => {
 
 /** Each endpoint's times, CPU and bytes, then the first-load burst, against a running server. */
 async function measure(child: ChildProcess) {
-  const assets = fs.readFileSync(path.join(ROOT, "web", "dist", "index.html"), "utf8").match(/\.\/assets\/[^"]+/g) ?? []
+  const pageOutsideImportMap = fs.readFileSync(path.join(ROOT, "web", "dist", "index.html"), "utf8").replace(/<script type="importmap">[\s\S]*?<\/script>/, "")
+  const assets = pageOutsideImportMap.match(/\.\/assets\/[^"]+/g) ?? []
   const endpoints: Record<string, unknown> = {}
   for (const url of [...ENDPOINTS, ...assets.map((a) => a.slice(1))]) {
     await time(url) // warm-up
