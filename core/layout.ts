@@ -21,6 +21,7 @@ export type Pane = { id: string; to: string
  *  shares, adding up to 1. */
 export type Split = { id: string; dir: "row" | "col"; kids: Layout[]; sizes: number[] }
 export type Layout = Pane | Split
+type Loose = Pane | (Omit<Split, "kids"> & { kids: (Loose | null)[] })
 /** A tab: its panes in a tree of splits (one pane, mostly), the one `focus`ed, and the one filling it for now (`zoom`,
  *  tmux's). */
 export type Tab = { id: string; root: Layout; focus: string; zoom?: string
@@ -98,15 +99,15 @@ export const blankList = (): TabList => { const t = tabOf("new"); return { tabs:
 const THIN = 0.05
 
 /** A part gone (null) leaves its room to its tiled neighbour; one too thin to use comes back at an even share. */
-export function tidy(n: Layout | null): Layout | null {
+export function tidy(n: Loose | null): Layout | null {
   if (!n) return null
-  if (!isSplit(n)) return n
+  if (!("kids" in n)) return n
   const kids: Layout[] = [], sizes: number[] = []
   let left = 0
   n.kids.forEach((k, i) => {
     const t = tidy(k)
     const s = n.sizes[i] > 0 ? n.sizes[i] : 1 / n.kids.length
-    if (!t && k && isSplit(k) && !k.kids.length) return
+    if (!t && k && "kids" in k && !k.kids.length) return
     if (!t) { const j = kids.findLastIndex(tiled); if (j >= 0) sizes[j] += s; else left += s; return }
     const at = sizes.length
     if (isSplit(t) && t.dir === n.dir) t.kids.forEach((x, j) => { kids.push(x); sizes.push(s * t.sizes[j]) })
@@ -126,44 +127,46 @@ function unthinned(shares: number[]) {
   return shares.map((s) => (s < thin ? even : (s * (1 - n * even)) / rest))
 }
 export function withoutPanesIn(n: Layout, ids: Set<string>): Layout | null {
-  const cut = (x: Layout): Layout | null => {
+  const cut = (x: Layout): Loose | null => {
     if (!isSplit(x)) return ids.has(x.id) ? null : x
     const kept = x.kids.flatMap((k, i) => (!isSplit(k) && k.float && ids.has(k.id) ? [] : [i]))
-    return { ...x, kids: kept.map((i) => cut(x.kids[i]) as Layout), sizes: kept.map((i) => x.sizes[i]) }
+    return { ...x, kids: kept.map((i) => cut(x.kids[i])), sizes: kept.map((i) => x.sizes[i]) }
   }
   return tidy(cut(n))
 }
 
-const strings = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x === "string")
+const strings = (a: unknown): a is string[] => Array.isArray(a) && a.every((x) => typeof x === "string")
 const str = (s: unknown): s is string => typeof s === "string" && !!s
+const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n)
 type Obj = Record<string, unknown>
+const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null
+const savedShare = (split: Obj, i: number) => { const s = isObj(split.sizes) ? split.sizes[i] : undefined; return typeof s === "number" ? s : 1 }
 function okPane(x: Obj, top = true): Pane | null {
   if (!str(x.id) || !str(x.to)) return null
   const float = top ? okFloat(x.float) : null
-  const stack = top && Array.isArray(x.stack) ? (x.stack as Obj[]).flatMap((s) => { const p = s && typeof s === "object" ? okPane(s, false) : null; return p && p.id !== x.id ? [p] : [] }) : []
+  const stack = top && Array.isArray(x.stack) ? x.stack.flatMap((s) => { const p = isObj(s) ? okPane(s, false) : null; return p && p.id !== x.id ? [p] : [] }) : []
   const at = typeof x.stackAt === "number" && Number.isInteger(x.stackAt) ? Math.min(Math.max(0, x.stackAt), stack.length) : 0
-  return { id: x.id, to: x.to, ...(strings(x.back) ? { back: x.back as string[] } : {}), ...(strings(x.fwd) ? { fwd: x.fwd as string[] } : {}),
+  return { id: x.id, to: x.to, ...(strings(x.back) ? { back: x.back } : {}), ...(strings(x.fwd) ? { fwd: x.fwd } : {}),
     ...(str(x.from) ? { from: x.from } : {}), ...(str(x.home) ? { home: x.home } : {}),
     ...(typeof x.seen === "number" ? { seen: x.seen } : {}), ...(float ? { float } : {}), ...(stack.length ? { stack, ...(at ? { stackAt: at } : {}) } : {}) }
 }
-export function cleanLayout(n: unknown): Layout | null {
-  const x = n as Obj | null
-  if (!x || typeof x !== "object") return null
+export function cleanLayout(x: unknown): Layout | null {
+  if (!isObj(x)) return null
   if (Array.isArray(x.kids)) {
     const kids = x.kids.map(cleanLayout)
-    const sizes = kids.map((_, i) => (typeof (x.sizes as number[] | undefined)?.[i] === "number" ? (x.sizes as number[])[i] : 1))
-    return tidy({ id: str(x.id) ? x.id : newSplitId(), dir: x.dir === "col" ? "col" : "row", kids: kids as Layout[], sizes })
+    return tidy({ id: str(x.id) ? x.id : newSplitId(), dir: x.dir === "col" ? "col" : "row", kids, sizes: kids.map((_, i) => savedShare(x, i)) })
   }
   return okPane(x)
 }
 function okFloat(r: unknown): Rect | null {
-  const o = r as Partial<Rect> | null
-  if (!o || typeof o !== "object" || ![o.x, o.y, o.w, o.h].every((n) => typeof n === "number" && Number.isFinite(n))) return null
-  const w = Math.min(1, Math.max(0.05, o.w!)), h = Math.min(1, Math.max(0.05, o.h!))
-  return { x: Math.min(1 - w, Math.max(0, o.x!)), y: Math.min(1 - h, Math.max(0, o.y!)), w, h }
+  if (!isObj(r)) return null
+  const { x, y, w: rw, h: rh } = r
+  if (!finite(x) || !finite(y) || !finite(rw) || !finite(rh)) return null
+  const w = Math.min(1, Math.max(0.05, rw)), h = Math.min(1, Math.max(0.05, rh))
+  return { x: Math.min(1 - w, Math.max(0, x)), y: Math.min(1 - h, Math.max(0, y)), w, h }
 }
-const okGroup = (s: unknown): s is Group => !!s && typeof s === "object" && str((s as Group).id) && typeof (s as Group).name === "string" && isColor((s as Group).color)
-const groupOf = (s: Group): Group => ({ id: s.id, name: s.name.slice(0, 80), color: s.color, ...(s.collapsed === true ? { collapsed: true } : {}) })
+const groupsIn = (s: unknown): Group[] => (isObj(s) && str(s.id) && typeof s.name === "string" && isColor(s.color)
+  ? [{ id: s.id, name: s.name.slice(0, 80), color: s.color, ...(s.collapsed === true ? { collapsed: true } : {}) }] : [])
 function okTab(x: Obj): Tab | null {
   const root = cleanLayout(x.root)
   if (!root || !str(x.id)) return null
@@ -182,46 +185,46 @@ function firstPlaces(t: Tab, taken: Set<string>): Tab | null {
   return left && (left === t.root ? t : settledTab({ ...t, root: left }))
 }
 function okList(x: Obj, taken = new Set<string>()): TabList | null {
-  const tabs = (Array.isArray(x.tabs) ? x.tabs as Obj[] : []).flatMap((t) => {
-    const ok = t && typeof t === "object" ? okTab(t) : null
+  const tabs = (Array.isArray(x.tabs) ? x.tabs : []).flatMap((t) => {
+    const ok = isObj(t) ? okTab(t) : null
     const own = ok && !taken.has(ok.id) ? firstPlaces(ok, taken) : null
     if (!own) return []
     taken.add(own.id); placesIn(own).forEach((p) => taken.add(p.id))
     return [own]
   })
   if (!tabs.length) return null
-  const groups = (Array.isArray(x.groups) ? x.groups : []).filter(okGroup).map(groupOf)
-  return fixGroups(spilled({ tabs, ...(groups.length ? { groups } : {}), active: tabs.some((t) => t.id === x.active) ? x.active as string : tabs[0].id }))
+  const groups = (Array.isArray(x.groups) ? x.groups : []).flatMap(groupsIn)
+  return fixGroups(spilled({ tabs, ...(groups.length ? { groups } : {}), active: (tabs.find((t) => t.id === x.active) ?? tabs[0]).id }))
 }
 /** A saved workspace, checked; one saved before tabs held panes (`{root, focus, zoom}`) is migrated. Null: no tab. */
 export function clean(w: unknown): Workspace | null {
-  const x = w as Obj | null
-  if (!x || typeof x !== "object") return null
-  if (!Array.isArray(x.tabs) && x.root) return migrate(x)
+  if (!isObj(w)) return null
+  if (!Array.isArray(w.tabs) && w.root) return migrate(w)
   const taken = new Set<string>()
-  const main = okList(x, taken)
+  const main = okList(w, taken)
   if (!main) return null
-  const windows = (Array.isArray(x.windows) ? x.windows as Obj[] : []).flatMap((o) => {
-    const l = o && typeof o === "object" && str(o.id) ? okList(o, taken) : null
-    return l ? [{ id: o.id as string, ...l, ...(o.barsHidden === true ? { barsHidden: true } : {}) }] : []
+  const windows = (Array.isArray(w.windows) ? w.windows : []).flatMap((o) => {
+    if (!isObj(o) || !str(o.id)) return []
+    const l = okList(o, taken)
+    return l ? [{ id: o.id, ...l, ...(o.barsHidden === true ? { barsHidden: true } : {}) }] : []
   })
   return windows.length ? { ...main, windows } : main
 }
 
 /** Each tab's id is "t" + its first pane's, so every device and the server migrate a layout alike. */
 export function migrate(old: Obj): Workspace | null {
-  type OldTab = Obj & { id: string; to: string; set?: string; pinned?: boolean; name?: string }
+  type OldTab = Obj & { id: string; to: string }
+  const isOldTab = (t: unknown): t is OldTab => isObj(t) && str(t.id) && str(t.to)
   type OldGroup = { id: string; tabs: OldTab[]; active: string; float?: unknown }
   const groups: Group[] = [], seen = new Set<string>(), gs: OldGroup[] = []
-  const walk = (n: unknown): Layout | null => {
-    const x = n as Obj | null
-    if (!x || typeof x !== "object") return null
-    if (Array.isArray(x.kids)) return { id: str(x.id) ? x.id : newSplitId(), dir: x.dir === "col" ? "col" : "row", kids: x.kids.map(walk) as Layout[],
-      sizes: x.kids.map((_, i) => (typeof (x.sizes as number[] | undefined)?.[i] === "number" ? (x.sizes as number[])[i] : 1)) }
-    const tabs = (Array.isArray(x.tabs) ? x.tabs as OldTab[] : []).filter((t) => t && str(t.id) && str(t.to) && !seen.has(t.id) && !!seen.add(t.id))
+  const walk = (x: unknown): Loose | null => {
+    if (!isObj(x)) return null
+    if (Array.isArray(x.kids)) return { id: str(x.id) ? x.id : newSplitId(), dir: x.dir === "col" ? "col" : "row", kids: x.kids.map(walk),
+      sizes: x.kids.map((_, i) => savedShare(x, i)) }
+    const tabs = (Array.isArray(x.tabs) ? x.tabs : []).filter(isOldTab).filter((t) => !seen.has(t.id) && !!seen.add(t.id))
     if (!tabs.length) return null
-    for (const s of Array.isArray(x.sets) ? x.sets : []) if (okGroup(s) && !groups.some((g) => g.id === s.id)) groups.push(groupOf(s))
-    const g: OldGroup = { id: String(x.id), tabs, active: tabs.some((t) => t.id === x.active) ? x.active as string : tabs[0].id, float: x.float }
+    for (const s of Array.isArray(x.sets) ? x.sets : []) for (const g of groupsIn(s)) if (!groups.some((h) => h.id === g.id)) groups.push(g)
+    const g: OldGroup = { id: String(x.id), tabs, active: (tabs.find((t) => t.id === x.active) ?? tabs[0]).id, float: x.float }
     gs.push(g)
     return okPane({ ...shown(g), float: g.float })
   }
