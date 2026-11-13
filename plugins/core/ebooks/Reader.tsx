@@ -3,16 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, List } from "lucide-react"
 import { Bar, cn, Loading, menuBelow, openWebLink, errorText } from "@vaultite"
 
-type TocItem = { label: string; href: string; subitems?: TocItem[] }
-type Book = { metadata?: { title?: unknown; author?: unknown }; toc?: TocItem[]; dir?: string
-  sections: { load: () => unknown; unload?: () => void; createDocument?: () => Promise<Document> }[]
-  getCover?: () => Promise<Blob | null> }
-type View = HTMLElement & { book: Book; open: (b: Book) => Promise<void>; close: () => void
-  init: (o: { lastLocation?: string; showTextStart?: boolean }) => Promise<void>
-  goTo: (href: string) => Promise<void>; prev: () => Promise<void>; next: () => Promise<void>
-  goLeft: () => Promise<void>; goRight: () => Promise<void>
-  renderer: HTMLElement & { setStyles?: (css: string) => void } }
-type Relocate = { fraction?: number; cfi?: string; tocItem?: { label?: string } }
+import type { Book, TocItem, View } from "foliate-js/view.js"
 
 const PLACE = (path: string) => `vau:ebooks:place:${path}`
 
@@ -21,9 +12,8 @@ function named(x: unknown): string {
   if (typeof x === "string") return x
   if (Array.isArray(x)) return x.map(named).filter(Boolean).join(", ")
   if (typeof x === "object") {
-    const o = x as { name?: unknown }
-    if (o.name) return named(o.name)
-    return Object.values(o).map(named).find(Boolean) ?? ""
+    if ("name" in x && x.name) return named(x.name)
+    return Object.values(x).map(named).find(Boolean) ?? ""
   }
   return String(x)
 }
@@ -37,13 +27,16 @@ async function bookFile(url: string, path: string) {
 
 const CSP = "default-src 'none'; img-src blob: data:; media-src blob: data:; style-src blob: data: 'unsafe-inline'; font-src blob: data:"
 
+const PARSED: DOMParserSupportedType[] = ["application/xhtml+xml", "application/xml", "image/svg+xml", "text/html", "text/xml"]
 async function safe(src: string): Promise<string> {
   const r = await fetch(src)
   const type = (r.headers.get("content-type") || "application/xhtml+xml").split(";")[0]
   const text = await r.text()
   if (!/html|xml|svg/.test(type)) return src
   const xml = type !== "text/html"
-  let doc = new DOMParser().parseFromString(text, type as DOMParserSupportedType)
+  const as = PARSED.find((t) => t === type)
+  if (!as) throw new TypeError(`DOMParser can't parse ${type}`)
+  let doc = new DOMParser().parseFromString(text, as)
   if (xml && doc.querySelector("parsererror")) doc = new DOMParser().parseFromString(text, "text/html")
   for (const el of doc.querySelectorAll("script, iframe, frame, frameset, object, embed, applet, base, meta[http-equiv]")) el.remove()
   for (const el of doc.querySelectorAll("*")) {
@@ -119,30 +112,31 @@ function Pages({ url, path }: { url: string; path: string }) {
     setState("loading")
     ;(async () => {
       const [{ makeBook }, file] = await Promise.all([import("foliate-js/view.js"), bookFile(url, path)])
-      const book = await makeBook(file) as Book
+      const book = await makeBook(file)
       if (!on) return
       guard(book)
-      const v = document.createElement("foliate-view") as View
+      const v = document.createElement("foliate-view")
       v.style.display = "block"
       v.style.height = "100%"
       el.replaceChildren(v)
       view.current = v
       v.addEventListener("relocate", (e) => {
-        const d = (e as CustomEvent<Relocate>).detail
+        const d = e.detail
         setWhere({ fraction: d.fraction ?? 0, label: d.tocItem?.label?.trim() ?? "" })
         if (d.cfi) try { localStorage.setItem(PLACE(path), d.cfi) } catch { /* localStorage full */ }
       })
       v.addEventListener("external-link", (e) => {
         e.preventDefault()
-        const href = String((e as CustomEvent<{ href: string }>).detail.href ?? "")
+        const href = String(e.detail.href ?? "")
         if (/^https?:/i.test(href)) openWebLink(href)
       })
       v.addEventListener("load", (e) => {
-        const doc = (e as CustomEvent<{ doc: Document }>).detail.doc
+        const doc = e.detail.doc
         doc.addEventListener("keydown", keys)
         if (matchMedia("(pointer: coarse)").matches) doc.addEventListener("click", (ev) => {
-          if ((ev.target as Element | null)?.closest?.("a") || doc.getSelection()?.toString()) return
-          const frame = (doc.defaultView?.frameElement as HTMLElement | null)?.getBoundingClientRect(), r = box.current?.getBoundingClientRect()
+          const win = doc.defaultView
+          if (win && ev.target instanceof win.Element && ev.target.closest("a") || doc.getSelection()?.toString()) return
+          const frame = win?.frameElement?.getBoundingClientRect(), r = box.current?.getBoundingClientRect()
           if (!frame || !r?.width) return
           const at = (frame.left + ev.clientX - r.left) / r.width
           if (at < 1 / 3) void view.current?.goLeft(); else if (at > 2 / 3) void view.current?.goRight()
@@ -198,7 +192,7 @@ function Card({ url, path }: { url: string; path: string }) {
     let on = true, cover: string | null = null
     ;(async () => {
       const [{ makeBook }, file] = await Promise.all([import("foliate-js/view.js"), bookFile(url, path)])
-      const book = await makeBook(file) as Book
+      const book = await makeBook(file)
       const blob = await book.getCover?.().catch(() => null)
       cover = blob ? URL.createObjectURL(blob) : null
       if (on) setInfo({ title: named(book.metadata?.title) || path.split("/").pop()!.replace(/\.[^.]+$/, ""), author: named(book.metadata?.author), cover })
