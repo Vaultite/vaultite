@@ -6,7 +6,7 @@ export default async ($: VaultTest) => {
   const { VAULT, api, app, check, read, sleep, tmp, vault, write } = $
   // Jobs on a timer (core/schedule.ts): when they're due, a manifest's `schedule` (a command, an op) and plugin.every.
   {
-    const { nextRun, Scheduler, whenProblems } = await import("../../../core/schedule.ts")
+    const { nextRun, Scheduler, timed, whenProblems } = await import("../../../core/schedule.ts")
     const { hookProblems } = await import("../../../core/hooks.ts")
     const at = (s: string) => new Date(s).getTime() // (local time)
     check("schedule: an interval is due at once the first time, then a period after its last run",
@@ -17,6 +17,9 @@ export default async ($: VaultTest) => {
       nextRun({ every: "1w", at: "07:00" }, { seen: 0, for: at("2026-03-02T07:00") }) === at("2026-03-09T07:00"))
     check("schedule: timings are checked", whenProblems({ every: "soon" }).length === 1 && whenProblems({ every: "2h", at: "07:00" })[0]?.includes("whole days") &&
       whenProblems({ every: "1d", at: "7am" }).length === 1 && !whenProblems({ every: "1d", at: "07:00", machine: "home" }).length)
+    const job = { name: "brief", every: "1d", at: "{morning}" }, tm = timed(job, () => "06:30"), bad = timed(job, () => "7am")
+    check("schedule: an `at` naming a setting runs at the time it holds, and waits while it holds none", !whenProblems(job).length &&
+      "job" in tm && tm.job.at === "06:30" && "why" in bad && bad.why.includes("morning") && "job" in timed({ ...job, at: "05:00" }, () => undefined), [tm, bad])
 
     // A scheduler of its own: due jobs run once at a time, a missed `at` slot runs once (not once per missed day).
     const file = path.join(tmp, "sched.json"), ran: string[] = []
@@ -58,7 +61,9 @@ export default async ($: VaultTest) => {
     m.schedule = [{ name: "tick", every: "1h", command: ["node", "-e", "require('fs').writeFileSync(process.env.VAULTITE_PLUGIN_STATE + '/tick.txt', process.env.VAULTITE_SCHEDULE)"] },
       { every: "1d", at: "07:00", op: "note.create", params: { title: "Morning" } },
       { name: "now", every: "1m", op: "note.create", params: { title: "Scheduled note", body: "From a schedule." } },
-      { name: "typo", every: "1w", at: "21:00", op: "note.create", params: { titel: "Weekly" } }]
+      { name: "typo", every: "1w", at: "21:00", op: "note.create", params: { titel: "Weekly" } },
+      { name: "chosen", every: "1d", at: "{morning}", op: "note.create", params: { title: "Chosen" } }]
+    m.settings = { ...m.settings, morning: { type: "string", default: "06:00", label: "Morning", description: "when the morning note is made" } }
     m.writes = [{ folder: "Notes", why: "notes on a schedule" }]
     write(`${WC}/manifest.json`, JSON.stringify(m, null, 2))
     write(".vaultite/plugins/guard/manifest.json", JSON.stringify({ id: "guard", name: "Guard", description: "A test's middleware.", apiVersion: 1 }))
@@ -108,13 +113,23 @@ plugin.every("gone", null)
     const ids = (body as Any[]).map((r) => r.id)
     check("schedule: schedule.list has every job, with when it last ran and next runs", st === 200 && ["wordcount/tick", "wordcount/note.create", "wordcount/now", "guard/beat"].every((i) => ids.includes(i)) && !ids.includes("guard/gone") &&
       (body as Any[]).find((r) => r.id === "wordcount/tick").ran !== null, body)
+    const chosen = () => app.scheduler.list().then((rows) => rows.find((r) => r.id === "wordcount/chosen")!)
+    const byDefault = await chosen()
+    vault.setConfig("plugins/wordcount/data", { ...vault.config("plugins/wordcount/data"), morning: "08:15" })
+    const set = await chosen()
+    vault.setConfig("plugins/wordcount/data", { ...vault.config("plugins/wordcount/data"), morning: "soon" })
+    const wrong = await chosen()
+    check("schedule: a job's time from its plugin's settings: the default, the user's, none while it isn't HH:MM", byDefault.at === "06:00" &&
+      set.at === "08:15" && new Date(set.next!).getHours() === 8 && new Date(set.next!).getMinutes() === 15 &&
+      wrong.paused?.includes("morning") === true && wrong.next === null, [byDefault, set, wrong])
+    vault.setConfig("plugins/wordcount/data", { ...vault.config("plugins/wordcount/data"), morning: null })
     ;[st, body] = await api("POST", "ops/schedule.run", { id: "wordcount/note.create" })
     check("schedule: schedule.run runs one now", st === 200 && body === null && fs.existsSync(path.join(VAULT, "Notes/Morning.md")), [st, body])
     const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "100.64.0.9" } } as Any
     check("schedule: only this machine's owner may run a job", await app.runOp("schedule.run", { id: "guard/beat" }, { http: stranger }).then(() => false, (e) => e.status === 403))
-    const probs = hookProblems({ id: "wordcount", schedule: [{ every: "1x", command: ["node"] }, { every: "1h" }, { every: "1h", op: "Bad", extra: 1 }, { every: "1h", op: "a.b" }, { every: "2h", op: "a.b" }] }, path.join(VAULT, WC))
+    const probs = hookProblems({ id: "wordcount", schedule: [{ every: "1x", command: ["node"] }, { every: "1h" }, { every: "1h", op: "Bad", extra: 1 }, { every: "1h", op: "a.b" }, { every: "2h", op: "a.b" }, { name: "x", every: "1d", at: "{nowhere}", op: "a.b" }] }, path.join(VAULT, WC))
     const has = (x: string) => probs.some((p) => p.includes(x))
-    check("schedule: a manifest's schedule is checked", has("schedule[0]: every is") && has("schedule[1]: give it a command or an op") && has("op is an operation's id") && has("'extra' isn't a key") && has("'a.b' is there twice"), probs)
+    check("schedule: a manifest's schedule is checked", has("schedule[0]: every is") && has("schedule[1]: give it a command or an op") && has("op is an operation's id") && has("'extra' isn't a key") && has("'a.b' is there twice") && has("names the setting nowhere"), probs)
 
     // Middleware over ops (plugin.around): rewrite, refuse, answer; one that throws by mistake is skipped.
     ;[st, body] = await api("POST", "ops/note.create", { title: "Lighthose trip", body: "Plans." })

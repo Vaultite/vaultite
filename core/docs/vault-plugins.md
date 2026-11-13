@@ -107,7 +107,8 @@ its scripts is a plugin). Each `command` is an argv array run in the plugin's fo
 - `"startup": [{"command": [...]}]`: run once when the server has opened the vault with the plugin on.
 - `"schedule": [{"every": "1h", "command": [...]}, {"every": "1d", "at": "07:00", "op": "terminal.run", "params":
   {"path": "Notes/Morning brief.md"}}]`: a command or any op on a timer (`every` 15m, 2h, 1d, 1w; `at` this machine's time,
-  with whole days; `name` to tell them apart). One machine runs it: Machines' first, or the one its `machine` names. A
+  with whole days, or `"{morning}"` for a string setting of the plugin holding one, so the user picks it in its settings;
+  `name` to tell them apart). One machine runs it: Machines' first, or the one its `machine` names. A
   run missed while the server was down runs once when it's back. `vau schedule list`, `vau schedule run <id>`.
 Their environment: `VAULTITE_URL` (this server), `VAULTITE_VAULT`, `VAULTITE_BIN` (the `vau` CLI, its folder first on
 `PATH`), `VAULTITE_ACTOR` (a hook's: `vau` says it acts on its own), `VAULTITE_PLUGIN_ID`, `VAULTITE_PLUGIN_DIR`, `VAULTITE_PLUGIN_STATE` (a folder of its own on this machine, for

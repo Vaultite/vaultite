@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A plugin's scheduled job can run at a time the user picks in its settings**: a manifest's `at` of `"{morning}"`
+  follows that setting, so a brief's time changes in its settings sheet; a value that isn't HH:MM holds the job, saying why.
 - **The sidebar's search field sits evenly under its header**: first in the sidebar, it's as far under the header's
   icons as it is in from the sidebar's edge, no longer low.
 - **A browser page under its toolbar has square top corners**: with panes as cards, its top corners no longer curve a

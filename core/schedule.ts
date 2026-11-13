@@ -11,8 +11,8 @@ const log = logger("schedule")
 
 type Item = Record<string, any>
 
-/** When a job runs: `every` "15m", "2h", "1d", "1w"; `at` "07:00" (this machine's time) with whole days; `machine` the
- *  Machines id that runs it. */
+/** When a job runs: `every` "15m", "2h", "1d", "1w"; `at` "07:00" (local) with whole days, or a setting holding one
+ *  ("{morning}"); `machine` the Machines id that runs it. */
 export type When = { every: string; at?: string; machine?: string }
 export type Job = When & { name: string; run: () => unknown }
 /** A job as the scheduler sees it: its plugin's id with it. */
@@ -24,6 +24,18 @@ type Last = { seen: number; ran?: number; for?: number; ms?: number; error?: str
 
 const UNIT: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 7 * 86_400_000 }
 const DAY = UNIT.d, TICK = 30_000, SLACK = 3 * 3_600_000 // (a day's slot may move an hour with summer time)
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
+
+export const atSetting = (at: string | undefined) => (at === undefined ? null : /^\{(\w+)\}$/.exec(at)?.[1] ?? null)
+
+export function timed<J extends When>(job: J, value: (key: string) => string | undefined): { job: J } | { why: string } {
+  const key = atSetting(job.at)
+  if (!key) return { job }
+  const v = value(key)
+  return v !== undefined && TIME.test(v.trim()) ? { job: { ...job, at: v.trim() } }
+    : { why: `its time, the setting ${key}, is ${JSON.stringify(v ?? null)}, not a time of day (HH:MM)` }
+}
 
 /** `every` in ms, or null. */
 function periodOf(every: unknown): number | null {
@@ -37,7 +49,7 @@ export function whenProblems(w: Item, where = "schedule"): string[] {
   const ms = periodOf(w.every)
   if (ms === null) out.push(`${where}: every is a number and a unit, m, h, d or w ("15m", "1d"), not ${JSON.stringify(w.every)}`)
   if (w.at !== undefined) {
-    if (typeof w.at !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(w.at)) out.push(`${where}: at is a time of day, HH:MM ("07:00")`)
+    if (typeof w.at !== "string" || !(TIME.test(w.at) || atSetting(w.at))) out.push(`${where}: at is a time of day, HH:MM ("07:00"), or a setting holding one ("{morning}")`)
     else if (ms !== null && ms % DAY) out.push(`${where}: at needs every in whole days ("1d", "1w")`)
   }
   if (w.machine !== undefined && (typeof w.machine !== "string" || !w.machine.trim())) out.push(`${where}: machine is a Machines id ("home")`)

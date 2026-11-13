@@ -4,11 +4,12 @@ import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { vauDir, vauEntry } from "./appentry.ts"
+import { settingsOf } from "./blocks.ts"
 import { matching, typeMatches, type VaultEvent } from "./events.ts"
 import { defineOp, ID, type Op, OpError, opProblems, type Param, whoOf } from "./ops.ts"
 import { LOCAL, type Plugin, serverUrl, vaultHere } from "./plugins.ts"
 import { hashed, inside } from "./rules.ts"
-import { type Job, type When, whenProblems } from "./schedule.ts"
+import { atSetting, type Job, type When, whenProblems } from "./schedule.ts"
 import type { Item, Vault } from "./vault.ts"
 
 export type Command = string[]
@@ -116,6 +117,8 @@ export function hookProblems(m: Item, dir: string, where = "manifest.json"): str
     if (names.has(jobName(s, i))) out.push(`${at}: '${jobName(s, i)}' is there twice (give it a name)`)
     names.add(jobName(s, i))
     out.push(...whenProblems(s, at))
+    const key = atSetting(s.at)
+    if (key && settingsOf(m)[key]?.type !== "string") out.push(`${at}: at names the setting ${key}, so declare it in settings, a string ("07:00")`)
     if ((s.command === undefined) === (s.op === undefined)) out.push(`${at}: give it a command or an op, one of them`)
     else if (s.op !== undefined) {
       if (typeof s.op !== "string" || !ID.test(s.op)) out.push(`${at}: op is an operation's id (dispatch.run)`)

@@ -628,6 +628,12 @@ export class Plugin {
     return this.withLocal(this.vault.configWithDefaults(this.settingsName(file)), file)
   }
 
+  /** A setting's value now as text, else its manifest's default. */
+  settingText(key: string): string | undefined {
+    const v = this.settings()[key] ?? settingsOf(this.manifest)[key]?.default
+    return v === undefined || v === null ? undefined : String(v)
+  }
+
   /** The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from
    *  core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty. */
   readSettings(file = "data"): Item | null {

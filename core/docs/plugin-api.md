@@ -35,6 +35,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.liveFolders()`: Its folders that are there now.
 - `plugin.settings(fallback?, file)`: Its settings (data.json); `file`: a file of its own for a part written often, so devices collide less.
 - `plugin.seeded(file)`: This plugin's settings with the defaults another app's settings give them under its own (Vault.configWithDefaults): what applies; never saved back (settings() is what's written).
+- `plugin.settingText(key)`: A setting's value now as text, else its manifest's default.
 - `plugin.readSettings(file)`: The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty.
 - `plugin.saveSettings(data, file)`: Write the settings (null removes the file).
 - `plugin.patchSettings(changes, { nullRemoves)`: Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's value is checked against its manifest declaration (400).

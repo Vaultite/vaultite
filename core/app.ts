@@ -35,7 +35,7 @@ import { checkParams, didOf, entryOf, jsonBlock, nearest, type Op, type OpCtx, O
 import { eventOps, eventsOf, matching, summary, typeMatches, type VaultEvent } from "./events.ts"
 import { ARCHIVED, setMarks } from "./fileprops.ts"
 import { hookOps } from "./hooks.ts"
-import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
+import { type Listed, Scheduler, scheduleOps, timed } from "./schedule.ts"
 import { digestOf, VaultPlugins } from "./vaultplugins.ts"
 import * as G from "./grants.ts"
 import { byUser, notHereYet, onItsOwn, overConnect, runHook, WriteRefused } from "./writegate.ts"
@@ -107,12 +107,19 @@ export class App {
         return [{ plugin: "core", job: { name: "trash", every: "1d", run: () => F.emptyTrash(this.vault) } },
           // Installed plugins that update on their own (core/updates.ts): one machine fetches them, the others follow (adopt).
           { plugin: "core", job: { name: "plugin-updates", every: "1h", run: () => Object.keys(readLock(this.vault)).length ? this.runOp("plugin.update", { auto: true }) : null } },
-          ...this.on().flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job })))]
+          ...this.on().flatMap((p): Listed[] => p.jobs.flatMap((j) => {
+            const t = timed(j, (k) => p.settingText(k))
+            return "job" in t ? [{ plugin: p.id, job: t.job }] : []
+          }))]
       },
       here: (machine) => this.runsHere(machine),
       before: async () => { await this.syncPlugins(); await this.checkWriter() },
-      paused: () => this.vaultPlugins.paused().flatMap((p) => p.jobs.map((job) => ({ plugin: p.id, job,
+      paused: () => [...this.vaultPlugins.paused().flatMap((p) => p.jobs.map((job) => ({ plugin: p.id, job,
         why: `${p.name} changed and waits for you to allow it again (vau plugin allow ${p.id})` }))),
+      ...this.on().flatMap((p) => p.jobs.flatMap((job) => {
+        const t = timed(job, (k) => p.settingText(k))
+        return "why" in t ? [{ plugin: p.id, job, why: t.why }] : []
+      }))],
     })
   }
 
