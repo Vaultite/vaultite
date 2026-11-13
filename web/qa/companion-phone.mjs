@@ -5,8 +5,9 @@
 // WRITES "QA phone/" and the plugin's data.json: throwaway server only.
 //   node web/qa/companion-phone.mjs <base url> <vault path>
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
-const { args: [BASE, VAULT], browser, check, watch, done } = await qa(import.meta.url)
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
+const { args: [BASE, VAULT], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const B = BASE.replace(/\/+$/, ""), OUT = "/tmp/companion-phone-"
 const file = (rel) => `${VAULT}/${rel}`
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
@@ -38,8 +39,9 @@ async function open(o) {
   await until(() => page.evaluate(() => window.__companion?.readyState === 1), 10000)
   // (the playground's toast sits where the card goes: out of the pictures)
   await page.addStyleTag({ content: "[data-sonner-toaster] { display: none !important; }" })
-  await wait(1000)
-  return { ctx, page }
+  const ui = app(page)
+  await ui.idle()
+  return { ctx, page, ui }
 }
 /** What of the companion a phone draws: cursors (none, ever), carets, the edge chips, the card. */
 const seen = (page) => page.evaluate(() => {
@@ -54,11 +56,14 @@ const seen = (page) => page.evaluate(() => {
 })
 /** The screen's box of a line of the note with `text`. */
 const lineBox = (page, text) => page.locator(".cm-line", { hasText: text }).first().boundingBox()
+/** Once what `sel` matches has come in (its own animations, not its children's, ended). */
+const arrived = (page, sel) => page.locator(sel).first().evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+const frame = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
 const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y + caret.h <= box.y + box.height + 4
 
 // ---------- a phone
 {
-  const { ctx, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, label: "phone" })
+  const { ctx, page, ui } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, label: "phone" })
   let s = await seen(page)
   check("phone: at rest, nothing of it in the note (no cursor, no caret, no card)", s.cursors === 0 && s.carets === 0 && !s.card && !s.chip, s)
 
@@ -68,7 +73,7 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   const basil = await lineBox(page, "Basil between them")
   check("phone: a look shows its caret at that line, with its name", s?.caret?.doing === "pointing" && near(s.caret, basil) && s.caret.flag?.startsWith("Claude") && s.cursors === 0, { s, basil })
   check("phone: and lights the line a moment", !!s?.flash && Math.abs(s.flash.y - basil.y) < 8, s?.flash)
-  await wait(400)
+  await arrived(page, "[data-companion-caret]")
   await page.screenshot({ path: `${OUT}look.png` })
   s = await until(async () => { const x = await seen(page); return x.carets === 0 && !x.flash ? x : null }, 5000)
   check("phone: the look's caret and light go after a moment", !!s, await seen(page))
@@ -83,12 +88,12 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   s = await until(async () => { const x = await seen(page); return x.caret?.doing === "thinking" ? x : null }, 4000)
   const tom = await lineBox(page, "Tomatoes along")
   check("phone: an ask sent from here, its caret thinks at that line, dots on its flag", !!asked && s?.caret?.dots && near(s.caret, tom), { asked: !!asked, s, tom })
-  await wait(400)
+  await arrived(page, "[data-companion-caret]")
   await page.screenshot({ path: `${OUT}thinking.png` })
 
   // Its words: a card at the bottom, inside the screen, above the bar, a finger's reply box; still thinking.
   await op("companion.say", { text: "About **a foot** apart. Basil stays smaller, so it fits between the tomatoes and shades their roots." })
-  s = await until(async () => { const x = await seen(page); return x.card?.kind === "say" ? x : null }, 4000).then(async (x) => (x ? (await wait(450), seen(page)) : x))
+  s = await until(async () => { const x = await seen(page); return x.card?.kind === "say" ? x : null }, 4000).then(async (x) => (x ? (await arrived(page, "[data-companion-card]"), seen(page)) : x))
   const field = page.getByRole("textbox", { name: "Reply to Claude" }), fb = await field.boundingBox()
   const put = await page.locator("[data-companion-card] button[aria-label='Put in note']").boundingBox()
   check("phone: a say is a card at the bottom, inside the screen, over the bar", !!s && s.card.text.includes("About a foot apart") && s.card.x >= 0 && s.card.x + s.card.w <= s.width && s.card.y + s.card.h <= s.barTop && s.card.y > s.barTop - 330, s)
@@ -108,7 +113,7 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   const typing = op("companion.edit", { path: NOTE, after: "Basil between them.", text: "Water both in the morning, at the roots, never the leaves; mulch keeps the soil even through the summer heat and spares a second watering." })
   s = await until(async () => { const x = await seen(page); return x.caret?.doing === "writing" ? x : null }, 4000, 30)
   check("phone: writing, its caret where it types, its name on it", !!s && s.caret.flag?.startsWith("Claude") && s.caret.y > (await lineBox(page, "Basil between them")).y - 4, s)
-  await wait(150)
+  await arrived(page, "[data-companion-caret]")
   await page.screenshot({ path: `${OUT}writing.png` })
   await typing
   s = await until(async () => { const x = await seen(page); return x.carets === 0 ? x : null }, 4000)
@@ -116,28 +121,27 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
 
   // Writing below the fold: a chip at the bottom edge says so; tapped, it scrolls there.
   await page.evaluate(() => { const p = document.querySelector("[data-pane]"); if (p) p.scrollTop = 0; scrollTo(0, 0) })
-  await wait(300)
+  await ui.idle()
   const below = op("companion.edit", { path: NOTE, after: "Last line here.", text: "A last row, written while you were reading the top: peppers along the south wall, where the wall keeps the evening warm; three plants, staked early, picked green." })
   s = await until(async () => { const x = await seen(page); return x.chip ? x : null }, 4000, 30)
   check("phone: writing below the screen, a chip at the bottom says so", s?.chip?.dir === "down" && /Claude is writing/.test(s.chip.text) && s.chip.y + s.chip.h <= s.barTop && s.carets === 0, s)
-  await wait(150)
+  if (s?.chip) await arrived(page, "[data-companion-edge]")
   await page.screenshot({ path: `${OUT}chip.png` })
   if (s?.chip) await page.locator("[data-companion-edge]").tap()
-  await wait(500)
-  const last = await lineBox(page, "Last line here")
+  const last = await until(async () => { const box = await page.locator(".cm-line", { hasText: "Last line here" }).first().boundingBox({ timeout: 100 }); return box && box.y > 0 && box.y < 844 ? box : null }, 3000)
   check("phone: the chip tapped, the note scrolls to where it writes", !!last && last.y > 0 && last.y < 844, last)
   await below
-  await wait(600)
+  await until(async () => (await seen(page)).carets === 0, 4000)
 
   // A say swiped away: gone, and unseen it leaves a dot on its face, which opens what it said.
   await op("companion.say", { text: "Swipe me away." })
   const card = page.locator("[data-companion-card='say']")
   await card.waitFor({ timeout: 3000 })
-  await wait(350)
+  await arrived(page, "[data-companion-card]")
   const head = await card.locator("[data-swipe]").last().boundingBox()
   const cdp = await ctx.newCDPSession(page), pt = (y) => [{ x: head.x + 60, y }]
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pt(head.y + 10) })
-  for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pt(head.y + 10 + i * 18) }); await wait(16) }
+  for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pt(head.y + 10 + i * 18) }); await frame(page) }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
   s = await until(async () => { const x = await seen(page); return !x.card ? x : null }, 2000)
   check("phone: a card swiped down goes", !!s, await seen(page))
@@ -147,9 +151,8 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   check("phone: what it said unseen, a dot on its face", await until(() => face.locator("[data-companion-unread]").count(), 3000) > 0)
   // (other agents' faces overlap it, as a stack: its own button, wherever it is in it)
   await face.dispatchEvent("click")
-  s = await until(async () => { const x = await seen(page); return x.card?.kind === "conversation" ? x : null }, 3000).then(async (x) => (x ? (await wait(450), seen(page)) : x))
+  s = await until(async () => { const x = await seen(page); return x.card?.kind === "conversation" ? x : null }, 3000).then(async (x) => (x ? (await arrived(page, "[data-companion-card]"), seen(page)) : x))
   check("phone: its face tapped, its conversation at the bottom, what it said in it", !!s && s.card.text.includes("Swipe me away") && s.card.x >= 0 && s.card.x + s.card.w <= s.width && s.card.y + s.card.h <= s.barTop, s)
-  await wait(400)
   await page.screenshot({ path: `${OUT}conversation.png` })
   await page.touchscreen.tap(200, 240)
   check("phone: a tap outside closes its conversation", await until(async () => (await seen(page)).card === null, 2000), await seen(page))
@@ -160,7 +163,7 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   s = await until(async () => { const x = await seen(page); return x.card?.kind === "ask" ? x : null }, 3000)
   const approve = await page.locator("[data-companion-card='ask'] [data-gate='approve']").boundingBox()
   check("phone: asking leave, a card with Deny and Approve by the thumb, no caret for it", !!s && /needs you/.test(s.card.text) && (approve?.height ?? 0) >= 44 && s.carets === 0, { s, approve })
-  await wait(400)
+  await arrived(page, "[data-companion-card]")
   await page.screenshot({ path: `${OUT}ask.png` })
   await page.evaluate((a) => window.__play({ t: "agent", agent: a }), { ...base, state: "watching", seen: true, why: "not for me" })
   s = await until(async () => { const x = await seen(page); return x.carets === 0 && !x.card ? x : null }, 4000) ?? await seen(page)

@@ -3,7 +3,8 @@
 //   node web/qa/sidebar.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = "/tmp/sidebar-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -25,7 +26,8 @@ const listed = (k) => !!saved().left?.includes(k)
 const appearance = await fetch(new URL("/api/config/appearance", B)).then((r) => r.json())
 const setDensity = (density) => fetch(new URL("/api/config/appearance", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...appearance, density }) })
 
-const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
+const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } })), ui = app(page)
+const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
 /** Terminal resizes sent (core/sliding.ts). */
 let resizes = 0
 page.on("websocket", (ws) => ws.on("framesent", (f) => { if (typeof f.payload === "string" && f.payload.includes('"t":"resize"')) resizes++ }))
@@ -66,13 +68,13 @@ try {
   const sid = row && (await row.getAttribute("data-session"))
   check("its tab opened", !!(await until(async () => decodeURIComponent(page.url()).includes(`terminal/${sid}`))), page.url())
   check("row lit", await until(async () => (await row.getAttribute("class")).includes("font-medium")), await row.getAttribute("class"))
-  await wait(800)
+  await ui.idle()
   await page.screenshot({ path: `${OUT}2-terminal.png` })
   // The sidebar folded and opened: the panes are laid out at their new size at once and slide there (core/panemotion.ts),
   // so the terminal takes its new size once, not every frame (its shell would redraw for each).
   resizes = 0
-  await page.keyboard.press("ControlOrMeta+Backslash"); await wait(900)
-  await page.keyboard.press("ControlOrMeta+Backslash"); await wait(900)
+  await page.keyboard.press("ControlOrMeta+Backslash"); await ui.idle()
+  await page.keyboard.press("ControlOrMeta+Backslash"); await ui.idle()
   check("the sidebar folded and opened: the terminal resized once each way", resizes >= 1 && resizes <= 2, { resizes })
 
   // Opt-in plugins' panels, put in the sidebar: on, they show; off, one by one, they go without a reload.
@@ -86,8 +88,7 @@ try {
     check(`${id} off: its panel goes`, !!(await until(async () => !(await panels()).includes(OPT_IN[i]))), await panels())
   }
   // The app's own plugins are always on: switched off in plugins.json, Search's panel stays.
-  setDisabled(["backlinks", "search"])
-  await wait(1500)
+  await ui.sees(".vaultite/plugins.json", () => setDisabled(["backlinks", "search"]))
   check("an always-on plugin's panel stays", (await panels()).includes("search:search"), await panels())
   setDisabled(["backlinks"])
   // A sidebar with no panels: Plugins and Settings stay.
@@ -147,25 +148,25 @@ try {
   await page.hover(head("files:files"))
   await page.click(`${head("files:files")} [aria-label='Change sort order']`)
   await page.keyboard.press("Escape")
-  await wait(300)
+  await ui.idle()
   check("a heading's button doesn't toggle it", !(await visible("aside [data-panel='files:files'] [role=tree]")))
   // Dragging a heading moves the panel and doesn't fold it at the end.
   const hb = await (await page.$(head("terminal:sessions"))).boundingBox()
   const pb = await (await page.$(head("pages:pages"))).boundingBox()
   await page.mouse.move(hb.x + 20, hb.y + hb.height / 2)
   await page.mouse.down()
-  for (let i = 1; i <= 10; i++) { await page.mouse.move(hb.x + 20, hb.y + (pb.y - 2 - hb.y) * i / 10); await wait(20) }
+  for (let i = 1; i <= 10; i++) { await page.mouse.move(hb.x + 20, hb.y + (pb.y - 2 - hb.y) * i / 10); await frame() }
   await page.mouse.up()
   const order = await until(async () => { const p = await panels(); return p.indexOf("terminal:sessions") < p.indexOf("pages:pages") ? p : null })
   check("drag a heading: the panel moves", !!order, await panels())
-  await wait(300)
+  await ui.saved()
   check("...and the drag doesn't fold it", !(await page.$("aside [data-panel='terminal:sessions'][data-collapsed]")) && !folded("terminal:sessions"), saved())
   // The rail ignores folding: the pages' icons show.
   await page.keyboard.press("ControlOrMeta+Backslash")
-  await wait(400)
+  await ui.idle()
   check("rail: folded pages still show their icons", await visible("aside [data-panel='pages:pages'] [data-pin]"))
   await page.keyboard.press("ControlOrMeta+Backslash")
-  await wait(400)
+  await ui.idle()
   // Open both again (and the order as it was).
   await clickHead("pages:pages")
   await clickHead("files:files")
@@ -176,7 +177,7 @@ try {
 
   // The rail: pages keep their icons, the tree and the Terminals heading hide.
   await page.keyboard.press("ControlOrMeta+Backslash")
-  await wait(400)
+  await ui.idle()
   // (the panels it showed stay drawn behind the rail, hidden: data-sidebar-kept)
   check("rail: terminals right under the pages, past a line", (await y("aside [data-rail] [data-session]")) - (await page.$$eval("aside [data-rail] [data-pin]", (els) => els[els.length - 1].getBoundingClientRect().y)) < 50)
   check("rail: no headings, a line between panels", !(await page.$("aside [data-panel-handle]:not([data-sidebar-kept] *)")) &&
@@ -216,13 +217,13 @@ try {
   await until(() => page.$("aside [data-flyout-icon='files:files']"))
   check("...the sidebar opened and folded again: no flyout left open", !(await page.$("[data-flyout]")))
   await page.keyboard.press("ControlOrMeta+Backslash")
-  await wait(400)
+  await ui.idle()
 
   // Density: everything in the sidebar is in spacing units (4px in compact, 4.5px in comfortable).
   for (const [density, u] of [["comfortable", 4.5], ["compact", 4]]) {
     await setDensity(density)
     await until(async () => (await page.evaluate(() => document.documentElement.dataset.density ?? "compact")) === density)
-    await wait(300)
+    await ui.idle()
     const g = await page.evaluate(() => {
       const a = document.querySelector("aside").getBoundingClientRect()
       const x = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect().left - a.left : null }
@@ -234,14 +235,13 @@ try {
     })
     check(`${density}: tree rows ${6.5 * u}px, sidebar rows ${7 * u}px`, g.tree === 6.5 * u && g.row === 7 * u, g)
     check(`${density}: headings, row icons and chevrons on one line, ${3.5 * u}px in`, g.xs.every((v) => v === 3.5 * u), g.xs)
-    // (once it's done folding: its width springs there)
-    await page.keyboard.press("ControlOrMeta+Backslash"); await wait(100); await until(() => page.evaluate(() => !document.querySelector("aside").getAnimations().length))
+    await page.keyboard.press("ControlOrMeta+Backslash"); await ui.idle()
     const r = await page.evaluate(() => {
       const a = document.querySelector("aside").getBoundingClientRect(), i = document.querySelector("aside [data-pin] svg").getBoundingClientRect()
       return { rail: a.width, icon: i.left + i.width / 2 - a.left }
     })
     check(`${density}: the rail is ${11 * u}px, its icons centred`, r.rail === 11 * u && r.icon === r.rail / 2, r)
-    await page.keyboard.press("ControlOrMeta+Backslash"); await wait(100); await until(() => page.evaluate(() => !document.querySelector("aside").getAnimations().length))
+    await page.keyboard.press("ControlOrMeta+Backslash"); await ui.idle()
   }
 
   // End it from the panel (its … , End session last): its tab closes and the list empties.

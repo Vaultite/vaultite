@@ -1,4 +1,4 @@
-import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, linkClick, mintedHere, offerPicture, onLook, openWebLink, pastedFiles, span, textSize } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, linkClick, mintedHere, offerPicture, onLook, openWebLink, pastedFiles, span, textSize, trackSoon } from "@vaultite"
 import type { FindOptions } from "@plugins/find/tools"
 import { copy, flushCopy, pasteClipboard } from "./clipboard"
 import { fileLinks } from "./fileLinks"
@@ -201,11 +201,12 @@ function create(id: string): Live {
   let resizing = 0, lastResize = -Infinity
   const onResize = t.onResize(() => {
     clearTimeout(resizing)
-    const tell = () => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows, ...t.cellPixels }))
+    const tell = () => { resizing = 0; send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows, ...t.cellPixels })) }
     const now = performance.now(), lone = now - lastResize > RESIZE_SETTLE
     lastResize = now
     if (lone) tell(); else resizing = window.setTimeout(tell, RESIZE_SETTLE)
   })
+  const offResizing = trackSoon("a terminal's resize", () => resizing !== 0)
 
   let sending = Promise.resolve()
   const sendFiles = (files: File[]) => {
@@ -279,7 +280,7 @@ function create(id: string): Live {
       if (gone) return
       gone = true
       clearTimeout(timer); clearTimeout(resizing)
-      offLook(); offSettings(); files.dispose(); onBytes.dispose(); onResize.dispose()
+      offLook(); offSettings(); offResizing(); files.dispose(); onBytes.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)
       document.removeEventListener("visibilitychange", onShown)
