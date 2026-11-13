@@ -1,6 +1,6 @@
 import { OpError, Plugin } from "../../../core/plugins.ts"
 import { type Item, joinPath, Kind, nowStamp, safeName, stemOf, str, truthy } from "../../../core/vault.ts"
-import { changes, type Context, happened, hash, type Pane, parseSource, read, type Read, type Source, sourceText } from "./sources.ts"
+import { changes, type Context, happened, hash, parseSource, read, type Read, type Source, sourceText } from "./sources.ts"
 
 export const plugin = new Plugin(import.meta.url)
 export { changes, happened, parseSource }
@@ -35,10 +35,10 @@ const keepLast = (id: string, l: Last | null) => { const all = { ...lasts() }; i
 const seen = new Map<string, Read>()
 
 const context = (): Context => ({
-  panes: () => (plugin.service("companion:panes") as (() => Pane[]) | null)?.() ?? [],
-  private: (url, container) => !!(plugin.service("companion:private") as ((u: string, c: string | null) => boolean) | null)?.(url, container),
+  panes: () => plugin.service("companion:panes")?.() ?? [],
+  private: (url, container) => !!plugin.service("companion:private")?.(url, container),
 })
-export const watches = () => plugin.vault.shared("watches") as readonly Item[]
+export const watches = () => plugin.vault.shared("watches")
 
 export type Hit = { id: string; title: string; source: string; why: string; until: string; done: boolean; changes: string[]; url?: string; title_now: string }
 
@@ -46,7 +46,7 @@ export async function check(w: Item, now = Date.now()): Promise<Hit | null> {
   const id = str(w.id), src = parseSource(str(w.source))
   if (!src) return null
   let r: Read
-  try { r = await read(plugin, src, context()) } catch (e) { keepLast(id, { ...(lasts()[id] ?? { hash: "" }), at: now, error: (e as Error).message }); return null }
+  try { r = await read(plugin, src, context()) } catch (e) { keepLast(id, { ...(lasts()[id] ?? { hash: "" }), at: now, error: e instanceof Error ? e.message : String(e) }); return null }
   if (r.missing) { keepLast(id, { ...(lasts()[id] ?? { hash: "" }), at: now, error: "not there now" }); return null }
   const h = hash(r), was = lasts()[id], before = seen.get(id) ?? null
   seen.set(id, r)
@@ -127,7 +127,7 @@ watch moment, or to the inbox when it isn't running; with until, only a change t
     if (!src || src.kind === "pane") throw new OpError("give `source` as note:<path>, terminal:<id>, site:<url> or group:<id>")
     if (periodOf(p.every) === null) throw new OpError("`every` is live, or a number and m, h, d or w (5m, 2h)")
     const title = str(p.title).trim() || defaultTitle(src)
-    const r = await ctx.api("POST", "watches", { title, source: sourceText(src), every: str(p.every) || "live", until: str(p.until).trim(), status: "active", by: str(p.by).trim() || ctx.who.label, body: str(p.why).trim() }) as Item
+    const r = await ctx.api("POST", "watches", { title, source: sourceText(src), every: str(p.every) || "live", until: str(p.until).trim(), status: "active", by: str(p.by).trim() || ctx.who.label, body: str(p.why).trim() })
     void tick()
     return { id: str(r.id), title, source: sourceText(src) }
   },

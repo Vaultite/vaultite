@@ -7,10 +7,11 @@ export type Source = { kind: Kind; ref: string }
 export type Read = { text: string; title: string; state?: string; url?: string; selection?: string; kind: Exclude<Kind, "pane" | "group">; missing?: boolean; parts?: Read[] }
 type BrowserTab = { tab: number; url: string; title: string; container: string | null; access: string; pane?: string }
 
-const KINDS = new Set<Kind>(["note", "terminal", "site", "pane", "group"])
+const KINDS: readonly Kind[] = ["note", "terminal", "site", "pane", "group"]
 export function parseSource(s: string): Source | null {
   const t = s.trim(), m = /^([a-z]+):(.+)$/.exec(t)
-  if (m && KINDS.has(m[1] as Kind)) return { kind: m[1] as Kind, ref: m[2].trim() }
+  const kind = m ? KINDS.find((k) => k === m[1]) : undefined
+  if (m && kind) return { kind, ref: m[2].trim() }
   if (/^https?:\/\//i.test(t)) return { kind: "site", ref: t }
   if (/\.(md|excalidraw|canvas)$/i.test(t)) return { kind: "note", ref: t }
   return null
@@ -31,7 +32,7 @@ export async function read(plugin: Plugin, s: Source, c: Context, o: { pane?: st
     for (const p of panes) {
       const src = p.source ? parseSource(p.source) : null
       if (!src || src.kind === "pane" || src.kind === "group") continue
-      try { parts.push({ ...await read(plugin, src, c, { pane: p.id, open: false }), title: p.title || src.ref }) } catch (e) { parts.push({ kind: src.kind as Read["kind"], title: p.title, text: `(${(e as Error).message})` }) }
+      try { parts.push({ ...await read(plugin, src, c, { pane: p.id, open: false }), title: p.title || src.ref }) } catch (e) { parts.push({ kind: src.kind, title: p.title, text: `(${e instanceof Error ? e.message : String(e)})` }) }
     }
     if (s.kind === "pane") return parts[0] ?? { kind: "note", text: "", title: panes[0].title, missing: true }
     return { kind: "note", title: s.ref, text: parts.map((r) => `## ${r.title}\n${r.text}`).join("\n\n"), parts }
