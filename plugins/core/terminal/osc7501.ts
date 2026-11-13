@@ -222,6 +222,8 @@ export class Records {
   }
 
   said(): Said { return { seen: this.seen, status: this.status() } }
+
+  ids(): string[] { return [...this.map.keys()] }
 }
 
 /** One stream's protocol: what to pass on, whether what it says changed, and `answer` called for each probe, before

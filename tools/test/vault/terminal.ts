@@ -3,7 +3,13 @@ import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
+import { z } from "zod"
 import type { Any, VaultTest } from "./harness.ts"
+import type { Backend, BackendEvent } from "../../../plugins/core/terminal/backend.ts"
+import type { Kind, Said } from "../../../plugins/core/terminal/osc7501.ts"
+import type { current } from "../../../plugins/core/terminal/terms.ts"
+import type { Conn } from "../../../plugins/core/terminal/termd/host.ts"
+import { Answers, type Event, type Reply, type Unasked } from "../../../plugins/core/terminal/termd/protocol.ts"
 import { freePort } from "../lib.ts"
 import { messageOf } from "../../../core/values.ts"
 
@@ -22,18 +28,18 @@ export default async ($: VaultTest) => {
       if (r.includes("/capture?")) return { status: 200, body: { id: r.split("/")[1], format: "text", text: "line 1\nline 2" } }
       if (m === "POST" && r.endsWith("/wait")) return { status: 200, body: { met: "exit", timedOut: false, waited: 1.5, for: ["exit"], exit: { code: 3, signal: 0 } } }
       if (r === "workspaces") return { status: 200, body: { workspaces: [{ layout: { root: { id: "g0", tabs, active: "t1" }, focus: "g0" } }] } }
-      if (r === "workspaces/close") return { status: 200, body: { closed: [{ workspace: 1, id: "t2", to: (b as Any).path }] } }
+      if (r === "workspaces/close") return { status: 200, body: { closed: [{ workspace: 1, id: "t2", to: z.object({ path: z.string() }).parse(b).path }] } }
       if (r === "claude-code?days=30") return { status: 200, body: { sessions: [{ id: "3f2a9c1e-5b7d-4e2a-9c1f-0a2b3c4d5e6f", title: "Left sidebar scrollbar" }, { id: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b", title: "Sidebar tweaks" }] } }
       if (m === "DELETE") return { status: 200, body: { id: r.split("/")[1], ended: true } }
       if (m === "POST" && /^terminals\/[^/]+$/.test(r)) return { status: 200, body: { id: r.split("/")[1], started: true, agent: r.includes("claude") ? "claude" : null } }
-      if (m === "POST" && r.endsWith("/send")) return { status: 200, body: { id: r.split("/")[1], ...(b as Any) } }
+      if (m === "POST" && r.endsWith("/send")) return { status: 200, body: { id: r.split("/")[1], ...z.looseObject({}).parse(b) } }
       if (r === "ui") return { status: 200, body: { ok: true } }
       return { status: 404, body: { error: "not found" } }
     }
     const { plugin: termPlugin } = await import("../../../plugins/core/terminal/plugin.ts")
     const { checkParams, OpError: OpErr, whoOf } = await import("../../../core/ops.ts")
     const termCtx = { vault, who: whoOf("cli", null), plugin: "terminal", op: async () => null,
-      api: async (m: string, r: string, b?: unknown) => { const x = await termApi(m, r, b); if (x.status >= 400) throw new OpErr(String((x.body as Any)?.error ?? x.status), x.status); return x.body },
+      api: async (m: string, r: string, b?: unknown) => { const x = await termApi(m, r, b); if (x.status >= 400) throw new OpErr(String("error" in x.body ? x.body.error : x.status), x.status); return x.body },
       ui: async (msg: Any) => (await termApi("POST", "ui", msg)).body }
     const term = async (verb: string, given: Record<string, unknown> = {}) => {
       const op = termPlugin.ops.find((o) => o.id === `terminal.${verb}`)!
@@ -289,10 +295,10 @@ export default async ($: VaultTest) => {
       // The op: in the folder named, its terminal named for the session, shown in a tab.
       const { checkParams, whoOf } = await import("../../../core/ops.ts")
       const said: string[] = []
-      const ctx = { who: whoOf("cli", null), api: async (m: string, r: string, b?: unknown) => { said.push(`${m} ${r} ${b ? JSON.stringify(b) : ""}`.trim()); return {} },
+      const ctx = { vault, who: whoOf("cli", null), plugin: "claude-code", op: async () => null, api: async (m: string, r: string, b?: unknown) => { said.push(`${m} ${r} ${b ? JSON.stringify(b) : ""}`.trim()); return {} },
         ui: async (b: unknown) => { said.push(`ui ${JSON.stringify(b)}`); return {} } }
       const top = cc.plugin.ops.find((o) => o.id === "claude-code.teleport")!
-      const r = await top.run(checkParams(top, { session: "https://claude.ai/code/session_01AbCdEf?from=cli", cwd: wt, title: "Fix the build" }), ctx as never) as Any
+      const r = z.object({ session: z.string(), id: z.string() }).parse(await top.run(checkParams(top, { session: "https://claude.ai/code/session_01AbCdEf?from=cli", cwd: wt, title: "Fix the build" }), ctx))
       check("teleport op: its terminal starts in the folder, named, its tab opened", r.session === "session_01AbCdEf" && /^resume-claude(_\w+)?-session_01AbCdEf$/.test(r.id) &&
         said[0] === `POST terminals/${r.id} ${JSON.stringify({ cwd: wt })}` && said[1] === `POST terminals/${r.id}/name {"name":"Fix the build"}` &&
         said[2] === `ui {"action":"open","path":"view:terminal/${r.id}","newTab":true}`, [r, said])
@@ -319,7 +325,7 @@ export default async ($: VaultTest) => {
     // Its agent saying it waits (Claude Code's session file) blocks its terminal whatever else says, until it no longer does.
     {
       const id = "claude-waits1"
-      const state = term.plugin.services["terminal:state"] as (id: string) => Any, waits = term.plugin.services["terminal:agent-waits"] as (id: string, k: string | null) => void
+      const state: (id: string) => ReturnType<typeof current> = term.plugin.services["terminal:state"], waits: (id: string, k: Kind | null) => void = term.plugin.services["terminal:agent-waits"]
       const before = state(id)
       waits(id, "question")
       const blocked = state(id)
@@ -345,7 +351,7 @@ export default async ($: VaultTest) => {
     for (const sh of ["/bin/zsh", "/bin/bash"].filter((f) => fs.existsSync(f))) {
       const zsh = sh.endsWith("zsh"), print = "printf '%s|%s|%s|%s' \"$(command -v vau)\" \"$(command -v claude)\" \"$FROM_PROFILE\" \"${ZDOTDIR-unset}\""
       let out = ""
-      try { out = execFileSync(sh, shellArgs(sh, { command: `${print}; exit` }), { cwd: home, env: { ...env, ...(zsh ? { ZDOTDIR: SHELL_DIR, VAULTITE_ZDOTDIR: SHELL_DIR } : {}) }, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { out = String((e as Any).stdout) }
+      try { out = execFileSync(sh, shellArgs(sh, { command: `${print}; exit` }), { cwd: home, env: { ...env, ...(zsh ? { ZDOTDIR: SHELL_DIR, VAULTITE_ZDOTDIR: SHELL_DIR } : {}) }, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { out = e instanceof Error && "stdout" in e ? String(e.stdout) : "" }
       check(`terminal: ${path.basename(sh)} runs the user's startup files, then puts Vaultite's vau first and QA's agents next`, out === `${path.join(ours, "vau")}|${path.join(agents, "claude")}|1|unset`, out)
     }
     // An agent's program not installed: its shell's exit 127 marks the state file, which the server tells the user.
@@ -360,7 +366,7 @@ export default async ($: VaultTest) => {
         marked("FOO=1 no-such-agent-x1") === "missing" && marked("true") === "" && marked("false") === "", [marked("no-such-agent-x1"), marked("true")])
       // (and says where to get it, under the shell's error)
       let said = ""
-      try { said = execFileSync(sh, ["-c", term.markMissing("no-such-agent-x1", path.join(home, "state-said"), sh, term.missingText("claude"))], { cwd: home, env, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { said = String((e as Any).stdout) }
+      try { said = execFileSync(sh, ["-c", term.markMissing("no-such-agent-x1", path.join(home, "state-said"), sh, term.missingText("claude"))], { cwd: home, env, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { said = e instanceof Error && "stdout" in e ? String(e.stdout) : "" }
       check(`terminal: ${path.basename(sh)} says where to get an agent that isn't installed`, said.trim() === "Claude Code isn't installed on this machine. Get it at https://claude.com/claude-code, then open it again.", said)
     }
     fs.rmSync(home, { recursive: true, force: true })
@@ -370,7 +376,7 @@ export default async ($: VaultTest) => {
   // check's) has its own, so a test never lists, ends or drops the spare shells of a live server on the machine.
   {
     const { backendName } = await import("../../../plugins/core/terminal/backend.ts")
-    const kept = $.app.plugins.find((p) => p.id === "terminal")!.exports.kept as { name: string; socket: string }
+    const kept: { name: string; socket: string } = $.app.plugins.find((p) => p.id === "terminal")!.exports.kept
     check("terminal: the default port's keeper is vaultite, another port's its own, an app serving none this process's",
       backendName(8793) === "vaultite" && backendName(30123) === "vaultite-30123" && backendName(0, 42) === "vaultite-x42", [backendName(8793), backendName(30123), backendName(0, 42)])
     check("terminal: this test's app keeps its shells apart from a live server's", kept.name === `vaultite-x${process.pid}` &&
@@ -379,7 +385,7 @@ export default async ($: VaultTest) => {
   // The terminal server up but not starting shells: each new terminal runs in this server instead, an error for Errors
   // (counted by kind), never an inbox message a terminal.
   {
-    const keeper = ($.app.plugins.find((p) => p.id === "terminal")!.exports.kept as { backend: Any }).backend
+    const keeper: Backend = $.app.plugins.find((p) => p.id === "terminal")!.exports.kept.backend
     const was = { ready: keeper.ready, create: keeper.create }, logged: string[] = [], error = console.error
     keeper.ready = async () => true
     keeper.create = async () => { throw new Error("the terminal server didn't answer create") }
@@ -412,13 +418,14 @@ export default async ($: VaultTest) => {
       ["leak-exit", (id) => keeper.send(id, { text: "exit\r" })],
       ["leak-spare", async (id) => { await keeper.rename!(id, `${id}-taken`); await keeper.kill(`${id}-taken`) }],
     ]
-    const seen: Record<string, unknown>[] = []
+    const seen: { id: string; open: number; ready: boolean | null; ended: boolean | null; left: number }[] = []
     // (ended even when a step throws: a keeper left behind holds its shells' ptys)
     const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.files}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
     const access: unknown[] = [await keeper.access(tmp)]
     // A shell of this process's own while the terminal server starts: on Linux it inherits that pty, and must let it go.
     const { createRequire } = await import("node:module")
-    const own = (createRequire(import.meta.url)("node-pty") as typeof import("node-pty")).spawn("/bin/sh", [], { cwd: tmp, env: spec.env })
+    const pty: typeof import("node-pty") = createRequire(import.meta.url)("node-pty")
+    const own = pty.spawn("/bin/sh", [], { cwd: tmp, env: spec.env })
     try {
       for (const [id, end] of ways) {
         await keeper.create(id, spec, { spare: id === "leak-spare" })
@@ -433,7 +440,7 @@ export default async ($: VaultTest) => {
       }
       access.push(await keeper.access(tmp), await keeper.access(path.join(tmp, "no-such-folder")))
     } finally { stop(); own.kill() }
-    check("terminal: the terminal server lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ready && s.ended && s.left === 0), seen)
+    check("terminal: the terminal server lets go of a shell's pty once it ends", seen.every((s) => s.open >= 1 && s.ready && s.ended && s.left === 0), seen)
     // (Settings > Permissions: whether the terminal server itself may read the vault, which macOS can refuse it and not the app)
     check("terminal: the terminal server says whether it can read a folder, and never starts for that", JSON.stringify(access) ===
       JSON.stringify([null, { ok: true }, { ok: false, why: "the folder isn't there" }]), access)
@@ -460,8 +467,8 @@ export default async ($: VaultTest) => {
     const { localBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { waitFor } = await import("../lib.ts")
     const b = localBackend()
-    const evs: { type: string; id: string; [k: string]: unknown }[] = []
-    b.events!((ev) => evs.push(ev as never))
+    const evs: BackendEvent[] = []
+    b.events!((ev) => evs.push(ev))
     check("terminal server: it says it draws pictures (an older one running on doesn't, so its Claude Code isn't told to)", (await b.pictures!()) === true)
     const spec = { shell: "/bin/sh", run: { command: "printf 'one\\n\\033[31mred\\033[0m\\n'; read x; echo \"got $x\"; exit 4" }, only: true, cwd: tmp,
       env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 40, rows: 6, scrollback: 50 }
@@ -479,10 +486,10 @@ export default async ($: VaultTest) => {
       /--vt-palette-1: #[0-9a-f]{6}/.test(html.text) && html.text.includes("color: var(--vt-palette-1);\">red<") && text.cols === 40 && text.rows === 6 && text.cursor.y === 2, [text, vt.text, html.text.slice(0, 80)])
     check("terminal server: it keeps what the app gives it (meta, what it runs, its folder)", listed?.command === "the test" && listed.meta?.name === "Capture test" && listed.cwd === tmp &&
       JSON.stringify(meta) === JSON.stringify({ note: "Notes/Idea.md" }), [listed, meta])
-    check("terminal server: a command alone ends the terminal, its code kept, its screen still captured", (ended as { code: number })?.code === 4 &&
+    check("terminal server: a command alone ends the terminal, its code kept, its screen still captured", ended?.code === 4 &&
       after.ended === true && after.text.includes("got hello") && !(await b.list()).some((x) => x.id === "cap1"), [ended, after])
     check("terminal server: it tells what happens (started, meta, exited with how)", evs.map((e) => e.type).filter((t) => ["started", "meta", "exited"].includes(t)).join() === "started,meta,exited" &&
-      (evs.find((e) => e.type === "exited")?.exit as { code: number })?.code === 4 && (evs[0].info as { command?: string })?.command === "the test", evs.map((e) => e.type))
+      evs.find((e) => e.type === "exited")?.exit.code === 4 && evs[0]?.type === "started" && evs[0].info?.command === "the test", evs.map((e) => e.type))
     // (sent once its tty is raw (said as worked out, so not its command line), not after a guess: C-c ended a slow one)
     await b.create("keys1", { ...spec, run: { command: "stty raw -echo; echo raw-$((6 * 7)); dd bs=1 count=8 2>/dev/null | od -An -c; sleep 5" } })
     await waitFor(async () => /raw-42/.test((await b.capture("keys1", { format: "text" })).text) || null, 10_000, 50)
@@ -498,13 +505,13 @@ export default async ($: VaultTest) => {
     // An end while nobody listened (the app's server away): told to the next to subscribe, once.
     const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
     const h = host({ log: () => {}, pid: process.pid, file: "test" })
-    const heard: Record<string, unknown>[][] = [[], []]
-    const conns = heard.map((into) => h.connect({ session: null, ready: false, send: (m) => into.push(m as never), backlog: () => 0 }))
+    const ls = [hostClient(), hostClient()]
+    const conns = ls.map((l) => h.connect(l.conn))
     conns[0].take({ op: "create", id: "away1", file: "/bin/sh", args: ["-c", "exit 5"], cwd: tmp, env: { PATH: "/usr/bin:/bin" }, re: 1 })
-    await waitFor(() => { conns[0].take({ op: "list", ended: true, re: 2 }); return heard[0].some((m) => m.re === 2 && (m.ended as unknown[])?.length) }, 5_000, 50)
+    await waitFor(() => { conns[0].take({ op: "list", ended: true, re: 2 }); return Answers.list.safeParse(ls[0].reply(2)).data?.ended?.length }, 5_000, 50)
     conns[0].take({ op: "subscribe" })
     conns[1].take({ op: "subscribe" })
-    const told = heard.map((l) => l.filter((m) => m.type === "exited").map((m) => (m.exit as { code: number }).code))
+    const told = ls.map((l) => l.events("exited").map((m) => m.exit.code))
     check("terminal server: an end nobody heard is told to the next to subscribe, once", JSON.stringify(told) === "[[5],[]]", told)
     const answers: Record<string, unknown>[] = []
     const asker = h.connect({ session: null, ready: false, send: (m) => answers.push(m), backlog: () => 0 })
@@ -597,19 +604,19 @@ export default async ($: VaultTest) => {
     })
     await new Promise<void>((r) => oldServer.listen(old, r))
     const h = host({ log: () => {}, pid: process.pid, file: "test" })
-    const msgs: Record<string, unknown>[] = []
-    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    const l = hostClient()
+    const c = h.connect(l.conn)
     c.take({ op: "adopt", socket: old, scrollback: 100, re: 1 })
-    const adopted = await waitFor(() => msgs.find((m) => m.re === 1), 5_000, 20) as { adopted?: string[] } | undefined
+    const adopted = Answers.adopt.safeParse(await waitFor(() => l.reply(1), 5_000, 20)).data
     await new Promise((r) => setTimeout(r, 100))
     c.take({ op: "capture", id: "old1", re: 2 })
-    const cap = await waitFor(() => msgs.find((m) => m.re === 2), 2_000, 20) as { text?: string } | undefined
+    const cap = Answers.capture.safeParse(await waitFor(() => l.reply(2), 2_000, 20)).data
     c.take({ op: "input", id: "old1", b64: Buffer.from("ls\r").toString("base64") })
     c.take({ op: "list", re: 3 })
-    const info = (msgs.find((m) => m.re === 3) as { sessions: { id: string; via?: number; said: unknown; title: string }[] }).sessions[0]
+    const info = Answers.list.parse(l.reply(3)).sessions[0]
     c.take({ op: "subscribe" })
     conn!.write(JSON.stringify({ t: "exit", code: 2, signal: 0 }) + "\n")
-    const exited = await waitFor(() => msgs.find((m) => m.type === "exited"), 2_000, 20) as { exit?: { code: number } } | undefined
+    const exited = await waitFor(() => l.events("exited")[0], 2_000, 20)
     oldServer.close()
     check("terminal server: it takes over an older one's terminals (not its spares, which end), held through it", JSON.stringify(adopted?.adopted) === '["old1"]' &&
       got.includes("kill vauspare-x") && info.via === 4242 && info.title === "Old one" && JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "working" } }), [adopted, got, info])
@@ -644,17 +651,17 @@ export default async ($: VaultTest) => {
     })
     await new Promise<void>((r) => oldServer.listen(old, r))
     const h = host({ log: () => {}, pid: process.pid, file: "test" })
-    const msgs: Record<string, unknown>[] = []
-    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    const l = hostClient()
+    const c = h.connect(l.conn)
     c.take({ op: "adopt", socket: old, scrollback: 100, re: 1 })
-    const adopted = await waitFor(() => msgs.find((m) => m.re === 1), 5_000, 20) as { adopted?: string[] } | undefined
+    const adopted = Answers.adopt.safeParse(await waitFor(() => l.reply(1), 5_000, 20)).data
     ctl!.write(JSON.stringify({ t: "event", type: "status", id: "two1", said: { seen: true, status: { state: "blocked", kind: "permission" } } }) + "\n")
     ctl!.write(JSON.stringify({ t: "event", type: "title", id: "two1", title: "Two, renamed" }) + "\n")
     await new Promise((r) => setTimeout(r, 150))
     c.take({ op: "capture", id: "two1", re: 2 })
     c.take({ op: "list", re: 3 })
-    const cap = await waitFor(() => msgs.find((m) => m.re === 2), 2_000, 20) as { text?: string } | undefined
-    const info = (msgs.find((m) => m.re === 3) as { sessions: { said: unknown; title: string }[] }).sessions[0]
+    const cap = Answers.capture.safeParse(await waitFor(() => l.reply(2), 2_000, 20)).data
+    const info = Answers.list.parse(l.reply(3)).sessions[0]
     const pasteOn = h.sessions.get("two1")?.term.mode(2004)
     oldServer.close()
     check(`terminal server: it takes over protocol ${v}'s terminals, their changes heard as events, their picture read (modes too)`, JSON.stringify(adopted?.adopted) === '["two1"]' &&
@@ -667,33 +674,33 @@ export default async ($: VaultTest) => {
     const { HUNG } = await import("../../../plugins/core/terminal/termd/screen.ts")
     const { waitFor } = await import("../lib.ts")
     const h = host({ log: () => {}, pid: process.pid, file: "test" })
-    const msgs: Record<string, unknown>[] = []
-    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    const l = hostClient()
+    const c = h.connect(l.conn)
     c.take({ op: "subscribe" })
     c.take({ op: "create", id: "stuck1", file: "/bin/sh", args: ["-c", "printf 'before\\n'; read x; printf 'after\\n'; sleep 5"], cwd: tmp, env: { PATH: "/usr/bin:/bin" }, re: 1 })
     const s = h.sessions.get("stuck1")!
-    await waitFor(() => { c.take({ op: "capture", id: "stuck1", re: 2 }); return /before/.test(String(msgs.findLast((m) => m.re === 2)?.text ?? "")) || null }, 5_000, 50)
+    await waitFor(() => { c.take({ op: "capture", id: "stuck1", re: 2 }); return /before/.test(Answers.capture.safeParse(l.reply(2)).data?.text ?? "") || null }, 5_000, 50)
     // (a capture asked while its screen has something it hasn't answered, then that taken as stuck)
     c.take({ op: "capture", id: "stuck1", re: 3 })
     const stuck = s.term.check(performance.now() + HUNG + 1)
     c.take({ op: "list", re: 4 })
-    const listed = msgs.some((m) => m.re === 4)
-    const failed = await waitFor(() => msgs.find((m) => m.re === 3), 2_000, 20) as { error?: string } | undefined
-    const trouble = msgs.find((m) => m.type === "trouble") as { id?: string; text?: string } | undefined
+    const listed = l.reply(4) !== undefined
+    const failed = await waitFor(() => l.reply(3), 2_000, 20)
+    const trouble = l.events("trouble")[0]
     c.take({ op: "input", id: "stuck1", b64: Buffer.from("\r").toString("base64") })
-    const after = await waitFor(async () => { c.take({ op: "capture", id: "stuck1", re: 5 }); await new Promise((r) => setTimeout(r, 50)); const t = String(msgs.findLast((m) => m.re === 5)?.text ?? ""); return /after/.test(t) ? t : null }, 5_000, 50)
+    const after = await waitFor(async () => { c.take({ op: "capture", id: "stuck1", re: 5 }); await new Promise((r) => setTimeout(r, 50)); const t = Answers.capture.safeParse(l.reply(5)).data?.text ?? ""; return /after/.test(t) ? t : null }, 5_000, 50)
     s.driver.kill()
     check("terminal server: a stuck screen is that terminal's alone (the server answers meanwhile), then it starts again blank, said as trouble",
-      stuck && listed && /stuck/.test(failed?.error ?? "") && trouble?.id === "stuck1" && /started again blank/.test(trouble?.text ?? "") &&
+      stuck && listed && /stuck/.test(failed && "error" in failed ? failed.error : "") && trouble?.id === "stuck1" && /started again blank/.test(trouble?.text ?? "") &&
       typeof after === "string" && !/before/.test(after), [stuck, listed, failed, trouble, after])
 
     c.take({ op: "create", id: "redraw1", file: "/bin/sh", args: ["-c", "trap 'echo \"drawn $(stty size)\"' WINCH; printf '\\033[?2004hready\\n'; while :; do sleep 0.05; done"],
       cwd: tmp, env: { PATH: "/usr/bin:/bin" }, cols: 80, rows: 24, re: 6 })
     const r = h.sessions.get("redraw1")!
-    await waitFor(() => { c.take({ op: "capture", id: "redraw1", re: 7 }); return /ready/.test(String(msgs.findLast((m) => m.re === 7)?.text ?? "")) || null }, 5_000, 50)
+    await waitFor(() => { c.take({ op: "capture", id: "redraw1", re: 7 }); return /ready/.test(Answers.capture.safeParse(l.reply(7)).data?.text ?? "") || null }, 5_000, 50)
     c.take({ op: "capture", id: "redraw1", re: 8 })
     r.term.check(performance.now() + HUNG + 1)
-    const drawn = await waitFor(async () => { c.take({ op: "capture", id: "redraw1", re: 9 }); await new Promise((res) => setTimeout(res, 50)); const t = String(msgs.findLast((m) => m.re === 9)?.text ?? ""); return /drawn 24 80/.test(t) ? t : null }, 5_000, 50)
+    const drawn = await waitFor(async () => { c.take({ op: "capture", id: "redraw1", re: 9 }); await new Promise((res) => setTimeout(res, 50)); const t = Answers.capture.safeParse(l.reply(9)).data?.text ?? ""; return /drawn 24 80/.test(t) ? t : null }, 5_000, 50)
     const paste = r.term.mode(2004)
     r.driver.kill()
     check("terminal server: a screen started again blank has its program draw itself again, at its own size, its paste mode kept (a long text typed reaches it whole)",
@@ -799,26 +806,26 @@ export default async ($: VaultTest) => {
     })
     await new Promise<void>((r) => oldServer.listen(old, r))
     const h = host({ log: () => {}, pid: process.pid, file: "test" })
-    const msgs: Record<string, unknown>[] = [], viewer: Record<string, unknown>[] = []
-    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    const l = hostClient(), viewer = hostClient()
+    const c = h.connect(l.conn)
     c.take({ op: "subscribe" })
     c.take({ op: "adopt", socket: old, scrollback: 100, re: 1 })
-    const first = await waitFor(() => msgs.find((m) => m.re === 1), 5_000, 20) as { adopted?: string[] } | undefined
+    const first = Answers.adopt.safeParse(await waitFor(() => l.reply(1), 5_000, 20)).data
     await new Promise((r) => setTimeout(r, 100))
-    const endedThen = msgs.filter((m) => m.type === "exited"), heldThen = h.sessions.has("old2")
+    const endedThen = l.events("exited"), heldThen = h.sessions.has("old2")
     snapFails = false
     c.take({ op: "adopt", socket: old, scrollback: 100, re: 2 })
-    const again = await waitFor(() => msgs.find((m) => m.re === 2), 5_000, 20) as { adopted?: string[] } | undefined
-    const v = h.connect({ session: null, ready: false, send: (m) => viewer.push(m as never), backlog: () => 0 })
+    const again = Answers.adopt.safeParse(await waitFor(() => l.reply(2), 5_000, 20)).data
+    const v = h.connect(viewer.conn)
     v.take({ op: "attach", id: "old2", re: 1 })
-    await waitFor(() => viewer.find((m) => m.re === 1), 2_000, 20)
+    await waitFor(() => viewer.reply(1), 2_000, 20)
     oldServer.close()
     for (const sock of socks) sock.destroy()
-    const lost = await waitFor(() => msgs.find((m) => m.type === "exited"), 2_000, 20) as { exit?: { code: number; lost?: boolean } } | undefined
+    const lost = await waitFor(() => l.events("exited")[0], 2_000, 20)
     check("terminal server: one it couldn't take over isn't told as ended, and is taken over when asked again",
       JSON.stringify(first?.adopted) === "[]" && !endedThen.length && !heldThen && JSON.stringify(again?.adopted) === '["old2"]', [first, endedThen, heldThen, again])
     check("terminal server: one whose older server went away ends lost, its viewers told so", lost?.exit?.lost === true &&
-      viewer.some((m) => m.t === "exit" && m.lost === true), [lost, viewer.filter((m) => m.t === "exit")])
+      viewer.heard.some((m) => "t" in m && m.t === "exit" && m.lost === true), [lost, viewer.heard.filter((m) => "t" in m && m.t === "exit")])
   }
 
   // When the terminal server can't start, the server's own (localBackend) takes over the older one's terminals: listed.
@@ -862,6 +869,7 @@ export default async ($: VaultTest) => {
     const tf = parse("state=blocked:kind=permission:app=terraform:msg=QXBwbHkgMyB0byBhZGQsIDEgdG8gY2hhbmdlLCAwIHRvIGRlc3Ryb3k/")
     check("osc7501: the spec's report", JSON.stringify(tf) === JSON.stringify({ state: "blocked", id: "", msg: "Apply 3 to add, 1 to change, 0 to destroy?", kind: "permission", app: "terraform" }), tf)
     const p = (b: string) => JSON.stringify(parse(b))
+    const reportOf = (b: string) => { const r = parse(b); return r === "probe" ? null : r }
     check("osc7501: a malformed pair is skipped, an unknown key ignored, the last of a repeated key wins, spaces trimmed",
       p(" state = idle :nope: x=1 :foo=bar:state=done") === JSON.stringify({ state: "done", id: "" }), p(" state = idle :nope: x=1 :foo=bar:state=done"))
     check("osc7501: no state, or one it doesn't know, is ignored whole", parse("msg=aGk=") === null && parse("state=sleeping") === null)
@@ -869,7 +877,7 @@ export default async ($: VaultTest) => {
       parse(`state=working:msg=${b64("one\ntwo")}`) === null && parse("state=working:msg=a") === null && p("state=working:msg=@@@") === JSON.stringify({ state: "working", id: "" }) && parse(`state=working:msg=${b64("x".repeat(2049))}`) === null &&
       parse(`state=working:title=${b64("x".repeat(193))}`) === null && parse(`state=working:msg=${b64("é 2048".padEnd(2047, "x"))}`) !== null)
     check("osc7501: an id outside its grammar is ignored (never the root's), a good one kept", parse("state=done:id=a//b") === null && parse(`state=done:id=${"a/".repeat(8)}a`) === null &&
-      (parse("state=done:id=build/test") as { id: string }).id === "build/test")
+      reportOf("state=done:id=build/test")?.id === "build/test")
     check("osc7501: kind only with blocked, progress only 0-100 with working or blocked, app in its characters",
       p("state=idle:kind=permission:progress=5:app=a b") === JSON.stringify({ state: "idle", id: "" }) &&
       p("state=working:progress=101:kind=auth") === JSON.stringify({ state: "working", id: "" }) && p("state=blocked:kind=auth:progress=40") === JSON.stringify({ state: "blocked", id: "", kind: "auth", progress: 40 }))
@@ -900,7 +908,7 @@ export default async ($: VaultTest) => {
     check("osc7501: ESC that isn't ST cancels the report, and what it starts goes on", !cancelled.seen.length && cancelled.out === "\x1b[1mbold", cancelled)
     // Records: blocked anywhere wins, else the root's, else its children's; lifetimes; clear; app from an ancestor.
     const r = new Records()
-    const say = (b: string) => r.report(parse(b) as Exclude<ReturnType<typeof parse>, "probe" | null>)
+    const say = (b: string) => { const x = reportOf(b); if (!x) throw new Error(`not a report: ${b}`); r.report(x) }
     say("state=working:app=deploy"); say(`state=working:id=us:msg=${b64("Pushing")}`); say(`state=blocked:kind=permission:id=eu:msg=${b64("Approve eu-west?")}`)
     const blocked = r.status()
     say("state=done:id=eu")
@@ -918,15 +926,15 @@ export default async ($: VaultTest) => {
     const many = new Records()
     for (let i = 0; i < 300; i++) many.report({ state: "working", id: `w${i}` })
     many.report({ state: "blocked", id: "w299" })
-    check("osc7501: at most 256 records, the least recently updated going", many.status()?.state === "blocked" && (many as unknown as { map: Map<string, unknown> }).map.size === 256 &&
-      !(many as unknown as { map: Map<string, unknown> }).map.has("w0"))
+    check("osc7501: at most 256 records, the least recently updated going", many.status()?.state === "blocked" && many.ids().length === 256 &&
+      !many.ids().includes("w0"))
     // The keeper answers the probe in its place: the shell reads the answer, then the headless terminal's DA answer.
     if (process.platform !== "win32") await (async () => {
     const { termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { waitFor } = await import("../lib.ts")
     const keeper = termdBackend(`test7501-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/termd/termd.ts") })
     const got = path.join(tmp, "probe-answer")
-    const said: unknown[] = []
+    const said: ({ id: string } & Said)[] = []
     keeper.events!((ev) => { if (ev.type === "status") said.push({ id: ev.id, ...ev.said }) })
     const script = `stty raw -echo; printf '\\033]7501;?\\033\\\\\\033[c'; dd bs=1 count=${REPLY.length + 7} of=${got} 2>/dev/null; ` +
       `printf '\\033]7501;state=blocked:kind=question:msg=${b64("Which port?")}\\033\\\\'; sleep 30`
@@ -944,7 +952,7 @@ export default async ($: VaultTest) => {
     check("osc7501: the terminal server answers the probe before the primary DA after it", answer.startsWith(REPLY) && answer.slice(REPLY.length).startsWith("\x1b[?"), JSON.stringify(answer))
     const blockedSaid = { seen: true, status: { state: "blocked", kind: "question", msg: "Which port?" } }
     check("osc7501: the terminal server tells the app its records as they change (from the probe on: it speaks it), and lists them",
-      JSON.stringify(said.at(-1)) === JSON.stringify({ id: "probe1", ...blockedSaid }) && said.every((x) => (x as { seen: boolean }).seen) &&
+      JSON.stringify(said.at(-1)) === JSON.stringify({ id: "probe1", ...blockedSaid }) && said.every((x) => x.seen) &&
       JSON.stringify(listed) === JSON.stringify(blockedSaid), [said, listed])
     // An agent's hooks once it speaks OSC 7501 (its terminal's mark there): they say nothing.
     const term = await import("../../../plugins/core/terminal/plugin.ts")
@@ -989,7 +997,7 @@ export default async ($: VaultTest) => {
     const { waitFor } = await import("../lib.ts")
     const term = await import("../../../plugins/core/terminal/plugin.ts")
     const { stateFile } = await import("../../../plugins/core/terminal/backends.ts")
-    const svc = term.plugin.services as Record<string, Any>
+    const svc = term.plugin.services
     const dir = fs.mkdtempSync(path.join(tmp, "agent-left-")), script = path.join(dir, "agent.sh")
     // (it says it works in OSC 7501 or not at all, then runs till its file is there)
     fs.writeFileSync(script, "[ \"$1\" = osc ] && printf '\\033]7501;state=working:app=standin\\033\\\\'\nwhile [ ! -e \"$2\" ]; do sleep 0.1; done\n")
@@ -1030,11 +1038,18 @@ export default async ($: VaultTest) => {
 
   // Routes: * is one segment, a last ** the rest.
   {
-    const { match, Plugin: P } = await import("../../../core/plugins.ts")
-    const fake = Object.create(P.prototype) as InstanceType<typeof P>
+    const { match, Plugin: P, Request: Req } = await import("../../../core/plugins.ts")
+    const fake = new P(path.resolve(import.meta.dirname, "../../../plugins/core/terminal/plugin.ts"))
     fake.routes = [["GET", "machines/*/**".split("/"), () => 1, {}], ["GET", "machines/self".split("/"), () => 2, {}]]
     const hit = match([fake], "GET", ["machines", "studio", "claude-code", "session", "x"])
     check("routes: ** takes the rest", hit?.[1].join("|") === "studio|claude-code/session/x", hit?.[1])
-    check("routes: ** needs one segment at least", match([fake], "GET", ["machines", "studio"]) === null && match([fake], "GET", ["machines", "self"])?.[0]({} as never) === 2)
+    check("routes: ** needs one segment at least", match([fake], "GET", ["machines", "studio"]) === null && match([fake], "GET", ["machines", "self"])?.[0](new Req("GET", ["machines", "self"], {}, {})) === 2)
   }
+}
+
+function hostClient() {
+  const heard: (Unasked | Reply)[] = []
+  const conn: Conn = { session: null, ready: false, send: (m) => { heard.push(m) }, backlog: () => 0 }
+  const isEvent = <T extends Event["type"]>(type: T) => (m: Unasked | Reply): m is Extract<Unasked, { type: T }> => "t" in m && m.t === "event" && m.type === type
+  return { heard, conn, reply: (re: number) => heard.findLast((m) => "re" in m && m.re === re), events: <T extends Event["type"]>(type: T) => heard.filter(isEvent(type)) }
 }
