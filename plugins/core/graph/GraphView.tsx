@@ -14,7 +14,8 @@ export type Settings = { colorBy?: ColorBy; orphans?: boolean; hidden?: string[]
   incoming?: boolean; outgoing?: boolean; neighbors?: boolean; arrows?: boolean } & Look
 
 export const dirOf = (s: Settings): Direction => ({ incoming: s.incoming !== false, outgoing: s.outgoing !== false, neighbors: s.neighbors !== false })
-export type Save = (p: Partial<Record<keyof Settings, unknown>>) => void
+export type Patch = { [K in keyof Settings]?: Settings[K] | null }
+export type Save = (p: Patch) => void
 
 export function useGraph(path?: string, depth = 1, archived = false) {
   const [v, setV] = useState(0)

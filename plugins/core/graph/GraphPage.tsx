@@ -3,7 +3,7 @@ import { ChevronRight, Filter, Maximize, Search, X } from "lucide-react"
 import { cn, menuFor, useFocusedFile, useQuerySuggest, type MenuItem } from "@vaultite"
 import { BODY, filterGraph, grouping, linkTypes, localGraph, nameOf, PALETTE, tokenOf, withoutLinks, withTags, type ColorBy, type ColorGroup, type LegendRow } from "./graph"
 import { colourItems, GraphPanel, Swatch } from "./GraphPanel"
-import { dirOf, GraphCanvas, graphSettings, Loading, lookOf, openNode, trimmed, useGraph, useGroups, useLinkStyle, type Settings } from "./GraphView"
+import { dirOf, GraphCanvas, graphSettings, Loading, lookOf, openNode, trimmed, useGraph, useGroups, useLinkStyle, type Patch, type Settings } from "./GraphView"
 
 const typeLabel = (t: string) => (t === BODY ? "In the text" : t)
 
@@ -15,7 +15,7 @@ export function GraphView({ arg }: { arg: string }) {
   const saved = graphSettings.use()
   const [trying, setTrying] = useState<Partial<Settings>>({})
   const settings = useMemo(() => ({ ...saved, ...trying }), [saved, trying])
-  const save = (p: Partial<Record<keyof Settings, unknown>>) => void graphSettings.set(p as Settings).catch(() => {})
+  const save = (p: Patch) => void graphSettings.set(p).catch(() => {})
   const by = settings.colorBy ?? "folder"
   const depth = settings.depth ?? 1
   const { data, error } = useGraph(undefined, 1, !!settings.archived || !!arg)

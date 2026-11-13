@@ -166,8 +166,8 @@ function matching(vault: Vault, q: string): string[] | string {
 plugin.route("GET", "graph/match", (req) => {
   let qs: unknown
   try { qs = JSON.parse(String(req.query.q ?? "[]")) } catch { throw new HTTPError(400, "q is a JSON list of queries") }
-  if (!Array.isArray(qs) || !qs.every((q) => typeof q === "string")) throw new HTTPError(400, "q is a JSON list of queries")
-  return { results: (qs as string[]).map((q) => { const r = matching(plugin.vault, q); return typeof r === "string" ? { error: r } : { paths: r } }) }
+  if (!Array.isArray(qs) || !qs.every((q): q is string => typeof q === "string")) throw new HTTPError(400, "q is a JSON list of queries")
+  return { results: qs.map((q) => { const r = matching(plugin.vault, q); return typeof r === "string" ? { error: r } : { paths: r } }) }
 })
 
 plugin.block("graph", (ctx) => {

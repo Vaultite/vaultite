@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
-import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
+import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type ForceLink, type ForceManyBody, type ForceX, type ForceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
 import { onLook, trackSoon } from "@vaultite"
 import { nameOf, type Graph, type GraphEdge, type GraphNode } from "./graph"
 
 type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string; text: string; tw: number; tws: number; la: number }
-type SimLink = SimulationLinkDatum<SimNode> & { e: GraphEdge; tok: string | null; color: string | null }
+type SimLink = SimulationLinkDatum<SimNode> & { a: SimNode; b: SimNode; e: GraphEdge; tok: string | null; color: string | null }
+type Forces = { link: ForceLink<SimNode, SimLink>; charge: ForceManyBody<SimNode>; x: ForceX<SimNode>; y: ForceY<SimNode> }
+type CanvasState = {
+  nodes: SimNode[]; order: SimNode[]; links: SimLink[]; by: Map<string, SimNode>; adj: Map<string, Set<string>>
+  sim: Simulation<SimNode, SimLink> | null; forces: Forces | null
+  t: { k: number; x: number; y: number }; w: number; h: number; dpr: number; touched: boolean
+  drawn: boolean; wake: () => void; dirty: boolean
+  hover: SimNode | null; search: string; focus: string; font: string; colors: { fg: string; muted: string; line: string; bg: string; accent: string }
+  onOpen: (path: string, newTab: boolean) => void; compact: boolean; arrows: boolean; look: Look; fit: (() => void) | null; setMoved: (moved: boolean) => void
+}
 
 export type CanvasProps = {
   graph: Graph
@@ -68,10 +77,10 @@ const radius = (degree: number, compact?: boolean) => Math.min(compact ? 9 : 16,
 export type Look = { nodeSize?: number; lineWidth?: number; textFade?: number; repel?: number; linkDistance?: number; center?: number }
 const num = (v: unknown, dflt: number) => (typeof v === "number" && Number.isFinite(v) ? v : dflt)
 
-function setForces(sim: Simulation<SimNode, SimLink>, look: Look, compact: boolean, many: boolean) {
-  ;(sim.force("link") as ReturnType<typeof forceLink<SimNode, SimLink>>).distance((compact ? 48 : 46) * num(look.linkDistance, 1))
-  ;(sim.force("charge") as ReturnType<typeof forceManyBody<SimNode>>).strength((compact ? -150 : many ? -45 : -120) * num(look.repel, 1))
-  for (const k of ["x", "y"]) (sim.force(k) as ReturnType<typeof forceX<SimNode>>).strength((many ? 0.06 : 0.05) * num(look.center, 1))
+function setForces(forces: Forces, look: Look, compact: boolean, many: boolean) {
+  forces.link.distance((compact ? 48 : 46) * num(look.linkDistance, 1))
+  forces.charge.strength((compact ? -150 : many ? -45 : -120) * num(look.repel, 1))
+  for (const f of [forces.x, forces.y]) f.strength((many ? 0.06 : 0.05) * num(look.center, 1))
 }
 
 export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = {}, focus, search, onOpen, scope, compact, refit }: CanvasProps) {
@@ -81,13 +90,13 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   looks.current = look
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
-  const st = useRef({
-    nodes: [] as SimNode[], order: [] as SimNode[], links: [] as SimLink[], by: new Map<string, SimNode>(), adj: new Map<string, Set<string>>(),
-    sim: null as Simulation<SimNode, SimLink> | null,
+  const st = useRef<CanvasState>({
+    nodes: [], order: [], links: [], by: new Map(), adj: new Map(),
+    sim: null, forces: null,
     t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false,
     drawn: false, wake: () => {}, get dirty() { return !this.drawn }, set dirty(v: boolean) { this.drawn = !v; if (v) this.wake() },
-    hover: null as SimNode | null, search: "", focus: "", font: "system-ui", colors: { fg: "#000", muted: "#888", line: "#ccc", bg: "#fff", accent: "#07f" },
-    onOpen, compact: !!compact, arrows: false, look: {} as Look, fit: null as (() => void) | null, setMoved: (_: boolean) => {},
+    hover: null, search: "", focus: "", font: "system-ui", colors: { fg: "#000", muted: "#888", line: "#ccc", bg: "#fff", accent: "#07f" },
+    onOpen, compact: !!compact, arrows: false, look: {}, fit: null, setMoved: () => {},
   })
   const [moved, setMoved] = useState(false)
   st.current.onOpen = onOpen
@@ -116,20 +125,26 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     for (const n of nodes) n.text = n.label.length > 32 ? n.label.slice(0, 31) + "…" : n.label
     const order = nodes.slice().sort((a, b) => b.n.degree - a.n.degree)
     const by = new Map(nodes.map((n) => [n.n.path, n]))
-    const links: SimLink[] = graph.edges.flatMap((e) => (by.has(e.from) && by.has(e.to) ? [{ source: by.get(e.from)!, target: by.get(e.to)!, e, tok: null, color: null }] : []))
+    const links: SimLink[] = graph.edges.flatMap((e) => { const a = by.get(e.from), b = by.get(e.to); return a && b ? [{ source: a, target: b, a, b, e, tok: null, color: null }] : [] })
     recolour(nodes, links, paint.current)
     s.sim?.stop()
     const many = nodes.length > 800
+    const forces: Forces = {
+      link: forceLink<SimNode, SimLink>(links).strength((l) => 1 / Math.min((adj.get(l.a.n.path)?.size ?? 1), (adj.get(l.b.n.path)?.size ?? 1)) * 0.7),
+      charge: forceManyBody<SimNode>().theta(many ? 1.1 : 0.9).distanceMax(many ? 420 : 700),
+      x: forceX<SimNode>(0),
+      y: forceY<SimNode>(0),
+    }
     const sim = forceSimulation<SimNode, SimLink>(nodes)
-      .force("link", forceLink<SimNode, SimLink>(links).strength((l) => 1 / Math.min((adj.get((l.source as SimNode).n.path)?.size ?? 1), (adj.get((l.target as SimNode).n.path)?.size ?? 1)) * 0.7))
-      .force("charge", forceManyBody<SimNode>().theta(many ? 1.1 : 0.9).distanceMax(many ? 420 : 700))
-      .force("x", forceX<SimNode>(0))
-      .force("y", forceY<SimNode>(0))
+      .force("link", forces.link)
+      .force("charge", forces.charge)
+      .force("x", forces.x)
+      .force("y", forces.y)
       .alphaDecay(many ? 0.045 : 0.03)
       .stop()
-    setForces(sim, looks.current, !!compact, many)
+    setForces(forces, looks.current, !!compact, many)
     sim.alpha(fresh > nodes.length / 3 ? 1 : fresh ? 0.3 : 0.08)
-    Object.assign(s, { nodes, order, links, by, adj, sim, dirty: true })
+    Object.assign(s, { nodes, order, links, by, adj, sim, forces, dirty: true })
     if (s.hover && !by.has(s.hover.n.path)) s.hover = null
   }, [graph, scope, focus, compact])
   useEffect(() => { recolour(st.current.nodes, st.current.links, { colorOf, edgeColor }); st.current.dirty = true }, [colorOf, edgeColor])
@@ -146,9 +161,9 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   }, [nodeSize, lineWidth, textFade, compact])
   const stirred = useRef(false)
   useEffect(() => {
-    const sim = st.current.sim
-    if (!sim || !stirred.current) { stirred.current = true; return }
-    setForces(sim, { repel, linkDistance, center }, !!compact, st.current.nodes.length > 800)
+    const { sim, forces } = st.current
+    if (!sim || !forces || !stirred.current) { stirred.current = true; return }
+    setForces(forces, { repel, linkDistance, center }, !!compact, st.current.nodes.length > 800)
     if (sim.alpha() < 0.3) sim.alpha(0.3)
     st.current.dirty = true
   }, [repel, linkDistance, center, compact])
@@ -216,7 +231,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     const pts = new Map<number, { x: number; y: number }>()
     let drag: { node: SimNode | null; x: number; y: number; moved: boolean; t0: number } | null = null
     let pinch: { d: number; cx: number; cy: number } | null = null
-    const local = (e: PointerEvent | WheelEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+    const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
     const down = (e: PointerEvent) => {
       if (e.button !== 0) return
       el.setPointerCapture(e.pointerId)
@@ -293,7 +308,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     }
     const aux = (e: MouseEvent) => {
       if (e.button !== 1) return
-      const p = local(e as unknown as PointerEvent), n = hit(p.x, p.y)
+      const p = local(e), n = hit(p.x, p.y)
       if (n) { e.preventDefault(); s.onOpen(n.n.path, true) }
     }
     el.addEventListener("pointerdown", down)
@@ -326,7 +341,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       const hot: SimLink[] = [], plain: SimLink[] = []
       const own = new Map<string, SimLink[]>()
       for (const l of links) {
-        const a = l.source as SimNode, b = l.target as SimNode
+        const { a, b } = l
         if (hover && (a === hover || b === hover)) { hot.push(l); continue }
         if (l.color) { const g = own.get(l.color); if (g) g.push(l); else own.set(l.color, [l]); continue }
         plain.push(l)
@@ -339,7 +354,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         ctx.fillStyle = ctx.strokeStyle
         ctx.beginPath()
         for (const l of ls) {
-          const a = l.source as SimNode, b = l.target as SimNode
+          const { a, b } = l
           for (const [from, to] of l.e.both ? [[a, b], [b, a]] : [[a, b]]) {
             const dx = to.x! - from.x!, dy = to.y! - from.y!, d = Math.hypot(dx, dy)
             if (d < to.r + size) continue
@@ -359,7 +374,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         for (const [color, ls] of own) {
           ctx.strokeStyle = color
           ctx.beginPath()
-          for (const l of ls) { const a = l.source as SimNode, b = l.target as SimNode; ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!) }
+          for (const l of ls) { const { a, b } = l; ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!) }
           ctx.stroke()
           heads(ls)
         }
@@ -370,7 +385,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         ctx.strokeStyle = colors.accent
         ctx.lineWidth = Math.max(0.8 * lw, 1.4 * lw / t.k)
         ctx.beginPath()
-        for (const l of hot) { const a = l.source as SimNode, b = l.target as SimNode; ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!) }
+        for (const l of hot) { const { a, b } = l; ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!) }
         ctx.stroke()
         heads(hot)
       }
@@ -387,7 +402,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         }
       }
       ctx.globalAlpha = 1
-      const ringed = [hover, s.focus ? s.by.get(s.focus) : null].filter(Boolean) as SimNode[]
+      const ringed = [hover, s.focus ? s.by.get(s.focus) : null].filter((n): n is SimNode => !!n)
       for (const n of ringed) {
         ctx.strokeStyle = colors.fg
         ctx.lineWidth = 1.5 / t.k
@@ -429,7 +444,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
           if (n.la > 0) shown.push([n, sx, sy, (lead ? 1 : Math.min(1, 0.35 + (t.k - 0.5) * 0.6)) * n.la])
         }
       }
-      ;(el as HTMLCanvasElement & { labels?: unknown }).labels = () => shown.map(([n, sx, sy, alpha]) => ({ text: n.text, x0: sx - n.tw / 2, x1: sx + n.tw / 2, y0: sy, y1: sy + size, alpha, full: n.la === 1 }))
+      Object.assign(el, { labels: () => shown.map(([n, sx, sy, alpha]) => ({ text: n.text, x0: sx - n.tw / 2, x1: sx + n.tw / 2, y0: sy, y1: sy + size, alpha, full: n.la === 1 })) })
       for (const [n, sx, sy, alpha] of shown) {
         ctx.globalAlpha = alpha
         ctx.lineWidth = 3

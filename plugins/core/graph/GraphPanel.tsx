@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { GripVertical, Plus, X, type LucideIcon } from "lucide-react"
 import { capitalize, CHIP_TINTS, cn, Foldable, menuBelow, Segmented, SortableList, Switch, useQuerySuggest, type MenuItem } from "@vaultite"
 import { PALETTE, tokenOf, type ColorGroup } from "./graph"
-import type { Save, Settings } from "./GraphView"
+import type { Look } from "./GraphCanvas"
+import type { Patch, Save, Settings } from "./GraphView"
+
+type Flag = { [K in keyof Settings]-?: Settings[K] extends boolean | undefined ? K : never }[keyof Settings]
 
 export const Swatch = ({ tok, className }: { tok: string; className?: string }) => (
   <span className={cn("size-2.5 shrink-0 rounded-full", className)} style={{ background: `var(${tok})` }} aria-hidden />
@@ -101,7 +104,7 @@ function Groups({ groups, found, counts, setGroups }: GroupProps) {
 }
 
 function SliderRow({ label, k, min, max, step, dflt, settings, save, tryIt }: {
-  label: string; k: keyof Settings; min: number; max: number; step: number; dflt: number; settings: Settings; save: Save; tryIt: (p: Partial<Settings>) => void
+  label: string; k: keyof Look; min: number; max: number; step: number; dflt: number; settings: Settings; save: Save; tryIt: (p: Partial<Settings>) => void
 }) {
   const raw = settings[k]
   const v = typeof raw === "number" && Number.isFinite(raw) ? raw : dflt
@@ -138,9 +141,9 @@ const FORCES: (keyof Settings)[] = ["center", "repel", "linkDistance"]
 type GroupProps = { groups: ColorGroup[]; found: { error?: string }[]; counts: number[]; setGroups: (g: ColorGroup[]) => void }
 
 export function GraphPanel({ settings, save, try: tryIt, tried, local, ...groups }: { settings: Settings; save: Save; try: (p: Partial<Settings>) => void; tried: () => void; local: boolean } & GroupProps) {
-  const slider = { settings, tryIt, save: (p: Partial<Record<keyof Settings, unknown>>) => { save(p); tried() } }
+  const slider = { settings, tryIt, save: (p: Patch) => { save(p); tried() } }
   const depth = settings.depth ?? 1
-  const flag = (k: keyof Settings, dflt: boolean) => ({ on: (settings[k] as boolean | undefined) ?? dflt, set: (v: boolean) => save({ [k]: v === dflt ? null : v }) })
+  const flag = (k: Flag, dflt: boolean) => ({ on: settings[k] ?? dflt, set: (v: boolean) => save({ [k]: v === dflt ? null : v }) })
   return (
     <div className="glass pointer-events-auto flex max-h-full w-[290px] flex-col overflow-y-auto overscroll-contain rounded-[12px] p-1.5 max-md:w-full" data-graph-panel>
       <Foldable title="Filters" keep="graph.filters" data-graph-section="filters">
