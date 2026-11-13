@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Open search in a tab goes to the search tab you have**: with a query typed, it opened a second one.
 - **Unlinked mentions skip #tags**: a note's name inside a tag (`#lighthouse/launch`) counted as a mention, and Link
   rewrote the tag into a link; tags are now left alone, like links and code.
 - **The companion's cursor and your words show after an update**: when the menu-bar helper started while the server
