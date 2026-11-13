@@ -53,6 +53,8 @@ const badSettings = B.settingDeclProblems({ a: { type: "boolean", description: "
   f: { type: "number", preview: true, label: "F", description: "x" } }, "m")
 check("settings: a declaration's own problems", ["setting 'a' needs a label", "setting 'b': labels names 'y'", "setting 'c': its default should be a number",
   "setting 'd': a setting is never required", "setting 'e' must be an object", "setting 'f': preview is true, on an enum"].every((w) => badSettings.some((b) => b.includes(w))), badSettings)
+const oddValues = (() => { try { return B.settingDeclProblems({ g: { type: "list", values: 5, default: ["a"], label: "G", description: "x" }, h: { type: "enum", values: 7, default: "a", labels: { a: "A" }, label: "H", description: "x" } }, "m") } catch (e) { return [`threw: ${e}`] } })()
+check("settings: values that aren't a list are a problem, the default checked without them, never a crash", oddValues.filter((p: string) => p.includes("values must be a list")).length === 2 && !oddValues.some((p: string) => p.startsWith("threw")), oddValues)
 check("settings: not an object", B.settingDeclProblems([], "m")[0]?.includes("settings must be an object") && !B.settingDeclProblems(undefined, "m").length)
 check("settings: read from a manifest", Object.keys(B.settingsOf({ settings: setting })).join() === "trigger,delay,file" && !Object.keys(B.settingsOf({})).length)
 check("settings: the doc for AIs", B.settingsDoc("page-preview", setting as never).startsWith("Settings, `.vaultite/plugins/page-preview/data.json` (each optional; the plugin's settings in the app too):\n- `trigger` (one of auto, hover, default auto): when it shows")

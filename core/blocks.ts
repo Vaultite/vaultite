@@ -1,6 +1,6 @@
 import { blockName, blocksIn } from "./sections.ts"
 import { load } from "./yaml.ts"
-import { isObj as isMap, messageOf, strings } from "./values.ts"
+import { isNumber, isObj as isMap, messageOf, strings } from "./values.ts"
 
 type OptionType = "string" | "number" | "boolean" | "list" | "map" | "enum"
 export type OptionDecl = {
@@ -28,6 +28,7 @@ export type BlockDecl = { description: string; options?: Record<string, OptionDe
 export type BlockDecls = Record<string, BlockDecl>
 
 const TYPES: OptionType[] = ["string", "number", "boolean", "list", "map", "enum"]
+const isOptionType = (t: unknown): t is OptionType => TYPES.some((x) => x === t)
 
 export const COMMON: Record<string, OptionDecl> = {
   wide: { type: "boolean", description: "on a dashboard, the block takes the whole row" },
@@ -242,7 +243,7 @@ function optionProblems(o: unknown, ok: string): string[] {
   if (!isMap(o)) return [`${ok} must be an object with a type and a description`]
   const out: string[] = []
   const ts = Array.isArray(o.type) ? o.type : [o.type]
-  if (!ts.length || ts.some((t) => !TYPES.includes(t as OptionType))) out.push(`${ok}: type must be one of ${TYPES.join(", ")} (or a list of them)`)
+  if (!ts.length || ts.some((t) => !isOptionType(t))) out.push(`${ok}: type must be one of ${TYPES.join(", ")} (or a list of them)`)
   if (!ONE_LINE(o.description)) out.push(`${ok} needs a description (one line)`)
   if (o.values !== undefined && (!Array.isArray(o.values) || !o.values.length || o.values.some((v) => typeof v !== "string" && typeof v !== "number"))) {
     out.push(`${ok}: values must be a list of texts or numbers`)
@@ -250,8 +251,9 @@ function optionProblems(o: unknown, ok: string): string[] {
   if (ts.includes("enum") && !Array.isArray(o.values)) out.push(`${ok}: an enum needs its values`)
   for (const m of ["min", "max"]) if (o[m] !== undefined && typeof o[m] !== "number") out.push(`${ok}: ${m} must be a number`)
   if (o.required !== undefined && typeof o.required !== "boolean") out.push(`${ok}: required must be true or false`)
-  if (o.default !== undefined && o.default !== null && ts.every((t) => TYPES.includes(t as OptionType))) {
-    const why = valueProblem(o as OptionDecl, o.default)
+  const values = Array.isArray(o.values) && o.values.every((v): v is string | number => typeof v === "string" || typeof v === "number") ? o.values : undefined
+  if (o.default !== undefined && o.default !== null && ts.every(isOptionType)) {
+    const why = valueProblem({ type: ts, description: "", values, min: isNumber(o.min) ? o.min : undefined, max: isNumber(o.max) ? o.max : undefined }, o.default)
     if (why) out.push(`${ok}: its default ${why}`)
   }
   return out
@@ -319,7 +321,7 @@ export function settingDeclProblems(settings: unknown, where: string): string[] 
     if (!ONE_LINE(d.label)) out.push(`${at} needs a label (a few words, sentence case: what the settings form calls it)`)
     if (d.labels !== undefined) {
       if (!isMap(d.labels) || Object.values(d.labels).some((l) => !ONE_LINE(l))) out.push(`${at}: labels must map values to their names, {"auto": "Automatic"}`)
-      else for (const v of Object.keys(d.labels)) if (!(d.values as unknown[] | undefined)?.map(String).includes(v)) out.push(`${at}: labels names '${v}', which isn't one of its values`)
+      else for (const v of Object.keys(d.labels)) if (!(Array.isArray(d.values) && d.values.map(String).includes(v))) out.push(`${at}: labels names '${v}', which isn't one of its values`)
     }
   }
   return out
