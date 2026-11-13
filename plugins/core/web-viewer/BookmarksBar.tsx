@@ -1,5 +1,3 @@
-// The bookmarks bar, as Chrome's: the bookmarks note's top level (links, then folders as menus), » for the rest.
-// Drag a bookmark along it or onto a folder; a web tab dropped on it is bookmarked. Format: bookmarks.ts.
 import { useId, useLayoutEffect, useRef, useState } from "react"
 import { ChevronsRight, ExternalLink, Folder, FolderPlus, Link, Pencil, BookOpen, Star, Trash2 } from "lucide-react"
 import { cn, commandKeys, copyText, getStore, menuBelow, menuFor, op, reorder, slotAt, startDrag, useDrag, useDropHit, useDropTarget, useSlide, useStore, type MenuItem } from "@vaultite"
@@ -16,13 +14,11 @@ const parentOf = (f: string) => f.split("/").slice(0, -1).join("/")
 const nameOf = (f: string) => f.split("/").pop() ?? f
 const labelOf = (b: Bookmark) => b.title || hostOf(b.url)
 
-/** The folders in `parent` (direct ones), in the note's order, empty ones too. */
 function foldersIn(parent: string, folders: string[], marks: Bookmark[]) {
   const all = [...new Set([...folders, ...marks.map((b) => b.folder).filter(Boolean)])]
   return all.filter((f) => parentOf(f) === parent)
 }
 
-/** A folder's menu: its links, then its folders as submenus, then Open all. */
 function folderItems(folder: string, open: Open): MenuItem[] {
   const marks = getStore()?.bookmarks ?? NONE, folders = getStore()?.bookmarkFolders ?? NO
   const links = marks.filter((b) => b.folder === folder)
@@ -36,7 +32,6 @@ function folderItems(folder: string, open: Open): MenuItem[] {
 }
 const openAll = (folder: string, open: Open) => { for (const b of (getStore()?.bookmarks ?? NONE).filter((x) => x.folder === folder)) open(b.url, "back") }
 
-/** What a drop on the bar does: into a folder, or along its links (`before` the one it goes before, "" last). */
 type Hit = { into: string } | { order: string[]; before: string; add?: { url: string; title: string } }
 
 export function BookmarksBar({ open, page }: { open: Open; page: { url: string; title: string } }) {
@@ -47,7 +42,6 @@ export function BookmarksBar({ open, page }: { open: Open; page: { url: string; 
   const box = useRef<HTMLDivElement>(null)
   const [fit, setFit] = useState(Infinity)
 
-  // What fits: the rest goes in », whose button takes the end.
   const count = links.length + tops.length
   useLayoutEffect(() => {
     const el = box.current

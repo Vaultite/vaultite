@@ -1,10 +1,7 @@
-// The browser's downloads as a list, a menu redrawn as they move on: each one's progress and time left, or how it
-// ended, with what can be done to it (downloads.tsx keeps them).
 import { AlertCircle, ArrowDown, Ban, Check, Copy, Eraser, ExternalLink, FolderOpen, Pause, Play, RotateCw, Trash2, X } from "lucide-react"
 import { copyText, menuShowing, openMenu, replaceMenu, showLabel, type MenuItem, type WebDownload } from "@vaultite"
 import { act, cancelledHere, going, list, seen } from "./downloads"
 
-// ---------- sizes and time, as Finder writes them (1000 a kilo) ----------
 
 const UNITS = ["bytes", "KB", "MB", "GB", "TB"]
 const unitOf = (n: number) => { let u = 0; while (n >= 1000 && u < UNITS.length - 1) { n /= 1000; u++ } return u }
@@ -12,7 +9,6 @@ const inUnit = (n: number, u: number) => { const v = n / 1000 ** u; return u ===
 const sizeText = (n: number) => { const u = unitOf(n); return `${inUnit(n, u)} ${UNITS[u]}` }
 const leftText = (s: number) => s < 60 ? `${Math.max(1, Math.round(s / 5) * 5)} s left` : s < 3600 ? `${Math.round(s / 60)} min left` : `${Math.round(s / 360) / 10} h left`
 
-/** Its line in the list: how far (12 of 140 MB, 2 min left), or how it ended. */
 function statusText(d: WebDownload) {
   if (d.state === "completed") return d.gone ? "Moved or deleted" : sizeText(d.total || d.received)
   if (d.state === "cancelled") return "Cancelled"
@@ -24,7 +20,6 @@ function statusText(d: WebDownload) {
   return d.total && r > 0 ? `${far}, ${leftText((d.total - d.received) / r)}` : far
 }
 const fraction = (d: WebDownload) => (d.total ? d.received / d.total : -1)
-// ---------- the list, a menu ----------
 
 const copyLink = (d: WebDownload): MenuItem => ({ label: "Copy download link", icon: Copy, run: () => void copyText(d.url) })
 const forget = (d: WebDownload): MenuItem => ({ label: "Remove from list", icon: Trash2, sep: true, run: () => void act(d.id, "forget", "Couldn't remove it from the list") })
@@ -63,7 +58,6 @@ function rows(): MenuItem[] {
   ]
 }
 
-// (the open list redrawn as they move on)
 let showing: MenuItem[] | null = null, watching = false
 function watch() {
   if (watching) return
@@ -79,8 +73,6 @@ function watch() {
 
 const visible = (el: HTMLElement | null) => !!el && el.getClientRects().length > 0
 
-/** The list, under the button it's opened from (the page bar's, the focused page's if there are several; else the
- *  status bar's, above it; else over the toasts' corner). */
 export function showDownloads(from?: HTMLElement) {
   watch()
   const items = rows()

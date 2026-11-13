@@ -1,16 +1,12 @@
-// Import from Brave (or Chrome): pick one of its profiles, then its history goes into this computer's (the desktop app)
-// and its bookmarks into the bookmarks note (bookmarks.add), under their folders. Never its passwords or cookies.
 import { User } from "lucide-react"
 import { choose, notify, notifyError, op, openFile, plural } from "@vaultite"
 import { importBookmarks, importHistory, importSources, type ImportSource } from "./history"
 import { profile } from "./state"
 
-/** The browsers found on this computer, once asked (the commands show for those). */
 let found: ImportSource[] = []
 export const browsersHere = () => found
 export const findBrowsers = () => importSources().then((s) => { found = s }, () => { found = [] })
 
-/** Import from `browser` ("brave", "chrome"), or ask which when more than one is here. */
 export async function askImport(browser?: string) {
   await findBrowsers()
   const list = browser ? found.filter((s) => s.browser === browser) : found

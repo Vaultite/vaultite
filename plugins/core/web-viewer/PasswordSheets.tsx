@@ -1,5 +1,3 @@
-// A password's sheets: its detail (copy, reveal, its one-time code, agents' uses of it) and its form (edit or new,
-// with a generator). Both show the lock while the file is locked, and read the entry afresh after every write.
 import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react"
 import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, KeyRound, Pencil, Plus, RefreshCw, Trash2, Wand2, X } from "lucide-react"
 import {
@@ -17,7 +15,6 @@ import {
 const DAY: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }
 const field = "h-11 w-full min-w-0 rounded-control border-[0.5px] border-border bg-card px-3 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-8 md:text-[14px]"
 
-/** The entry, read again whenever the list changes (a write here or elsewhere); null once it's gone. */
 function useFull(id: string | undefined) {
   const { status, entries } = usePasswordsLive()
   const [full, setFull] = useState<Full | null | undefined>(undefined)
@@ -40,7 +37,6 @@ function Gate({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-// ---------- the detail ----------
 
 export function EntrySheet({ id }: { id: string }) {
   return <Gate><Entry id={id} /></Gate>
@@ -128,7 +124,6 @@ function Act({ icon: Icon, label, run }: { icon: typeof Copy; label: string; run
 
 const leftOf = (period: number) => period - (Math.floor(Date.now() / 1000) % period)
 
-/** The one-time code, with what's left of its period; a new one is read as it ends. */
 function Code({ code, uri, again }: { code: string; uri: string; again: () => void }) {
   const period = Number(/[?&](?:period|step)=(\d+)/i.exec(uri)?.[1]) || 30
   const [s, setS] = useState(() => leftOf(period))
@@ -154,7 +149,6 @@ function Code({ code, uri, again }: { code: string; uri: string; again: () => vo
   )
 }
 
-// ---------- the form ----------
 
 export function EditSheet({ id, group }: { id?: string; group?: string }) {
   return <Gate><Edit id={id} group={group} /></Gate>
@@ -194,7 +188,6 @@ function Form({ full, group }: { full: Full | null; group?: string }) {
     e.preventDefault()
     if (busy) return
     const tags = v.tags.split(",").map((t) => t.trim()).filter((t) => t && t !== FREE_TAG)
-    // (the switch speaks only for entries agents can reach; elsewhere the tag stays as it was)
     if (canFree ? v.free : start.free) tags.push(FREE_TAG)
     const change: Change = { ...(full ? { id: full.id } : {}), group: v.group || undefined, title: v.title.trim(), username: v.username.trim(), password: v.password,
       urls: v.urls.map((u) => u.trim()).filter(Boolean), tags, notes: v.notes }
@@ -286,7 +279,6 @@ function Labelled({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** The generator's choices: each change makes a new password. */
 function Generator({ generate, close }: { generate: (o: GenOptions) => void; close: () => void }) {
   const [o, setO] = useState(genOptions.current)
   const change = (next: GenOptions) => { setO(next); generate(next) }

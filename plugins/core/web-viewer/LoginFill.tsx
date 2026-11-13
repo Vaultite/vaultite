@@ -1,22 +1,16 @@
-// Your own logins in your pages (electron/browser/userlogins.ts): the address bar's key fills one from your passwords,
-// unlocking them first if they're locked; a sign-in they don't have yet is offered to save, as a toast.
 import { useEffect, useState } from "react"
 import { KeyRound } from "lucide-react"
 import { cell, choose, menuBelow, notify, notifyError, secretDialog, webPages } from "@vaultite"
 
 type Login = { id: string; title: string; username: string; otp: boolean }
 const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
-/** The pages showing a login form now, by id. */
 const forms = cell(new Set<number>())
-/** Bumped as your passwords change (a save, a lock, an unlock): the keys ask their site's entries again. */
 const changes = cell(0)
 export const hasLoginForm = (id: number) => !!id && forms.get().has(id)
 const nameOf = (l: Login) => l.title || l.username || "this login"
 
-/** The site's entries for page `id` (null: no passwords file on this computer). */
 const loginsFor = (id: number) => engine("passwords:fill-list", id) as Promise<Login[] | null>
 
-/** Unlock your passwords: Touch ID where it can, else (or when it didn't confirm) their file's password. */
 async function unlock(): Promise<boolean> {
   const st = await engine("passwords:status") as { touchId?: boolean } | null
   if (!st) return false
@@ -30,7 +24,6 @@ async function unlock(): Promise<boolean> {
   return false
 }
 
-/** Fill login `l` into page `id`, unlocking first if need be; the keyboard goes back to the page. */
 async function fill(id: number, l: Login) {
   try {
     let r = await engine("passwords:fill", id, l.id) as { locked?: boolean } | null
@@ -43,7 +36,6 @@ async function fill(id: number, l: Login) {
   } catch (e) { notifyError(e, `Couldn't fill ${nameOf(l)}`) }
 }
 
-/** Fill a login into page `id` (the palette's Fill login): the only one at once, else picked from the site's. */
 export async function fillLoginIn(id: number) {
   let list: Login[] | null
   try { list = await loginsFor(id) } catch (e) { return void notifyError(e, "Couldn't read your passwords") }
@@ -54,7 +46,6 @@ export async function fillLoginIn(id: number) {
     onPick: (it) => { const l = list.find((x) => x.id === it.id); if (l) void fill(id, l) } })
 }
 
-/** A sign-in your passwords don't have: a toast to save it (or the entry's new password). */
 function offered(m: Record<string, unknown>) {
   const site = String(m.site ?? ""), user = String(m.username ?? ""), update = m.kind === "update"
   notify(update ? `Update your password for ${user ? `${user} on ` : ""}${site}?` : `Save your login for ${site}${user ? ` (${user})` : ""} to your passwords?`, {
@@ -66,7 +57,6 @@ function offered(m: Record<string, unknown>) {
   })
 }
 
-/** What the desktop app tells of your logins, heard as long as the app runs (index.tsx's Background). */
 export function watchLogins() {
   if (!webPages?.engine) return
   void engine("passwords:forms").then((ids) => { if (Array.isArray(ids)) forms.set(new Set(ids.filter((x): x is number => typeof x === "number"))) }, () => {})
@@ -79,7 +69,6 @@ export function watchLogins() {
   })
 }
 
-/** The address bar's key: on a page showing a login form your passwords have entries for, its list fills one. */
 export function LoginButton({ id, url }: { id: number; url: string }) {
   const form = forms.use((s) => s.has(id))
   const version = changes.use()

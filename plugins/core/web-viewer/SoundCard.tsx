@@ -1,5 +1,3 @@
-// A page playing where it can't be seen (its tab in the background, in a folded group, a hidden pane): a card in a
-// corner, as the mini player, to pause, mute or show it; several in one card. A float (layers.ts): pages under it stay live.
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Pause, Play, Volume2, VolumeX, X } from "lucide-react"
@@ -11,13 +9,9 @@ import { SiteIcon } from "./icons"
 import { muteSound, pauseSound, soundName } from "./soundmarks"
 import { onScreen, settings, sounds, type Sound } from "./state"
 
-/** Pages the card paused or muted: listed while they are, so Play and Unmute are there (forgotten once one stops or ends). */
 const held = cell(new Set<number>())
-/** Pages closed from the card, and whether each stopped since: one that plays again after (a pause, another page
- *  loaded) shows again. */
 const dismissed = cell(new Map<number, boolean>())
 
-/** Forget what the card held or closed as pages stop, play again or end; returns how to stop. */
 export function watchSoundCard() {
   const prune = () => {
     const by = new Map(sounds.get().map((s) => [s.id, s]))
@@ -35,12 +29,10 @@ export function watchSoundCard() {
   return () => { for (const off of offs) off() }
 }
 
-/** Whether the card would list it, wherever its tab is: heard (or held by the card), its tab's, not closed. */
 const wanted = (s: Sound, h: Set<number>, d: Map<number, boolean>) =>
   !!s.tab && !s.player && !d.has(s.id) && ((s.playing && !s.muted) || (h.has(s.id) && (s.paused || s.muted)))
 const act = (s: Sound, f: () => void) => { held.update((h) => new Set(h).add(s.id)); f() }
 
-/** The card, on a computer, while some page out of sight plays and it's on (the settings' `soundCard`). */
 export function SoundCard() {
   const desktop = useDesktop(), off = settings.use().soundCard === false, on = desktop && !off
   const all = sounds.use(), h = held.use(), d = dismissed.use()
@@ -48,10 +40,8 @@ export function SoundCard() {
   return some ? <Hidden list={all.filter((s) => wanted(s, h, d))} /> : null
 }
 
-/** How long a page is out of sight before the card shows it: going through tabs past one playing shows nothing. */
 const SETTLE = 600
 
-/** Those whose tab is in this window and isn't on screen (agents' pages are their card's). */
 function Hidden({ list }: { list: Sound[] }) {
   const tabs = useTabList(), seen = onScreen.use(), agents = agentPages.use()
   const here = useMemo(() => new Set(allPanes(tabs).map((p) => p.id)), [tabs])
@@ -73,7 +63,6 @@ function Card({ list }: { list: Sound[] }) {
   const [corner, setCorner] = useScopedState<Corner>("web-viewer:sound-corner", "br", "device")
   const drag = useCornerDrag(corner, setCorner)
   const at = CORNERS[corner] ? corner : "br"
-  // (above the mini player and agents' card when they share its corner)
   const place = useCornerStack("sound", at, 2, drag.ref)
   const playing = list.some((s) => s.playing)
   const close = () => dismissed.update((d) => { const next = new Map(d); for (const s of list) next.set(s.id, !s.playing); return next })

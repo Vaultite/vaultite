@@ -1,5 +1,3 @@
-// The container chip at the address's left: which container the tab is in, or what's typed will open in (its colour and
-// name), and a menu to choose another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
 import { askText, choose, colorItems, confirmDialog, currentWorkspace, dotIcon, menuBelow, notify, notifyError, plural, replaceMenu, webPages, type MenuItem, type WebSite } from "@vaultite"
@@ -12,7 +10,6 @@ import {
   type Container,
 } from "./containers"
 
-/** Whether this Mac can ask for Touch ID (asked once). */
 let lockable: Promise<boolean> | null = null, lockKnown = false
 const canLock = () => (lockable ??= Promise.resolve(webPages?.engine?.("lock:can")).then((v) => (lockKnown = v === true), () => false))
 export const canLockNow = () => { void canLock(); return lockKnown }
@@ -22,7 +19,6 @@ export function useCanLock() {
   return can
 }
 
-/** Ask for a name (a new container's, or a new name for one). */
 function askName(title: string, current: string, done: (name: string) => void) {
   askText({ title, placeholder: "Name", hint: `Type a name${current ? ` for ${current}` : ""}.`,
     label: (t) => (current ? `Rename to “${t}”` : `New container “${t}”`), onText: done })
@@ -32,8 +28,6 @@ export function newContainer(then?: (c: Container) => void) {
   askName("New container", "", (name) => { const c = addContainer(name); then?.(c) })
 }
 
-/** Delete a container: one signed in somewhere asks first whether its logins move to another set of logins, so you stay
- *  signed in; it's deleted only once they're all there. */
 async function deleteContainer(c: Container) {
   const prof = profileIn(c.id)
   const sites = await (webPages?.sites?.(prof).then((s) => keep(prof, s), () => null) ?? null) ?? listed.get().get(prof) ?? []
@@ -81,10 +75,8 @@ const AGENTS: { v: Container["agents"]; label: string; says: string }[] = [
   { v: "read", label: "Read pages", says: "Agents can read pages" },
   { v: "act", label: "Read and act", says: "Agents can read and act" },
 ]
-/** What agents may do in `c`'s pages, said for a row ("" when nothing). */
 export const agentsSay = (c: Container) => AGENTS.find((a) => a.v === c.agents)?.says ?? ""
 
-/** A container's own options: its name, colour, Touch ID, what agents may do, its place and deleting it. */
 export const containerItems = (c: Container, canLock: boolean): MenuItem[] => {
   const list = containers(), i = list.findIndex((x) => x.id === c.id)
   return [
@@ -93,22 +85,18 @@ export const containerItems = (c: Container, canLock: boolean): MenuItem[] => {
   ...(canLock || c.lock ? [{ label: "Lock with Touch ID", icon: Fingerprint, checked: !!c.lock, keep: true, run: () => void updateContainer(c.id, { lock: !c.lock }) }] : []),
   { label: "Agent access", icon: Bot, hint: AGENTS.find((a) => a.v === c.agents)?.label, run: () => {},
     items: AGENTS.map((a) => ({ label: a.label, checked: c.agents === a.v, run: () => void updateContainer(c.id, { agents: a.v }) })) },
-  // (this Mac's, for every container agents act in: the logins agents ask the app to fill)
   ...(c.agents === "act" ? [{ label: "Passwords for agents…", icon: KeyRound, run: () => void passwordsForAgents() }] : []),
   ...(i > 0 ? [{ label: "Move up", icon: ArrowUp, sep: true, run: () => void moveContainer(c.id, list[i - 1].id) }] : []),
   ...(i >= 0 && i < list.length - 1 ? [{ label: "Move down", icon: ArrowDown, sep: i === 0, run: () => void moveContainer(c.id, list[i + 2]?.id ?? null) }] : []),
   { label: `Delete ${c.name}…`, icon: Trash2, danger: true, sep: true, run: () => void deleteContainer(c) },
   ]
 }
-/** The container menu for `url` (the page's, or an address being typed) opening in `container`: `pick` takes the one
- *  chosen. Only choosing: a container's own options are in Sites (`manage`). Each names who's signed in to the site there. */
 export function containerMenu(container: string | null, url: string, pick: (id: string | null) => void, manage: () => void): MenuItem[] {
   const list = containers(), site = siteOf(url), rule = site ? ruleFor(url) : null
   const here = containerById(container)
   const who = (id: string | null) => (site && accountIn(profileIn(id), site)) || undefined
   return [
     { label: "Open in", caption: true, run: () => {} },
-    // (none is the workspace's own logins, which a workspace with a container of its own can still have)
     { label: currentWorkspace() ? "No container (workspace logins)" : "No container", icon: Box, checked: !here, hint: who(null), run: () => { if (here) pick(null) } },
     ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, hint: who(c.id), run: () => { if (c.id !== here?.id) pick(c.id) } })),
     ...(site && here ? [{ label: `Always open ${site} here`, icon: Pin, checked: rule === here.id, sep: true,
@@ -119,14 +107,10 @@ export function containerMenu(container: string | null, url: string, pick: (id: 
   ]
 }
 
-/** The sets of logins being listed for the menu (one ask at a time). */
 let asking: Promise<void> | null = null
 
-/** Inside the page bar's address (a narrow bar, `@container/bar`: the dot alone): where the page is, or where what's
- *  typed will open, `why` saying why when it isn't plain (a site's rule, the workspace's container). */
 export function ContainerButton({ container, url, why, pick, manage }: { container: string | null; url: string; why: string; pick: (id: string | null) => void; manage: () => void }) {
   const c = containerById(container)
-  // (who's signed in where, asked as the pointer comes: the menu names them as it opens, or as soon as they answer)
   const ask = () => (asking ??= askSites([profileIn(null), ...containers().map((x) => profileIn(x.id))]).finally(() => { asking = null }))
   const open = (e: MouseEvent) => {
     const items = containerMenu(container, url, pick, manage)

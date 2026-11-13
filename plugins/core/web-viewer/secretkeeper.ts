@@ -1,5 +1,3 @@
-// An agent's `vau secret` ask, answered from the user's passwords or kept there (ConfirmDialog's keeper): only in the
-// desktop app with a passwords file set up (electron/browser/passwords.ts), never through the server.
 import { useEffect } from "react"
 import { setSecretKeeper, webPages } from "@vaultite"
 
@@ -20,7 +18,6 @@ async function entries() {
   return entries.filter((e) => !bin.has(e.group)).map(({ id, title, username }) => ({ id, title, username }))
 }
 
-/** Offered while this app has a passwords file set up. */
 export function useSecretKeeper() {
   useEffect(() => {
     if (!webPages?.engine) return

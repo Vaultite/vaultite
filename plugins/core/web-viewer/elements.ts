@@ -1,18 +1,12 @@
-// Blocked elements: hiding rules (`example.com##selector`) in the plugin's list (BLOCKED, a Markdown file in .vaultite:
-// the app's, not a note to read), a heading per site; read and changed here, the same on the server (plugin.ts) and in the app.
 
-/** The list, beside the plugin's settings. */
 export const BLOCKED = ".vaultite/plugins/web-viewer/blocked-elements.md"
 
-/** A rule as the note has it, and the site it's for ("" for every site). */
 export type ElementRule = { rule: string; site: string; selector: string }
 
 const FENCE = /^\s*(```|~~~)/
 const HEADING = /^(#{1,6})[ \t]+(.*?)[ \t]*$/
-// (sites, comma-separated, `~` for one left out; then ## and a selector, which a heading's "## " never is)
 const RULE = /^([a-z0-9.*~,_-]*)##(\S.*)$/i
 
-/** The rule a line holds, if it's one: as is, or a list item, either in backticks (words after them are a note). */
 export function ruleOf(line: string): ElementRule | null {
   let t = line.trim().replace(/^[-*+][ \t]+/, "").trim()
   const code = /^(`+)\s?(.*?)\s?\1(?:\s.*)?$/.exec(t)
@@ -23,7 +17,6 @@ export function ruleOf(line: string): ElementRule | null {
   return { rule: `${m[1].toLowerCase()}##${m[2].trim()}`, site, selector: m[2].trim() }
 }
 
-/** Every rule in a note's body, in order, once each (in a code block too: a pasted list). */
 export function readRules(body: string): ElementRule[] {
   const seen = new Set<string>(), out: ElementRule[] = []
   for (const l of body.split("\n")) {
@@ -34,8 +27,6 @@ export function readRules(body: string): ElementRule[] {
   return out
 }
 
-/** A rule from a site and a selector, or a whole rule as given ("youtube.com##ytd-reel-shelf-renderer"); null if it
- *  isn't one. */
 export function makeRule(rule: string, site?: string): ElementRule | null {
   const t = rule.trim()
   if (!t || /[\n\r]/.test(t)) return null
@@ -45,11 +36,9 @@ export function makeRule(rule: string, site?: string): ElementRule | null {
   return ruleOf(`${s}##${t}`)
 }
 
-/** A rule as its line: in backticks, so Markdown leaves its `*` and `[ ]` alone. */
 export const ruleLine = (r: string) => (r.includes("`") ? `- \`\` ${r} \`\`` : `- \`${r}\``)
 const headingOf = (site: string) => site || "Every site"
 
-/** `rule` added under its site's heading (made when missing), unless the note has it: only lines added. */
 export function addRule(body: string, rule: ElementRule): { body: string; added: boolean } {
   if (readRules(body).some((r) => r.rule === rule.rule)) return { body, added: false }
   const lines = body ? body.replace(/\n+$/, "").split("\n") : []
@@ -67,7 +56,6 @@ export function addRule(body: string, rule: ElementRule): { body: string; added:
     const out = lines.length ? [...lines, "", ...block] : block
     return { body: `${out.join("\n")}\n`, added: true }
   }
-  // (after the section's last line that isn't blank)
   let put = end
   while (put > at + 1 && !lines[put - 1].trim()) put--
   const block = put === at + 1 ? ["", ruleLine(rule.rule)] : [ruleLine(rule.rule)]
@@ -75,12 +63,10 @@ export function addRule(body: string, rule: ElementRule): { body: string; added:
   return { body: `${lines.join("\n")}\n`, added: true }
 }
 
-/** `rule`'s lines taken out, and the heading above them if nothing else is left under it. */
 export function removeRule(body: string, rule: string): { body: string; removed: boolean } {
   const lines = body.split("\n")
   const gone = new Set(lines.flatMap((l, i) => (ruleOf(l)?.rule === rule ? [i] : [])))
   if (!gone.size) return { body, removed: false }
-  // The sections they were in: a heading's line, and the end of what's under it.
   for (const i of [...gone]) {
     let h = i
     while (h >= 0 && !HEADING.exec(lines[h])) h--
@@ -92,15 +78,12 @@ export function removeRule(body: string, rule: string): { body: string; removed:
     if (!left) for (let j = h; j < end; j++) gone.add(j)
   }
   const out = lines.filter((_, i) => !gone.has(i))
-  // (no blank lines doubled where a section was, nor at the ends)
   const tidy = out.filter((l, i) => l.trim() || (i > 0 && out[i - 1].trim()))
   while (tidy.length && !tidy[tidy.length - 1].trim()) tidy.pop()
   while (tidy.length && !tidy[0].trim()) tidy.shift()
   return { body: tidy.length ? `${tidy.join("\n")}\n` : "", removed: true }
 }
 
-/** Parts of sites hidden with one click (the Shields menu; the plugin's `hide` setting): off until chosen, kept up to
- *  date with the app, so they're not the note's. */
 export type Preset = { id: string; site: string; name: string; rules: string[] }
 export const PRESETS: Preset[] = [
   { id: "youtube-shorts", site: "youtube.com", name: "Hide Shorts", rules: [
@@ -126,5 +109,4 @@ export const PRESETS: Preset[] = [
   ] },
 ]
 
-/** Whether `site` (a page's: "www.youtube.com" or "youtube.com") is `of` or under it. */
 export const onSite = (site: string, of: string) => !of || site === of || site.endsWith(`.${of}`)

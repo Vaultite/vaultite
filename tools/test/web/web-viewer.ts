@@ -139,3 +139,11 @@ import { check } from "../lib.ts"
   check("Browser: a site style's nested rules and strings with braces",
     out.includes("color: blue !important;") && out.includes("color: green !important;") && out.includes(`content: "a;}b" !important}`), out)
 }
+
+{
+  const { readFileSync } = await import("node:fs")
+  const read = (f: string) => readFileSync(new URL(`../../../plugins/core/web-viewer/${f}`, import.meta.url), "utf8")
+  check("Browser: framed.ts imports nothing, as the web demo's boot.ts loads it before the app's modules run", !/^\s*import\b/m.test(read("framed.ts")))
+  const sandbox = /sandbox="([^"]*)"/.exec(read("FramedPage.tsx"))?.[1] ?? ""
+  check("Browser: a framed site never reaches the top window", sandbox.includes("allow-scripts") && !sandbox.includes("allow-top-navigation"), sandbox)
+}

@@ -1,5 +1,3 @@
-// A web page in a tab where the desktop app's pages aren't but some sites are framed (framed.ts: the web demo): its
-// bar, and the site live in a sandboxed frame; another site says it opens in the visitor's browser.
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight, ArrowUpRight, Globe, Lock, RotateCw, type LucideIcon } from "lucide-react"
 import { allPanes, canNavigate, cn, getTabLayout, navigate, onLook, PaneControls, usePane } from "@vaultite"
@@ -7,8 +5,7 @@ import { addressOf, hostOf } from "./address"
 import { framedSite } from "./framed"
 import { argOf, splitArg } from "./containers"
 
-/** How long a site may take to load before the tab offers it in the visitor's browser instead (a frame refused, or
- *  offline, still says it loaded: only nothing at all is caught). */
+// A frame refused or offline still fires load: only no load at all is caught.
 const SLOW_MS = 12_000
 
 const isDark = () => document.documentElement.classList.contains("dark")
@@ -23,7 +20,6 @@ export default function FramedPage({ arg, setArg }: { arg: string; setArg: (arg:
   const [dark, setDark] = useState(isDark)
   useEffect(() => onLook(() => setDark(isDark())), [])
   useEffect(() => { setLoaded(false); setSlow(false) }, [url, reloads])
-  // (a hidden tab's frame waits, lazy: its time starts when it's shown)
   useEffect(() => {
     if (!site || loaded || hidden) return
     const t = setTimeout(() => setSlow(true), SLOW_MS)
@@ -33,7 +29,6 @@ export default function FramedPage({ arg, setArg }: { arg: string; setArg: (arg:
   const me = allPanes(getTabLayout()).find((t) => t.id === tab)
   return (
     <div className="relative flex h-full min-h-0 flex-col" data-web-framed={site ? hostOf(url) : ""}>
-      {/* (a phone's Back and Forward are its foot's) */}
       <div className="@container/bar relative flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5 max-md:h-12">
         <BarButton icon={ArrowLeft} label="Back" disabled={!canNavigate(me, -1)} onClick={() => navigate(-1)} className="max-md:hidden" />
         <BarButton icon={ArrowRight} label="Forward" disabled={!canNavigate(me, 1)} onClick={() => navigate(1)} className="max-md:hidden @max-xs/bar:hidden" />
@@ -44,8 +39,6 @@ export default function FramedPage({ arg, setArg }: { arg: string; setArg: (arg:
         <Progress loading={!!site && !loaded && !slow && !hidden} />
       </div>
       <div className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
-        {/* Its own origin (a site of someone else's), so it reaches nothing of the app's; scripts for the site to work, and
-            pop-ups so its links to other sites open (in the visitor's browser, unsandboxed). Never the top window. */}
         {site && <iframe key={`${url} ${reloads}`} src={url} title={site.title} onLoad={() => setLoaded(true)}
           sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer" loading="lazy"
           className={cn("absolute inset-0 size-full border-0 transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
@@ -64,7 +57,6 @@ export default function FramedPage({ arg, setArg }: { arg: string; setArg: (arg:
   )
 }
 
-/** The address: the page's site and path, a padlock, and "Live" for a site shown live; typed in, Enter goes there. */
 function Address({ url, live, onGo }: { url: string; live: boolean; onGo: (url: string) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState<string | null>(null)
@@ -105,7 +97,6 @@ function BarButton({ icon: Icon, label, onClick, disabled, className }: { icon: 
   )
 }
 
-/** The bar's foot while the page loads, as WebPage's. */
 function Progress({ loading }: { loading: boolean }) {
   const el = useRef<HTMLDivElement>(null), was = useRef(false)
   useEffect(() => {

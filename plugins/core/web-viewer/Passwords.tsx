@@ -1,5 +1,3 @@
-// The Passwords tab: your KeePass file (KeePassXC's, Strongbox's) opened by the desktop app. Not set up, it asks for the
-// file; locked, Touch ID or its password; open, its entries by group, searched, each opened in a sheet.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { ArrowRight, Bot, ChevronDown, Copy, Ellipsis, FingerprintPattern, Folder, Globe, KeyRound, Lock, LockKeyhole, Pencil, Plus, Trash2, User } from "lucide-react"
 import {
@@ -50,7 +48,6 @@ function Setup() {
   )
 }
 
-/** The lock: Touch ID where it can, else the file's password (Enter unlocks). In the tab and in an open sheet. */
 export function LockScreen({ status }: { status: NonNullable<Status> }) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -99,7 +96,6 @@ export function LockScreen({ status }: { status: NonNullable<Status> }) {
   )
 }
 
-// ---------- open: the groups, the list, agents' logins ----------
 
 type Tree = { group: Group; depth: number; count: number }[]
 function treeOf(groups: Group[], entries: Row[]) {
@@ -122,7 +118,6 @@ function treeOf(groups: Group[], entries: Row[]) {
   return { root, tree, bin: groups.find((g) => g.bin && !groups.find((p) => p.id === g.parent)?.bin) }
 }
 
-/** The groups under `id`, it too. */
 function within(groups: Group[], id: string) {
   const set = new Set([id])
   for (let grew = true; grew;) { grew = false; for (const g of groups) if (g.parent && set.has(g.parent) && !set.has(g.id)) { set.add(g.id); grew = true } }
@@ -134,7 +129,6 @@ function Unlocked({ status, groups, entries }: { status: NonNullable<Status>; gr
   const [picked, setWhere] = useState(ALL)
   const uses = useUses()
   const byId = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
-  // (a group gone, written elsewhere: all of them)
   const where = picked && (picked === AGENTS ? !uses : !byId.has(picked)) ? ALL : picked
   const { root, tree, bin } = useMemo(() => treeOf(groups, entries), [groups, entries])
   const binned = useMemo(() => new Set(groups.filter((g) => g.bin).map((g) => g.id)), [groups])
@@ -152,7 +146,6 @@ function Unlocked({ status, groups, entries }: { status: NonNullable<Status>; gr
     { id: ALL, label: "All passwords", icon: KeyRound, depth: 0, count: entries.length - binCount },
     ...tree.map((t) => ({ id: t.group.id, label: t.group.name || "Group", icon: Folder, depth: t.depth, count: t.count })),
     ...(bin && binCount ? [{ id: bin.id, label: "Recycle bin", icon: Trash2, depth: 0, count: binCount }] : []),
-    // (a server that keeps no agents' logins: none to show)
     ...(uses ? [{ id: AGENTS, label: "Agents' logins", icon: Bot, depth: 0 }] : []),
   ]
   const here = places.find((p) => p.id === where)
@@ -208,7 +201,6 @@ function IconButton({ icon: Icon, label, onClick, data }: { icon: typeof Lock; l
   )
 }
 
-/** Small words after a row's title: what agents may do with it, or that it's expired. */
 export function Marks({ e }: { e: Row }) {
   const chip = "shrink-0 rounded-chip px-1.5 text-[11px] leading-[16px] font-medium"
   return (
@@ -254,22 +246,19 @@ function EntryRow({ e, group, binned, leaving }: { e: Row; group: string; binned
 
 const changeOf = (f: Full) => ({ id: f.id, group: f.group, title: f.title, username: f.username, password: f.password, urls: f.urls, tags: f.tags, notes: f.notes })
 
-/** To the recycle bin at once, with Undo (back to its group); from the recycle bin it's gone for good, so that asks. */
 export async function removeEntry(e: Row, full?: Full) {
   const name = e.title || "Untitled"
   const inBin = !!state.get().groups.find((g) => g.id === e.group)?.bin
   if (inBin && !(await confirmDialog({ title: `Delete “${name}” for good?`, body: "It's in the recycle bin: deleting it there can't be undone.", confirm: "Delete", danger: true }))) return
   let kept = full
-  if (!inBin && !kept) { try { kept = await call<Full>("get", e.id) } catch { /* then it goes without Undo */ } }
+  if (!inBin && !kept) { try { kept = await call<Full>("get", e.id) } catch { } }
   const ok = await deleting.remove(e.id, () => call("delete", e.id), "Couldn't delete it")
   if (!ok) return
   if (inBin) return notify(`Deleted “${name}”`)
   notify(`Moved “${name}” to the recycle bin`, kept ? { action: { label: "Undo", run: () => { deleting.back([e.id]); return call("save", changeOf(kept!)) } } } : {})
 }
 
-// ---------- agents' logins: every use, newest first ----------
 
-/** Agents' uses of your logins, read once as it shows; null where the server keeps none. */
 export function useUses() {
   const [uses, setUses] = useState<Use[] | null | undefined>(undefined)
   useEffect(() => { let stop = false; void fetchUses().then((u) => { if (!stop) setUses(u) }); return () => { stop = true } }, [])

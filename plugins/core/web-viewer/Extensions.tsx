@@ -1,22 +1,15 @@
-// Chrome extensions in web pages (the engine's, electron/browser/extensions.ts): their buttons in a page's bar, the
-// Extensions tab, and "Add to Vaultite" on a Web Store page. What's installed is this Mac's: code run on every site.
 import { forwardRef, useEffect, useState, type FormEvent, type MouseEvent } from "react"
 import { ArrowDownToLine, Download, FolderOpen, Lock, MoreHorizontal, Pin, PinOff, Plus, Puzzle, RefreshCw, Settings2, Trash2, type LucideIcon, type LucideProps } from "lucide-react"
 import { Bar, Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, removals, Switch, useKeptCount, type MenuItem } from "@vaultite"
 import { addExtension, changeExtension, engine, extensionsChanged, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
 
-/** Extensions removed from here: gone at once, back if it fails. */
 const removing = removals()
-/** Pin an extension's button to the bar, or take it off: at once in the list (which the bar follows), then the engine. */
 const pin = (b: { id: string; pinned: boolean }) => changeExtension(b.id, { pinned: !b.pinned }, () => engine("ext:pin", b.id, !b.pinned), b.pinned ? "Couldn't unpin it" : "Couldn't pin it")
 
-/** An extension's button as one page shows it (its badge and icon may be that page's own). */
 type Button = { id: string; name: string; pinned: boolean; title: string; icon: string; badge: string; badgeColor: string; badgeTextColor: string; popup: boolean; enabled: boolean }
-/** One installed in another browser of this Mac. */
 type Other = { browser: string; id: string; name: string; version: string; icon: string }
 
 
-/** An extension's icon where a lucide icon goes (menus): one component per picture, so a menu isn't drawn afresh. */
 const iconComponents = new Map<string, LucideIcon>()
 function imageIcon(src: string): LucideIcon {
   let c = iconComponents.get(src)
@@ -29,10 +22,7 @@ function imageIcon(src: string): LucideIcon {
   return c
 }
 
-// ---------- the page's bar ----------
 
-/** The extensions that are on, as the page `pageId` shows their buttons (badge and icon may be its own), and a click
- *  on one: its popup under `el`. */
 export function useExtensionBar(pageId: number, url: string) {
   const [buttons, setButtons] = useState<Button[]>([])
   const v = version.use((n) => n)
@@ -50,7 +40,6 @@ export function useExtensionBar(pageId: number, url: string) {
 }
 export type ExtensionBar = ReturnType<typeof useExtensionBar>
 
-/** The page's … menu's Extensions ▸: every one that's on (its popup opens under `at`), then the Extensions tab. */
 export function extensionItems(bar: ExtensionBar, at: HTMLElement): MenuItem[] {
   if (!hasExtensions()) return []
   return [{ label: "Extensions", icon: Puzzle, run: () => openExtensions(), items: [
@@ -59,7 +48,6 @@ export function extensionItems(bar: ExtensionBar, at: HTMLElement): MenuItem[] {
   ] }]
 }
 
-/** The bar's pinned extensions' buttons; on a Web Store extension's page, "Add to Vaultite". */
 export function ExtensionButtons({ bar, className }: { bar: ExtensionBar; className?: string }) {
   const exts = useExtensions()
   const open = popupOpen.use((s) => s)
@@ -90,7 +78,6 @@ const buttonMenu = (b: { id: string; name: string; pinned: boolean }): MenuItem[
   { label: "Extensions", icon: Puzzle, run: () => openExtensions() },
 ]
 
-/** On a Web Store extension's page: add it, or say it's added. */
 function StoreButton({ id, exts }: { id: string; exts: Ext[] | null }) {
   const [busy, setBusy] = useState(false)
   const have = exts?.some((x) => x.id === id)
@@ -103,7 +90,6 @@ function StoreButton({ id, exts }: { id: string; exts: Ext[] | null }) {
   )
 }
 
-// ---------- the Extensions view ----------
 
 export function ExtensionsView({ openPage }: { openPage: (url: string) => void }) {
   const { list: exts, leaving } = removing.use(useExtensions(), (x) => x.id)
@@ -112,7 +98,6 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   const [others, setOthers] = useState<Other[] | null>(null)
   const [problems, setProblems] = useState<string[]>([])
   const v = version.use((n) => n)
-  // Asked again as it opens and as the app comes back: what other browsers have changes outside it.
   useEffect(() => {
     if (!hasExtensions()) return
     extensionsChanged()
@@ -125,7 +110,6 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
     void engine<{ problems: string[] }>("ext:policy").then((p) => setProblems(p.problems), () => {})
   }, [v])
   const rows = useKeptCount("web-viewer:extensions", exts?.length)
-  // (the other browsers' list is slower: its room is kept, so nothing pops in under the page)
   const otherRows = useKeptCount("web-viewer:extensions-others", others?.length, 0)
   if (!hasExtensions()) {
     return <div className="mx-auto max-w-[640px] px-4 pt-6"><PageHeader title="Extensions" /><Empty>Extensions run in web pages in Vaultite's desktop app.</Empty></div>
@@ -152,7 +136,6 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   }
   const menu = (x: Ext) => (e: MouseEvent<HTMLButtonElement>) => menuBelow(e, [
     ...(x.options ? [{ label: "Options", icon: Settings2, run: () => void engine("ext:options", x.id) }] : []),
-    // (a browser's profile named only when that browser has it in more than one)
     ...x.settingsFrom.map((f) => ({ label: `Settings from ${f.browser}${x.settingsFrom.filter((g) => g.browser === f.browser).length > 1 ? ` (${f.name})` : ""}`,
       icon: ArrowDownToLine, run: () => void bring(x, f) })),
     { label: x.pinned ? "Unpin from the bar" : "Pin to the bar", icon: x.pinned ? PinOff : Pin, run: () => pin(x) },
@@ -252,7 +235,6 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   )
 }
 
-/** Extensions on their way: a row's shape (`other`: another browser's, with Add), its icon a muted square and its lines bars. */
 function ExtSkeletons({ count, other }: { count: number; other?: boolean }) {
   return (
     <Panel className="loading-in py-1">

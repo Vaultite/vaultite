@@ -1,5 +1,3 @@
-// Shields in the Browser: a page's count of blocked requests and its menu (hidden parts, site style, dark pages). The
-// desktop app blocks (electron/browser/adblock.ts); the settings here are handed to it, and the rules the user hid by.
 import { useEffect, useState } from "react"
 import { EyeOff, FileText, Moon, MousePointerSquareDashed, Paintbrush, Settings2, Shield, ShieldOff } from "lucide-react"
 import { cell, cn, getStore, menuBelow, notify, notifyError, numberText, op, openFile, openPluginSettings, useStore, webPages, type MenuItem } from "@vaultite"
@@ -8,13 +6,11 @@ import { siteName, type SiteStyle } from "./sitestyles"
 import { settings } from "./state"
 import { darkPagesOn, editStyle, setDark, setStyled, styleOf } from "./stylestate"
 
-/** Requests blocked on each page (by its id), as the desktop app tells them. */
 const counts = cell(new Map<number, number>())
 
 const choice = () => { const s = settings.get(); return { on: s.shields !== false, down: s.shieldsDown ?? [] } }
 const tellEngine = () => Promise.resolve(webPages?.engine?.("adblock:settings", choice())).catch(() => {})
 
-/** The desktop app hears the settings now and as they change; the pages' counts come back (index.tsx's Background). */
 export function watchShields() {
   if (!webPages?.engine) return
   void settings.ready().then(tellEngine)
@@ -27,15 +23,12 @@ export function watchShields() {
   return () => { offSettings(); offEvents() }
 }
 
-// ---------- the parts of pages the user hid ----------
 
 const NONE: never[] = []
 const noteRules = () => getStore()?.blockedElements ?? NONE
-/** The rules the engine gets: the list's, then those of the presets turned on. */
 const allRules = (note: ElementRule[], hide: string[]) => [...note.map((r) => r.rule), ...PRESETS.filter((p) => hide.includes(p.id)).flatMap((p) => p.rules)]
 const tellRules = (rules: string[]) => Promise.resolve(webPages?.engine?.("adblock:rules", rules)).catch(() => {})
 
-/** The desktop app hears the rules now and as the list or the presets change (index.tsx's Background). */
 export function useHiddenParts() {
   const note = useStore().store?.blockedElements ?? NONE
   const hide = settings.use().hide ?? NONE
@@ -44,8 +37,6 @@ export function useHiddenParts() {
   useEffect(() => { if (webPages?.engine) void tellRules(rules) }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-/** Hide a rule's elements: kept in the list (it comes back to the engine as the list changes); told now too, so the
- *  page shows it at once. */
 async function hideRule(rule: string, quiet = false) {
   void tellRules([...allRules(noteRules(), settings.get().hide ?? []), rule])
   try {
@@ -53,7 +44,6 @@ async function hideRule(rule: string, quiet = false) {
     if (!quiet) notify(`Hidden on ${siteOfRule(rule)}`, { action: { label: "Undo", run: () => void showRule(rule, true) } })
   } catch (e) { notifyError(e, "Couldn't hide it") }
 }
-/** Show a rule's elements again: taken out of the list. */
 async function showRule(rule: string, quiet = false) {
   void tellRules(allRules(noteRules(), settings.get().hide ?? []).filter((r) => r !== rule))
   try {
@@ -63,8 +53,6 @@ async function showRule(rule: string, quiet = false) {
 }
 const siteOfRule = (rule: string) => rule.slice(0, rule.indexOf("##")).split(",").find((s) => s && !s.startsWith("~")) || "every site"
 
-/** Block an element on page `id`: the picker in the page (starting on the element at `point`, a right-click's), then
- *  its rule kept for `site`. */
 export async function pickElement(id: number, site?: string, point?: { x: number; y: number }) {
   if (!webPages?.engine || !id) return
   try {
@@ -74,7 +62,6 @@ export async function pickElement(id: number, site?: string, point?: { x: number
   } catch (e) { notifyError(e, "Couldn't block it") }
 }
 
-/** The Shields menu's part for the hidden parts of `site`: Block an element, its presets, and the user's rules there. */
 function hiddenItems(id: number, site: string, note: ElementRule[], hide: string[]): MenuItem[] {
   const mine = note.filter((r) => r.site && onSite(site, r.site))
   const presets = PRESETS.filter((p) => onSite(site, p.site))
@@ -93,8 +80,6 @@ function hiddenItems(id: number, site: string, note: ElementRule[], hide: string
   ]
 }
 
-/** The Shields menu's part for the style the page gets (its host's own, docs.google.com.css, else its parent site's,
- *  as the desktop app picks it): on or off, and editing it beside the page; none, one made for the host. */
 function styleItems(url: string, styles: SiteStyle[], unstyled: string[]): MenuItem[] {
   const host = siteName(url)
   if (!host) return []
@@ -107,8 +92,6 @@ function styleItems(url: string, styles: SiteStyle[], unstyled: string[]): MenuI
   ]
 }
 
-/** The Shields menu's dark pages switch for the page's host (docs.google.com: not every Google site), while they apply
- *  (the look dark). */
 function darkItems(url: string, off: string[]): MenuItem[] {
   const host = siteName(url)
   if (!host || !darkPagesOn()) return []
@@ -118,7 +101,6 @@ function darkItems(url: string, off: string[]): MenuItem[] {
 
 type PageShields = { site: string; count: number }
 
-/** Shields, at the address's right: what was blocked on the page, and a menu to take them down for its site. */
 export function ShieldsButton({ id, url, loading }: { id: number; url: string; loading?: boolean }) {
   const [page, setPage] = useState<PageShields | null>(null)
   const told = counts.use((m) => m.get(id))
@@ -129,7 +111,6 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
     let gone = false
     void Promise.resolve(webPages?.engine?.("adblock:page", id)).then((r) => { if (!gone) setPage((r as PageShields | null) ?? null) }, () => {})
     return () => { gone = true }
-    // (asked again as a load ends: asked before a page's first address is in, it has no site yet)
   }, [id, url, loading])
   if (!webPages?.engine || !page?.site) return null
   const { site } = page

@@ -1,5 +1,3 @@
-// A page waiting on a passkey from a phone (electron/browser/passkeys.ts): drawn in the page's place, as its errors are,
-// with the QR code the phone's camera scans, then how it's going, and Cancel.
 import { useMemo } from "react"
 import { KeyRound } from "lucide-react"
 import { encode } from "uqr"

@@ -1,5 +1,3 @@
-// Containers: named logins a tab picks (Personal, Work), each its own cookies and storage, so one site can be signed in
-// to with several accounts side by side. A tab in one is `view:web/@<id>/<address>`; a tab in none has its workspace's.
 import { COLORS, colorVar, currentWorkspace, isColor, openTab, webPages, type Color } from "@vaultite"
 import { settings, settingsRead, profile, type Settings } from "./state"
 import { linkChoice, ruleIn, whereIn, type Where } from "./where.ts"
@@ -14,11 +12,9 @@ export type Container = { id: string; name: string; color: Color
   agents?: "read" | "act" }
 export const colorOf = (c: Pick<Container, "color">) => colorVar(c.color)
 
-/** Until the user changes them (kept in code: a vault gets them written only once it's changed). */
 const DEFAULTS: Container[] = [
   { id: "personal", name: "Personal", color: "blue" },
   { id: "work", name: "Work", color: "orange" },
-  // (agents' own: what they sign in to there is theirs to use, the user's other logins aren't)
   { id: "agents", name: "Agents", color: "purple", agents: "act" },
 ]
 
@@ -36,13 +32,11 @@ export const containers = () => containersOf(settings.get())
 export const useContainers = () => containersOf(settings.use())
 export const containerById = (id: string | null | undefined) => (id ? containers().find((c) => c.id === id) ?? null : null)
 
-/** A web tab's arg: its container's id (null: none) and its address. */
 export function splitArg(arg: string): { container: string | null; url: string } {
   const m = /^@([a-z0-9]{1,24})\/(.*)$/s.exec(arg)
   return m ? { container: m[1], url: m[2] } : { container: null, url: arg }
 }
 export const argOf = (url: string, container: string | null) => (container ? `@${container}/${url}` : url)
-/** A tab of its own showing a page's source (view-source:, Chrome's), in its container, beside the active tab. */
 export const viewSource = (url: string, container: string | null, from?: string) => { if (/^https?:\/\//i.test(url)) openTab(`view:web/${argOf(`view-source:${url}`, container)}`, { from }) }
 
 /** The logins (electron/web.ts's profile) of a page in `container`, or the workspace's in none. */
@@ -50,20 +44,14 @@ export const profileIn = (container: string | null) => (container ? `c-${contain
 /** The container a page's logins are, from its profile ("c-work"); null for a workspace's. */
 export const containerOfProfile = (prof: string) => (prof.startsWith("c-") ? prof.slice(2) : null)
 
-/** The container a page opened in none goes to: the one whose sites have its site, if any. */
 export const ruleFor = (url: string) => ruleIn(containers(), url)
-/** Where `url` opens from a tab in `from` (where.ts' whereIn, with the workspace's container). */
 export const destination = (url: string, o: { from: string | null; fresh: boolean; chosen?: string | null; opened?: boolean }): Where =>
   whereIn(containers(), url, { ...o, own: currentWorkspace()?.container })
-/** A link's `container` as destination's `chosen` (where.ts' linkChoice): undefined leaves it to the rules. */
 export const chosenFor = (container: string | null | undefined) => linkChoice(containers(), container)
 
-/** Addresses the user put in no container though their workspace has one: the page opened next there stays out of it. */
 const outside = new Set<string>()
 export const keepOutside = (url: string) => { outside.add(url) }
 export const keptOutside = (url: string) => outside.delete(url)
-/** `url` in a new web tab behind the one on screen (`from`: the tab it's opened from), in `container` (destination's),
- *  its page loading at once as a browser's background tab's does. */
 export function openBehind(url: string, container: string | null, from?: string) {
   const id = openTab(`view:web/${argOf(url, container)}`, { background: true, from }), web = webPages
   if (web) void settingsRead().then(() => web.open(url, null, profileIn(container), id)).then((r) => web.release(r.id), () => {})
@@ -90,7 +78,6 @@ export function removeContainer(id: string) {
   const { [profileIn(id)]: _, ...order } = settings.get().siteOrder ?? {}
   return settings.set({ containers: containers().filter((c) => c.id !== id), siteOrder: Object.keys(order).length ? order : null })
 }
-/** Put a container before another (null: last): every list of them follows this order. */
 export function moveContainer(id: string, before: string | null) {
   const list = containers(), c = list.find((x) => x.id === id)
   if (!c || id === before) return
@@ -98,7 +85,6 @@ export function moveContainer(id: string, before: string | null) {
   return save(at < 0 ? [...rest, c] : [...rest.slice(0, at), c, ...rest.slice(at)])
 }
 
-/** Always open `site` in `id` (null: in no container): it leaves any other container's sites. */
 export function setSiteRule(site: string, id: string | null) {
   return save(containers().map((c) => {
     const sites = (c.sites ?? []).filter((s) => s !== site)

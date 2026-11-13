@@ -1,5 +1,3 @@
-// The status bar's "playing": while a page makes sound (or the app paused it), which; its menu shows a page's tab,
-// pauses or mutes it, as a tab's speaker does, without hunting for the tab.
 import { Pause, Volume2, VolumeX } from "lucide-react"
 import { AmbientButton, getTabLayout, menuAbove, allPanes, type MenuItem } from "@vaultite"
 import { hostOf } from "./address"
@@ -7,7 +5,6 @@ import { splitArg } from "./containers"
 import { muteItem, muteSound, soundItems, soundName } from "./soundmarks"
 import { sounds, type Sound } from "./state"
 
-/** Its tab is in this window's workspace (else it's in another one's, or a build that doesn't say). */
 const here = (s: Sound) => !!s.tab && allPanes(getTabLayout()).some((p) => p.id === s.tab)
 
 function rowOf(s: Sound): MenuItem {

@@ -1,5 +1,3 @@
-// A page playing where its tab can't be seen (in a folded tab group): a speaker on the group's row and chip (core/
-// uimarks.ts), a click from showing, pausing or muting it; and the sound items the tab's menus and the status bar share.
 import { AppWindow, Pause, Play, Volume2, VolumeX } from "lucide-react"
 import { getTabLayout, menuBelow, onTabLayoutChange, placesIn, selectPane, setUiMarks, webPages, type MenuItem, type UiMark } from "@vaultite"
 import { hostOf } from "./address"
@@ -8,17 +6,13 @@ import { sounds, titleOf, type Sound } from "./state"
 
 export const soundName = (s: Sound) => { const { url } = splitArg(s.arg); return s.title || titleOf(url) || hostOf(url) }
 export const muteSound = (s: Sound, on: boolean) => void webPages?.go(s.id, on ? "mute" : "unmute")
-/** Its media paused (`on`), or the media it paused started again. */
 export const pauseSound = (s: Sound, on: boolean) => void webPages?.go(s.id, on ? "pause" : "play")
 
-/** Pause while it plays, Play once the app paused it; nothing for a page only muted. */
 export const pauseItems = (s: Sound): MenuItem[] => s.playing ? [{ label: "Pause", icon: Pause, run: () => pauseSound(s, true) }]
   : s.paused ? [{ label: "Play", icon: Play, run: () => pauseSound(s, false) }] : []
 export const muteItem = (s: Sound): MenuItem => ({ label: s.muted ? "Unmute tab" : "Mute tab", icon: s.muted ? Volume2 : VolumeX, run: () => muteSound(s, !s.muted) })
-/** A page's sound menu: its tab shown, paused or played, muted or not. */
 export const soundItems = (s: Sound): MenuItem[] => [{ label: "Show tab", icon: AppWindow, run: () => selectPane(s.tab) }, ...pauseItems(s), muteItem(s)]
 
-/** A folded group's mark: one page's speaker (a pause sign once the app paused it), or how many play. */
 function markOf(list: Sound[]): UiMark {
   const loud = list.some((s) => s.playing && !s.muted), playing = list.some((s) => s.playing), one = list.length === 1 ? list[0] : null
   const what = playing ? "Playing" : "Paused"
@@ -30,7 +24,6 @@ function markOf(list: Sound[]): UiMark {
   }
 }
 
-/** What the marks were last set from: set again only when it changes. */
 let marked = ""
 function mark() {
   const l = getTabLayout(), by = new Map<string, Sound[]>()
@@ -47,7 +40,6 @@ function mark() {
   setUiMarks("web-viewer", new Map([...by].map(([id, list]) => [id, [markOf(list)]])))
 }
 
-/** Mark the folded groups as pages play and tabs move; returns how to stop. */
 export function watchSoundMarks() {
   const offs = [sounds.subscribe(mark), onTabLayoutChange(mark)]
   mark()
