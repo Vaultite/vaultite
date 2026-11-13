@@ -11,7 +11,7 @@ export type Sized = { path: string; tokens: number; limit: number; level: Level
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null)
 
 export function limitsOf(settings: Record<string, unknown>, defaults: Limits): Limits {
-  const own = settings.limits && typeof settings.limits === "object" && !Array.isArray(settings.limits) ? settings.limits as Record<string, unknown> : {}
+  const own = settings.limits && typeof settings.limits === "object" && !Array.isArray(settings.limits) ? settings.limits : {}
   const limits = { ...defaults.limits }
   for (const [k, v] of Object.entries(own)) { const n = num(v); if (k.trim() && n !== null) limits[k.trim()] = n }
   return { limit: num(settings.limit) ?? defaults.limit, limits }
