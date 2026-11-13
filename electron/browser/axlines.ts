@@ -1,3 +1,4 @@
+// axLines runs in the page too, sent as source (pagetree.ts): it holds everything it uses.
 import { shortUrl } from "./linktext.ts"
 
 /** What changed between two trees, by what lines say, not their depth (a wrapper added moves nothing): a control whose
@@ -19,9 +20,7 @@ export function changes(before: string[], after: string[]) {
   return [...added.filter(both).map((l) => `~ ${l}`), ...added.filter((l) => !both(l)).map((l) => `+ ${l}`), ...gone.filter((l) => !both(l)).map((l) => `- ${l}`)]
 }
 
-/** The roles of a page's parts around its content: a new page's first lines skip them. */
-const AROUND = /^\s*- (navigation|banner|contentinfo|complementary)\b/
-/** A page's content, for its first lines: its main part, else the page without its navigation, header and footer. */
+const AROUND_CONTENT = /^\s*- (navigation|banner|contentinfo|complementary)\b/
 export function mainLines(lines: string[]) {
   const depth = (l: string) => l.length - l.trimStart().length
   const at = lines.findIndex((l) => /^\s*- main\b/.test(l))
@@ -34,7 +33,7 @@ export function mainLines(lines: string[]) {
   let skip = -1
   for (const l of root ? lines.slice(1) : lines) {
     if (skip >= 0 && depth(l) > skip) continue
-    skip = AROUND.test(l) ? depth(l) : -1
+    skip = AROUND_CONTENT.test(l) ? depth(l) : -1
     if (skip < 0) out.push(root ? l.slice(2) : l)
   }
   return out
@@ -45,19 +44,20 @@ export type AXNode = { nodeId: string; ignored?: boolean; role?: AXValue; name?:
   properties?: { name: string; value: AXValue }[] }
 export const INTERACTIVE = new Set(["button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "slider", "spinbutton", "menuitem",
   "menuitemcheckbox", "menuitemradio", "option", "tab", "treeitem", "listbox"])
-const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell", "MenuListPopup"])
 export type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n: number
   // A list that reuses its rows (Gmail, Slack) can put another item in the same element.
   what: Map<string, { role: string; name: string }> }
 
-const MAX_TREE = 1_000_000
+export type LineKit = { short: (href: string, base: string) => string | null; interactive: Set<string> }
 
-function linkTo(role: string, name: string, url: string, base: string) {
-  const to = role === "link" && name ? shortUrl(url, base) : null, said = name.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
-  return !to || said === to.toLowerCase() || (said.includes("/") && to.toLowerCase().endsWith(said)) ? "" : ` (→ ${to})`
-}
-
-export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolean, scrub: (s: string) => string, base = ""): string[] {
+export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolean, scrub: (s: string) => string, base = "",
+  kit: LineKit = { short: shortUrl, interactive: INTERACTIVE }): string[] {
+  const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell", "MenuListPopup"])
+  const MAX_TREE = 1_000_000, interactive = kit.interactive
+  const linkTo = (role: string, name: string, url: string) => {
+    const to = role === "link" && name ? kit.short(url, base) : null, said = name.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+    return !to || said === to.toLowerCase() || (said.includes("/") && to.toLowerCase().endsWith(said)) ? "" : ` (→ ${to})`
+  }
   const byId = new Map(nodes.map((n) => [n.nodeId, n]))
   const kids = new Set(nodes.flatMap((n) => n.childIds ?? []))
   const root = nodes.find((n) => !kids.has(n.nodeId)) ?? nodes[0]
@@ -78,10 +78,10 @@ export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolea
       return [line]
     }
     const props = Object.fromEntries((node.properties ?? []).map((x) => [x.name, x.value?.value]))
-    let line = `${pad(depth)}- ${role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}${linkTo(role, name, text(node.properties?.find((x) => x.name === "url")?.value), base)}`
+    let line = `${pad(depth)}- ${role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}${linkTo(role, name, text(node.properties?.find((x) => x.name === "url")?.value))}`
     const id = node.backendDOMNodeId
     let info = !!name
-    if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {
+    if ((interactive.has(role) || (props.focusable === true && !!name)) && id) {
       let ref = r.byNode.get(id)
       if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
       r.what.set(ref, { role, name })
@@ -91,7 +91,7 @@ export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolea
     const value = secret || /^[•●*]+$/.test(text(node.value)) ? (text(node.value) ? "•••" : "") : text(node.value)
     if (value && value !== name) { line += `: ${value.slice(0, 200)}`; info = true }
     for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") { line += ` [${k}]`; info = true }
-    const control = INTERACTIVE.has(role) && !!name && !/^(textbox|searchbox|combobox|listbox)$/.test(role)
+    const control = interactive.has(role) && !!name && !/^(textbox|searchbox|combobox|listbox)$/.test(role)
     let below = under(depth + 1, control ? true : name && role !== "RootWebArea" ? name : said)
     const top = (l: string) => l.startsWith(`${pad(depth + 1)}- `)
     const options = below.filter((l) => top(l) && /^\s*- option\b/.test(l))

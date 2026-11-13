@@ -22,3 +22,7 @@ export const RESOLVED = z.object({ object: z.object({ objectId: z.string() }) })
 export const LAYOUT = z.object({ cssVisualViewport: z.object({ clientWidth: z.number(), clientHeight: z.number() }).optional() })
 export const SCREENCAST_FRAME = z.object({ data: z.string(), sessionId: z.number(),
   metadata: z.object({ deviceWidth: z.number(), deviceHeight: z.number() }).optional() })
+export const FRAME_TREE = z.object({ frameTree: z.object({ frame: z.object({ id: z.string() }) }) })
+export const WORLD = z.object({ executionContextId: z.number() })
+export const EVALUATED = z.object({ result: z.object({ type: z.string(), subtype: z.string().optional(), value: z.unknown().optional(), objectId: z.string().optional() }),
+  exceptionDetails: z.object({ text: z.string(), exception: z.object({ description: z.string().optional() }).optional() }).optional() })

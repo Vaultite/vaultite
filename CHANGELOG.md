@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Agents' pages keep off the keyboard**: a page out of sight (an agent's, a background tab) loading no longer takes
   the cursor from what you're typing in; agents' pages act as focused without it.
+- **Agents' snapshots no longer freeze the app**: an agent reading a long page (a snapshot, an act's changes) no longer stalls
+  typing and clicks for half a second; the page builds its snapshot itself.
 - **Search results in a note**: a ```` ```query ```` fence, as in Obsidian, shows the files its search finds and their
   matching lines, kept up to date; a click opens one; `vau render` lists them for agents. `/Search results` adds one.
 - **Pinned commands in the palette**: a row's pin keeps a command at the top of ⌘P (`.vaultite/palette.json`,

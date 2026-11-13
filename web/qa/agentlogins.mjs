@@ -122,7 +122,7 @@ check("… from the agent-free entry, with no ask", /free/.test(filled?.approved
 const FORMS = [SECRET, encodeURIComponent(SECRET), new URLSearchParams([["pw", SECRET]]).toString().slice(3), SECRET.slice(0, 8)]
 const has = (x) => { const s = JSON.stringify(x ?? null); return FORMS.some((f) => s.includes(f) || s.includes(JSON.stringify(f).slice(1, -1))) }
 const snap = await op("snapshot", { tab: t })
-check("snapshot: the password field shows no value, nor its length", !has(snap) && /textbox "Password" \[ref=e\d+\](: •••)?$/m.test(snap?.snapshot ?? ""), snap?.snapshot)
+check("snapshot: the password field shows no value, nor its length", !has(snap) && /textbox "Password" \[ref=e\d+\](: •••)?( \||$)/m.test(snap?.snapshot ?? ""), snap?.snapshot)
 check("snapshot: the username the app filled shows (not a secret)", /textbox "Username" \[ref=e\d+\]: alice/.test(snap?.snapshot ?? ""), snap?.snapshot)
 check("read: nothing of it", !has(await op("read", { tab: t })), null)
 const ev = await op("evaluate", { tab: t, expression: "[...document.querySelectorAll('input')].map((i) => i.value)" })

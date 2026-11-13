@@ -42,6 +42,10 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   `color-scheme: dark`: Chromium's auto dark skips what has it. A load's commit can undo the auto dark override (the same
   site's next page too) and a new process never had it: it's told again as each load commits. A filter on `html` misses the canvas (the root's
   background) and the top layer (dialogs, popovers, full screen), so the sheet colours those itself.
+- Agents' snapshots are made in the page (pagetree.ts): our own isolated world (Page.createIsolatedWorld, never
+  Runtime.enable, which sites detect) runs axdom.ts and axLines, sent as source. Chromium's accessibility tree of a long
+  page is tens of MB that Electron parses on the main thread, which carries the user's every key: main gets the lines
+  only. Refs are the world's, so a document's own; axdom.ts follows Chromium's roles and names (HTML-AAM, accname).
 - The element picker (picker-page.js) is an overlay in an isolated world, styled only through the CSSOM, so no CSP or
   Trusted Types refuse it.
 - Managed extensions (extpolicy.ts) are named only in a policy file on this Mac: nothing in the app, a vault or the

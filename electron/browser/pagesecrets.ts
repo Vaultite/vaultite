@@ -43,7 +43,7 @@ export function markFilled(p: EnginePage, id: number) {
   const m = filledFields.get(p.wc)
   if (m && m.doc === docOf(p.wc)) m.ids.add(id); else filledFields.set(p.wc, { doc: docOf(p.wc), ids: new Set([id]) })
 }
-export const wasFilled = (wc: WebContents, id: number) => { const m = filledFields.get(wc); return !!m && m.doc === docOf(wc) && m.ids.has(id) }
+export const filledIn = (wc: WebContents) => { const m = filledFields.get(wc); return m && m.doc === docOf(wc) ? [...m.ids] : [] }
 export const filling = new Set<number>()
 
 // A script reaches the pages its page opened and the one that opened it: any page of `site` in these logins counts.

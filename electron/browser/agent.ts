@@ -6,9 +6,10 @@ import fs from "node:fs"
 import path from "node:path"
 import { cdp, cdpAnswer, type CdpParams } from "./cdp.ts"
 import { allPages, appWindows, busyWhen, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage, logger } from "./engine.ts"
-import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
+import { docOf, exposed, filledIn, filling, heldNear, markRan, scrub, scrubDeep } from "./pagesecrets.ts"
+import { linesIn, nodeIdOf, refNow } from "./pagetree.ts"
 import { clipboardKey, keyEvent } from "./keypress.ts"
-import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
+import { changes, INTERACTIVE, mainLines } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
 import { AX_TREE, BOX, DESCRIBED, RESOLVED, type DomNode } from "./cdpwire.ts"
 import { messageOf } from "./messageof.ts"
@@ -83,27 +84,14 @@ setInterval(() => {
   for (const p of allPages()) if (!p.resting() && (used.get(p.id) ?? 0) < old && !watched.has(p.id) && !asks.has(p.id)) p.rest()
 }, 15_000).unref()
 
-const refs = new WeakMap<WebContents, Refs>()
-const refsOf = (wc: WebContents) => {
-  let r = refs.get(wc)
-  if (!r) refs.set(wc, (r = { byRef: new Map(), byNode: new Map(), n: 0, what: new Map() }))
-  return r
-}
 const seen = new WeakMap<WebContents, { lines: string[]; doc: number }>()
-eachPage((p) => p.wc.on("did-navigate", () => {
-  const r = refs.get(p.wc)
-  r?.byRef.clear()
-  r?.byNode.clear()
-  r?.what.clear()
-}))
 const MAX_SNAPSHOT = 60_000
 
 async function tree(p: EnginePage, again = true): Promise<string[]> {
   const doc = docOf(p.wc)
-  await cdp(p.wc, "Accessibility.enable")
-  const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getFullAXTree")
+  const text = await linesIn(p.wc, p.wc.getURL(), filledIn(p.wc))
   if (docOf(p.wc) !== doc) { if (again) return tree(p, false); throw new Error("the page kept changing as it was read: take a snapshot again in a moment") }
-  const lines = axLines(nodes, refsOf(p.wc), (id) => wasFilled(p.wc, id), scrub, p.wc.getURL())
+  const lines = text ? scrub(text).split("\n") : []
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
   return lines
 }
@@ -206,16 +194,21 @@ function uploadFiles(list: Upload[] = []): string[] {
   })
 }
 
-async function nodeOf(p: EnginePage, ref: unknown) {
-  const r = refsOf(p.wc), id = r.byRef.get(String(ref))
-  if (!id) throw new Error(`no ref ${String(ref)} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
-  const was = r.what.get(String(ref))
-  if (was) {
-    const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false }).catch(() => ({ nodes: Array<AXNode>() }))
-    const n = nodes.find((x) => x.backendDOMNodeId === id) ?? nodes[0]
-    const name = String(n?.name?.value ?? "").replace(/\s+/g, " ").trim().slice(0, 200), role = String(n?.role?.value ?? "")
-    if (n && (role !== was.role || name !== was.name)) throw new Error(`ref ${String(ref)} is now ${role} "${scrub(name)}", not the ${was.role} "${scrub(was.name)}" it was: take a new snapshot`)
-  }
+const noRef = (p: EnginePage, ref: string) => new Error(`no ref ${ref} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
+const refGone = (ref: string) => new Error(`ref ${ref} is gone from the page: take a new snapshot`)
+async function idOf(p: EnginePage, ref: string) {
+  const id = await nodeIdOf(p.wc, ref)
+  if (!id) throw noRef(p, ref)
+  return id
+}
+async function nodeOf(p: EnginePage, given: unknown) {
+  const ref = String(given), now = await refNow(p.wc, ref)
+  if (!now) throw noRef(p, ref)
+  if (now.gone) throw refGone(ref)
+  const was = now.was
+  if (was && (now.role !== was.role || now.name !== was.name)) throw new Error(`ref ${ref} is now ${now.role} "${scrub(now.name)}", not the ${was.role} "${scrub(was.name)}" it was: take a new snapshot`)
+  const id = await nodeIdOf(p.wc, ref)
+  if (!id) throw refGone(ref)
   try { await cdp(p.wc, "DOM.scrollIntoViewIfNeeded", { backendNodeId: id }) } catch { throw new Error(`ref ${String(ref)} is gone from the page: take a new snapshot`) }
   const { model } = await cdpAnswer(p.wc, BOX, "DOM.getBoxModel", { backendNodeId: id })
   const q = model.content
@@ -415,11 +408,7 @@ async function step(p: EnginePage, a: Act) {
 }
 
 async function fillForm(p: EnginePage, fields: Field[]) {
-  const ids = fields.map((f) => {
-    const id = refsOf(p.wc).byRef.get(f.ref)
-    if (!id) throw new Error(`no ref ${f.ref} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
-    return id
-  })
+  const ids = await Promise.all(fields.map((f) => idOf(p, f.ref)))
   for (const [i, f] of fields.entries()) {
     const d = await describe(p, ids[i]), type = (d.attrs.type ?? "").toLowerCase(), role = d.attrs.role ?? ""
     if (d.tag === "input" && type === "file") throw new Error(`${f.ref} is a file input: upload into it (action upload)`)
@@ -548,16 +537,11 @@ eachPage((p) => {
 handle("agents:pages", (win) => pagesOf(win))
 
 async function nameOf(p: EnginePage, ref: unknown) {
-  const id = refsOf(p.wc).byRef.get(String(ref))
-  if (!id) return ""
-  try {
-    const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
-    const v = nodes[0]?.name?.value
-    return typeof v === "string" ? v.slice(0, 80) : ""
-  } catch { return "" }
+  const now = await refNow(p.wc, String(ref)).catch(() => null)
+  return now && !now.gone ? now.name.slice(0, 80) : ""
 }
 async function logged(p: EnginePage, ref: string | undefined, value: string | undefined): Promise<Logged> {
-  const id = ref ? refsOf(p.wc).byRef.get(ref) : undefined
+  const id = ref ? await nodeIdOf(p.wc, ref).catch(() => null) : null
   const secret = id ? await describe(p, id).then((d) => d.attrs.type === "password", () => false) : false
   return { name: ref ? await nameOf(p, ref) : "", value: secret ? "•••" : value }
 }
