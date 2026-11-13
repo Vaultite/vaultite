@@ -2,6 +2,7 @@ import { Eye } from "lucide-react"
 import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panesOf, revealUi, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
 import { checkDom, domTree, domView, resolveDom, uiElement } from "./uidom"
 import { actionable, parseCondition, stateWords, stepEffect, type State, type Target } from "../../../core/desktop/uimodel"
+import { shownText } from "./linked"
 import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
 const MOST = 300
@@ -15,7 +16,7 @@ setPanes(() => {
 export { uiElement }
 
 export function uiText(el: HTMLElement, most = 60) {
-  const lines = [...new Set((el.innerText || "").split("\n").map((l) => l.trim()).filter(Boolean))]
+  const lines = [...new Set(shownText(el).split("\n").map((l) => l.trim()).filter(Boolean))]
   return lines.slice(0, most).map((l) => l.slice(0, 120)).join("\n") + (lines.length > most ? `\n… ${lines.length - most} more` : "")
 }
 const settle = () => new Promise((done) => setTimeout(done, 400))
@@ -84,7 +85,7 @@ function check() {
   if (!ui.length) { clearInterval(timer); timer = 0; return }
   if (document.visibilityState !== "visible") return
   for (const f of ui) {
-    const el = uiElement(f.ui!), text = el ? (el.innerText || "").trim().slice(0, 8000) : null, k = `${f.agent}/${f.ui}`, was = told.get(k)
+    const el = uiElement(f.ui!), text = el ? shownText(el).trim().slice(0, 8000) : null, k = `${f.agent}/${f.ui}`, was = told.get(k)
     if (text === null) continue
     told.set(k, text)
     if (was === undefined || was === text) continue

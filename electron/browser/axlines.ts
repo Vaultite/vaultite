@@ -1,4 +1,4 @@
-// An agent's page as lines of its accessibility tree, two spaces a level.
+import { shortUrl } from "./linktext.ts"
 
 /** What changed between two trees, by what lines say, not their depth (a wrapper added moves nothing): a control whose
  *  line changed (its value, checked...) once as ~, then lines new (+), then gone (-), so a cut keeps what's new. */
@@ -52,7 +52,12 @@ export type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n:
 
 const MAX_TREE = 1_000_000
 
-export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolean, scrub: (s: string) => string): string[] {
+function linkTo(role: string, name: string, url: string, base: string) {
+  const to = role === "link" && name ? shortUrl(url, base) : null, said = name.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+  return !to || said === to.toLowerCase() || (said.includes("/") && to.toLowerCase().endsWith(said)) ? "" : ` (→ ${to})`
+}
+
+export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolean, scrub: (s: string) => string, base = ""): string[] {
   const byId = new Map(nodes.map((n) => [n.nodeId, n]))
   const kids = new Set(nodes.flatMap((n) => n.childIds ?? []))
   const root = nodes.find((n) => !kids.has(n.nodeId)) ?? nodes[0]
@@ -73,7 +78,7 @@ export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolea
       return [line]
     }
     const props = Object.fromEntries((node.properties ?? []).map((x) => [x.name, x.value?.value]))
-    let line = `${pad(depth)}- ${role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}`
+    let line = `${pad(depth)}- ${role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}${linkTo(role, name, text(node.properties?.find((x) => x.name === "url")?.value), base)}`
     const id = node.backendDOMNodeId
     let info = !!name
     if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {

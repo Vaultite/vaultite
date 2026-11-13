@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion and agents see where a page's links go**: what they read of a web page or a note (the text under the
+  pointer, a page's text and snapshot, a panel) has each link's host and path beside its words, without tracking parameters.
 - **Stopping the companion as its session starts ends that session**: the session it was starting no longer stays up
   after a stop, and an ask whose message was still being made isn't sent once it's stopped.
 - **A job whose terminal ends while it fixes CI forward says it needs you**: its card no longer keeps saying it's

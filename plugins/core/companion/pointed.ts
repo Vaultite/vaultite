@@ -1,6 +1,7 @@
 import { noticesSince } from "@vaultite"
 import { domTree } from "./uidom"
 import type { Thing } from "../../../core/desktop/uimodel"
+import { shownText } from "./linked"
 import { type Target, views } from "./live"
 import { onTop, screenOf } from "./locate"
 import { clamp } from "./spots"
@@ -16,13 +17,13 @@ function noteAt(x: number, y: number): (Target & { path: string; line: number; s
   return { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined, ...(selection ? { selection } : {}) }
 }
 
+const words = (e: HTMLElement) => shownText(e).trim().slice(0, 1200) || undefined
 type PanePlace = { pane?: string; ui?: string; row?: number; x?: number; y?: number; text?: string; title?: string }
 function paneAt(x: number, y: number): PanePlace | null {
   const hit = document.elementsFromPoint(x, y).filter((e) => !e.closest(".companion-overlay")).map((e) => e.closest<HTMLElement>("[data-ui]")).find(Boolean)
   const el = hit?.dataset.ui?.startsWith("pane:") ? hit.parentElement?.closest<HTMLElement>('[data-ui^="tab:"]') ?? hit : hit
   const id = el?.dataset.ui
   if (!el || !id) return null
-  const words = (e: HTMLElement) => (e.innerText || "").trim().slice(0, 1200) || undefined
   if (!id.startsWith("pane:")) return { ui: id, text: words(el), title: el.getAttribute("aria-label") ?? el.dataset.heading ?? undefined }
   const pane = id.slice(5), scr = screenOf(el)
   if (scr) { const row = clamp(Math.floor((y - scr.r.top) / scr.rowH) + 1, 1, scr.lines.length); return { pane, row, text: scr.lines[row - 1]?.trim() || undefined } }
@@ -39,7 +40,7 @@ function chromeAt(x: number, y: number): { kind: string; words?: string } | null
     const el = top.closest<HTMLElement>(sel)
     if (!el) continue
     const named = top.closest<HTMLElement>(NAMED) ?? el
-    return { kind, words: ((named.innerText || named.getAttribute("aria-label") || "").trim() || (el.innerText || "").trim()).slice(0, 1200) || undefined }
+    return { kind, words: (words(named) || named.getAttribute("aria-label")?.trim() || words(el))?.slice(0, 1200) || undefined }
   }
   return null
 }

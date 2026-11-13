@@ -97,7 +97,7 @@ async function tree(p: EnginePage, again = true): Promise<string[]> {
   await cdp(p.wc, "Accessibility.enable")
   const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getFullAXTree")
   if (docOf(p.wc) !== doc) { if (again) return tree(p, false); throw new Error("the page kept changing as it was read: take a snapshot again in a moment") }
-  const lines = axLines(nodes, refsOf(p.wc), (id) => wasFilled(p.wc, id), scrub)
+  const lines = axLines(nodes, refsOf(p.wc), (id) => wasFilled(p.wc, id), scrub, p.wc.getURL())
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
   return lines
 }
@@ -591,7 +591,7 @@ export async function actIn(p: EnginePage, given: Act, who: By) {
 }
 
 // A Google doc, sheet or slides draws on a canvas, never whole: its text is its export.
-const READ = (main: boolean) => `(async () => {
+const READ = (main: boolean, text: string) => `(async () => {
   const g = /^https:\\/\\/docs\\.google\\.com\\/(document|spreadsheets|presentation)\\/d\\/([\\w-]+)/.exec(location.href)
   if (g) {
     const as = { document: "md", spreadsheets: "csv", presentation: "txt" }[g[1]], gid = g[1] === "spreadsheets" ? (/[#&?]gid=(\\d+)/.exec(location.href) || [])[1] : ""
@@ -601,10 +601,11 @@ const READ = (main: boolean) => `(async () => {
     } catch {}
   }
   const root = (${main} && document.querySelector("main, [role=main]")) || document.body
-  return { url: location.href, title: document.title, text: root ? root.innerText : "" }
+  return { url: location.href, title: document.title, text: root ? ${text} : "" }
 })()`
 export async function readIn(p: EnginePage, main = false) {
-  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: READ(main) }]) as { url: string; title: string; text: string; as?: string }
+  const { linkTextCode } = await import("./linktext.ts")
+  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: READ(main, linkTextCode("root")) }]) as { url: string; title: string; text: string; as?: string }
   const text = scrub(r.text)
   return { tab: p.id, url: scrub(r.url), title: scrub(r.title), ...(r.as ? { as: r.as } : {}), text: text.length > 200_000 ? `${text.slice(0, 200_000)}\n… (cut short)` : text }
 }
@@ -794,8 +795,8 @@ serve("agent:selection", async (_win, tab) => {
   return { tab: p.id, url: p.wc.getURL(), selection: text.slice(0, 4000) }
 })
 serve("agent:at", async (_win, tab, x, y) => {
-  const p = pageFor(tab, "read"), at = [Number(x) || 0, Number(y) || 0].map(Math.round)
-  const code = `(() => { let e = document.elementFromPoint(${at[0]}, ${at[1]}); while (e && e.parentElement && (e.innerText || "").trim().length < 12) e = e.parentElement; return e ? (e.innerText || "").trim().slice(0, 600) : "" })()`
+  const p = pageFor(tab, "read"), at = [Number(x) || 0, Number(y) || 0].map(Math.round), { linkTextCode } = await import("./linktext.ts")
+  const code = `(() => { let e = document.elementFromPoint(${at[0]}, ${at[1]}); while (e && e.parentElement && ((e.innerText || "").trim().length < 12 || e.closest("a[href]"))) e = e.parentElement; return e ? ${linkTextCode("e")}.trim().slice(0, 600) : "" })()`
   const text = String(await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code }]).catch(() => "") ?? "")
   return { tab: p.id, url: p.wc.getURL(), text }
 })

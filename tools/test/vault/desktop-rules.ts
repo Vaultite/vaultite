@@ -55,6 +55,28 @@ async function snapshots(check: Check) {
     [mask("pw=abcdef", ["abc", "abcdef"]), mask("q=a%20b+c&x=a b c", ["a b c"])])
 }
 
+async function linkText(check: Check) {
+  const L = await import("../../../electron/browser/linktext.ts"), { axLines } = await import("../../../electron/browser/axlines.ts"), page = "https://blog.example.com/posts/why"
+  const shorts = ["https://en.wikipedia.org/wiki/Effective_altruism?utm_source=x&fbclid=y#History", "https://www.youtube.com/watch?v=abc&si=zz", "/posts/other/", "#notes",
+    "https://blog.example.com/posts/why#top", "javascript:void(0)", "mailto:alice@example.com", "https://example.com/caf%C3%A9"].map((h) => L.shortUrl(h, page))
+  check("link text: a link's destination is its host and path (no www, tracking or #part), a path alone on the same site; same-page anchors and scripts none",
+    JSON.stringify(shorts) === JSON.stringify(["en.wikipedia.org/wiki/Effective_altruism", "youtube.com/watch?v=abc", "/posts/other", null, null, null, "mailto:alice@example.com", "example.com/café"]), shorts)
+  const { parseHTML } = await import("linkedom")
+  const { document } = parseHTML(`<html><body><article><p>Some call it <a href="https://en.wikipedia.org/wiki/Effective_altruism?utm_medium=s">effective altruism</a>, see <a href="#n1">1</a> and
+    <a href="https://example.com/a">example.com/a</a>; also <a data-wiki="Lighthouse">the plan</a>, <a data-wiki="Alice Park">Alice Park</a>, and <a href="https://alice.example.org"><img alt=""></a>.</p></article></body></html>`)
+  const art = document.querySelector("article"), first = document.querySelector("a")
+  const read = art ? L.textWithLinks(art, L.shortUrl) : "", one = first ? L.textWithLinks(first, L.shortUrl) : ""
+  const has = ["effective altruism (→ en.wikipedia.org/wiki/Effective_altruism),", "see 1 and", "example.com/a;", "the plan (→ [[Lighthouse]])"], hasnt = ["example.com/a (→", "Alice Park (→", "alice.example.org"]
+  check("link text: a page's text has each link's destination after its words, a note's as its [[name]], none for anchors, bare addresses or names said as they are",
+    has.every((w) => read.includes(w)) && !hasnt.some((w) => read.includes(w)) && one === "effective altruism (→ en.wikipedia.org/wiki/Effective_altruism)", [read, one])
+  const v = (value: string) => ({ value }), link = (id: string, name: string, url: string) => ({ nodeId: id, role: v("link"), name: v(name), backendDOMNodeId: Number(id), properties: [{ name: "url", value: v(url) }] })
+  const nodes = [{ nodeId: "1", role: v("RootWebArea"), name: v("Why"), childIds: ["2", "3", "4"] }, link("2", "effective altruism", "https://en.wikipedia.org/wiki/Effective_altruism?gclid=1"),
+    link("3", "Notes", "https://blog.example.com/posts/why#notes"), link("4", "example.com/a", "https://example.com/a")]
+  const tree = axLines(nodes, { byRef: new Map(), byNode: new Map(), n: 0, what: new Map() }, () => false, (s) => s, page).join("\n")
+  const lines = [/link "effective altruism" \(→ en\.wikipedia\.org\/wiki\/Effective_altruism\) \[ref=e\d+\]$/m, /link "Notes" \[ref=e\d+\]$/m, /link "example\.com\/a" \[ref=e\d+\]$/m]
+  check("link text: a snapshot's link says where it goes, but a same-page anchor's or one named by its address", lines.every((r) => r.test(tree)), tree)
+}
+
 async function accounts(check: Check) {
   const { ACCOUNTS } = await import("../../../electron/siteaccounts.ts")
   const S = "tok_S3CRETxyz123"
@@ -133,5 +155,5 @@ async function webWire(check: Check) {
 
 export default async ($: VaultTest) => {
   winspawnFirst($.check)
-  for (const t of [bridge, clipboard, snapshots, accounts, hangs, cloudSessions, webWire]) await t($.check)
+  for (const t of [bridge, clipboard, snapshots, linkText, accounts, hangs, cloudSessions, webWire]) await t($.check)
 }
