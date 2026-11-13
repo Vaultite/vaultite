@@ -2,7 +2,8 @@
 // ⌘Z beside the text, in one history with the typing. WRITES "Qa undo/": throwaway server only.
 //   node web/qa/undo.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { command, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [BASE, OUT = "/tmp/undo-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
 mkdirSync(OUT, { recursive: true })
@@ -19,24 +20,20 @@ try {
     const tag = phone ? "phone: " : ""
     await write(NOTE, START)
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(phone ? { isMobile: true, hasTouch: true } : {}) })
-    const page = watch(await ctx.newPage())
+    const page = watch(await ctx.newPage()), ui = app(page)
     const view = page.locator(`.file-view[data-path="${NOTE}"]:visible`)
     const props = view.locator("[aria-label=Properties]")
     const keys = () => props.locator("[role=rowheader] input").evaluateAll((els) => els.map((e) => e.value))
     const disk = (re) => until(async () => re.test(await read(NOTE)), 4000)
     // The keyboard beside the text: nothing focused (what a removed row's × leaves).
     const away = () => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur())
-    const undo = async () => { await away(); await page.keyboard.press("ControlOrMeta+z"); await wait(300) }
-    const redo = async () => { await away(); await page.keyboard.press("ControlOrMeta+Shift+z"); await wait(300) }
-    const palette = async (name) => {
-      await page.keyboard.press("ControlOrMeta+p"); await wait(300); await page.keyboard.type(name); await wait(300)
-      // (only one named so: a toggle is also found by its other name)
-      const none = !(await page.locator("[role=option]", { hasText: name }).count())
-      await page.keyboard.press(none ? "Escape" : "Enter"); await wait(600)
-    }
+    const undo = async () => { await away(); await page.keyboard.press("ControlOrMeta+z"); await ui.idle() }
+    const redo = async () => { await away(); await page.keyboard.press("ControlOrMeta+Shift+z"); await ui.idle() }
+    // (only one named so: a toggle is also found by its other name)
+    const palette = async (name) => { await command(page, name, 0); await ui.idle() }
 
     await page.goto(`${B}/#file/${encodeURIComponent(NOTE)}`)
-    await view.waitFor({ timeout: 15000 }); await wait(1200)
+    await view.waitFor({ timeout: 15000 }); await ui.idle()
     await palette("Switch to live preview")
     await until(() => props.count())
     if (!(await props.locator("[role=table]").count())) await props.getByRole("button", { name: /Properties/ }).click()
@@ -56,18 +53,18 @@ try {
 
     // A value changed, a key renamed, one added: each one step.
     const value = props.locator("[role=row]").filter({ has: page.locator("input[value=rating]") }).locator("[role=cell] input")
-    await value.fill("5"); await value.press("Enter"); await wait(200)
+    await value.fill("5"); await value.press("Enter"); await ui.idle()
     check(`${tag}a value changed`, await disk(/rating: 5/), await read(NOTE))
-    await page.keyboard.press("ControlOrMeta+z"); await wait(300)
+    await page.keyboard.press("ControlOrMeta+z"); await ui.idle()
     check(`${tag}⌘Z right after Enter (the field let go): the value back`, await disk(/rating: 3/), await read(NOTE))
     const key = props.locator("[role=rowheader] input").first()
-    await key.fill("stage"); await key.press("Enter"); await wait(200)
+    await key.fill("stage"); await key.press("Enter"); await ui.idle()
     check(`${tag}a key renamed`, await disk(/stage: draft/), await read(NOTE))
     await undo()
     check(`${tag}⌘Z: the old key`, await disk(/status: draft/) && (await keys()).includes("status"), await keys())
     await props.getByRole("button", { name: "Add property" }).click()
-    await page.keyboard.type("mood"); await page.keyboard.press("Enter"); await wait(200)
-    await page.keyboard.type("calm"); await page.keyboard.press("Enter"); await wait(200)
+    await page.keyboard.type("mood"); await page.keyboard.press("Enter"); await ui.idle()
+    await page.keyboard.type("calm"); await page.keyboard.press("Enter"); await ui.idle()
     check(`${tag}a property added, with its value`, await disk(/mood: calm/), await read(NOTE))
     await undo()
     check(`${tag}⌘Z: its value goes`, await disk(/mood: *(''|"")?\n/), await read(NOTE))
@@ -75,13 +72,13 @@ try {
     check(`${tag}⌘Z: the property goes`, await disk(/^(?![\s\S]*mood)/), await read(NOTE))
 
     // ⌘Z in a field is the field's own: typing undone there, the file unchanged.
-    await value.click(); await value.press("End"); await page.keyboard.type("9"); await wait(100)
-    await page.keyboard.press("ControlOrMeta+z"); await wait(200)
+    await value.click(); await value.press("End"); await page.keyboard.type("9"); await ui.idle()
+    await page.keyboard.press("ControlOrMeta+z"); await ui.idle()
     check(`${tag}⌘Z inside a field undoes its typing only`, await value.inputValue() === "3" && /rating: 3/.test(await read(NOTE)), await value.inputValue())
-    await page.keyboard.press("Escape"); await wait(100)
+    await page.keyboard.press("Escape"); await ui.idle()
 
     // One history with the text: typed, then a property removed; ⌘Z takes them back in turn.
-    await view.locator(".cm-line", { hasText: "Tomatoes" }).click(); await page.keyboard.press("End"); await page.keyboard.type(" Peppers."); await wait(800)
+    await view.locator(".cm-line", { hasText: "Tomatoes" }).click(); await page.keyboard.press("End"); await page.keyboard.type(" Peppers."); await ui.idle()
     await props.locator("[role=row]").filter({ has: page.locator("input[value=tags]") }).hover()
     await props.getByRole("button", { name: "Remove tags" }).click()
     check(`${tag}typed, then a property removed`, await disk(/Peppers\./) && await disk(/^(?![\s\S]*tags:)/), await read(NOTE))
@@ -105,11 +102,11 @@ try {
       const long = (await read(NOTE)) + Array.from({ length: 120 }, (_, i) => `\nLine ${i}.\n`).join("")
       await fetch(`${B}/api/file`, { method: "PUT", headers: json, body: JSON.stringify({ path: NOTE, text: long, base: await read(NOTE) }) })
       await until(() => view.locator(".cm-line", { hasText: "Line 0." }).count())
-      await view.locator(".cm-line", { hasText: "Line 0." }).click(); await page.keyboard.press("ControlOrMeta+End"); await wait(300)
-      await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 0 }); await wait(300)
+      await view.locator(".cm-line", { hasText: "Line 0." }).click(); await page.keyboard.press("ControlOrMeta+End"); await ui.idle()
+      await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 0 }); await ui.idle()
       await props.locator("[role=row]").filter({ has: page.locator("input[value=rating]") }).hover()
-      await props.getByRole("button", { name: "Remove rating" }).click(); await wait(200)
-      await undo(); await wait(300)
+      await props.getByRole("button", { name: "Remove rating" }).click(); await ui.idle()
+      await undo()
       const top = await props.evaluate((el) => el.getBoundingClientRect().top)
       check("⌘Z with the cursor far down: the properties stay in sight", top > 0 && top < 400 && await disk(/rating: 3/), top)
 
@@ -117,18 +114,18 @@ try {
     // A note in a sheet (a phone's file opened over a view; a keyboard on an iPad): the same.
     if (phone) {
       await write(NOTE, START)
-      await page.goto(`${B}/#view/files/file/${encodeURIComponent(NOTE)}`); await wait(1500)
+      await page.goto(`${B}/#view/files/file/${encodeURIComponent(NOTE)}`)
       const sheet = page.locator(`dialog[open] .file-view[data-path="${NOTE}"]`)
-      await sheet.waitFor({ timeout: 10000 })
+      await sheet.waitFor({ timeout: 10000 }); await ui.idle()
       // (a phone opens a note for reading, in a sheet too: its pencil makes the properties editable)
       const pencil = page.locator("dialog[open] [data-view-toggle=read]")
-      if (await until(() => pencil.count(), 3000)) { await pencil.click(); await wait(500) }
+      if (await until(() => pencil.count(), 3000)) { await pencil.click(); await ui.idle() }
       const sp = sheet.locator("[aria-label=Properties]")
       if (!(await sp.locator("[role=table]").count())) await sp.getByRole("button", { name: /Properties/ }).click()
       await sp.locator("[role=row]").filter({ has: page.locator("input[value=status]") }).hover()
       await sp.getByRole("button", { name: "Remove status" }).click()
       await disk(/^(?![\s\S]*status:)/)
-      await page.keyboard.press("ControlOrMeta+z"); await wait(300)
+      await page.keyboard.press("ControlOrMeta+z"); await ui.idle()
       check("in a sheet: ⌘Z brings a removed property back", await disk(/status: draft/) && await sheet.count() === 1, await read(NOTE))
     }
     await ctx.close()

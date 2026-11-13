@@ -46,7 +46,7 @@ import { Properties } from "@/components/Properties"
 import { effectiveType } from "../../../core/fileprops.ts"
 import { JsonView } from "@/components/JsonView"
 import { barButton, ViewBar } from "@/components/ViewBar"
-import { usePortalHost } from "@/components/kit"
+import { Arriving, usePortalHost } from "@/components/kit"
 import { ink } from "@/lib/ink"
 import { useWideSheet } from "@/components/DetailSheet"
 import { TITLE, TitleRow } from "@/components/FileTitle"
@@ -832,7 +832,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         <div className={cn(!page && "mt-4")}>
           {showProps && <Properties path={path} block={fm} readOnly={ro || shown === "read"} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
           {isMd(path) && !source && !drawing && <NoteTop head={fileHead} place={pane ? "page" : "sheet"} />}
-          {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<div className="min-h-40" />}>
+          {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<Arriving className="min-h-40" />}>
             {drawing ? framed(layout, pane, drawing) : notebook && !source ? (
               <Notebook text={cur.current.body} />
             ) : json && !source ? (

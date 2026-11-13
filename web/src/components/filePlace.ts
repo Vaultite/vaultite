@@ -3,6 +3,7 @@ import type { EditorApi } from "@/editor/Editor"
 import { holdPlace, keepOnScreen } from "@/core/anchor"
 import { lineInSight, wholly } from "@/core/sight"
 import { scrollingBox } from "@/lib/utils"
+import { trackSoon } from "@/core/unsaved"
 import type { Mode } from "@/components/fileState"
 
 
@@ -47,8 +48,10 @@ export function useTextFocus(editor: { current: { api: EditorApi; source: boolea
     const { hold, there } = typeof reveal === "object" ? reveal : {}
     let frame = 0, stopped = false
     const until = performance.now() + (reveal ? 4000 : 1000)
+    const untrack = reveal ? trackSoon("a cursor going to its line", () => !stopped) : () => {}
     const stop = () => {
       stopped = true
+      untrack()
       cancelAnimationFrame(frame)
       removeEventListener("pointerdown", stop, true); removeEventListener("keydown", stop, true)
     }

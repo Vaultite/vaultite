@@ -3,7 +3,8 @@
 //   node web/qa/bigtree.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
 import path from "node:path"
-import { SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, apiAt, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 
@@ -40,7 +41,7 @@ const HOOK = () => {
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 await ctx.addInitScript(HOOK)
-const page = watch(await ctx.newPage(), { console: true })
+const page = watch(await ctx.newPage(), { console: true }), ui = app(page)
 const tree = page.locator("aside [role=tree]").first()
 const row = (p) => tree.locator(`div[data-tree-path="${p}"]`)
 const drawn = () => tree.locator(`div[data-tree-path^="${D}/"]`).count()
@@ -63,10 +64,10 @@ const scrollTree = (to) => page.evaluate((to) => {
 
 await page.goto(B)
 await until(async () => (await row(D).count()) === 1, 15000)
-await page.locator('aside [aria-label="Collapse all"]').click().catch(() => {}); await wait(200)
+await page.locator('aside [aria-label="Collapse all"]').click().catch(() => {}); await ui.idle()
 await row(D).locator("button").first().click()
 check("opened: its rows show", !!(await until(async () => (await row(name(1)).count()) === 1, 10000)))
-await wait(500)
+await ui.idle()
 
 // 1. Only what's near the screen is drawn, in a tree as tall as every row.
 const n = await drawn()
@@ -76,7 +77,7 @@ check("the tree is as tall as all its rows", tall > N * 20, tall)
 await page.screenshot({ path: `${OUT}bigtree-1-open.png` })
 
 // 2. Scrolled halfway: the rows in sight are the ones there (Note ~1500), drawn without gaps.
-await scrollTree(0.5); await wait(400)
+await scrollTree(0.5); await ui.idle()
 const mid = await page.evaluate((D) => {
   const body = document.querySelector("aside [role=tree]").closest("[data-sidebar-body]").getBoundingClientRect()
   const seen = [...document.querySelectorAll(`aside [role=tree] div[data-tree-path^="${D}/"]`)].filter((el) => { const r = el.getBoundingClientRect(); return r.top >= body.top && r.bottom <= body.bottom })
@@ -87,36 +88,36 @@ await page.screenshot({ path: `${OUT}bigtree-2-middle.png` })
 
 // 3. The keyboard: End to the tree's last row (past the folder: the top's files), ↑ back into the folder's last
 // file, ↑ to the one before, then (4) F2, and ← to the folder thousands of rows up.
-await scrollTree(0); await wait(300)
+await scrollTree(0); await ui.idle()
 await row(name(1)).locator("[data-keyrow]").focus()
-await page.keyboard.press("End"); await wait(300)
+await page.keyboard.press("End"); await ui.idle()
 const last = await page.evaluate(() => [...document.querySelectorAll("aside [role=tree] [data-tree-path]")].at(-1)?.getAttribute("data-tree-path"))
 check(`End: the tree's last row, in sight (${last})`, !!last && (await keyRow()) === last && await inSight(last), await keyRow())
-for (let i = 0; i < 40 && !(await keyRow())?.startsWith(`${D}/`); i++) { await page.keyboard.press("ArrowUp"); await wait(60) }
+for (let i = 0; i < 40 && !(await keyRow())?.startsWith(`${D}/`); i++) { await page.keyboard.press("ArrowUp"); await ui.idle() }
 check("↑ past the top's files: the folder's last file, in sight", (await keyRow()) === name(N) && await inSight(name(N)), await keyRow())
-await page.keyboard.press("ArrowUp"); await wait(200)
+await page.keyboard.press("ArrowUp"); await ui.idle()
 check("↑: the one before it", (await keyRow()) === name(N - 1), await keyRow())
 
 // 4. F2 renames a row far down in place (Escape leaves it as it was).
-await page.keyboard.press("F2"); await wait(300)
+await page.keyboard.press("F2"); await ui.idle()
 const field = tree.locator('input[aria-label="New name"]')
 check("F2: a name field far down", (await field.count()) === 1 && (await field.inputValue()) === `Note ${N - 1}`)
-await page.keyboard.press("Escape"); await wait(300)
+await page.keyboard.press("Escape"); await ui.idle()
 check("Escape: the row again, with the keyboard", (await field.count()) === 0 && (await keyRow()) === name(N - 1), await keyRow())
-await page.keyboard.press("ArrowLeft"); await wait(300)
+await page.keyboard.press("ArrowLeft"); await ui.idle()
 check("←: the folder, thousands of rows up, in sight", (await keyRow()) === D && await inSight(D), await keyRow())
 
 // 5. ⇧-click: the run from the first file to the last, past the rows not drawn.
-await row(name(1)).locator("[data-keyrow]").click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] }); await wait(200)
-await scrollTree("end"); await wait(400)
-await row(name(N)).locator("[data-keyrow]").click({ modifiers: ["Shift"] }); await wait(300)
-await row(name(N)).click({ button: "right" }); await wait(300)
+await row(name(1)).locator("[data-keyrow]").click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] }); await ui.idle()
+await scrollTree("end"); await ui.idle()
+await row(name(N)).locator("[data-keyrow]").click({ modifiers: ["Shift"] }); await ui.idle()
+await ui.menu.context(row(name(N))); await ui.idle()
 const caption = await page.locator("[role=menu]").first().textContent().catch(() => "")
 check(`⇧-click selects every file between (${caption.match(/\d+ items selected/)?.[0]})`, caption.includes(`${N} items selected`), caption.slice(0, 80))
-await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(200)
+await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await ui.idle()
 
 // 6. Revealing a file far down (auto-reveal) scrolls the tree to it.
-await scrollTree(0); await wait(300)
+await scrollTree(0); await ui.idle()
 await api("PATCH", "config/files", { autoReveal: true })
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, name(2400))
 check("revealed: the open file's row, in sight", !!(await until(() => inSight(name(2400)), 8000)))
@@ -125,15 +126,15 @@ await page.screenshot({ path: `${OUT}bigtree-3-revealed.png` })
 // 7. Typing in a note, saves and all: no row of the tree drawn again, nothing in it changed.
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, NOTE)
 await until(() => page.evaluate(() => document.querySelectorAll(".cm-content .cm-line").length >= 1), 8000)
-await wait(1500)
-await page.click(".cm-content"); await page.keyboard.press("ControlOrMeta+End"); await wait(1200)
+await ui.idle()
+await page.click(".cm-content"); await page.keyboard.press("ControlOrMeta+End"); await ui.idle()
 await page.evaluate(() => {
   window.__tree.rows = 0
   window.__changed = 0
   new MutationObserver((ms) => { window.__changed += ms.length }).observe(document.querySelector("aside [role=tree]"), { subtree: true, childList: true, attributes: true, characterData: true })
 })
-await page.keyboard.type(" and some more words", { delay: 80 })
-await wait(3000) // (its save, and the store's refresh after it)
+// (its save, and the store's refresh after it)
+await ui.sees(NOTE, () => page.keyboard.type(" and some more words", { delay: 80 }))
 const saved = fs.readFileSync(path.join(VAULT, NOTE), "utf8").includes("some more words")
 const after = await page.evaluate(() => ({ rows: window.__tree.rows, changed: window.__changed }))
 check("typing: saved", saved)

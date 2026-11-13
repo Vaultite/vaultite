@@ -11,6 +11,7 @@ import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { Segmented } from "@/components/kit"
 import { signal } from "@/core/signal"
+import { trackSoon } from "@/core/unsaved"
 import { isDesktop, isMac } from "@/core/platform"
 import { COLOR_NAMES, COLORS, colorVar, type Color } from "../../../core/colors.ts"
 
@@ -200,8 +201,10 @@ function watchHolds() {
   addEventListener("scroll", stop, opts)
   addEventListener("contextmenu", native, { capture: true })
   document.addEventListener("selectionchange", selecting)
+  const untrack = trackSoon("a held finger's menu", () => timer !== 0)
   return () => {
     stop()
+    untrack()
     mark(false)
     removeEventListener("pointerdown", down, opts)
     removeEventListener("pointermove", move, opts)

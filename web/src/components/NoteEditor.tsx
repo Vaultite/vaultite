@@ -19,6 +19,7 @@ import { Editor } from "@/editor/lazy"
 import type { EditorApi } from "@/editor/Editor"
 import type { PreviewConfig } from "@/editor/livePreview"
 import { capitalize, cn } from "@/lib/utils"
+import { Arriving } from "@/components/kit"
 import { joinSection, sectionParts } from "../../../core/sections.ts"
 
 type Shared = {
@@ -103,7 +104,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
   const blur = useMemo(() => onBlur && (() => { if (!over.current) onBlur() }), [onBlur])
   return (
     <div className={cn("note-editor", className)}>
-      <Suspense fallback={<div className="min-h-6" />}>
+      <Suspense fallback={<Arriving className="min-h-6" />}>
         <Editor doc={doc} frontmatter={whole} editable={editable} config={config} {...wiring} onAttach={editable ? attach : undefined} placeholderText={editable ? placeholder ?? "Start writing" : ""}
           onEscape={onEscape} onBlur={blur} floatingTooltips
           onReady={(a) => { onReady(a); if (autoFocus && editable) a.focus("end") }} onChange={onChange} />

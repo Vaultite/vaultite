@@ -7,6 +7,7 @@ import { haptic } from "@/core/haptics"
 import { isDesktop } from "@/core/platform"
 import { copyText } from "@/core/richmd"
 import { useDraft } from "@/core/statefor"
+import { trackSoon } from "@/core/unsaved"
 import { Described, usePreview, type Preview } from "@/components/SettingPreview"
 
 /** The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the
@@ -199,6 +200,12 @@ export function ErrorDetails({ text, className }: { text: string; className?: st
 export function Loading({ error, className }: { error?: ReactNode; className?: string }) {
   if (error) return <p className={cn("text-[15px] leading-[20px] text-muted-foreground select-text", className)}>{error}</p>
   return <p className={cn("loading-in text-[15px] leading-[20px] text-muted-foreground", className)} aria-busy><span className="shimmer">Loading…</span></p>
+}
+
+/** Suspense's fallback for code on its way: React shows what came up to 300 ms after it does. */
+export function Arriving({ className }: { className?: string }) {
+  useEffect(() => trackSoon("code on its way", () => true), [])
+  return <div className={className} />
 }
 
 /** A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width). */

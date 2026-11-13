@@ -1,9 +1,10 @@
 // Every kind of file opens (code, images, PDFs, audio, notebooks, decks, binaries, a big log), on a desktop and a phone.
 // WRITES a "Qa files" folder: throwaway server only.
 //   node web/qa/filetypes.mjs <base url> <vault path> [out dir]
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import zlib from "node:zlib"
-import { SHOTS, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const DIR = "Qa files"
@@ -78,7 +79,11 @@ writeFileSync(at("analysis.ipynb"), JSON.stringify({
   ],
 }, null, 1))
 writeFileSync(at("Embeds.md"), "# Embeds\n\nThe statement:\n\n![[statement.pdf|300]]\n\nAnd a memo:\n\n![[memo.wav]]\n")
-await wait(1500) // the server hears them
+const serverListsThemAll = async () => {
+  const listed = new Set((await (await fetch(`${B}api/files`)).json()).files?.map((f) => f.path))
+  return readdirSync(`${VAULT}/${DIR}`).every((f) => listed.has(`${DIR}/${f}`))
+}
+await until(serverListsThemAll, 15000)
 
 const out = { errs: [] }
 const ok = (name, v) => { out[name] = v }
@@ -86,16 +91,16 @@ const ok = (name, v) => { out[name] = v }
 // ---------- desktop ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
-  const page = await ctx.newPage()
+  const page = await ctx.newPage(), ui = app(page)
   page.on("pageerror", (e) => out.errs.push(String(e)))
   page.on("console", (m) => m.type() === "error" && !/Failed to load resource/.test(m.text()) && out.errs.push(m.text()))
   page.on("dialog", (d) => d.accept())
   const shot = (name) => page.screenshot({ path: `${OUT}filetypes-desktop-${name}.png` })
-  const open = async (name) => { await page.goto(`${B}#file/${enc(`${DIR}/${name}`)}`); await wait(1500) }
+  const open = async (name) => { await page.goto(`${B}#file/${enc(`${DIR}/${name}`)}`); await ui.idle() }
   const status = () => page.locator("[role=status]").last().innerText().catch(() => "")
-  await page.goto(B); await wait(1500)
+  await page.goto(B); await page.locator("aside [role=tree]").first().waitFor(); await ui.idle()
   // The tree: every file listed, each with its icon.
-  await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${DIR}$`) }).first().click(); await wait(400)
+  await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${DIR}$`) }).first().click(); await ui.idle()
   const icons = await page.evaluate((dir) => Object.fromEntries([...document.querySelectorAll(`aside [data-tree-path^="${dir}/"]`)].map((row) =>
     [row.dataset.treePath.split("/").pop(), row.querySelector("svg.lucide:not(.lucide-chevron-right)")?.getAttribute("class")?.split(" ").find((c) => c.startsWith("lucide-")) ?? null])), DIR)
   ok("treeIcons", icons)
@@ -105,7 +110,7 @@ const ok = (name, v) => { out[name] = v }
   await shot("tree")
 
   // Code: highlighted, line numbers, typing saves only the change.
-  await page.locator("aside [role=tree] button", { hasText: /^sample\.py$/ }).first().click(); await wait(1800)
+  await page.locator("aside [role=tree] button", { hasText: /^sample\.py$/ }).first().click(); await ui.idle()
   ok("pyHash", await page.evaluate(() => location.hash))
   ok("pyEditor", await page.locator(".vau-editor.is-code").count())
   ok("pyLineNumbers", await page.locator(".cm-lineNumbers .cm-gutterElement").count())
@@ -114,12 +119,11 @@ const ok = (name, v) => { out[name] = v }
   ok("pyStatus", await status())
   ok("pyTab", await page.locator("[role=tablist] [role=tab]", { hasText: "sample.py" }).count())
   await shot("code")
-  await page.locator(".cm-line", { hasText: "print(total([]))" }).click(); await page.keyboard.press("End"); await page.keyboard.type("  # done")
-  await wait(2200)
+  await page.locator(".cm-line", { hasText: "print(total([]))" }).click(); await page.keyboard.press("End"); await page.keyboard.type("  # done"); await ui.idle()
   const py = readFileSync(at("sample.py"), "utf8")
   ok("pySaved", py === PY.replace("print(total([]))", "print(total([]))  # done"))
   // Tab indents with the file's own unit (4 spaces here).
-  await page.keyboard.press("Enter"); await page.keyboard.type("x = 1"); await page.keyboard.press("Home"); await page.keyboard.press("Tab"); await wait(2000)
+  await page.keyboard.press("Enter"); await page.keyboard.type("x = 1"); await page.keyboard.press("Home"); await page.keyboard.press("Tab"); await ui.idle()
   ok("pyIndent", readFileSync(at("sample.py"), "utf8").includes("\n        x = 1") || readFileSync(at("sample.py"), "utf8").includes("\n    x = 1"))
 
   // Other text: a YAML file, an unknown name that is text, a binary file, a big log.
@@ -136,7 +140,7 @@ const ok = (name, v) => { out[name] = v }
   await open("chart.png")
   ok("imgLoaded", await page.evaluate(() => document.querySelector("[data-image-view] img")?.naturalWidth ?? 0))
   ok("imgStatus", await status())
-  await page.locator("[data-image-view] img").click(); await wait(200)
+  await page.locator("[data-image-view] img").click(); await ui.idle()
   ok("imgZoom", await page.locator("[data-image-view] img[data-zoomed]").count())
   await shot("image")
   await open("logo.svg")
@@ -161,9 +165,9 @@ const ok = (name, v) => { out[name] = v }
   ok("nbImage", await page.locator("[data-notebook] img[src^='data:image/png']").count())
   ok("nbHtml", await page.locator("[data-notebook] iframe[sandbox]").count())
   await shot("notebook")
-  await page.keyboard.press("ControlOrMeta+e"); await wait(800)
+  await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
   ok("nbSource", await page.locator(".cm-line", { hasText: '"cell_type": "markdown"' }).count())
-  await page.keyboard.press("ControlOrMeta+e"); await wait(500)
+  await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 
   // A file no viewer or plugin draws (a Keynote deck): a card with Download; "Open in default app" only in the desktop
   // app on this machine. (A workbook is Spreadsheets': web/qa/formats.mjs.)
@@ -183,8 +187,8 @@ const ok = (name, v) => { out[name] = v }
   await shot("embeds")
 
   // The quick switcher finds files by their full name.
-  await page.keyboard.press("ControlOrMeta+o"); await wait(300)
-  await page.keyboard.type("statement.pdf"); await wait(500)
+  await page.keyboard.press("ControlOrMeta+o"); await ui.idle()
+  await page.keyboard.type("statement.pdf"); await ui.idle()
   ok("switcher", await page.locator("[role=dialog] [role=option], [role=listbox] [role=option]").allInnerTexts().then((t) => t.slice(0, 3)))
   await page.keyboard.press("Escape")
 
@@ -192,12 +196,12 @@ const ok = (name, v) => { out[name] = v }
   ok("range", await page.evaluate(async (p) => { const r = await fetch(`api/raw?path=${encodeURIComponent(p)}`, { headers: { Range: "bytes=0-9" } }); return [r.status, (await r.arrayBuffer()).byteLength] }, `${DIR}/memo.wav`))
 
   // Rename and delete from the tree.
-  await page.locator(`aside [data-tree-path="${DIR}/readme.txt"]`).click({ button: "right" }); await wait(200)
-  await page.locator("[role=menu] button", { hasText: "Rename" }).click(); await wait(200)
-  await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("notes.txt"); await page.keyboard.press("Enter"); await wait(1500)
+  await ui.menu.context(page.locator(`aside [data-tree-path="${DIR}/readme.txt"]`))
+  await page.locator("[role=menu] button", { hasText: "Rename" }).click(); await ui.idle()
+  await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("notes.txt"); await page.keyboard.press("Enter"); await ui.idle()
   ok("renamed", existsSync(at("notes.txt")) && !existsSync(at("readme.txt")))
-  await page.locator(`aside [data-tree-path="${DIR}/data.bin"]`).click({ button: "right" }); await wait(200)
-  await page.locator("[role=menu] button", { hasText: "Delete" }).click(); await wait(1500)
+  await ui.menu.context(page.locator(`aside [data-tree-path="${DIR}/data.bin"]`))
+  await page.locator("[role=menu] button", { hasText: "Delete" }).click(); await ui.idle()
   ok("deleted", !existsSync(at("data.bin")))
   await ctx.close()
 }
@@ -205,11 +209,11 @@ const ok = (name, v) => { out[name] = v }
 // ---------- phones ----------
 for (const width of [390, 320]) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
-  const page = await ctx.newPage()
+  const page = await ctx.newPage(), ui = app(page)
   page.on("pageerror", (e) => out.errs.push(`${width}: ${e}`))
   const res = {}
   for (const name of ["sample.py", "chart.png", "statement.pdf", "analysis.ipynb", "Slides.key", "memo.wav"]) {
-    await page.goto(`${B}#view/files/file/${enc(`${DIR}/${name}`)}`); await wait(1800)
+    await page.goto(`${B}#view/files/file/${enc(`${DIR}/${name}`)}`); await ui.idle()
     res[name] = await page.evaluate((w) => {
       const d = document.querySelector("dialog")
       const wide = [...(d?.querySelectorAll("*") ?? [])].filter((el) => el.getBoundingClientRect().right > w + 1 && !el.closest(".cm-scroller")).length
@@ -217,7 +221,7 @@ for (const width of [390, 320]) {
     }, width)
     await page.screenshot({ path: `${OUT}filetypes-${width}-${name.replace(/\W/g, "-")}.png` })
   }
-  res.pdfOpenLink = await page.goto(`${B}#view/files/file/${enc(`${DIR}/statement.pdf`)}`).then(() => wait(1500)).then(() => page.locator("dialog a", { hasText: "Open" }).count())
+  res.pdfOpenLink = await page.goto(`${B}#view/files/file/${enc(`${DIR}/statement.pdf`)}`).then(() => ui.idle()).then(() => page.locator("dialog a", { hasText: "Open" }).count())
   out[`phone${width}`] = res
   await ctx.close()
 }

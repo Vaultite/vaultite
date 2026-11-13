@@ -6,7 +6,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { runtimeDir } from "../../core/runtime.ts" // (where the server keeps terminal states: $TMPDIR on a Mac, not on Linux)
 import path from "node:path"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { palette as run, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = "/tmp/paneltabs-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -27,13 +28,12 @@ execFileSync("cc", ["-o", stand, `${stand}.c`])
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
   await page.goto(`${B}/#new`)
   await page.evaluate(() => localStorage.removeItem("vaultite.tabs"))
   await page.reload()
-  await page.waitForSelector("aside [data-panel]")
-  await wait(500)
-  const palette = async (name) => { await page.keyboard.press("ControlOrMeta+P"); await page.keyboard.type(name); await wait(250); await page.keyboard.press("Enter"); await wait(300) }
+  await page.waitForSelector("aside [data-panel]"); await ui.idle()
+  const palette = async (name) => { await run(page, name, 0); await ui.idle() }
   const tabs = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => els.map((e) => e.textContent.trim()))
   const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
 
@@ -49,18 +49,17 @@ try {
   await palette("Open Claude Code in an account or on a machine")
   const places = await until(() => page.$$eval("[role=dialog] [role=option]", (els) => els.map((e) => ({ t: e.textContent.trim(), icon: !!e.querySelector("svg") }))), 5000)
   check("  where they open: every place with its icon", places?.length > 0 && places.every((p) => p.icon), places)
-  await page.keyboard.press("Escape"); await wait(300)
-  await page.keyboard.press("ControlOrMeta+P"); await page.keyboard.type("new terminal"); await wait(400)
+  await page.keyboard.press("Escape"); await ui.idle()
+  await page.keyboard.press("ControlOrMeta+P"); await page.keyboard.type("new terminal"); await ui.idle()
   const offered = await page.$$eval("[role=option]", (els) => els.map((e) => e.textContent.trim()))
   check("  \"new terminal\" finds Open terminal (the page's button says New terminal)", offered.some((t) => t.startsWith("Open terminal")), offered)
-  await page.keyboard.press("Escape"); await wait(300)
+  await page.keyboard.press("Escape"); await ui.idle()
   await palette("Open pinned pages in a tab")
   check("Open pinned pages in a tab: the pages listed", (await tabs()).includes("Pinned pages") && (await page.$$("main [data-pages-view] [data-pin]")).length > 0, await tabs())
   await page.screenshot({ path: `${OUT}pages-tab.png` })
   // A page clicked in the tab opens beside it (the tab stays).
   const first = await page.$eval("main [data-pages-view] [data-pin]", (e) => e.getAttribute("data-pin"))
-  await page.click("main [data-pages-view] [data-pin]")
-  await wait(400)
+  await page.click("main [data-pages-view] [data-pin]"); await ui.idle()
   check("  a page clicked there opens in a tab of its own", (await hash()) === `#file/${first}` && (await tabs()).includes("Pinned pages"), [await hash(), await tabs()])
   await palette("Open pinned pages in a tab")
   check("  the command again goes to that tab (no second one)", (await tabs()).filter((t) => t === "Pinned pages").length === 1, await tabs())
@@ -83,44 +82,36 @@ try {
   check("  the tab is titled with it", (await tabs()).includes(`Search: ${word}`), await tabs())
   await page.screenshot({ path: `${OUT}search-tab.png` })
   // Away and back: the query is still there.
-  await page.click(`[data-tab-bar] [data-tab-id]:has-text("Files")`)
-  await wait(300)
-  await page.click(`[data-tab-bar] [data-tab-id]:has-text("Search")`)
-  await wait(300)
+  await page.click(`[data-tab-bar] [data-tab-id]:has-text("Files")`); await ui.idle()
+  await page.click(`[data-tab-bar] [data-tab-id]:has-text("Search")`); await ui.idle()
   check("  switching away and back keeps it", (await page.inputValue("main [data-search-view] input[aria-label='Search the vault']")) === word)
   await page.reload()
   await page.waitForSelector("main [data-search-view] input")
   check("  and a reload", (await page.inputValue("main [data-search-view] input[aria-label='Search the vault']")) === word)
   // Typing keeps the field (the view isn't drawn afresh when its arg changes).
   await page.focus("main [data-search-view] input[aria-label='Search the vault']")
-  await page.keyboard.type("x")
-  await wait(700)
+  await page.keyboard.type("x"); await ui.idle()
   check("  typing on after the address changed keeps the field focused", await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Search the vault"))
-  await page.keyboard.press("Backspace")
-  await wait(500)
+  await page.keyboard.press("Backspace"); await ui.idle()
 
   // ---- right-click a heading ----
-  await page.click("aside [data-panel='terminal:sessions'] [data-panel-handle]", { button: "right" })
-  await wait(200)
+  await ui.menu.context(page.locator("aside [data-panel='terminal:sessions'] [data-panel-handle]"))
   const items = await page.$$eval("[role=menu] [role=menuitem], [role=menu] [role=menuitemcheckbox]", (els) => els.map((e) => e.textContent.trim()))
   check("right-click a panel's heading: Open Terminals in a tab", items.includes("Open Terminals in a tab"), items)
-  await page.keyboard.press("Escape")
+  await ui.menu.close()
 
   // ---- dragging headings ----
   await palette("Close all other tabs")
-  await wait(300)
   const center = async (sel) => { const b = await (await page.$(sel)).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2, b] }
   const dragFrom = async (panel, to) => {
     const [x, y] = await center(`aside [data-panel='${panel}'] [data-panel-handle] span`)
     await page.mouse.move(x, y); await page.mouse.down()
     await page.mouse.move(x + 20, y + 5, { steps: 3 })
-    await page.mouse.move(to[0], to[1], { steps: 8 })
-    await wait(150)
+    await page.mouse.move(to[0], to[1], { steps: 8 }); await ui.idle()
     const zone = await page.$eval("[data-drop-zone]", (e) => e.getAttribute("data-drop-zone")).catch(() => null)
     const line = !!(await page.$("[data-drop-preview]"))
     const ghost = await page.$eval("[data-drag-ghost]", (e) => e.textContent).catch(() => null)
-    await page.mouse.up()
-    await wait(400)
+    await page.mouse.up(); await ui.idle()
     return { zone, line, ghost }
   }
   // The shown tab's pane: the last few tabs' panes stay drawn, hidden (Workspace.tsx: keepPanes).
@@ -154,8 +145,7 @@ try {
   await palette("Close pane") // (Files: the split is one tab, which Close all other tabs keeps)
   await palette("Close all other tabs")
   await page.evaluate((id) => { location.hash = `#view/terminal%2F${id}` }, sid)
-  await page.waitForSelector("[data-term-screen]")
-  await wait(1500)
+  await page.waitForSelector("[data-term-screen]"); await ui.idle()
   check("a plain terminal's tab: Terminal", (await tabs()).includes("Terminal"), await tabs())
   // The stand-in for Claude Code, with a pane title and the hooks' state: what an agent's hooks write (the terminal's
   // state file, whatever its backend: plugins/core/terminal/plugin.ts, stateCommand).
@@ -204,31 +194,31 @@ try {
     ["links", "[data-links-view]"], ["outline", "[data-outline-view]"], ["tags", "[data-tags-view]"], ["properties", "[data-properties-view]"]]) {
     await page.evaluate((v) => { location.hash = `#view/${v}` }, name)
     const drawn = await page.waitForSelector(`main ${sel}`, { timeout: 6000 }).then(() => true, () => false)
-    await wait(300)
+    await ui.idle()
     const t = await traps(sel)
     check(`view:${name.split("%2F")[0]} in a tab: nothing in its pane stops the wheel`, drawn && Array.isArray(t) && !t.length, { drawn, t })
   }
-  await page.setViewportSize({ width: 1280, height: 420 }); await wait(400)
+  await page.setViewportSize({ width: 1280, height: 420 }); await ui.idle()
   for (const [name, sel, row] of [["files", "[data-files-view]", "[data-tree-path]"], ["pages", "[data-pages-view]", "[data-pin]"]]) {
     await page.evaluate((v) => { location.hash = `#view/${v}` }, name)
-    await page.waitForSelector(`main ${sel} ${row}`); await wait(400)
+    await page.waitForSelector(`main ${sel} ${row}`); await ui.idle()
     const paneOf = (s) => page.$eval(`main ${s}`, (e) => { const p = e.closest("[data-pane]"); return { top: p.scrollTop, room: p.scrollHeight - p.clientHeight } })
     await page.$eval(`main ${sel}`, (e) => { e.closest("[data-pane]").scrollTop = 0 })
     const rows = await page.$$(`main ${sel} ${row}`)
     const r = await rows[Math.min(2, rows.length - 1)].boundingBox()
-    await page.mouse.move(r.x + Math.min(60, r.width / 2), r.y + r.height / 2); await page.mouse.wheel(0, 200); await wait(500)
-    const p = await paneOf(sel)
+    await page.mouse.move(r.x + Math.min(60, r.width / 2), r.y + r.height / 2); await page.mouse.wheel(0, 200)
+    const p = await until(async () => { const p = await paneOf(sel); return p.room <= 0 || p.top > 0 ? p : null }, 3000) ?? await paneOf(sel)
     check(`view:${name} in a tab: the wheel over its rows scrolls the pane`, p.room <= 0 || p.top > 0, p)
   }
-  await page.setViewportSize({ width: 1280, height: 800 }); await wait(300)
+  await page.setViewportSize({ width: 1280, height: 800 }); await ui.idle()
 
   // ---- phones ----
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 })
-  const pp = watch(await phone.newPage(), { label: "phone" })
+  const pp = watch(await phone.newPage(), { label: "phone" }), pui = app(pp)
   for (const [name, sel] of [["files", "[data-files-view]"], ["terminals", "[data-terminals-view]"], ["pages", "[data-pages-view]"], [`search%2F${word}`, "[data-search-view]"]]) {
     await pp.goto(`${B}/#view/${name}`)
     const ok = await pp.waitForSelector(sel, { timeout: 6000 }).then(() => true, () => false)
-    await wait(600)
+    await pui.idle()
     const wide = await pp.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)
     check(`phone: view:${name.split("%2F")[0]} draws, no sideways scroll`, ok && !wide, { ok, wide })
     await pp.screenshot({ path: `${OUT}phone-${name.split("%2F")[0]}.png` })

@@ -11,6 +11,7 @@ import { notify } from "@/core/notify"
 import { cancelRestores } from "@/core/viewstate"
 import { signal } from "@/core/signal"
 import { glide } from "@/core/animation"
+import { trackSoon } from "@/core/unsaved"
 
 export type { Heading }
 
@@ -115,6 +116,7 @@ export type DrawnLine = { line: number; y: number }
 type LineTaker = { path: string; dom: () => HTMLElement | null; take: (line: number, find?: string, from?: DrawnLine, col?: number) => void }
 const takers: LineTaker[] = []
 let wanted: { path: string; line: number; find?: string; from?: DrawnLine; col?: number; until: number } | null = null
+trackSoon("a line's edit on its way", () => !!wanted && Date.now() <= wanted.until)
 
 function deliver() {
   if (!wanted) return

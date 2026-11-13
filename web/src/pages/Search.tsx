@@ -14,6 +14,7 @@ import { editAt } from "@/core/anchors"
 import { kindOf } from "@/core/filekinds"
 import { useNearEnd } from "@/core/near"
 import { usePrefs } from "@/core/prefs"
+import { trackSoon } from "@/core/unsaved"
 import { useStateFor } from "@/core/statefor"
 import { search, useSearchIndex, type Hit } from "@/core/search"
 import { marked } from "@/components/Palette"
@@ -76,7 +77,11 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   const [folder, setFolder] = useState("")
   // The tab's arg follows what's typed, a moment after (no history entry per letter).
   const sent = useRef(query)
-  useEffect(() => { const t = setTimeout(() => { sent.current = q.trim() ? q : ""; setQuery(sent.current) }, 300); return () => clearTimeout(t) }, [q, setQuery])
+  useEffect(() => {
+    const off = trackSoon("the search's address", () => true)
+    const t = setTimeout(() => { off(); sent.current = q.trim() ? q : ""; setQuery(sent.current) }, 300)
+    return () => { off(); clearTimeout(t) }
+  }, [q, setQuery])
   // And the other way: a query that comes from elsewhere (the address, `vau open view:search/…`, back and forward)
   // replaces what's in the field; its own, coming back, doesn't.
   useEffect(() => { if (query !== sent.current) { sent.current = query; setQ(query) } }, [query])
@@ -131,7 +136,9 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     const n = same ? Math.max(PAGE, shownNow.current.n) : PAGE
     const open = same ? Object.keys(shownNow.current.whole) : []
     if (!same) setWhole({})
+    const off = trackSoon("the search's request", () => true)
     const t = setTimeout(() => {
+      off()
       firstOf(params, n)
         .then(async (f) => {
           const lines = await Promise.all(open.map(async (p) => [p, await wholeOf(p).catch(() => [])] as const))
@@ -142,7 +149,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
         })
         .catch((e) => { if (on) { setFound({ results: [], files: 0, lines: 0 }); setFailed(errorText(e)); setBusy(false) } })
     }, 200)
-    return () => { on = false; clearTimeout(t) }
+    return () => { on = false; off(); clearTimeout(t) }
   }, [params, wholeOf, store, setFound, setFailed, setWhole])
   // The next page, as the end of the list comes near.
   const loading = useRef("")
