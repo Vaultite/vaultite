@@ -1,18 +1,13 @@
-// Unlinked mentions: a file's name (or an alias) written as plain text in another file, where a [[link]] could be. One
-// place for the server (plugin.ts finds them and makes the link) and the tests. No Node here.
 import { TAG } from "../../../core/sections.ts"
 
 export type Mention = {
-  /** The line it's on, exactly, and which of the file's lines with that same text it is (0: the first). */
   line: string; nth: number
-  /** Where in the line, and what's written there ("alice park"). */
   col: number; len: number; text: string
 }
 
 const WORD = "[\\p{L}\\p{N}_]"
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-/** Spans of a line that aren't plain text: [[links]], ![[embeds]], [text](url), <url>, bare URLs, `code` and #tags. */
 function covered(line: string): [number, number][] {
   const out: [number, number][] = []
   for (const re of [/!?\[\[[^\]\n]*\]\]/g, /!?\[[^\]\n]*\]\([^)\n]*\)/g, /<[a-z]+:[^>\s]*>/gi, /\bhttps?:\/\/\S+/gi, /(`+)(?:(?!\1).)+?\1/g, TAG]) {
@@ -21,8 +16,6 @@ function covered(line: string): [number, number][] {
   return out
 }
 
-/** Every place in `body` (a file's text after its frontmatter) where one of `names` is written as plain text: a whole
- *  word or phrase, any case, not inside a link, code, a #tag or a fenced block. Longer names first, never overlapping. */
 export function findMentions(body: string, names: string[]): Mention[] {
   const wanted = [...new Set(names.map((n) => n.trim()).filter((n) => n.length >= 2))].sort((a, b) => b.length - a.length)
   if (!wanted.length) return []
@@ -47,8 +40,6 @@ export function findMentions(body: string, names: string[]): Mention[] {
   return out
 }
 
-/** `text` (a whole file) with the mention turned into `link` ("[[Alice Park]]"), or null when the file no longer has
- *  it there (it changed since). The frontmatter is never touched. */
 export function linkMention(text: string, m: Pick<Mention, "line" | "nth" | "col" | "len" | "text">, link: string): string | null {
   const lines = text.split("\n")
   const fm = /^---\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*\r?(?:\n|$)/.exec(text)

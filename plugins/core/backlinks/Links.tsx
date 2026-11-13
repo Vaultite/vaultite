@@ -1,5 +1,3 @@
-// One file's links, backlinks and outgoing links in one: linked and unlinked mentions ("Link" makes one a [[link]])
-// and outgoing links; on a web page, the notes about it and linking it. A sidebar panel, or a tab following the file.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FileQuestion, FileText, Globe, NotebookPen, SquareArrowOutUpRight } from "lucide-react"
 import {
@@ -13,18 +11,11 @@ type Unlinked = { total: number; files: number; mentions: Mention[] }
 type Out = { key: string; title: string; file?: string; detail?: string }
 
 const isMd = (p: string) => /\.md$/i.test(p)
-/** Unlinked mentions come this many more at a time, as the list is scrolled to its end. */
 const PAGE = 100
 
-/** What GET file/linked answers (core/files.ts): the files linking to `path`, newest first, each with the line its
- *  first link there is on, and `path`'s own links as written. */
 type FileLinked = { path: string; linked: { path: string; line: string }[]; links: string[] }
 
-/** Everything the panel shows for `path`: what links to it and what it links to come from the server, which keeps them
- *  by edit (in a big vault the store holds no links: they were half of it). */
 function useLinks(store: Store, path: string) {
-  // Unlinked mentions read the notes' text: asked again whenever a note changes (not a hidden file; a time, not a
-  // counter: useLive shares one answer between the same addresses for a few seconds, and two panels' counters would collide).
   const [v, setV] = useState(() => Date.now())
   useVaultChange(() => setV(Date.now()), (p) => !p.startsWith("."))
   const [limit, setLimit] = useState(PAGE)
@@ -32,7 +23,6 @@ function useLinks(store: Store, path: string) {
   const { data } = useLive<Unlinked>(path && isMd(path) ? `backlinks/unlinked?path=${encodeURIComponent(path)}&limit=${limit}` : null, v)
   const unlinked = path && isMd(path) ? data ?? null : { total: 0, files: 0, mentions: [] }
   const more = () => { if (data && data.mentions.length < data.total && data.mentions.length >= limit) setLimit(limit + PAGE) }
-  // (an answer for the file shown before stands for none: the next one is on its way)
   const got = useLive<FileLinked>(path ? `file/linked?path=${encodeURIComponent(path)}` : null, v).data
   const answer = got?.path === path ? got : null
   const linked = useMemo(() => answer?.linked.map((l) => ({ ...l, title: stem(l.path) })) ?? null, [answer])
@@ -46,7 +36,6 @@ function useLinks(store: Store, path: string) {
       if (r?.file === path || seen.has(key)) continue
       seen.set(key, { key, title: r ? (r.file ? stem(r.file) : r.title) : t.split("#")[0].trim(), file: r?.file, detail: r?.detail || undefined })
     }
-    // Resolved first, then the ones that go nowhere yet.
     return [...seen.values()].sort((a, b) => Number(!a.file && !a.detail) - Number(!b.file && !b.detail))
   }, [store, path, answer])
   return { linked, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
@@ -54,7 +43,6 @@ function useLinks(store: Store, path: string) {
 
 function Item({ icon: Icon, title, context, faint, onOpen, action, tip, path }: {
   icon: typeof FileText; title: string; context?: ReactNode; faint?: boolean; onOpen?: () => void; action?: ReactNode; tip?: string
-  /** The file it is: it drags like a file in the tree (onto a pane or a tab bar to open it there, onto Pinned). */
   path?: string
 }) {
   return (
@@ -72,18 +60,15 @@ function Item({ icon: Icon, title, context, faint, onOpen, action, tip, path }: 
   )
 }
 
-/** The line around a mention, the mention in bold. */
 function around(m: Mention) {
   const a = Math.max(0, m.col - 60), b = Math.min(m.line.length, m.col + m.len + 80)
   const before = m.line.slice(a, m.col), after = m.line.slice(m.col + m.len, b)
-  // As plain text (no Markdown marks), keeping the spaces around the name only where the line has them.
   const pre = snippet(before) + (/\s$/.test(before) ? " " : ""), post = (/^\s/.test(after) ? " " : "") + snippet(after)
   return (
     <>{a > 0 && "…"}{pre}<strong className="font-semibold text-foreground">{m.text}</strong>{post}{b < m.line.length && "…"}</>
   )
 }
 
-/** At the end of a list that has more: asks for them as it comes near the screen (again each time it's moved down). */
 function More({ onNear, children }: { onNear: () => void; children: ReactNode }) {
   const ref = useRef<HTMLParagraphElement>(null)
   useNearEnd(ref, onNear, 0, "400px")
@@ -92,8 +77,6 @@ function More({ onNear, children }: { onNear: () => void; children: ReactNode })
 
 const empty = (text: string) => <p className="py-1 pl-6 text-[12px] text-tertiary">{text}</p>
 
-/** The mentions on their way: Item's shape, its name and line as bars, as many as last time (none: a line, as tall as
- *  the empty one). */
 function Looking({ count }: { count: number }) {
   if (!count) return <p className="loading-in py-1 pl-6 text-[12px] text-tertiary" aria-busy><span className="shimmer">Looking…</span></p>
   return (
@@ -108,14 +91,11 @@ function Looking({ count }: { count: number }) {
   )
 }
 
-/** A group's rows, held at the height they had last time in that place (`id`) while they come: the bars can't know a
- *  line that takes two, nor rows with none (outgoing links). */
 function Held({ id, children }: { id: string; children: ReactNode }) {
   const held = useHeldHeight<HTMLDivElement>(id, true, true)
   return <div ref={held} className="flex flex-col gap-px">{children}</div>
 }
 
-/** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
 export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
   const { linked, outgoing, unlinked, more, refresh } = useLinks(store, path)
   const [busy, setBusy] = useState("")
@@ -173,25 +153,18 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   )
 }
 
-
-/** What GET backlinks/web answers for a page (plugin.ts). */
 type WebLinked = { site: string; about: { path: string }[]; linked: { path: string; line: string }[]; elsewhere: { path: string; url: string; line: string }[]; total: number }
 
-/** The web page a tab shows ("view:web/@work/https://…": its address), or "". */
 export const webPageOf = (tab: string) => /^view:web\/(?:@[^/]+\/)?(https?:\/\/.+)$/i.exec(tab)?.[1] ?? ""
 
-/** A web page's note: the newest note whose `source` it is, else a new one named after the page, opened beside it (a
- *  phone: in its place). */
 export async function openPageNote(url: string, title: string) {
   const r = await get<WebLinked>(`backlinks/web?url=${encodeURIComponent(url)}&limit=1`)
-  // (a "/" in a page's title would be a folder: createNamed cleans the rest)
   const name = title.replaceAll("/", " - ").trim().slice(0, 100) || siteOf(url)
   const path = r.about[0]?.path ?? (await createNamed(newNoteFolder(getStore()), name, `---\nsource: ${/\s/.test(url) ? JSON.stringify(url) : url}\n---\n`))?.path
   if (!path) return
   if (isDesktop()) openInSplit(`file:${path}`); else openFile(path)
 }
 
-/** A web page's links: the notes about it and linking it, then links elsewhere on its site. */
 function WebLinksList({ url, title, pane }: { url: string; title: string; pane?: string }) {
   const [v, setV] = useState(() => Date.now())
   useVaultChange(() => setV(Date.now()), (p) => !p.startsWith("."))
@@ -221,10 +194,7 @@ function WebLinksList({ url, title, pane }: { url: string; title: string; pane?:
   )
 }
 
-/** The sidebar's Links panel, for the focused tab's file, as tall as its links (the sidebar scrolls). In the icon rail
- *  it's the flyout's (index.tsx: `flyout`), which scrolls it. */
 export function LinksPanel({ store, open, file: focused, tab }: SidebarCtx) {
-  // A web page: its links. Another tab that isn't a file (this panel's own tab, a terminal): the file focused last.
   const last = useFocusedFile()
   const page = focused ? "" : webPageOf(tab)
   const file = focused || last.path
@@ -235,7 +205,6 @@ export function LinksPanel({ store, open, file: focused, tab }: SidebarCtx) {
         <HeadingButton icon={SquareArrowOutUpRight} label="Open links in a tab" tip="Open in a tab" onClick={() => openView("links", { newTab: true })} />
       </SidebarHeading>
       {page ? <WebLinksList url={page} title={viewInfo(tab).label} /> : file ? <>
-        {/* (on a tab that isn't a file, the list is another tab's: say whose) */}
         {!focused && <p className="truncate pl-1.5 text-[12px] leading-6 text-tertiary" data-links-of>For {stem(file)}, the file you were on</p>}
         <LinksList store={store} path={file} />
       </> : <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Open a file to see its links.</p>}
@@ -243,15 +212,12 @@ export function LinksPanel({ store, open, file: focused, tab }: SidebarCtx) {
   )
 }
 
-/** The tab (view:links): the same, for the file of the pane focused last, following it as a linked pane;
- *  what it opens goes to that pane. */
 export function LinksView({ store }: { store: Store }) {
   const { path, pane: group } = useFocusedFile()
   return (
     <div className="pb-10" data-links-view>
       <h1 className="mb-1 truncate text-[22px] leading-[28px] font-bold max-md:hidden">{path ? stem(path) : "Links"}</h1>
       <p className="mb-4 text-[13px] text-muted-foreground max-md:text-[15px]">{path ? "What links here, where it's mentioned, and what it links to. Follows the file you're on." : "Open a file in another pane to see its links here."}</p>
-      {/* The panel's list, a size up (`data-size-up`). */}
       {path && <div className="size-up-bleed"><div data-size-up><LinksList store={store} path={path} pane={group} /></div></div>}
     </div>
   )

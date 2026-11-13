@@ -1,5 +1,3 @@
-// Links' server side: unlinked mentions (a file's name written as plain text elsewhere) and notes linking a web page,
-// which only the server can see, and linking a mention as a small edit of that line (409 if it changed since).
 import fs from "node:fs"
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
 import { sortBy, stemOf, writeAtomic, type Entry } from "../../../core/vault.ts"
@@ -9,7 +7,6 @@ import { pageKey, siteOf, sourcesOf, urlsIn } from "./weblinks.ts"
 export const plugin = new Plugin(import.meta.url)
 const PAGE = 100
 
-/** The names a file answers to as text: its name and its aliases. */
 function namesOf(rel: string): string[] {
   const e = plugin.vault.entries.get(rel)
   const a = e?.fm.aliases
@@ -22,8 +19,6 @@ function target(q: unknown) {
   return rel
 }
 
-/** Each file's mentions of the last names asked for, by its stat: the list pages through them, so only changed files
- *  are read again. */
 let found: { names: string; files: Map<string, { ns: bigint; ms: Mention[] }> } = { names: "", files: new Map() }
 function mentionsIn(e: Entry, names: string[], lower: string[]): Mention[] {
   const hit = found.files.get(e.rel)
@@ -34,8 +29,6 @@ function mentionsIn(e: Entry, names: string[], lower: string[]): Mention[] {
   return ms
 }
 
-/** GET backlinks/unlinked?path=&offset=&limit=: one page of the mentions, newest files first, with how many there are
- *  in all (`total`) and in how many files. */
 plugin.route("GET", "backlinks/unlinked", (req) => {
   const rel = target(req.query.path)
   const names = namesOf(rel)
@@ -46,7 +39,6 @@ plugin.route("GET", "backlinks/unlinked", (req) => {
   const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
   const mentions: object[] = []
   let total = 0
-  // (excluded files aren't searched for mentions, as in Obsidian; only the files with some are put in order)
   const hits: [Entry, Mention[]][] = []
   for (const e of plugin.vault.entries.values()) {
     if (e.rel === rel || plugin.vault.excluded(e.rel)) continue
@@ -62,7 +54,6 @@ plugin.route("GET", "backlinks/unlinked", (req) => {
   return { total, files: hits.length, mentions }
 })
 
-/** Each note's web addresses (its sources, then its body's), by its stat: only changed notes are read again. */
 const addresses = new Map<string, { ns: bigint; about: string[]; links: { url: string; line: string }[] }>()
 function addressesOf(e: Entry) {
   const hit = addresses.get(e.rel)
@@ -72,15 +63,12 @@ function addressesOf(e: Entry) {
   return next
 }
 
-/** GET backlinks/web?url=&limit=: the notes about a web page (`source:` it, newest first), those linking it (with the
- *  line), and up to `limit` links elsewhere on its site, with how many there are. */
 plugin.route("GET", "backlinks/web", (req) => {
   const url = String(req.query.url ?? ""), key = pageKey(url), site = siteOf(url)
   if (!key) throw new HTTPError(400, `'${url}' isn't a web address`)
   const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
   const about: { path: string }[] = [], linked: { path: string; line: string }[] = [], elsewhere: { path: string; url: string; line: string }[] = []
   let more = 0
-  // (only the notes with a web address are put in order, newest first)
   const all: [Entry, ReturnType<typeof addressesOf>][] = []
   for (const e of plugin.vault.entries.values()) {
     if (!e.rel.endsWith(".md") || plugin.vault.excluded(e.rel)) continue
@@ -107,14 +95,12 @@ plugin.route("POST", "backlinks/link", (req) => {
   const m = { line: String(b.line ?? ""), nth: Math.trunc(Number(b.nth) || 0), col: Math.trunc(Number(b.col) || 0),
     len: Math.trunc(Number(b.len) || 0), text: String(b.text ?? "") }
   if (!findMentions(m.text, namesOf(to)).length) throw new HTTPError(400, `'${m.text}' isn't a name of ${stemOf(to)}`)
-  // [[Name]] when that's how it's written (the name or an alias), else [[Name|as written]]. A name another file has
-  // too is linked by its path.
   const stem = stemOf(to)
   const shared = [...plugin.vault.entries.keys()].some((r) => r !== to && stemOf(r).toLowerCase() === stem.toLowerCase())
   const name = shared ? to.replace(/\.md$/, "") : stem
   const link = !shared && namesOf(to).includes(m.text) ? `[[${m.text}]]` : `[[${name}|${m.text}]]`
   const abs = plugin.vault.abs(rel)
-  const next = linkMention(fs.readFileSync(abs, "utf8"), m, link) // as it is: a file with CRLF keeps them
+  const next = linkMention(fs.readFileSync(abs, "utf8"), m, link)
   if (next === null) throw new HTTPError(409, `${rel} changed there since: look again`)
   writeAtomic(abs, next)
   return { path: rel, link }
