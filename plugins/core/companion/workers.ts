@@ -284,7 +284,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (done.text || done.result.files?.length) j.result = done.result
     heard(j, r)
     if (landed(j, done.text) || shipped(j, r, done.text)) over(j, turnOver(j, clockOf(j), "landed", j.where.live ? mergedCommit(done.text) : "", t), t)
-    else move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed: crashed(x) }))
+    else {
+      move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed: crashed(x) }))
+      const y = going(j.going, { type: "ended" }, t)
+      setGoing(j, y.going, "ended", t)
+      if (y.ev) move(j, y.ev, t)
+    }
     resumable(j)
     return true
   }

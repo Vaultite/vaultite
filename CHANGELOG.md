@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Stopping the companion as its session starts ends that session**: the session it was starting no longer stays up
+  after a stop, and an ask whose message was still being made isn't sent once it's stopped.
+- **A job whose terminal ends while it fixes CI forward says it needs you**: its card no longer keeps saying it's
+  going live; it says no fix landed.
 - **The companion teaches and plans with you in a note beside you**: asked to explain a topic, a paper, a recipe or a
   trip plan, it opens a new note in a split and writes it a section at a time as it talks, instead of handing it to a
   background job; a quick tweak to the page or note in front of you is made live too, with only the lasting fix handed

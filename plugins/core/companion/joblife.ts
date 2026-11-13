@@ -54,6 +54,7 @@ export type GoingEvent =
   | { type: "unsent"; commit: string; why: string }
   | { type: "worked" }
   | { type: "rested" }
+  | { type: "ended" }
 
 type GoingMove = { going: Going | undefined; ev?: JobEvent; fix?: undefined } | { going: Going; ev?: undefined; fix: string }
 const short = (commit: string) => commit.slice(0, 7)
@@ -85,6 +86,11 @@ function unsent(g: Going | undefined, commit: string, why: string): GoingMove {
   return { going: { ...g, state: "stuck", why: `CI failed on ${short(g.commit)}, and it couldn't be sent back: ${why}` }, ev: "asks" }
 }
 
+function ended(g: Going | undefined): GoingMove {
+  if (g?.state !== "fixing") return { going: g }
+  return { going: { ...g, state: "stuck", why: `${short(g.commit)} isn't live, and its terminal ended before a fix landed: it needs you` }, ev: "asks" }
+}
+
 const worked = (g: Going | undefined): Going | undefined => (g?.state === "live" ? undefined : g?.state === "stuck" ? { ...g, state: "fixing" } : g)
 
 export function going(g: Going | undefined, e: GoingEvent, now: number): GoingMove {
@@ -94,6 +100,7 @@ export function going(g: Going | undefined, e: GoingEvent, now: number): GoingMo
     case "unsent": return unsent(g, e.commit, e.why)
     case "worked": return { going: worked(g) }
     case "rested": return { going: g?.state === "fixing" ? undefined : g }
+    case "ended": return ended(g)
   }
 }
 export const waitsLive = (g: Going | undefined) => g?.state === "waiting" || g?.state === "stuck"

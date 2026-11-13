@@ -201,6 +201,14 @@ export const SCENARIOS = {
     r.lane.warm(); await r.settle(); r.ask(1); await r.settle(); r.busy(); r.ask(2); await r.lane.stop(); await r.settle()
     r.log.push(`busy:${r.lane.busy()} asking:${r.lane.asking()} id:${r.lane.id()}`)
   }, "start:warm | did:handed[1] | text:1 | send:s1 | did:sent | agent:thinking | stop:s1 | busy:false asking:false id:null"],
+  "stopped as a fresh session starts: that session is ended once it's up": [async (r) => {
+    r.hold = true; r.lane.warm(); await r.settle(); await r.lane.stop(); r.hold = false; r.let("start"); await r.settle()
+    r.log.push(`id:${r.lane.id()}`)
+  }, "start:warm | stop:s1 | id:null"],
+  "stopped as an ask's message is made: no session starts for it": [async (r) => {
+    r.hold = true; r.ask(1); await r.settle(); await r.lane.stop(); r.hold = false; r.let("text"); await r.settle()
+    r.log.push(`id:${r.lane.id()} busy:${r.lane.busy()}`); r.ask(2); await r.settle()
+  }, "text:1 | id:null busy:false | text:2 | did:handed[2] | start:asked | agent:thinking | stop:s1"],
   "an ask as it stops goes on, to a fresh session": [async (r) => {
     r.lane.warm(); await r.settle(); r.ask(1); await r.settle(); r.busy(); const stopping = r.lane.stop(); r.ask(2); await stopping; await r.settle()
   }, "start:warm | did:handed[1] | text:1 | send:s1 | did:sent | agent:thinking | stop:s1 | text:2 | did:handed[2] | start:asked | stop:s2"],

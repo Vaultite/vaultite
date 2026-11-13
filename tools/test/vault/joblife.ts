@@ -59,6 +59,10 @@ export default async ($: VaultTest) => {
   check("joblife: its turn over having landed where its server takes main waits for its commit, working; else it's landed; a fix's turn over ends its going live",
     kept.ev === "working" && kept.going?.state === "waiting" && kept.going.commit === c7 && kept.clock.rest === undefined && plain.ev === "landed" && !plain.going &&
     back.ev === "changed" && !back.going, [kept, plain, back])
+  const cut = L.going(red.going, { type: "ended" }, 13_000), calm = L.going(kept.going, { type: "ended" }, 13_000)
+  check("joblife: its terminal ending while it fixed forward leaves it stuck, needing the user; ending while it waits to go live changes nothing",
+    cut.going?.state === "stuck" && cut.ev === "asks" && cut.going.why === "1a2b3c4 isn't live, and its terminal ended before a fix landed: it needs you" &&
+    calm.going === kept.going && !calm.ev, [cut, calm])
 
   const W = (o: Any = {}) => ({ machine: "", label: "M", cwd: "/r", repo: "r", agent: "claude", account: "", harness: "", model: "", effort: "", why: "", ...o })
   const D = (j: Any, c: Any, n: number, now: number) => L.due({ at: now, exited: undefined, going: undefined, pruned: undefined, ...j, where: W(j.where) }, c, n, now, P)

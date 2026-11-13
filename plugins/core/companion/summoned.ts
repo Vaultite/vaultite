@@ -217,7 +217,7 @@ export function summonedLane(o: {
     if (kept) { const old = kept.id; keep(null); void c.stop(old).catch(() => {}) }
     hear()
     const first = ms.length ? await o.text(ms) : null, before = ms.length ? recap(ms) + unseen() : ""
-    if (ms.length) go({ type: "made" })
+    if (ms.length && !go({ type: "made" }).some((e) => e.do === "handed")) return
     try {
       const s = await c.start({ ...options(model), ...(first ? { prompt: before + first.text, ...(first.images.length ? { images: first.images } : {}) } : {}) })
       keep({ id: s.id, model, t: Date.now(), handed: ms.length, v: VERSION, ...(ms.length ? { last: Date.now() } : {}) })

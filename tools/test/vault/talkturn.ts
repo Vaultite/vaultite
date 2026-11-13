@@ -35,6 +35,7 @@ export function world(moves: Move[]) {
     if (e.type === "dropped" && was.waiting.some((x) => x.ask === e.ask)) fate.set(e.ask, "withdrawn")
     if (e.type !== "stopped") return
     for (const x of was.waiting) fate.set(x.ask, "stopped")
+    if (was.phase.kind === "making") for (const x of was.phase.asks) fate.set(x.ask, "stopped")
     if (handed(was)) for (const a of was.turn.asks) if (fate.get(a) === "handed") fate.set(a, "stopped")
   }
   function lostBy(e: TurnEvent<Ask, string>, was: TurnState<Ask>) {
@@ -208,6 +209,10 @@ const REPLAYS: [string, Move[], (w: ReturnType<typeof world>) => boolean][] = [
   ["an ask as it stops goes on", [...busyStart, { t: "stop" }, { t: "ask", tour: false }], (w) => w.fate.get(w.asks[1]) === "answered"],
   ["a send failing after its words came ends its turn", [{ t: "press", cold: true }, { t: "start", ok: true, busy: false }, { t: "ask", tour: false }, { t: "write", tag: false }, { t: "send", i: 0, ok: false }],
     (w) => w.tries.get(w.asks[0]) === 1],
+  ["stopped as a fresh session starts: the session it gets is let go", [{ t: "press", cold: true }, { t: "stop" }, { t: "start", ok: true, busy: false }],
+    (w) => w.effects.includes("lose") && w.s.phase.kind === "idle"],
+  ["stopped as an ask's message is made: it's never handed", [{ t: "ask", tour: false }, { t: "stop" }, { t: "make", ok: true }],
+    (w) => !w.effects.includes("handed") && w.fate.get(w.asks[0]) === "stopped" && w.s.phase.kind === "idle"],
   ["a message that can't be made is tried once more, then told", [{ t: "ask", tour: false }, { t: "make", ok: false }, { t: "make", ok: false }], (w) => w.says.join() === LOST],
 ]
 

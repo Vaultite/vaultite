@@ -9,6 +9,7 @@ export type Phase<A> =
   | { kind: "turn" }
   | { kind: "making"; asks: Waiting<A>[] }
   | { kind: "starting"; handed: boolean }
+  | { kind: "unwanted" }
 
 export type TurnState<A> = { phase: Phase<A>; waiting: Waiting<A>[]; turn: Turn<A>; round: number }
 
@@ -90,7 +91,7 @@ const plus = <A, T>(a: Out<A, T>, ...d: Effect<A, T>[]): Out<A, T> => ({ to: a.t
 const chain = <A, T>(a: Out<A, T>, f: (s: TurnState<A>) => Out<A, T>): Out<A, T> => { const b = f(a.to); return { to: b.to, do: [...a.do, ...b.do] } }
 const pump = <A, T>(a: Out<A, T>) => plus(a, { do: "pump" })
 const idle = <A>(x: TurnState<A>): TurnState<A> => ({ ...x, phase: { kind: "idle" } })
-const between = (x: TurnState<unknown>) => x.phase.kind === "making" || x.phase.kind === "starting"
+const between = (x: TurnState<unknown>) => x.phase.kind === "making" || x.phase.kind === "starting" || x.phase.kind === "unwanted"
 const cut = <A>(x: TurnState<A>, c: Cut): TurnState<A> => ({ ...x, turn: { ...x.turn, cut: c } })
 const unhand = <A>(x: TurnState<A>): TurnState<A> =>
   (x.phase.kind === "making" ? x : x.phase.kind === "starting" ? { ...x, phase: { ...x.phase, handed: false } } : idle(x))
@@ -140,6 +141,7 @@ function answer<A, T>(out: Out<A, T>, t: Turn<A>, n: TurnEvent<A, T, "ended">): 
 }
 
 function started<A extends Ask, T>(s: TurnState<A>, e: TurnEvent<A, T, "started">, w: World): Out<A, T> {
+  if (s.phase.kind === "unwanted") return pump(go(idle(s), { do: "lose" }))
   if (s.phase.kind !== "starting") return go(s)
   const up: TurnState<A> = { ...s, phase: s.phase.handed ? { kind: "turn" } : { kind: "idle" } }
   return pump(e.news ? step(up, e.news, w) : go(up))
@@ -173,13 +175,14 @@ const ON: Handlers = {
   asked: (s, e, w) => next({ ...s, waiting: [...s.waiting, { ask: e.ask, again: false }] }, w),
   pressed: (s, e, w) => (s.phase.kind !== "idle" || !w.on() || !e.cold ? go(s) : go({ ...s, phase: { kind: "starting", handed: false } }, { do: "begin", asks: [] })),
   made: (s) => {
+    if (s.phase.kind === "unwanted") return pump(go(idle(s)))
     if (s.phase.kind !== "making") return go(s)
     const g = give({ ...s, phase: { kind: "starting", handed: true } }, s.phase.asks)
     return go(g, { do: "handed", asks: g.turn.asks })
   },
-  unmade: (s, e, w) => (s.phase.kind === "making" ? pump(failed(idle(s), s.phase.asks, e.why, w)) : go(s)),
+  unmade: (s, e, w) => (s.phase.kind === "making" ? pump(failed(idle(s), s.phase.asks, e.why, w)) : s.phase.kind === "unwanted" ? pump(go(idle(s))) : go(s)),
   started,
-  "start-failed": (s, e, w) => (s.phase.kind === "starting" ? pump(lost(s, idle(s), e.why, w)) : go(s)),
+  "start-failed": (s, e, w) => (s.phase.kind === "starting" ? pump(lost(s, idle(s), e.why, w)) : s.phase.kind === "unwanted" ? pump(go(idle(s), { do: "note", why: e.why })) : go(s)),
   "send-failed": (s, e, w) => (e.round === s.round ? pump(lost(s, unhand(s), e.why, w)) : go(s)),
   busy: (s) => (between(s) ? go(s) : go(s.phase.kind === "idle" ? { ...s, phase: { kind: "busy" } } : s, ...(handed(s) ? [{ do: "thinking" } as const] : []))),
   gone: (s, _e, w) => {
@@ -206,7 +209,7 @@ const ON: Handlers = {
     if (i >= 0) return go({ ...s, waiting: s.waiting.filter((_, k) => k !== i) })
     return drops(s, e.ask) ? go(cut(s, "withdrawn"), { do: "interrupt" }) : go(s)
   },
-  stopped: (s) => go(unhand({ ...s, waiting: [] })),
+  stopped: (s) => go(between(s) ? { ...s, waiting: [], phase: { kind: "unwanted" } } : unhand({ ...s, waiting: [] })),
 }
 
 const LATE = new Set<EventKind>(["acted", "wrote", "drew", "answered"])

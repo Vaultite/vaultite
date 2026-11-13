@@ -1317,6 +1317,11 @@ setTimeout(draw, 300)
           const fixing = await waitFor(async () => { const r = await job2(); return r.state === "working" && r }, 10000, 100)
           check("jobs: its worker working again after its commit wasn't live is fixing that, its card saying what it does",
             fixing?.going?.state === "fixing" && fixing.now === "Editing the header", fixing)
+          stage = "gone"
+          const left = await waitFor(async () => { const r = await job2(); return r.exited && r }, 10000, 100)
+          const line = left ? (await import("../../../plugins/core/companion/jobs.ts")).jobText(left).split("\n").find((l) => l.startsWith("going live:")) : ""
+          check("jobs: its terminal ending as it fixed its commit forward leaves it stuck, its card saying no fix landed",
+            left?.going?.state === "stuck" && line === "going live: 1a2b3c4 isn't live, and its terminal ended before a fix landed: it needs you", { going: left?.going, line })
           await asItsTool(() => api("POST", "ops/companion.job-stop", { id: s.id }, agent)).catch(() => {})
         } finally {
           Wk.paced({ live: L.PACE.live })
