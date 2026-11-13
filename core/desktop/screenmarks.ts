@@ -55,6 +55,7 @@ export type Mark = Base & (
   | { type: "open"; at?: Spot; url: string; label?: string }
   | Media)
 export type MarkType = Mark["type"]
+type Pad = Extract<Mark, { type: "paper" }>
 /** A drawing as the overlay gets it: an agent's marks, the words they're timed with (`caption`, its sentences the
  *  beats), and the screen rects of its places (`places`: "el:e12", "pane:t3", "ui:tab:t3"). */
 export type Drawing = { id: string; agent: string; tint: string; t: number; marks: Mark[]; caption?: string; places?: Record<string, Rect>; kept?: string
@@ -89,8 +90,15 @@ Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follo
 Every mark may say beat: the sentence of your words (0 the first) it appears with; id: its name for draw actions; life: ask (until their next ask: what points, by default; it fades sooner if the screen under it changes, and one on an element follows it as it moves), dismiss (until dismissed: cards, by default) or screen (until the screen under it changes).`
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
-const num = (v: unknown) => typeof v === "number" && Number.isFinite(v)
+const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v)
+const int = (v: unknown, lo: number, hi: number): v is number => num(v) && Number.isInteger(v) && v >= lo && v <= hi
+const oneOf = <T extends string>(xs: readonly T[], v: unknown): v is T => xs.some((x) => x === v)
 const COORD = 100_000
+const DIRS = ["up", "down", "left", "right"] as const
+/** `f`'s answer, or its error with `what` named first. */
+function naming<T>(what: string, f: () => T): T {
+  try { return f() } catch (e) { throw new Error(`${what}: ${e instanceof Error ? e.message : String(e)}`) }
+}
 
 /** `marks` checked: the marks as drawn, or an Error saying what's wrong with which one, and how it's written. */
 export function checkMarks(marks: unknown): Mark[] {
@@ -98,19 +106,18 @@ export function checkMarks(marks: unknown): Mark[] {
   if (marks.length > MOST.marks) throw new Error(`marks: at most ${MOST.marks}`)
   return marks.map((m, i) => {
     const at = `marks[${i}]${isObj(m) && typeof m.type === "string" ? ` (${m.type})` : ""}`
-    try { return checkMark(m) } catch (e) { throw new Error(`${at}: ${(e as Error).message}`) }
+    return naming(at, () => checkMark(m))
   })
 }
 
 function checkMark(m: unknown): Mark {
   if (!isObj(m)) throw new Error("a mark is an object: {\"type\": ..., ...}")
-  // (an arrow is a connect, as its tag is)
-  const type = (m.type === "arrow" ? "connect" : m.type) as MarkType
-  if (!MARK_TYPES.includes(type)) throw new Error(`type is one of ${MARK_TYPES.join(", ")}`)
+  const type = m.type === "arrow" ? "connect" : m.type
+  if (!oneOf(MARK_TYPES, type)) throw new Error(`type is one of ${MARK_TYPES.join(", ")}`)
   const base: Base = {}
-  if (m.beat !== undefined) { if (!Number.isInteger(m.beat) || (m.beat as number) < 0 || (m.beat as number) > 50) throw new Error("beat: a sentence's index, from 0"); base.beat = m.beat as number }
+  if (m.beat !== undefined) { if (!int(m.beat, 0, 50)) throw new Error("beat: a sentence's index, from 0"); base.beat = m.beat }
   if (m.id !== undefined) base.id = idOf(m.id, "id")
-  if (m.life !== undefined) { if (!LIVES.includes(m.life as Life)) throw new Error("life: ask (until the next ask), dismiss (until dismissed) or screen (until the screen under it changes)"); base.life = m.life as Life }
+  if (m.life !== undefined) { if (!oneOf(LIVES, m.life)) throw new Error("life: ask (until the next ask), dismiss (until dismissed) or screen (until the screen under it changes)"); base.life = m.life }
   const label = () => (m.label === undefined ? {} : { label: words(m.label, "label", MOST.label) })
   const card = () => (m.at === undefined ? {} : { at: spot(m.at, "at", true) })
   switch (type) {
@@ -118,12 +125,12 @@ function checkMark(m: unknown): Mark {
     case "underline": case "strike": case "check": case "cross": case "spotlight": return { ...base, type, at: spot(m.at, "at") }
     case "scroll": {
       const dir = m.dir ?? "down"
-      if (!["up", "down", "left", "right"].includes(dir as string)) throw new Error("dir: up, down, left or right")
-      return { ...base, type, at: spot(m.at, "at"), dir: dir as "down", ...label() }
+      if (!oneOf(DIRS, dir)) throw new Error("dir: up, down, left or right")
+      return { ...base, type, at: spot(m.at, "at"), dir, ...label() }
     }
     case "num": {
-      if (!Number.isInteger(m.n) || (m.n as number) < 0 || (m.n as number) > 99) throw new Error("n: the step's number, 0 to 99")
-      return { ...base, type, at: spot(m.at, "at"), n: m.n as number }
+      if (!int(m.n, 0, 99)) throw new Error("n: the step's number, 0 to 99")
+      return { ...base, type, at: spot(m.at, "at"), n: m.n }
     }
     case "connect": return { ...base, type, from: spot(m.from, "from"), to: spot(m.to, "to"), ...label() }
     case "write": return { ...base, type, ...card(), text: words(m.text, "text", MOST.text), ...size(m.size) }
@@ -144,11 +151,11 @@ function checkMark(m: unknown): Mark {
     }
     case "paper": {
       const w = m.w === undefined ? PAPER.w : m.w, h = m.h === undefined ? PAPER.h : m.h
-      if (!num(w) || !num(h) || (w as number) < 80 || (h as number) < 60 || (w as number) > MOST.paper[0] || (h as number) > MOST.paper[1]) throw new Error(`w, h: its size, 80x60 to ${MOST.paper.join("x")} (default ${PAPER.w}x${PAPER.h})`)
+      if (!num(w) || !num(h) || w < 80 || h < 60 || w > MOST.paper[0] || h > MOST.paper[1]) throw new Error(`w, h: its size, 80x60 to ${MOST.paper.join("x")} (default ${PAPER.w}x${PAPER.h})`)
       if (!Array.isArray(m.items) || m.items.length > MOST.items) throw new Error(`items: a list of up to ${MOST.items} things on it`)
-      const items = m.items.map((x, i) => { try { return paperItem(x, w as number, h as number) } catch (e) { throw new Error(`items[${i}]: ${(e as Error).message}`) } })
+      const items = m.items.map((x, i) => naming(`items[${i}]`, () => paperItem(x, w, h)))
       checkItems(items)
-      return { ...base, type, ...card(), w: w as number, h: h as number, ...(m.title === undefined ? {} : { title: words(m.title, "title", MOST.label) }), ...(m.grid ? { grid: true } : {}), items }
+      return { ...base, type, ...card(), w, h, ...(m.title === undefined ? {} : { title: words(m.title, "title", MOST.label) }), ...(m.grid ? { grid: true } : {}), items }
     }
   }
 }
@@ -171,7 +178,8 @@ function words(v: unknown, what: string, most: number) {
   if (v.length > most) throw new Error(`${what}: at most ${most} characters`)
   return v.trim()
 }
-const size = (v: unknown) => { if (v === undefined) return {}; if (v !== "s" && v !== "m" && v !== "l") throw new Error("size: s, m or l"); return { size: v as Size } }
+const SIZES: Size[] = ["s", "m", "l"]
+const size = (v: unknown) => { if (v === undefined) return {}; if (!oneOf(SIZES, v)) throw new Error("size: s, m or l"); return { size: v } }
 function url(v: unknown) {
   if (typeof v !== "string" || !/^https?:\/\/[^\s]+$/i.test(v) || v.length > 2000) throw new Error("url: an http(s) address")
   return v
@@ -191,8 +199,8 @@ function spot(v: unknown, what: string, card = false): Spot {
   if (area !== null) {
     const a = area.trim().toLowerCase().replace(/\s+/g, "-").replace("center", "centre").replace(/^(pointer|mouse)$/, "cursor")
     if (!card) throw new Error(`${what}: an area places a card; a mark goes at a thing (${how})`)
-    if (!AREAS.includes(a as Area)) throw new Error(how)
-    return { area: a as Area }
+    if (!oneOf(AREAS, a)) throw new Error(how)
+    return { area: a }
   }
   if (Array.isArray(v)) {
     if ((v.length !== 2 && v.length !== 4) || !v.every((n) => num(n) && Math.abs(n) < COORD)) throw new Error(how)
@@ -200,12 +208,15 @@ function spot(v: unknown, what: string, card = false): Spot {
     return { x: v[0], y: v[1], w: v[2] ?? 0, h: v[3] ?? 0 }
   }
   if (!isObj(v)) throw new Error(how)
-  for (const k of ["el", "pane", "ui"] as const) if (v[k] !== undefined) { if (typeof v[k] !== "string" || !ID.test(v[k])) throw new Error(`${what}.${k}: an id`); return { [k]: v[k] } as Spot }
+  const ref = (x: unknown, k: string) => { if (typeof x !== "string" || !ID.test(x)) throw new Error(`${what}.${k}: an id`); return x }
+  if (v.el !== undefined) return { el: ref(v.el, "el") }
+  if (v.pane !== undefined) return { pane: ref(v.pane, "pane") }
+  if (v.ui !== undefined) return { ui: ref(v.ui, "ui") }
   if (v.find !== undefined) return { find: words(v.find, `${what}.find`, 120) }
   if (num(v.x) && num(v.y)) {
     const w = v.w ?? v.width ?? 0, h = v.h ?? v.height ?? 0
-    if (!num(w) || !num(h) || (w as number) < 0 || (h as number) < 0) throw new Error(how)
-    return { x: v.x as number, y: v.y as number, w: w as number, h: h as number }
+    if (!num(w) || !num(h) || w < 0 || h < 0) throw new Error(how)
+    return { x: v.x, y: v.y, w, h }
   }
   throw new Error(how)
 }
@@ -217,11 +228,12 @@ function pt(v: unknown, what: string, w: number, h: number): [number, number] {
   return [v[0], v[1]]
 }
 function box(m: Record<string, unknown>, w: number, h: number) {
-  if (![m.x, m.y, m.w, m.h].every(num) || (m.w as number) < 0 || (m.h as number) < 0) throw new Error("x, y, w, h: its box on the paper")
-  const x = m.x as number, y = m.y as number, bw = m.w as number, bh = m.h as number
+  const x = m.x, y = m.y, bw = m.w, bh = m.h
+  if (!num(x) || !num(y) || !num(bw) || !num(bh) || bw < 0 || bh < 0) throw new Error("x, y, w, h: its box on the paper")
   if (x < -1 || y < -1 || x + bw > w + 1 || y + bh > h + 1) throw new Error(`x, y, w, h: inside the paper (${w}x${h})`)
   return { x, y, w: bw, h: bh }
 }
+const isBox = (v: unknown): v is [number, number, number, number] => Array.isArray(v) && v.length === 4 && v.every(num)
 const SHAPE_SIZE = (label?: string) => ({ w: Math.max(100, Math.min(260, (label?.length ?? 0) * 8.5 + 36)), h: 56 })
 /** A colour as given: a palette name, ink, tint or #hex (a fill also none). */
 export function colorOf(v: unknown, what: string, fill = false) {
@@ -254,14 +266,15 @@ export function paperItem(v: unknown, w: number, h: number): PaperItem {
     }
     case "text": {
       if (!num(v.x) || !num(v.y)) throw new Error("x, y: where it starts")
-      return { ...ink, type: "text", x: v.x as number, y: v.y as number, text: words(v.text ?? v.label, "text", MOST.text), ...size(v.size) }
+      return { ...ink, type: "text", x: v.x, y: v.y, text: words(v.text ?? v.label, "text", MOST.text), ...size(v.size) }
     }
     case "chart": {
       if (v.kind !== "bar" && v.kind !== "line") throw new Error("kind: bar or line")
-      if (!Array.isArray(v.values) || !v.values.length || v.values.length > MOST.values || !v.values.every((n) => num(n) && Math.abs(n) < 1e12)) throw new Error(`values: 1 to ${MOST.values} numbers`)
+      const { values, labels } = v
+      if (!Array.isArray(values) || !values.length || values.length > MOST.values || !values.every((n): n is number => num(n) && Math.abs(n) < 1e12)) throw new Error(`values: 1 to ${MOST.values} numbers`)
       const b = v.x === undefined ? { x: 16, y: 16, w: w - 32, h: h - 32 } : box(v, w, h)
-      if (v.labels !== undefined && (!Array.isArray(v.labels) || v.labels.length !== v.values.length)) throw new Error("labels: one per value")
-      return { ...ink, type: "chart", kind: v.kind, ...b, values: v.values as number[], ...(v.labels ? { labels: (v.labels as unknown[]).map((l, i) => words(String(l), `labels[${i}]`, 24)) } : {}) }
+      if (labels !== undefined && (!Array.isArray(labels) || labels.length !== values.length)) throw new Error("labels: one per value")
+      return { ...ink, type: "chart", kind: v.kind, ...b, values, ...(Array.isArray(labels) ? { labels: labels.map((l, i) => words(String(l), `labels[${i}]`, 24)) } : {}) }
     }
     case "svg": {
       const given = v.paths ?? (v.d === undefined ? undefined : [{ d: v.d, color: v.color, fill: v.fill, width: v.width }])
@@ -272,21 +285,23 @@ export function paperItem(v: unknown, w: number, h: number): PaperItem {
         if (!isObj(p) || typeof p.d !== "string" || !p.d.trim()) throw new Error(`${what}: {d: "M10 10 L50 50 ..."}`)
         if (p.d.length > MOST.d) throw new Error(`${what}.d: at most ${MOST.d} characters`)
         total += p.d.length
-        try { parsePath(p.d) } catch (e) { throw new Error(`${what}.${(e as Error).message}`) }
-        if (p.width !== undefined && (!num(p.width) || (p.width as number) <= 0 || (p.width as number) > 20)) throw new Error(`${what}.width: its stroke's width, 0.5 to 20`)
+        try { parsePath(p.d) } catch (e) { throw new Error(`${what}.${e instanceof Error ? e.message : String(e)}`) }
+        const width = p.width
+        if (width !== undefined && (!num(width) || width <= 0 || width > 20)) throw new Error(`${what}.width: its stroke's width, 0.5 to 20`)
         const c = colorOf(p.color ?? p.stroke, `${what}.color`, true), f = colorOf(p.fill, `${what}.fill`, true)
-        return { d: p.d.trim(), ...(c ? { color: c } : {}), ...(f ? { fill: f } : {}), ...(p.width === undefined ? {} : { width: p.width as number }) }
+        return { d: p.d.trim(), ...(c ? { color: c } : {}), ...(f ? { fill: f } : {}), ...(width === undefined ? {} : { width }) }
       })
       if (total > MOST.svg) throw new Error(`paths: at most ${MOST.svg} characters of path data in all`)
       let vb: [number, number, number, number] | undefined
       if (v.viewBox !== undefined) {
         const raw = typeof v.viewBox === "string" ? v.viewBox.trim().split(/[\s,]+/).map(Number) : v.viewBox
-        if (!Array.isArray(raw) || raw.length !== 4 || !raw.every(num) || raw[2] <= 0 || raw[3] <= 0) throw new Error("viewBox: [x, y, w, h], the paths' own units")
-        vb = raw as [number, number, number, number]
+        if (!isBox(raw) || raw[2] <= 0 || raw[3] <= 0) throw new Error("viewBox: [x, y, w, h], the paths' own units")
+        vb = raw
       }
-      if (v.style !== undefined && v.style !== "clean" && v.style !== "sketch") throw new Error("style: clean (smooth lines, the default) or sketch (hand-drawn)")
+      const style = v.style
+      if (style !== undefined && style !== "clean" && style !== "sketch") throw new Error("style: clean (smooth lines, the default) or sketch (hand-drawn)")
       const b = v.x === undefined && v.w === undefined ? { x: 12, y: 12, w: w - 24, h: h - 24 } : box(v, w, h)
-      return { ...ink, type: "svg", ...b, paths, ...(vb ? { viewBox: vb } : {}), ...(v.style ? { style: v.style as "clean" } : {}) }
+      return { ...ink, type: "svg", ...b, paths, ...(vb ? { viewBox: vb } : {}), ...(style ? { style } : {}) }
     }
   }
   throw new Error("type is one of rect, ellipse, diamond, line, arrow, text, path, chart, svg")
@@ -400,7 +415,7 @@ export function snapMarks(marks: Mark[], places: Record<string, Rect> = {}, draw
   return marks.map((m) => {
     if (!SIZED.has(m.type) || !("at" in m) || !m.at) return m
     const { at, ring } = snap(m.at)
-    return { ...m, ...(ring && m.type === "ring" ? { type: "frame" } : {}), at } as Mark
+    return ring && m.type === "ring" ? { ...m, type: "frame", at } : { ...m, at }
   })
 }
 
@@ -471,7 +486,7 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
   if (actions.length > MOST.items) throw new Error(`actions: at most ${MOST.items}`)
   const out: Mark[] = marks.map((m) => (m.type === "paper" ? { ...m, items: m.items.map((i) => ({ ...i })) } : { ...m })), added: Mark[] = [], touched: string[] = []
   const touch = (id?: string) => { if (id && !touched.includes(id)) touched.push(id) }
-  const find = (id: unknown) => {
+  const find = (id: unknown): { mark: Mark; item?: undefined } | { mark: Pad; item: PaperItem } => {
     if (typeof id !== "string") throw new Error("id: the id of a mark or an item (what's up lists them)")
     for (const m of out) {
       if (m.gone) continue
@@ -491,7 +506,7 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
           return
         }
         if (!ITEM_TYPES.has(String(a.type))) throw new Error(`type: an item for a pad (${[...ITEM_TYPES].join(", ")}); a new mark is {"op": "add", "mark": {...}}`)
-        const pads = out.filter((m): m is Extract<Mark, { type: "paper" }> => m.type === "paper" && live(m))
+        const pads = out.filter((m): m is Pad => m.type === "paper" && live(m))
         const pad = a.in === undefined ? pads.at(-1) : pads.find((p) => p.id === a.in)
         if (!pad) throw new Error(a.in === undefined ? "no pad up to add to: draw one (a paper mark), or add a mark" : `no pad ${JSON.stringify(a.in)} up`)
         const { op: _op, in: _in, ...item } = a
@@ -500,27 +515,28 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
         checkItems([...pad.items, it])
         pad.items.push(it); touch(it.id)
       } else if (op === "move") {
-        const { mark, item } = find(a.id)
-        if (!item) {
+        const found = find(a.id)
+        if (!found.item) {
+          const { mark } = found
           if (a.at === undefined) throw new Error(`at: where it goes (${CARDS.has(mark.type) ? "an area, a point or a spot" : "a spot"})`)
           if (mark.type === "connect") throw new Error("a connect moves by its ends: delete it and add another")
-          ;(mark as { at?: Spot }).at = CARDS.has(mark.type) ? cardSpot(a.at) : spotOf(a.at)
+          mark.at = CARDS.has(mark.type) ? cardSpot(a.at) : spotOf(a.at)
           touch(mark.id)
           return
         }
-        const pad = mark as Extract<Mark, { type: "paper" }>, p = (k: string) => (a[k] === undefined ? undefined : num(a[k]) ? (a[k] as number) : bad(`${k}: a number`))
+        const { mark: pad, item } = found
+        const p = (k: string) => { const v = a[k]; return v === undefined ? undefined : num(v) ? v : bad(`${k}: a number`) }
         const x = p("x"), y = p("y"), dx = p("dx"), dy = p("dy")
         if (x === undefined && y === undefined && dx === undefined && dy === undefined) throw new Error("x and y (its top left, on the pad), or dx and dy")
         const b = itemBox(item, pad.items)
-        // (kept on the pad)
         const mx = Math.min(Math.max((x ?? b.x + (dx ?? 0)), 0), Math.max(0, pad.w - b.w)) - b.x, my = Math.min(Math.max((y ?? b.y + (dy ?? 0)), 0), Math.max(0, pad.h - b.h)) - b.y
         shift(item, mx, my); touch(item.id)
       } else if (op === "change") {
-        const { mark, item } = find(a.id)
+        const found = find(a.id)
         const keys = Object.keys(a).filter((k) => k !== "op" && k !== "id")
         if (!keys.length) throw new Error("what changes: label, text, color, fill, w, h, size, caption, title, a video's sound or paused")
-        if (item) {
-          const pad = mark as Extract<Mark, { type: "paper" }>
+        if (found.item) {
+          const { mark: pad, item } = found
           const { op: _op, ...change } = a
           const next = paperItem({ ...item, ...change, type: item.type }, pad.w, pad.h)
           const i = pad.items.indexOf(item)
@@ -528,23 +544,23 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
           checkItems(pad.items)
           touch(item.id)
         } else {
+          const { mark } = found
           const { op: _op, id: _id, ...rest } = a
           const next = checkMark({ ...mark, ...rest })
-          // (another source is found again)
           if ((mark.type === "image" || mark.type === "video") && rest.src !== undefined) { delete mark.url; delete mark.name; delete mark.px; added.push(mark) }
           // (what the change turned off goes: sound false, paused false; where its media loads from is the server's)
-          for (const k of Object.keys(mark)) if (!(k in next) && !SERVERS.has(k)) delete (mark as Record<string, unknown>)[k]
+          for (const k of Object.keys(mark)) if (!(k in next) && !SERVERS.has(k)) Reflect.deleteProperty(mark, k)
           Object.assign(mark, next); touch(mark.id)
         }
       } else if (op === "delete") {
-        const { mark, item } = find(a.id)
-        if (!item) { mark.gone = now; touch(mark.id); return }
+        const found = find(a.id)
+        if (!found.item) { found.mark.gone = now; touch(found.mark.id); return }
+        const { mark: pad, item } = found
         item.gone = now; touch(item.id)
         // (what's bound to it goes with it)
-        const pad = mark as Extract<Mark, { type: "paper" }>
         for (const x of pad.items) if ((x.type === "line" || x.type === "arrow") && live(x) && (x.from === item.id || x.to === item.id)) { x.gone = now; touch(x.id) }
       } else throw new Error(`op ${JSON.stringify(op ?? "")}: add, move, change or delete`)
-    } catch (e) { throw new Error(`actions[${n}]${typeof op === "string" ? ` (${op})` : ""}: ${(e as Error).message}`) }
+    } catch (e) { throw new Error(`actions[${n}]${typeof op === "string" ? ` (${op})` : ""}: ${e instanceof Error ? e.message : String(e)}`) }
   })
   return { marks: out, added, touched }
 }
