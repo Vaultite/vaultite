@@ -218,8 +218,8 @@ export default async ($: VaultTest) => {
       check("live edit: a plain question over the page goes to the companion, told the job there and what it was asked live",
         !q?.live && q?.pageJob === job && new RegExp(`over the page job ${job} [^\\n]*this question is yours[^\\n]*L2 "now a footer"[^\\n]*companion job ${job}`).test(qText) && !/what does this button do/.test(told()), [q, qText])
       const other = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "remind me to call Alice at five", ...over })
-      await waitFor(() => /Live edit L3: /.test(told()), 8000, 50)
-      check("live edit: anything not plainly a question goes to its job at once", other?.live === job, other)
+      const toldL3 = await waitFor(() => /Live edit L3: /.test(told()), 8000, 50)
+      check("live edit: anything not plainly a question goes to its job at once, typed into its worker", other?.live === job && !!toldL3, [other, told(), await jobNow()])
       await end({ text: "(not for me)", files: [], at: Date.now(), final: true })
       const handed = await waitFor(() => !!other && other.live === undefined, 20000, 50)
       check("live edit: one its worker says isn't about the page goes to the companion after all, nothing said for it", !!handed && !(await says()).includes("(not for me)"), [other, await says()])
