@@ -10,9 +10,8 @@ import { switched } from "../pluginmeta.ts"
 import { checkVaultPlugin, digestOf } from "../vaultplugins.ts"
 import { placePanel, readSidebars, sideOf } from "../sidebars.ts"
 import { API_VERSION } from "../version.ts"
-import { writeAtomic } from "../vault.ts"
+import { type Item, writeAtomic } from "../vault.ts"
 import * as G from "../grants.ts"
-import { type Any } from "./common.ts"
 import { strings } from "../values.ts"
 
 export type PluginInfo = PluginDir & { name: string; description: string; requires: string[]
@@ -30,14 +29,14 @@ export type PluginInfo = PluginDir & { name: string; description: string; requir
 /** A vault plugin's listing with its schedule's ops checked against the catalog: a job that would fail at 05:00 says so
  *  now (an op that isn't there, a parameter it doesn't take). */
 function scheduledOf(app: App) {
-  return (p: Any) => {
+  return (p: Item) => {
     const jobs = app.vaultPlugins.found.get(String(p.id))?.manifest.schedule
     const out: string[] = []
     for (const [i, j] of (Array.isArray(jobs) ? jobs : []).entries()) {
       if (typeof j?.op !== "string") continue
       const hit = app.opNamed(j.op)
       if (!hit) { out.push(`schedule[${i}]: no operation '${j.op}' (vau ops lists them)`); continue }
-      try { checkParams(hit.op, j.params ?? {}) } catch (e) { out.push(`schedule[${i}]: ${(e as Error).message}`) }
+      try { checkParams(hit.op, j.params ?? {}) } catch (e) { out.push(`schedule[${i}]: ${e instanceof Error ? e.message : String(e)}`) }
     }
     return out.length ? { ...p, warnings: [...p.warnings ?? [], ...out] } : p
   }
@@ -54,7 +53,7 @@ export function pluginList(app: App): PluginInfo[] {
 
 /** Which plugins are on (web/src/core/plugins.ts isEnabled): by plugins.json's lists, none of the `ai` ones while AI is
  *  off, and everything each requires on too. `own`: switched on itself. */
-export function onOff(list: PluginInfo[], conf: Any) {
+export function onOff(list: PluginInfo[], conf: Item) {
   const disabled = strings(conf.disabled), enabled = strings(conf.enabled), aiOff = conf.ai === false
   const by = new Map(list.map((p) => [p.id, p]))
   const own = (p: PluginInfo) => (p.alwaysOn || (p.optIn ? enabled.includes(p.id) : !disabled.includes(p.id)))
@@ -79,12 +78,12 @@ async function allowPlugin(app: App, q: string, hash?: string, edits?: boolean) 
   const p = findPlugin(pluginList(app), q)
   if (p.tier !== "vault") throw new OpError(`${p.name} is one of the app's plugins: only the vault's own are allowed one by one`)
   let d
-  try { d = digestOf(p.dir) } catch (e) { throw new OpError(`${p.name} can't be read yet (${(e as Error).message}): try again`, 503) }
+  try { d = digestOf(p.dir) } catch (e) { throw new OpError(`${p.name} can't be read yet (${e instanceof Error ? e.message : String(e)}): try again`, 503) }
   if (hash && hash !== d.content) throw new OpError(`${p.name}'s files changed since you looked at them: look again before allowing it`, 409)
   app.vaultPlugins.allow(p.id, { digest: d, edits })
   await app.syncPlugins()
   const listed = app.vaultPlugins.list().find((x) => x.id === p.id)
-  return { id: p.id, name: p.name, hash: d.content, on: !!listed?.on, loaded: !!listed?.loaded, problems: (listed?.problems ?? []) as string[],
+  return { id: p.id, name: p.name, hash: d.content, on: !!listed?.on, loaded: !!listed?.loaded, problems: strings(listed?.problems),
     edits: !!app.vaultPlugins.trust.approval(p.id)?.edits }
 }
 
@@ -137,7 +136,7 @@ export function pluginOps(app: App): Op[] {
     return { id: p.id, name: p.name, on: on(p.id), switched: want, blockedBy: want && !on(p.id) ? p.requires.filter((r) => !on(r)) : [], waiting,
       ...(want && aiOff && p.ai ? { needsAi: true } : {}) }
   }
-  const turned = (r: Any) => `${r.name} is ${r.switched ? "on" : "off"}.${r.needsAi ? " It stays off while AI is off: vau ai on." : r.blockedBy.length ? ` It stays off until ${r.blockedBy.join(", ")} is on.` : ""}` +
+  const turned = (r: Awaited<ReturnType<typeof turn>>) => `${r.name} is ${r.switched ? "on" : "off"}.${r.needsAi ? " It stays off while AI is off: vau ai on." : r.blockedBy.length ? ` It stays off until ${r.blockedBy.join(", ")} is on.` : ""}` +
     (r.waiting ? ` It waits for this machine's owner to allow it: vau plugin allow ${r.id}` : "")
 
   return [defineOp({
@@ -157,8 +156,7 @@ off until turned on (they run code). Those marked "app" are part of the app: alw
       return ps.map((p) => ({ id: p.id, name: p.name, tier: p.tier, on: on(p.id) && !p.waiting, switchedOn: own(p), requires: p.requires, description: p.description,
         ...(p.alwaysOn ? { alwaysOn: true } : {}), ...(p.ai ? { ai: true } : {}), ...(p.ai && aiOff ? { aiOff: true } : {}), ...(p.waiting ? { waiting: true } : {}), ...(p.edits ? { edits: true } : {}) }))
     },
-    // (the "core" tier is the app's built-in plugins: "core" alone is the app itself)
-    text: (rows: Any[]) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.alwaysOn ? "app" : p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +
+    text: (rows) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.alwaysOn ? "app" : p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +
       (p.waiting ? `  (waits to be allowed on this machine: vau plugin allow ${p.id})` : p.switchedOn && p.aiOff ? "  (AI is off: vau ai on)" : p.switchedOn && !p.on ? `  (needs ${p.requires.join(", ")})` : "")).join("\n"),
   }), defineOp({
     id: "plugin.check",
@@ -189,7 +187,7 @@ with a vault plugin's id, that one.
       const r = folderProblems(dir, new Map(app.app.map((p) => [p.id, p.tier])), { installable, tag })
       return [{ id: r.id, folder: path.resolve(dir), on: false, loaded: false, problems: r.problems, warnings: r.warnings, outside: true }]
     },
-    text: (vps: Any[]) => {
+    text: (vps) => {
       if (!vps.length) return "The vault has no plugins of its own."
       const text = vps.map((p) => `${p.id} (${p.outside ? p.folder : p.on ? "on" : "off"}${p.approval ? ", waits to be allowed on this machine" : p.on && !p.loaded ? ", not loaded" : ""}): ${p.problems?.length ? "\n" + p.problems.map((x: string) => `  - ${x}`).join("\n") : p.outside || p.on ? "ok" : "ok so far (its code runs, and is checked, once it's on)"}` +
         (p.warnings?.length ? `\n  to fix (it runs anyway):\n${p.warnings.map((x: string) => `  - ${x}`).join("\n")}` : "")).join("\n")

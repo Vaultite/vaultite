@@ -1346,6 +1346,15 @@ function pageLooks(b: Bundle, host: Host, paths: string[]) {
 
 const workspaceOf = (x: unknown) => { const n = Number(x); return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null }
 
+/** What /api/bundles/... answers, for ops calling it in-process (core/coreops/bundles.ts). */
+export type Answers = {
+  list: { bundles: Info[]; default: string; saveName: string } & ReturnType<typeof status>
+  show: { bundle: Info; files: string[]; plan: Plan; pages: ReturnType<typeof pageLooks> }
+  apply: Awaited<ReturnType<typeof apply>>; restore: Awaited<ReturnType<typeof restore>>; keep: ReturnType<typeof keep>
+  fork: Awaited<ReturnType<typeof fork>>; save: Awaited<ReturnType<typeof save>>; import: Awaited<ReturnType<typeof importOf>>
+  delete: { deleted: string; trashed: string }
+}
+
 /** /api/bundles/...: undefined when it isn't one of these routes. */
 export async function handle(host: Host, method: string, parts: string[], query: Record<string, string>, body: Item): Promise<unknown> {
   const v = host.vault
@@ -1361,7 +1370,7 @@ export async function handle(host: Host, method: string, parts: string[], query:
       return { ...out, inUse: true, applied: { at: applied.at, skip: applied.skip }, modified: differs.length > 0, tweaked: differs.length > 0, differs }
     }))
     all.sort((a, b) => (a.source === b.source ? 0 : a.source === "app" ? -1 : 1) || a.sort - b.sort || a.name.localeCompare(b.name))
-    return { bundles: all, default: DEFAULT_BUNDLE, saveName: saveName(v, host), ...status(v) }
+    return { bundles: all, default: DEFAULT_BUNDLE, saveName: saveName(v, host), ...status(v) } satisfies Answers["list"]
   }
   if (parts.length === 0 && method === "POST") return save(host, { ...body, workspace: workspaceOf(body.workspace) } as SaveOptions)
   if (parts.length === 1 && id === "restore" && method === "POST") return restore(host)
@@ -1377,13 +1386,13 @@ export async function handle(host: Host, method: string, parts: string[], query:
     const n = workspaceOf(query.workspace), fresh = query.fresh === "1"
     const at = readApplied(v)?.bundle === b.id && !fresh && !b.error ? withTweaks(b, await tweaksOf(host, b, n)) : tweakedOf(v, b, fresh)
     const p = await plan(at, host, n, { landing: workspaceOf(query.landing) })
-    return { bundle: info(b, host), files: Object.keys(b.files), plan: p, pages: pageLooks(b, host, [...p.pins?.list ?? [], ...p.pins?.unpin ?? []]) }
+    return { bundle: info(b, host), files: Object.keys(b.files), plan: p, pages: pageLooks(b, host, [...p.pins?.list ?? [], ...p.pins?.unpin ?? []]) } satisfies Answers["show"]
   }
   if (parts.length === 1 && method === "DELETE") {
     const b = find(v, id)
     if (b.source !== "vault") throw new HTTPError(400, `${info(b, host).name} comes with the app: it can't be deleted`)
     writeTweaks(v, id, null)
-    return { deleted: id, trashed: v.toTrash(`${VAULT_BUNDLES}/${id}`) }
+    return { deleted: id, trashed: v.toTrash(`${VAULT_BUNDLES}/${id}`) } satisfies Answers["delete"]
   }
   if (parts.length === 2 && action === "apply" && method === "POST") {
     return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true, { offAdded: body.offAdded === true, skip: strs(body.skip), trial: body.trial === true,

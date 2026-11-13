@@ -3,7 +3,7 @@
 import type { App } from "../app.ts"
 import { defineOp, jsonBlock, type Op, OpError, type Param } from "../ops.ts"
 import type { Kind } from "../vault.ts"
-import { type Any, enc } from "./common.ts"
+import { enc } from "./common.ts"
 
 const KIND = { type: "string", required: true, description: "the kind: its type (person, note, log, book) or collection (people, notes, logs, books)" } satisfies Param
 const ID = { type: "string", required: true, description: "the item: its id (People/Alice Park), file name (Alice Park) or key" } satisfies Param
@@ -67,7 +67,8 @@ export function itemOps(app: App): Op[] {
     run: async ({ kind, id }, ctx) => {
       const k = kindOf(kind)
       if (k.file) throw new OpError(`${k.file} is the kind's one file: it isn't deleted this way`)
-      return { ...(await ctx.api("DELETE", route(k, id)) as Any), id }
+      const deleted: { ok: boolean } = await ctx.api("DELETE", route(k, id))
+      return { ...deleted, id }
     },
     text: (r) => (r.ok ? `Deleted ${r.id} (to the trash).` : `Nothing deleted: no ${r.id}.`),
   })]

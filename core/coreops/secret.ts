@@ -1,21 +1,23 @@
 // secret.ask: a password or a key file the user gives an agent from whatever device they're on. Shown in a hidden field
 // (web/src/components/ConfirmDialog.tsx) on this machine and the others sharing the vault; the first answer wins.
 import crypto from "node:crypto"
+import { z } from "zod"
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
-import { type Op, OpError, type OpCtx } from "../ops.ts"
+import { defineOp, type Op, OpError, type OpCtx } from "../ops.ts"
+import { machinesOf } from "./routes.ts"
 
 type Got = { value: string; base64: boolean }
 /** One machine's answer: what was given, null when dismissed, or the error (no window there, offline). */
 type Try = Promise<Got | null | Error>
 
-const answer = (r: unknown): Got | null => {
-  const o = r as { value?: unknown; base64?: unknown } | null
-  return typeof o?.value === "string" ? { value: o.value, base64: !!o.base64 } : null
-}
+/** What a window (or another machine) answers: the value given, or anything else when it wasn't. */
+const Given = z.object({ value: z.string(), base64: z.unknown().optional() }).transform((o): Got => ({ value: o.value, base64: !!o.base64 })).nullable().catch(null)
+const Refused = z.object({ error: z.string().optional() }).catch({})
+const Ended = z.looseObject({})
 
 /** This machine, and the others sharing its vault that answer (the phone may be on one): none without Machines. */
 async function machines(ctx: OpCtx): Promise<{ self: Machine | null; others: Machine[] }> {
-  const all = await ctx.api("GET", "machines").catch(() => []) as Machine[]
+  const all = await machinesOf(ctx)
   const self = all.find((m) => m.self) ?? null
   return { self, others: self?.vault ? all.filter((m) => !m.self && m.online && m.vault === self.vault) : [] }
 }
@@ -24,8 +26,8 @@ async function remote(m: Machine, body: object, timeout: number): Try {
   try {
     const r = await fetch(`${m.url}/api/ops/secret.ask`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
       body: JSON.stringify(body), signal: AbortSignal.timeout((timeout + 15) * 1000) })
-    const out = await r.json().catch(() => ({})) as { error?: string; value?: unknown; base64?: unknown }
-    return r.ok ? answer(out) : new Error(`${m.label}: ${out.error ?? r.status}`)
+    const out: unknown = await r.json().catch(() => ({}))
+    return r.ok ? Given.parse(out) : new Error(`${m.label}: ${Refused.parse(out).error ?? r.status}`)
   } catch {
     return new Error(`${m.label} doesn't answer`)
   }
@@ -44,7 +46,7 @@ function first(tries: Try[]): Promise<Got | null> {
 }
 
 export function secretOps(): Op[] {
-  return [{
+  return [defineOp({
     id: "secret.ask",
     cli: "secret",
     mcp: false,
@@ -71,14 +73,14 @@ it fails (exit 1) and prints nothing.
     run: async ({ prompt, file, timeout, key, from, cancel }, ctx) => {
       // Not even through MCP's `call`: an AI app (claude.ai, ChatGPT) never gets the user's secrets.
       if (ctx.who.client === "mcp") throw new OpError("not over MCP: secrets stay on the user's machines (vau secret, in a terminal)", 403)
-      if (cancel) return ctx.ui({ action: "ask-cancel", key: cancel })
+      if (cancel) return Ended.parse(await ctx.ui({ action: "ask-cancel", key: cancel }))
       if (!prompt?.trim()) throw new OpError("`prompt` is what to enter (the dialog's title)")
       const relayed = !!ctx.who.client?.startsWith("machine/")
       const id: string = key ?? crypto.randomUUID()
       const { self, others } = relayed ? { self: null, others: [] } : await machines(ctx)
       const by: string = from ?? (self ? `${ctx.who.label} on ${self.label}` : ctx.who.label)
       const ask = { action: "secret", key: id, prompt: prompt.trim().slice(0, 200), file: !!file, timeout, from: by }
-      const here: Try = ctx.ui(ask).then(answer, (e: unknown) => (e instanceof OpError && e.status === 504 ? null : e as Error))
+      const here: Try = ctx.ui(ask).then((r) => Given.parse(r), (e: unknown) => (e instanceof OpError && e.status === 504 ? null : e instanceof Error ? e : new Error(String(e))))
       const elsewhere = others
       const got = await first([here, ...elsewhere.map((m) => remote(m, { prompt, file: !!file, timeout, key: id, from: by }, timeout))])
         .finally(() => {
@@ -89,7 +91,7 @@ it fails (exit 1) and prints nothing.
       if (relayed) return { value: null } // (the asking machine ends it everywhere)
       throw new OpError("the user didn't give it (dismissed, or no answer in time)", 409)
     },
-    text: (r: { value?: string }) => r.value ?? "",
+    text: (r) => String(r.value ?? ""),
     exact: true,
-  }]
+  })]
 }

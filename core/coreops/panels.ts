@@ -4,10 +4,10 @@ import fs from "node:fs"
 import path from "node:path"
 import type { App } from "../app.ts"
 import { panelsOf, type PanelDef } from "../appsource.ts"
-import { defineOp, type Op, OpError, type Param } from "../ops.ts"
+import { defineOp, type Op, OpError, type Param, type ParamsOf } from "../ops.ts"
 import { anchorFor } from "../slots.ts"
 import { defaultSidebars, filePanelKey, filePanelPath, placePanel, readSidebars, setCollapsed, setDocked, type Side, sideOf, type Sidebars, withoutPanel } from "../sidebars.ts"
-import { type Any, lines, serviceOn, windowWorkspace } from "./common.ts"
+import { lines, serviceOn, windowWorkspace } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
 export type Panel = { key: string; title: string; plugin: string; on: boolean
@@ -92,6 +92,11 @@ function namedPanel(app: App, list: Panel[], q: string) {
 const WORKSPACE = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels to use; the user's window's when left out (Workspaces on)" } satisfies Param
 const VAULT = { type: "boolean", description: "sidebars.json itself (the default for workspaces without panels of their own), not a workspace's" } satisfies Param
 const PANEL = { type: "string", required: true, description: "the panel: its key (files:files), title or a plain name (terminals, file tree, pinned, search), or a file of the vault to draw as one (Apps/Weather.html)" } satisfies Param
+const MOVE_TO = { type: "string", required: true, description: "where: a position from 1, up, down, top or bottom" } satisfies Param
+const SIDE = { type: "string", enum: ["left", "right"], description: "which sidebar (left by default); given, a shown panel moves to its end" } satisfies Param
+type Extra = { to?: typeof MOVE_TO; side?: typeof SIDE }
+type Where = { panel: typeof PANEL; workspace: typeof WORKSPACE; vault: typeof VAULT } & Extra
+type Changed = { sidebars: Sidebars; panels: Panel[]; workspace?: string }
 
 const HELP = `The desktop app's two sidebars are stacks of plugins' panels (Search field, Pinned pages, File explorer,
 Terminals...), kept in .vaultite/sidebars.json: {"left": [panels], "right": [panels], "collapsed": [panels]}, top to
@@ -121,7 +126,7 @@ count from 1, in the panel's sidebar.
 
 export function panelOps(app: App): Op[] {
   /** A change to one panel, saved where it belongs; the panels after it. */
-  const change = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (s: Sidebars, p: Panel, given: Any) => Sidebars): Op => (defineOp({
+  const change = (id: string, cli: string, summary: string, args: string[], params: Extra, fn: (s: Sidebars, p: Panel, given: ParamsOf<Where>) => Sidebars): Op => (defineOp<Where, Changed>({
     id, cli, summary, help: `${summary} See vau panels --help.`, kind: "write",
     params: { panel: PANEL, ...params, workspace: WORKSPACE, vault: VAULT }, args: ["panel", ...args],
     run: async (given, ctx) => {
@@ -154,8 +159,8 @@ export function panelOps(app: App): Op[] {
     text: (r) => `${r.workspace ? `${r.workspace}${r.own ? "" : " (the default panels: none of its own yet)"}:\n` : ""}${showPanels(r.panels)}`,
   }),
   change("panel.move", "panels move", "Move a panel within its sidebar: to a position (from 1), up, down, top or bottom.", ["to"],
-    { to: { type: "string", required: true, description: "where: a position from 1, up, down, top or bottom" } },
-    (s, p, { to: where }) => {
+    { to: MOVE_TO },
+    (s, p, { to: where = "" }) => {
       const side = sideOf(s, p.key) ?? "left"
       const before = anchorFor(s[side], p.key, where)
       if (before === undefined) throw new OpError(`'${where}' isn't a position (a number from 1, up, down, top or bottom)`)
@@ -163,7 +168,7 @@ export function panelOps(app: App): Op[] {
     }),
   change("panel.hide", "panels hide", "Hide a panel (out of both sidebars; its plugin stays on).", [], {}, (s, p) => withoutPanel(s, p.key)),
   change("panel.show", "panels show", "Show a hidden panel at the end of the left sidebar (or the right one).", ["side"],
-    { side: { type: "string", enum: ["left", "right"], description: "which sidebar (left by default); given, a shown panel moves to its end" } },
+    { side: SIDE },
     (s, p, { side }) => (sideOf(s, p.key) && !side ? s : dock(side === "right" ? "right" : "left")(s, p))),
   change("panel.left", "panels left", "Put a panel at the end of the left sidebar.", [], {}, dock("left")),
   change("panel.right", "panels right", "Put a panel at the end of the right sidebar.", [], {}, dock("right")),

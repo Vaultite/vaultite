@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import { z } from "zod"
 import type { App } from "./app.ts"
 import { aiOps } from "./coreops/ai.ts"
 import { bundleOps } from "./coreops/bundles.ts"
@@ -14,7 +15,7 @@ import { newTabOps } from "./coreops/newtab.ts"
 import { pageOps } from "./coreops/pages.ts"
 import { panelOps } from "./coreops/panels.ts"
 import { pluginList, pluginOps } from "./coreops/plugins.ts"
-import type { Any } from "./coreops/common.ts"
+import { Commands, Picked, Ran } from "./coreops/common.ts"
 import { settingsOps } from "./coreops/settings.ts"
 import { keptOps } from "./coreops/kept.ts"
 import { typeOps } from "./coreops/types.ts"
@@ -45,7 +46,7 @@ function opsOps(app: App): Op[] {
       return app.catalog().filter((e) => !q || e.id.startsWith(`${q}.`) || e.id.includes(q) || e.summary.toLowerCase().includes(q))
         .map(({ id, plugin, summary, kind, cli, mcp }) => ({ id, plugin, summary, kind, cli, mcp }))
     },
-    text: (rows: Any[]) => rows.length
+    text: (rows) => rows.length
       ? rows.map((r) => `- \`${r.id}\`${r.cli ? ` (vau ${r.cli})` : ""}: ${r.summary}`).join("\n") + "\n\n`vau <id> --help` explains one."
       : "No operation matches.",
   })]
@@ -57,7 +58,7 @@ function docsOps(app: App): Op[] {
     summary: "List the docs topics: the vault in full, the app's settings, each plugin's file formats.",
     kind: "read",
     run: () => [{ id: "api", title: "Operations (the API)", plugin: null }, ...topics(app.plugins).map(({ id, title, plugin }) => ({ id, title, plugin }))],
-    text: (rows: Any[]) => rows.map((t) => `- \`${t.id}\`: ${t.title}`).join("\n"),
+    text: (rows) => rows.map((t) => `- \`${t.id}\`: ${t.title}`).join("\n"),
   }), defineOp({
     id: "docs.read",
     cli: "docs",
@@ -79,10 +80,10 @@ or one of the app's (vault, app, vault-plugins, from-other-apps, api: every oper
         const d = topic(app.plugins, t)
         return { id: d.id, text: d.text }
       } catch (e) {
-        throw new OpError((e as Error).message, 404)
+        throw new OpError(e instanceof Error ? e.message : String(e), 404)
       }
     },
-    text: (r) => (r.topics ? r.topics.map((t: Any) => `- \`${t.id}\`: ${t.title}`).join("\n") : r.text),
+    text: (r) => (r.topics ? r.topics.map((t) => `- \`${t.id}\`: ${t.title}`).join("\n") : r.text),
   })]
 }
 
@@ -155,8 +156,8 @@ has the toasts it showed (notices): one saying it couldn't means it didn't do it
     owner: "the app's commands",
     params: { id: { type: "string", required: true, description: "the command's id (sidebar:toggle)" } },
     args: ["id"],
-    run: ({ id }, ctx) => ctx.ui({ action: "command", id }).catch(noWindow),
-    text: (r, p) => !r?.ran ? `Sent ${p.id}.` : `Ran ${p.id}.${r.notices?.length ? ` The app then showed: ${r.notices.map((n: Any) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`,
+    run: async ({ id }, ctx) => Ran.parse(await ctx.ui({ action: "command", id }).catch(noWindow)),
+    text: (r, p) => !r?.ran ? `Sent ${p.id}.` : `Ran ${p.id}.${r.notices?.length ? ` The app then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`,
     did: ({ id }) => ({ action: "ui", text: `Ran the command ${id} in the app` }),
   }), defineOp({
     id: "ui.commands",
@@ -175,9 +176,9 @@ there now; with none, the ones in the app's source. filter keeps ids and names w
     },
     args: ["filter"],
     run: async ({ filter, available }, ctx) => {
-      let from = "window", rows: Any[]
+      let from = "window", rows: z.infer<typeof Commands>
       try {
-        rows = await ctx.ui({ action: "commands", timeout: 3 }) as Any[]
+        rows = Commands.parse(await ctx.ui({ action: "commands", timeout: 3 }))
       } catch (e) {
         if (!(e instanceof OpError) || ![409, 503, 504].includes(e.status)) throw e
         from = "source"
@@ -188,7 +189,7 @@ there now; with none, the ones in the app's source. filter keeps ids and names w
         .sort((a, b) => a.id.localeCompare(b.id))
       return { from, commands }
     },
-    text: (r) => (r.commands.length ? r.commands.map((c: Any) => `${c.id.padEnd(28)} ${c.name}${c.available === false ? "  (not now)" : ""}`).join("\n") : "No command matches.") +
+    text: (r) => (r.commands.length ? r.commands.map((c) => `${c.id.padEnd(28)} ${c.name}${c.available === false ? "  (not now)" : ""}`).join("\n") : "No command matches.") +
       (r.from === "source" ? "\n(from the app's source: no app window is open)" : ""),
   }), defineOp({
     id: "ui.notify",
@@ -253,22 +254,23 @@ id, or nothing.
       timeout: { type: "integer", minimum: 5, maximum: 600, default: 300, description: "seconds to wait for the user's pick" },
     },
     run: async ({ items, prompt, current, other, timeout }, ctx) => {
-      const list = chooseItems(items as unknown[])
+      const list = chooseItems(items)
       if (!list.length && !other) throw new OpError("`items` is empty: nothing to pick from (with `other`, it asks for text)")
       const at = current === undefined ? -1 : list.findIndex((it) => it.id === current || it.label === current)
-      const r = await ctx.ui({ action: "choose", prompt: prompt ?? null, timeout, other: !!other, current: at < 0 ? null : at,
+      const r = Picked.parse(await ctx.ui({ action: "choose", prompt: prompt ?? null, timeout, other: !!other, current: at < 0 ? null : at,
         items: list.map(({ label, detail, icon }) => ({ label, detail, icon })) }).catch(noWindow).catch((e: unknown) => {
         if (e instanceof OpError && e.status === 504) throw new OpError(`the user picked nothing within ${timeout} s`, 504)
         throw e
-      }) as { index?: unknown; typed?: unknown } | null
-      if (typeof r?.typed === "string" && other) return { picked: null, typed: r.typed }
-      const i = typeof r?.index === "number" ? r.index : -1
+      }))
+      if (r && r.typed !== null && other) return { picked: null, typed: r.typed }
+      const i = r?.index ?? -1
       return { picked: list[i] ? { index: i, ...list[i] } : null, typed: null }
     },
     text: (r) => r.picked?.id ?? r.typed ?? "",
   })]
 }
 
+const Choice = z.object({ id: z.unknown(), label: z.unknown(), detail: z.unknown(), icon: z.unknown() })
 type ChoiceItem = { id: string; label: string; detail?: string; icon?: string }
 function chooseItems(items: unknown[]): ChoiceItem[] {
   const text = (v: unknown, most: number) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, most) : "")
@@ -276,7 +278,7 @@ function chooseItems(items: unknown[]): ChoiceItem[] {
     if (typeof e === "string") return e.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => ({ id: l, label: l.slice(0, 300) }))
     if (typeof e === "number") return [{ id: String(e), label: String(e) }]
     if (!e || typeof e !== "object") return []
-    const o = e as Record<string, unknown>
+    const o = Choice.parse(e)
     const label = text(o.label ?? o.id, 300)
     if (!label) throw new OpError("each item needs a label (or an id)")
     const detail = text(o.detail, 120), icon = text(o.icon, 60)

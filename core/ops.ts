@@ -8,6 +8,7 @@ import { KNOWN_AGENTS } from "./terminalids.ts"
 import { isHiddenPath, isOutside } from "./fileprops.ts"
 import type { Item, Vault } from "./vault.ts"
 import { logger } from "./log.ts"
+import { isObj } from "./values.ts"
 
 const log = logger("ops")
 
@@ -59,10 +60,10 @@ export type Infer<S> = S extends { format: "json" } ? unknown
   : S extends { type: "object" } ? Item
   : unknown
 type Flat<T> = { -readonly [K in keyof T]: T[K] } & {}
-type ObjectOf<P, R> = Flat<{ [K in keyof P as K extends R ? K : never]: Infer<P[K]> } & { [K in keyof P as K extends R ? never : K]?: Infer<P[K]> }>
+type ObjectOf<P, R> = Flat<{ [K in keyof P as K extends R ? K : never]: Infer<P[K]> } & { [K in keyof P as K extends R ? never : K]?: Infer<Exclude<P[K], undefined>> }>
 type Given<P> = P extends { required: true } ? true : P extends { default: infer D } ? ([D] extends [undefined] ? false : true) : false
 /** An op's checked parameters: a required one or one with a default is always there. */
-export type ParamsOf<P> = Flat<{ [K in keyof P as Given<P[K]> extends true ? K : never]: Infer<P[K]> } & { [K in keyof P as Given<P[K]> extends true ? never : K]?: Infer<P[K]> }>
+export type ParamsOf<P> = Flat<{ [K in keyof P as Given<P[K]> extends true ? K : never]: Infer<P[K]> } & { [K in keyof P as Given<P[K]> extends true ? never : K]?: Infer<Exclude<P[K], undefined>> }>
 
 /** An op: its parameters' types read from `params`, its result's from what `run` returns (defineOp). */
 export type OpDef<P = Params, R = unknown> = {
@@ -112,9 +113,9 @@ export type OpDef<P = Params, R = unknown> = {
 
 /** Any op, as the catalog keeps them: its own types erased (a plugin's op until Plugin.op infers like defineOp). */
 export type Op = Omit<OpDef, "run" | "text" | "did" | "image"> & {
-  run(params: Any, ctx: OpCtx): unknown
-  text?(result: Any, params: Any, who?: Who): string
-  did?(params: Any): OpDid
+  run(params: Item, ctx: OpCtx): unknown
+  text?(result: Any, params: Item, who?: Who): string
+  did?(params: Item): OpDid
   image?(result: Any): OpImage | null
 }
 
@@ -243,9 +244,9 @@ function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } 
         if (t.startsWith("[")) { try { x = JSON.parse(t) } catch { return bad("isn't a valid JSON list") } }
         else x = !t ? [] : s.commas === false ? [t] : t.split(",").map((e) => e.trim()).filter(Boolean)
       }
-      if (!Array.isArray(x)) x = [x]
+      const list: unknown[] = Array.isArray(x) ? x : [x]
       const items: unknown[] = []
-      for (const [i, e] of (x as unknown[]).entries()) {
+      for (const [i, e] of list.entries()) {
         const r = s.items ? convert(`${name}[${i}]`, e, s.items) : { ok: true as const, v: e }
         if (!r.ok) return r
         items.push(r.v)
@@ -257,7 +258,7 @@ function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } 
       if (typeof x === "string") { try { x = JSON.parse(x) } catch { return bad("isn't a valid JSON object") } }
       if (!x || typeof x !== "object" || Array.isArray(x)) return bad(`should be an object, not ${typeName(x)}`)
       if (s.properties) {
-        const o: Item = { ...(x as Item) }
+        const o: Item = { ...x }
         for (const [k, ps] of Object.entries(s.properties)) {
           if (o[k] === undefined) continue
           const r = convert(`${name}.${k}`, o[k], ps)
@@ -279,14 +280,13 @@ function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } 
 /** An op's parameters checked and converted, with their defaults: the parameters, or an OpError naming every problem
  *  (unknown ones with the nearest name, missing ones, wrong types) and how to call it. */
 export function checkParams(op: Op, given: unknown): Item {
-  if (given !== undefined && given !== null && (typeof given !== "object" || Array.isArray(given))) {
-    throw new OpError(`${op.id} takes an object of its parameters, not ${typeName(given)}`)
-  }
+  const asked = given ?? {}
+  if (!isObj<Item>(asked)) throw new OpError(`${op.id} takes an object of its parameters, not ${typeName(given)}`)
   const params = op.params ?? {}
   const out: Item = {}
   const problems: string[] = []
   const extra: Item = {}
-  for (const [k, v] of Object.entries((given ?? {}) as Item)) {
+  for (const [k, v] of Object.entries(asked)) {
     if (v === undefined) continue
     const p = params[k]
     if (!p && op.rest) {

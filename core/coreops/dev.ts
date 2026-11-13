@@ -3,17 +3,26 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 import { defineOp, type Op, OpError, type OpCtx } from "../ops.ts"
-import type { Any } from "./common.ts"
 
 const OWNER = "the app's window"
 
+type DevAsk = { what: "screenshot"; selector: string | null } | { what: "dom"; selector: string; text: boolean; inner: boolean; attr: string | null; all: boolean }
+  | { what: "console"; limit: number; level: string | null; clear: boolean } | { what: "eval"; code: string }
+
 /** Ask the window focused last; no window open says what to do. */
-const ask = (ctx: OpCtx, what: string, params: Record<string, unknown>, timeout?: number) =>
-  ctx.ui({ action: "dev", what, ...params, ...(timeout ? { timeout } : {}) }).catch((e: unknown) => {
+const ask = (ctx: OpCtx, message: DevAsk, timeout?: number) =>
+  ctx.ui({ action: "dev", ...message, ...(timeout ? { timeout } : {}) }).catch((e: unknown) => {
     if (e instanceof OpError && e.status === 409 && /no app window/.test(e.message)) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
     throw e
   })
+
+/** What the window answers (web/src/core/dev.ts). */
+const Shot = z.object({ png: z.string(), width: z.number().nullish(), height: z.number().nullish() })
+const Dom = z.object({ selector: z.string(), count: z.number(), matches: z.array(z.string().nullable()) }).loose()
+const Logged = z.object({ entries: z.array(z.object({ t: z.number(), level: z.string(), text: z.string() }).loose()) }).loose()
+const Value = z.object({ value: z.unknown() }).loose()
 
 const time = (t: number) => new Date(t).toTimeString().slice(0, 8)
 
@@ -34,8 +43,9 @@ it with dev dom or dev eval there). selector captures one element. Saved on the 
       selector: { type: "string", description: "a CSS selector: capture only the first element it matches" },
     },
     run: async ({ out, selector }, ctx) => {
-      const r: Any = await ask(ctx, "screenshot", { selector: selector ?? null }, 30)
-      if (typeof r?.png !== "string") throw new OpError("the window sent no picture", 502)
+      const got = Shot.safeParse(await ask(ctx, { what: "screenshot", selector: selector ?? null }, 30))
+      if (!got.success) throw new OpError("the window sent no picture", 502)
+      const r = got.data
       const file = path.resolve(String(out ?? path.join(os.tmpdir(), `vaultite-screenshot-${Date.now()}.png`)).replace(/^~(?=\/|$)/, os.homedir()))
       fs.mkdirSync(path.dirname(file), { recursive: true })
       fs.writeFileSync(file, Buffer.from(r.png, "base64"))
@@ -62,8 +72,8 @@ its text or inner HTML, attr for one attribute; all for every match. Long HTML i
       all: { type: "boolean", description: "every match, not only the first" },
     },
     args: ["selector"],
-    run: ({ selector, text, inner, attr, all }, ctx) => ask(ctx, "dom", { selector, text: !!text, inner: !!inner, attr: attr ?? null, all: !!all }),
-    text: (r) => (r.count ? `${r.count} match${r.count === 1 ? "" : "es"}${r.matches.length < r.count ? ` (the first shown)` : ""}:\n\n${r.matches.map((m: unknown) => m ?? "(none)").join("\n\n")}` : `Nothing matches ${r.selector}.`),
+    run: async ({ selector, text, inner, attr, all }, ctx) => Dom.parse(await ask(ctx, { what: "dom", selector, text: !!text, inner: !!inner, attr: attr ?? null, all: !!all })),
+    text: (r) => (r.count ? `${r.count} match${r.count === 1 ? "" : "es"}${r.matches.length < r.count ? ` (the first shown)` : ""}:\n\n${r.matches.map((m) => m ?? "(none)").join("\n\n")}` : `Nothing matches ${r.selector}.`),
   }), defineOp({
     id: "dev.console",
     cli: "dev console",
@@ -81,8 +91,8 @@ after reading. The errors the app keeps across reloads are \`vau errors\`.
       level: { type: "string", enum: ["log", "info", "warn", "error", "debug"], description: "only this level" },
       clear: { type: "boolean", description: "forget them after reading" },
     },
-    run: ({ limit, level, clear }, ctx) => ask(ctx, "console", { limit, level: level ?? null, clear: !!clear }),
-    text: (r) => (r.entries.length ? r.entries.map((e: Any) => `${time(e.t)} ${e.level.padEnd(5)} ${e.text}`).join("\n") : "Nothing logged."),
+    run: async ({ limit, level, clear }, ctx) => Logged.parse(await ask(ctx, { what: "console", limit, level: level ?? null, clear: !!clear })),
+    text: (r) => (r.entries.length ? r.entries.map((e) => `${time(e.t)} ${e.level.padEnd(5)} ${e.text}`).join("\n") : "Nothing logged."),
   }), defineOp({
     id: "dev.eval",
     cli: "dev eval",
@@ -102,7 +112,7 @@ stdin: --code -.
       timeout: { type: "number", minimum: 1, maximum: 120, default: 10, description: "seconds to wait for its value" },
     },
     args: ["code"],
-    run: ({ code, timeout }, ctx) => ask(ctx, "eval", { code }, timeout),
+    run: async ({ code, timeout }, ctx) => Value.parse(await ask(ctx, { what: "eval", code }, timeout)),
     text: (r) => JSON.stringify(r.value, null, 2) ?? "null",
   })]
 }

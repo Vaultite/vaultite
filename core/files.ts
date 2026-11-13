@@ -95,7 +95,11 @@ function linksOf(e: Entry) {
 }
 
 
-function row(rel: string, e: Entry): Item {
+export type TreeRow = { path: string; mtime: number; ctime: number; size: number; archived?: boolean; excluded?: boolean; type?: string | null
+  kind?: string | null; title?: string; aliases?: string[]; problems?: number; tags?: string[]; blocks?: string[][]; icon?: string; tint?: string
+  plugin?: string; container?: string }
+
+function row(rel: string, e: Entry): TreeRow {
   const aliases = e.fm.aliases
   const look: Item = {}
   for (const k of ["icon", "tint", "plugin", "container"]) if (typeof e.fm[k] === "string") look[k] = e.fm[k]
@@ -112,10 +116,9 @@ function row(rel: string, e: Entry): Item {
   }
 }
 
-// Frozen: core/statepatch.ts serializes a frozen row once.
-const rows = new WeakMap<Entry, { row: Item; excluded?: Item }>()
-const otherRows = new WeakMap<object, Item>()
-type Tree = { files: Item[]; others: Item[]; folders: string[] }
+const rows = new WeakMap<Entry, { row: TreeRow; excluded?: TreeRow }>()
+const otherRows = new WeakMap<object, TreeRow>()
+type Tree = { files: TreeRow[]; others: TreeRow[]; folders: string[] }
 const trees = new WeakMap<object, { version: number; settings: number; pages: Plugin[]; tree: Tree }>()
 type Looks = (vault: Vault, rel: string, mtime: number) => Item
 
@@ -140,7 +143,7 @@ export function tree(vault: Vault): Tree {
   let hit = trees.get(vault)
   const pages = pagePlugins(vault)
   if (hit?.version !== vault.version || hit.settings !== vault.settingsVersion || hit.pages.length !== pages.length || hit.pages.some((p, i) => p !== pages[i])) {
-    const files: Item[] = [], others: Item[] = []
+    const files: TreeRow[] = [], others: TreeRow[] = []
     for (const rel of sortedKeys(vault, "entries")) {
       const e = vault.entries.get(rel)!
       let r = rows.get(e)
@@ -169,8 +172,8 @@ export function tree(vault: Vault): Tree {
   return { files: hit.tree.files, others: [...hit.tree.others, ...hf], folders: [...hit.tree.folders, ...hd].sort() }
 }
 
-function hiddenFiles(vault: Vault): [Item[], string[]] {
-  const files: Item[] = [], folders: string[] = []
+function hiddenFiles(vault: Vault): [TreeRow[], string[]] {
+  const files: TreeRow[] = [], folders: string[] = []
   const stack: [string, boolean][] = [["", false]]
   while (stack.length) {
     const [sub, inside] = stack.pop()!
@@ -214,6 +217,8 @@ function textOf(data: Buffer) {
     return null
   }
 }
+
+export type FileText = ReturnType<typeof read>
 
 function read(vault: Vault, rel: string) {
   let data: Buffer, st: fs.BigIntStats

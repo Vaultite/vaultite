@@ -42,11 +42,11 @@ values aren't of their type.
     params: { check: { type: "boolean", default: false, description: "also list the files whose values aren't of their type" } },
     run: ({ check }) => ({ types: listed(app), ...(check ? { problems: problems(app) } : {}) }),
     text: (r) => {
-      const ts = r.types as Listed[]
+      const ts = r.types
       const w = Math.max(4, ...ts.map((t) => t.key.length))
       const list = ts.length ? ts.map((t) => `${t.key.padEnd(w)}  ${t.type}${t.from === "other" ? "  (.obsidian/types.json)" : ""}`).join("\n") : "No types declared: each property is its value's type."
       if (!r.problems) return list
-      const bad = (r.problems as { path: string; notes: string[] }[]).map((p) => `- ${p.path}: ${p.notes.join("; ")}`)
+      const bad = r.problems.map((p) => `- ${p.path}: ${p.notes.join("; ")}`)
       return `${list}\n\n${bad.length ? `Not of their type:\n${bad.join("\n")}` : "Every value is of its type."}`
     },
   }), defineOp({

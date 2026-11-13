@@ -10,7 +10,8 @@ import { attachmentDir, unarchived } from "../fileprops.ts"
 import { filing } from "../filing.ts"
 import { localStamp, safeName } from "../vault.ts"
 import { fetchPublic } from "../web.ts"
-import { type Any, enc, serviceOn } from "./common.ts"
+import { serviceOn } from "./common.ts"
+import { readFile, saveFile } from "./routes.ts"
 
 const EXT: Record<string, string> = {
   "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif",
@@ -69,10 +70,10 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
       note: { type: "string", format: "path", description: "a note or log to embed it in, at its end (Logs/Nutrition/2026-10-04 Lunch.md)" },
     },
     run: async (p, ctx) => {
-      const { file, url, data, note } = p as { file?: Any; url?: string; data?: string; note?: string }
+      const { file, url, data, note } = p
       const given = [file, url, data, ctx.input].filter((x) => x !== undefined && x !== "").length
       if (given > 1) throw new OpError("give one of `file`, `url` or `data`")
-      const fileId = typeof file?.file_id === "string" ? file.file_id : ""
+      const fileId = file?.file_id ?? ""
       const again = fileId && saved.get(fileId)
       if (again && again.until > Date.now()) return { path: again.path, again: true, embed: embedOf(again.path) }
       if (!given) {
@@ -81,7 +82,6 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
         if (!made) throw new OpError("give the file: `file`, `url`, or `data` (base64)")
         return { link: made.url, expires: made.expires, note: note ?? null }
       }
-      // A file that isn't in memory (sent as it is, or downloaded) waits in a folder of its own until it's saved.
       const dir = data === undefined ? fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-upload-")) : null
       try {
         let bytes: Buffer | string, type = "", from = ""
@@ -91,10 +91,10 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
           await pipeline(ctx.input, fs.createWriteStream(bytes))
         } else {
           const src = url ?? file?.download_url
-          if (typeof src !== "string" || !src) throw new OpError("file has no download_url")
+          if (!src) throw new OpError("file has no download_url")
           bytes = path.join(dir!, "file")
           let got
-          try { got = await fetchPublic(src, { to: bytes, timeout: 30_000, types: /./ }) } catch (e) { throw new OpError(`couldn't download it: ${(e as Error).message}`) }
+          try { got = await fetchPublic(src, { to: bytes, timeout: 30_000, types: /./ }) } catch (e) { throw new OpError(`couldn't download it: ${e instanceof Error ? e.message : String(e)}`) }
           if (got.status < 200 || got.status >= 300) throw new OpError(`couldn't download it: ${got.status}`)
           if (got.cut) throw new OpError("couldn't download it: it stopped coming")
           type = got.type.split(";")[0].trim()
@@ -103,7 +103,7 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
         const head = typeof bytes === "string" ? headOf(bytes) : bytes
         if (!head.length) throw new OpError("the file is empty")
         const named = String(p.name ?? file?.file_name ?? "").trim() || decodeURIComponent(path.posix.basename(from)) || ""
-        const mime = sniff(head) || (typeof file?.mime_type === "string" ? file.mime_type : "") || type
+        const mime = sniff(head) || file?.mime_type || type
         const out = await save(app, ctx, typeof bytes === "string" ? fs.createReadStream(bytes) : bytes, named, mime, p.folder, note)
         if (fileId) {
           for (const [k, v] of saved) if (v.until < Date.now()) saved.delete(k)
@@ -138,13 +138,11 @@ async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named: strin
   let name = safeName(stem) + (path.posix.extname(named) || (ext ? `.${ext}` : ""))
   if (!/\.[a-z0-9]+$/i.test(name) && !ext) name = `${name}.bin`
   const dir = folder !== undefined ? String(folder).replace(/^\/+|\/+$/g, "") : attachmentDir(filing(app.vault).attachments, unarchived(note ?? ""))
-  const f = note ? await ctx.api("GET", `file?path=${enc(note)}`) : null // (before saving: a wrong note saves nothing)
+  const f = note ? await readFile(ctx, note) : null // (before saving: a wrong note saves nothing)
   if (dir) await ctx.api("POST", "folder", { path: dir }).catch(() => {}) // (there already: fine)
-  const { path: rel } = await ctx.api("POST", "upload/name", { folder: dir, name })
+  const free: { path: string } = await ctx.api("POST", "upload/name", { folder: dir, name })
+  const rel = free.path
   await ctx.api("POST", "upload", { path: rel, bytes })
-  if (f) {
-    const text = String(f.text ?? "")
-    await ctx.api("PUT", "file", { path: f.path ?? note, text: `${text.replace(/\s*$/, "")}\n\n${embedOf(rel)}\n`, base: text })
-  }
+  if (f) await saveFile(ctx, { path: f.path, text: `${f.text.replace(/\s*$/, "")}\n\n${embedOf(rel)}\n`, base: f.text })
   return { path: rel, bytes: fs.statSync(app.vault.abs(rel)).size, type: mime || null, embed: embedOf(rel), note: note ?? null }
 }

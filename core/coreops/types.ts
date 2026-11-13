@@ -6,7 +6,7 @@ import { unarchived } from "../fileprops.ts"
 import { defineOp, type Op, OpError } from "../ops.ts"
 import { dirOf, type Entry, type Kind, readText, stemOf, writeAtomic } from "../vault.ts"
 import { FM, setPropertyText } from "../frontmatter.ts"
-import { type Any, enc } from "./common.ts"
+import { readFile, saveFile } from "./routes.ts"
 
 type Group = { folder: string; type: string; files: string[] }
 
@@ -100,24 +100,24 @@ until --apply.
       if (apply) {
         for (const g of groups) {
           for (const path of g.files) {
-            const before = String(((await ctx.api("GET", `file?path=${enc(path)}`)) as Any)?.text ?? "")
+            const before = (await readFile(ctx, path)).text
             const typed = setPropertyText(before, "type", g.type)
             if (typed === null) { failed.push({ path, why: "its frontmatter can't be changed line by line" }); continue }
             // (and its kind's blocks, as a new file of that kind has them)
             const k = app.vault.kinds.find((x) => x.type === g.type)
             const text = (k && fenced(typed, k.blocksFor({ ...app.vault.entries.get(path)?.fm, type: g.type }))) ?? typed
-            try { await ctx.api("PUT", "file", { path, text, base: before }); written++ } catch (e) { failed.push({ path, why: (e as Error).message }) }
+            try { await saveFile(ctx, { path, text, base: before }); written++ } catch (e) { failed.push({ path, why: e instanceof Error ? e.message : String(e) }) }
           }
         }
       }
       return { apply: !!apply, groups, written, failed }
     },
     text: (r) => {
-      const n = r.groups.reduce((a: number, g: Group) => a + g.files.length, 0)
+      const n = r.groups.reduce((a, g) => a + g.files.length, 0)
       if (!n) return "Every Markdown file there has a type (or isn't in a folder named like a kind's)."
-      const list = r.groups.map((g: Group) => `${g.folder || "(top)"}/: type: ${g.type}\n${g.files.map((f) => `- ${f}`).join("\n")}`).join("\n\n")
+      const list = r.groups.map((g) => `${g.folder || "(top)"}/: type: ${g.type}\n${g.files.map((f) => `- ${f}`).join("\n")}`).join("\n\n")
       if (!r.apply) return `${n} file${n === 1 ? "" : "s"} without a type, so plain notes for now:\n\n${list}\n\nWith --apply each gets its line.`
-      const bad = r.failed.map((f: Any) => `- ${f.path}: ${f.why}`).join("\n")
+      const bad = r.failed.map((f) => `- ${f.path}: ${f.why}`).join("\n")
       return `Gave ${r.written} file${r.written === 1 ? "" : "s"} a type.${bad ? `\n\nNot changed:\n${bad}` : ""}`
     },
   }), defineOp({
@@ -165,9 +165,9 @@ It only lists them until --apply; with a folder, only the files under it.
       return { apply: !!apply, files, failed }
     },
     text: (r) => {
-      const bad = r.failed.map((f: Any) => `- ${f.path}: ${f.why}`).join("\n")
+      const bad = r.failed.map((f) => `- ${f.path}: ${f.why}`).join("\n")
       if (!r.files.length) return `Every file is up to date.${bad ? `\n\nNot changed:\n${bad}` : ""}`
-      const n = r.files.length, rows = r.files.map((f: Any) => `- ${f.path}: ${[f.blocks.length ? `blocks ${f.blocks.join(", ")}` : "",
+      const n = r.files.length, rows = r.files.map((f) => `- ${f.path}: ${[f.blocks.length ? `blocks ${f.blocks.join(", ")}` : "",
         f.aliases.length ? `aliases ${f.aliases.join(", ")}` : ""].filter(Boolean).join("; ")}`).join("\n")
       return `${r.apply ? "Changed" : "Would change"} ${n} file${n === 1 ? "" : "s"}:\n${rows}${r.apply ? "" : "\n\nWith --apply they're written."}${bad ? `\n\nNot changed:\n${bad}` : ""}`
     },

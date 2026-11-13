@@ -1,6 +1,6 @@
 // app.version: what this server runs and what its updates (core/selfupdate.ts, or the desktop app's) are doing; given a
 // commit, whether it's live, waiting for it when asked. Another machine's through this one.
-import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
+import { MACHINE_CLIENT } from "../plugins.ts"
 import { defineOp, type Op, OpError, type OpCtx, restarting } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
 import { z } from "zod"
@@ -9,6 +9,7 @@ import { ambiguousCommit, contains, isHash, type PartRuns, processes, resolveCom
 import { updateStatus } from "../update/updater.ts"
 import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
+import { machinesOf } from "./routes.ts"
 
 const short = (sha: unknown) => String(sha).slice(0, 7)
 type Part = NonNullable<Verdict["behind"]>["part"]
@@ -92,7 +93,7 @@ const Refusal = z.object({ error: z.string() })
 type Asked = { commit?: string; wait?: true; timeout?: number; waited?: number }
 async function elsewhere(ctx: OpCtx, id: string, body: Asked): Promise<Version | null> {
   if (ctx.who.client?.startsWith("machine/")) throw new OpError("a call passed on from another machine runs where it's sent", 409)
-  const all = await ctx.api("GET", "machines").catch(() => []) as Machine[]
+  const all = await machinesOf(ctx)
   const m = all.find((x) => x.id === id)
   if (!m) throw new OpError(`no machine '${id}' (\`machine\`: Machines lists them)`, 404)
   if (m.self) return null
@@ -160,7 +161,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
     },
     args: ["commit"],
     run: async ({ commit, wait, timeout, waited, machine }, ctx): Promise<Version> => {
-      const given = typeof commit === "string" ? commit.trim() : ""
+      const given = commit?.trim() ?? ""
       if (wait && !given) throw new OpError("wait for which commit? give it (`commit`)")
       // (an older vau sends HEAD or a branch as typed: this server would read it in its own checkout)
       if (given && !isHash(given)) throw new OpError(`\`commit\` is a commit's hash, full or short, not a name like ${given}: names are read where you are, so give its hash (git rev-parse ${given}), or use a current vau, which does`)

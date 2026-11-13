@@ -1,11 +1,19 @@
 // app.permissions (`vau permissions`): whether the app and its terminals can read the vault now, and, in the desktop app
 // on a Mac, macOS's privacy permissions and how the app is signed (Settings > Permissions shows the same).
 import fs from "node:fs"
+import { z } from "zod"
 import type { App } from "../app.ts"
 import { inDesktop, desktopCall } from "../desktopapp.ts"
 import { defineOp, type Op } from "../ops.ts"
 import { accessOf, keepsPermissions, signingText, stateText, type Access, type PermissionReport } from "../permissions.ts"
 import { serviceOn } from "./common.ts"
+
+/** What the desktop app answers app:permissions with (electron/permissions.ts). */
+const Mac = z.object({
+  signing: z.object({ kind: z.enum(["developer-id", "development", "adhoc", "unsigned", "source", "unknown"]), authority: z.string().optional(), team: z.string().optional(), id: z.string().optional() }).loose(),
+  permissions: z.array(z.object({ id: z.string(), name: z.string(), use: z.string(), kind: z.enum(["prompt", "list", "on-use"]), pane: z.string(),
+    state: z.enum(["allowed", "denied", "not-asked", "unknown"]), action: z.enum(["ask", "drag", "check", "settings", "none"]), fix: z.string().optional(), note: z.string().optional() }).loose()),
+}).nullable() satisfies z.ZodType<PermissionReport["mac"]>
 
 const line = (a: Access) => (a.ok ? "can read it" : a.ok === false ? `can't read it: ${a.why}` : `unknown: ${a.why}`)
 
@@ -27,8 +35,8 @@ without asking) and how the app is signed: ad hoc, macOS asks for every permissi
       const dir = app.vault.path
       const own = await fs.promises.readdir(dir).then((): Access => ({ ok: true }), (e: NodeJS.ErrnoException) => accessOf(e.code ?? "EIO"))
       const ask = serviceOn(app, "terminal:access")
-      const terminals: Access = ask ? await (ask(dir) as Promise<Access>).catch((e: Error) => ({ ok: null, why: e.message })) : { ok: null, why: "the terminal is off" }
-      const mac = inDesktop() ? (await desktopCall("app:permissions", [], 15_000)) as PermissionReport["mac"] : null
+      const terminals: Access = ask ? await ask(dir).catch((e: Error) => ({ ok: null, why: e.message })) : { ok: null, why: "the terminal is off" }
+      const mac = inDesktop() ? Mac.parse(await desktopCall("app:permissions", [], 15_000)) : null
       return { vault: { path: dir, app: own, terminals }, mac }
     },
     text: (r: PermissionReport) => [

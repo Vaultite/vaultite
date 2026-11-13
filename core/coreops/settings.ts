@@ -5,7 +5,8 @@ import type { App } from "../app.ts"
 import { commandList, pageIcons, schemes } from "../appsource.ts"
 import { closest, COMMON, optionText } from "../blocks.ts"
 import { defineOp, jsonBlock, type Op, OpError } from "../ops.ts"
-import { type Any, lines } from "./common.ts"
+import { lines } from "./common.ts"
+import type { Item } from "../vault.ts"
 import { strings } from "../values.ts"
 import { pluginList } from "./plugins.ts"
 
@@ -89,7 +90,9 @@ const APPEARANCE: Record<string, Setting> = {
   lineNumbers: { about: "true or false: line numbers beside a file's text while editing it (code files always have them)", parse: bool("lineNumbers") },
 }
 
-const showLook = (o: Any) => lines(Object.entries(o).map(([k, v]) => `${k}: ${JSON.stringify(v)}`), "(all defaults)")
+type HotkeyRow = { id: string; name: string; keys: string[]; changed: boolean; defaults: string[]; note?: string }
+
+const showLook = (o: Item) => lines(Object.entries(o).map(([k, v]) => `${k}: ${JSON.stringify(v)}`), "(all defaults)")
 
 // ---------- hotkeys ----------
 
@@ -217,7 +220,7 @@ parses, else text). There's no font size setting: ⌘+ and ⌘- (Ctrl off a Mac)
       }
       return { appearance: app.vault.patchConfig("appearance", { [key]: parsed }) }
     },
-    text: (r) => ("appearance" in r ? showLook(r.appearance) : r.value === null ? `${r.key}: (default)` : `${r.key}: ${JSON.stringify(r.value)}`),
+    text: (r) => (r.appearance ? showLook(r.appearance) : r.value === null ? `${r.key}: (default)` : `${r.key}: ${JSON.stringify(r.value)}`),
   }), defineOp({
     id: "hotkey.list",
     cli: "hotkeys",
@@ -233,14 +236,13 @@ so commands made while it runs (one per view) aren't in it. Without all, only co
     params: { all: { type: "boolean", description: "every command, also those without keys" } },
     run: () => {
       const cmds = commandList(vaultPlugins())
-      // (an Obsidian vault's hotkeys.json under the vault's own: plugins/core/other-apps)
       const over = app.vault.config("hotkeys"), seeded = app.vault.configWithDefaults("hotkeys")
-      const rows: Any[] = cmds.map((x) => ({ ...x, keys: x.id in seeded ? strings(seeded[x.id]) : x.keys, changed: x.id in over, defaults: x.keys,
+      const rows: HotkeyRow[] = cmds.map((x) => ({ ...x, keys: x.id in seeded ? strings(seeded[x.id]) : x.keys, changed: x.id in over, defaults: x.keys,
         ...(!(x.id in over) && x.id in seeded ? { note: [x.note, "Obsidian's keys"].filter(Boolean).join(", ") } : {}) }))
       for (const id of Object.keys(over)) if (!cmds.some((x) => x.id === id)) rows.push({ id, name: "(not in the app's source)", keys: strings(over[id]), changed: true, defaults: [] })
       return rows
     },
-    text: (rows: Any[], p) => (p.all ? rows : rows.filter((r) => r.keys.length || r.changed))
+    text: (rows, p) => (p.all ? rows : rows.filter((r) => r.keys.length || r.changed))
       .map((r) => `${r.id.padEnd(24)} ${(r.keys.join(", ") || "-").padEnd(22)} ${r.name}${r.changed ? "  (changed)" : ""}${r.note ? `  (${r.note})` : ""}`).join("\n") +
       (p.all ? "" : "\n(vau hotkeys --all lists every command)"),
   }), defineOp({
@@ -289,7 +291,7 @@ and after its text in vau render. See them all, written as a page: vau docs desi
     params: { name: { type: "string", description: "one block's name (query): its options" } },
     args: ["name"],
     run: ({ name }) => {
-      const bs = app.blocks().blocks as Any[]
+      const bs = app.blocks().blocks
       if (!name) return bs
       const b = bs.find((x) => x.name === name)
       if (!b) {
@@ -300,7 +302,7 @@ and after its text in vau render. See them all, written as a page: vau docs desi
     },
     text: (r) => {
       if (!Array.isArray(r)) {
-        const opts = Object.entries(r.options as Record<string, Any>)
+        const opts = Object.entries(r.options)
         return [`${r.name} (${r.pluginName}${r.on ? "" : ", off"}): ${r.description || "not declared in its manifest.json"}`,
           opts.length ? `Options:\n${opts.map(([k, d]) => `  ${optionText(k, d).replace(/`/g, "")}`).join("\n")}` : "No options of its own.",
           `Every block also takes: ${Object.keys(COMMON).join(", ")}.`].join("\n")

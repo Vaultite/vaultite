@@ -4,6 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { z } from "zod"
 import { catalogOf, type OpEntry } from "./contracts/ops.ts"
 import { camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
 import { distance } from "./blocks.ts"
@@ -11,6 +12,7 @@ import { EVENT_TYPES } from "./events.ts"
 import { gitEnv } from "./gitenv.ts"
 import { servingOf } from "./serving.ts"
 import { TEST_HEADER, inTestRun, testRunId } from "./testrun.ts"
+import { isObj } from "./values.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
@@ -66,7 +68,7 @@ export class CliError extends Error {
 }
 
 export const done = (data: unknown, text: string): Result => ({ data, text })
-export const flag = (a: Args, k: string) => (typeof a.flags[k] === "string" ? a.flags[k] as string : undefined)
+export const flag = (a: Args, k: string) => { const v = a.flags[k]; return typeof v === "string" ? v : undefined }
 export const need = (v: string | undefined, what: string, usage: string) => {
   if (!v) throw new CliError(`${what} is missing. Usage: ${usage}`, true)
   return v
@@ -76,7 +78,7 @@ function parseJson(s: string): Any {
   try {
     return JSON.parse(s)
   } catch (e) {
-    throw new CliError(`that isn't JSON (${(e as Error).message})`)
+    throw new CliError(`that isn't JSON (${e instanceof Error ? e.message : String(e)})`)
   }
 }
 
@@ -179,7 +181,7 @@ export class Ctx {
       } catch (e) {
         // Nothing listening: the next server that may be, and it's the one from then on (only then: a request that
         // failed on its way may have been done, and must not be done again elsewhere).
-        const refused = (e as NodeJS.ErrnoException).code === "ECONNREFUSED"
+        const refused = e instanceof Error && "code" in e && e.code === "ECONNREFUSED"
         if (refused && !this.next.length && this.comingBack()) { await new Promise((ok) => setTimeout(ok, 500)); continue }
         if (!this.next.length || !refused) { this.next = []; throw Object.assign(new CliError(this.down()), { refused }) }
         this.url = this.next.shift()!
@@ -272,7 +274,7 @@ export class Ctx {
 
   private answer(r: { status: number; body: unknown }, route: string): Any {
     if (r.status >= 400) {
-      const msg = (r.body && typeof r.body === "object" && "error" in r.body ? (r.body as Obj).error : String(r.body).slice(0, 300)) || `the server answered ${r.status}, with no reason`
+      const msg = (isObj(r.body) && "error" in r.body ? r.body.error : String(r.body).slice(0, 300)) || `the server answered ${r.status}, with no reason`
       if (r.status === 404 && msg === "not found") throw new CliError(`the server has no /api/${route.split("?")[0]} (an older version? restart it)`)
       throw new CliError(String(msg))
     }
@@ -524,7 +526,7 @@ const LOCAL: Record<string, Local> = {
       if (fs.existsSync(from) && fs.statSync(from).isDirectory()) {
         const files: Record<string, string | { base64: string }> = {}
         const utf8 = new TextDecoder("utf-8", { fatal: true })
-        for (const rel of fs.readdirSync(from, { recursive: true }) as string[]) {
+        for (const rel of fs.readdirSync(from, { recursive: true, encoding: "utf8" })) {
           const full = path.join(from, rel)
           if (!fs.statSync(full).isFile() || rel.split(path.sep).some((x) => x.startsWith("."))) continue
           // (a file that isn't text, an image or a font, as its bytes: the export's form)
@@ -563,7 +565,7 @@ function loadPlugins(): Promise<Command[]> {
       try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => path.join(d, e.name)).sort() } catch { return [] }
     }
     const dirs = subdirs(path.join(ROOT, "plugins", "core")).filter((d) => fs.existsSync(path.join(d, "cli.ts")))
-    const mods = await Promise.all(dirs.map(async (d) => (await import(pathToFileURL(path.join(d, "cli.ts")).href)).cli as PluginCli | undefined))
+    const mods = await Promise.all(dirs.map(async (d) => { const m: { cli?: PluginCli } = await import(pathToFileURL(path.join(d, "cli.ts")).href); return m.cli }))
     const commands = [...COMMANDS]
     for (const m of mods) for (const [id, l] of Object.entries(m?.ops ?? {})) pluginLocal.set(id, l)
     for (const c of mods.flatMap((m) => m?.commands ?? [])) {
@@ -667,7 +669,7 @@ async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
     throw e
   }
   // (refused, not missing: say why, e.g. a test run's call to the user's own server)
-  if (r.status === 403) throw new CliError(String((r.body as Obj | null)?.error ?? "the server refused"))
+  if (r.status === 403) throw new CliError(String((isObj(r.body) ? r.body.error : undefined) ?? "the server refused"))
   return r.status === 200 ? catalogOf(r.body) : null
 }
 
@@ -724,19 +726,27 @@ function listOf(r: unknown): unknown[] | null {
   return null
 }
 
+/** What --paths reads of a listed thing, and of the vault's files (GET /api/files). */
+const OptionalText = z.string().optional().catch(undefined)
+const Named = z.object({ path: OptionalText, file: OptionalText, id: OptionalText }).catch({})
+const Rows = z.array(z.looseObject({ path: z.unknown() })).optional().catch([]).transform((x) => x ?? [])
+const Tree = z.object({ files: Rows, others: Rows }).catch({ files: [], others: [] })
+const Failure = z.object({ problems: z.array(z.string()).optional().catch(undefined) }).catch({})
+const Both = z.object({ result: z.unknown(), text: z.unknown() }).partial().catch({})
+
 /** An answer as --count or --paths print it: the number of items its list has, or each one's vault path on a line. */
 async function listed(r: unknown, how: Shape, c: Ctx): Promise<string> {
   const rows = listOf(r)
   if (!rows) throw new CliError(`${how.count ? "--count" : "--paths"} reads a list, and this command's answer isn't one (see it with --json)`)
   if (how.count) return String(rows.length)
   // An item's path, file, or id (a vault path without .md: kept when it's a file of the vault).
-  let tree: Set<string> | null = null
+  let tree: Set<unknown> | null = null
   const out: string[] = []
   for (const x of rows) {
-    const o = (x && typeof x === "object" ? x : {}) as Obj
-    let p = typeof x === "string" ? x : typeof o.path === "string" ? o.path : typeof o.file === "string" ? o.file : null
-    if (p === null && typeof o.id === "string") {
-      if (!tree) { const t = await c.call("GET", "files").catch(() => ({})); tree = new Set([...(t.files ?? []), ...(t.others ?? [])].map((f: Obj) => f.path)) }
+    const o = Named.parse(x)
+    let p = typeof x === "string" ? x : o.path ?? o.file ?? null
+    if (p === null && o.id !== undefined) {
+      if (!tree) { const t = Tree.parse(await c.call("GET", "files").catch(() => ({}))); tree = new Set([...t.files, ...t.others].map((f) => f.path)) }
       p = tree.has(`${o.id}.md`) ? `${o.id}.md` : tree.has(o.id) ? o.id : null
     }
     if (p === null) throw new CliError("--paths: this command's answer lists things that aren't files (see it with --json)")
@@ -785,13 +795,14 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
     throw failed ?? new CliError(why)
   }
   if (r.status >= 400) {
-    const b = r.body as Obj
-    const reason = String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, "") || `the server answered ${r.status}, with no reason`
-    const said = cliError(e, reason, Array.isArray(b?.problems) ? b.problems as string[] : [])
+    const b = r.body, { problems } = Failure.parse(b)
+    const reason = String(isObj(b) && "error" in b ? b.error : b).replace(`${e.id}: `, "") || `the server answered ${r.status}, with no reason`
+    const said = cliError(e, reason, problems ?? [])
     // (a 400 with problems is the parameters' check: the command line was wrong)
-    throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && Array.isArray(b?.problems))
+    throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && !!problems)
   }
-  const result = both ? (r.body as Obj)?.result : r.body, text = both ? (r.body as Obj)?.text : r.body
+  const shown = both ? Both.parse(r.body) : null
+  const result = shown ? shown.result : r.body, text = shown ? shown.text : r.body
   const code = loc.code?.(result) ?? 0
   if (out) return { out: loc.out!(result, params, given.extra), code }
   if (list) return { out: await listed(result, how, c), code }
@@ -885,7 +896,7 @@ export async function toClipboard(text: string, platform: string = process.platf
   const { spawn } = await import("node:child_process")
   for (const [cmd, ...args] of tools) {
     const ok = await new Promise<boolean>((resolve) => {
-      const p = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], env: env as NodeJS.ProcessEnv, windowsHide: true })
+      const p = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], env, windowsHide: true })
       p.on("error", () => resolve(false))
       p.on("close", (code) => resolve(code === 0))
       p.stdin.on("error", () => {})

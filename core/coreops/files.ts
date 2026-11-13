@@ -2,8 +2,9 @@
 import { actionsFor } from "../actions.ts"
 import { keepExt } from "../filetypes.ts"
 import type { App } from "../app.ts"
+import { tree } from "../files.ts"
 import { defineOp, type Op, OpError, type Who, type Param } from "../ops.ts"
-import { type Any, enc } from "./common.ts"
+import { moveFile, readFile, renderFile, saveFile, searchFiles } from "./routes.ts"
 
 /** How much of a file an MCP answer carries (an agent's context is precious; vau prints it whole): more is a page. */
 const MAX_TEXT = 100_000
@@ -59,7 +60,7 @@ Today) or "how's my week". Saves nothing. A name works too ("Today", "Alice Park
     params: { path: PATH, ...PAGE },
     args: ["path"],
     run: async ({ path, offset, limit }, ctx) => {
-      const p = linesOf(String(await ctx.api("GET", `render?path=${enc(path)}`)), offset, limit)
+      const p = linesOf(await renderFile(ctx, path), offset, limit)
       return { path, text: p.text, from: p.from, to: p.to, lines: p.total }
     },
     text: (r, _p, who) => {
@@ -95,18 +96,17 @@ file:, path:, content:, tag:#x, line:(a b), block:(a b), section:(a b), task:, t
     run: async ({ query, folder, limit, offset, lines, sort, case: matchCase }, ctx) => {
       const q = String(query).trim()
       if (!q) throw new OpError("query is missing: what to search for")
-      // (one more than asked: whether there's a next page)
       const p = new URLSearchParams({ q, limit: String(limit + 1), offset: String(offset), lines: String(lines) })
       if (folder) p.set("folder", folder)
       if (sort) p.set("sort", sort)
       if (matchCase) p.set("case", "1")
-      const hits = await ctx.api("GET", `search?${p}`) as Any[]
+      const hits = await searchFiles(ctx, p)
       return { offset, hits: hits.slice(0, limit), ...(hits.length > limit ? { next: offset + limit } : {}) }
     },
     text: (r, p) => {
       if (!r.hits.length) return r.offset ? `No more matches for ${JSON.stringify(String(p.query).trim())} past ${r.offset}.` : `No matches for ${JSON.stringify(String(p.query).trim())}.`
-      const out = (r.hits as Any[]).map((h) => {
-        const ms = (h.matches as Any[] | undefined) ?? []
+      const out = r.hits.map((h) => {
+        const ms = h.matches ?? []
         const head = `- ${h.path}${h.title && !String(h.path).endsWith(`${h.title}.md`) ? ` (${h.title})` : ""}${!ms.length && h.context ? `: ${h.context}` : ""}`
         const more = (h.count ?? 0) - ms.filter((m) => !m.ctx).length
         return [head, ...ms.map((m) => `  - line ${m.line}: ${String(m.text).trim()}`), ...(more > 0 && ms.length ? [`  - (${more} more matching lines: lines up to 50, or read the file)`] : [])].join("\n")
@@ -128,13 +128,12 @@ blocks filled in, use vau render. Over MCP the answer starts with the file's pat
     params: { path: PATH, ...PAGE },
     args: ["path"],
     run: async ({ path, offset, limit }, ctx) => {
-      const f = await ctx.api("GET", `file?path=${enc(path)}`)
-      const p = linesOf(String(f.text ?? ""), offset, limit)
+      const f = await readFile(ctx, path)
+      const p = linesOf(f.text, offset, limit)
       return { ...f, text: p.text, from: p.from, to: p.to, lines: p.total }
     },
-    // vau prints the text exactly (`vau read x > a`, then `vau write x --base a`); an MCP client gets which file it is.
     text: (f, _p, who) => {
-      const out = paged({ text: String(f.text ?? ""), from: f.from, to: f.to, total: f.lines }, who, mcp(who) ? EDIT : "; to change it: vau edit, or vau write with --base")
+      const out = paged({ text: f.text, from: f.from, to: f.to, total: f.lines }, who, mcp(who) ? EDIT : "; to change it: vau edit, or vau write with --base")
       return mcp(who) ? `${f.path}\n\n${out}` : out === f.text ? out.replace(/\n$/, "") : out
     },
   }), defineOp({
@@ -160,15 +159,14 @@ From vau, the text comes from --from <file> or stdin, and --base <file> is the f
     args: ["path"],
     run: async ({ path, text, base }, ctx) => {
       const p = String(path).replace(/^\/+/, "")
-      // A page of a file written back whole would drop the rest: a page's note, or a file too long for one answer.
       const keep = "use edit_file (vau edit) for the change, or pass base: the text you read, so the rest is kept"
       if (base === undefined && PAGE_NOTE.test(String(text))) throw new OpError(`\`text\` ends with read's note on a page of ${p}: writing it would drop the rest of the file; ${keep}`)
       if (base === undefined && mcp(ctx.who)) {
-        const cur = await ctx.api("GET", `file?path=${enc(p)}`).catch(() => null)
-        if (typeof cur?.text === "string" && cur.text.length > MAX_TEXT) throw new OpError(`${p} is longer than one read (${cur.text.length} characters): ${keep}`)
+        const cur = await readFile(ctx, p).catch(() => null)
+        if (cur && cur.text.length > MAX_TEXT) throw new OpError(`${p} is longer than one read (${cur.text.length} characters): ${keep}`)
       }
       try {
-        await ctx.api("PUT", "file", { path: p, text, ...(base !== undefined ? { base } : {}) })
+        await saveFile(ctx, { path: p, text, base })
       } catch (e) {
         if (e instanceof OpError && e.status === 409) throw new OpError(`${p} changed on disk in the same lines: read it again and redo your change`, 409)
         throw e
@@ -197,15 +195,15 @@ every time. A change made meanwhile elsewhere in the file is kept.
     },
     args: ["path"],
     run: async ({ path, old, new: by, all }, ctx) => {
-      const f = await ctx.api("GET", `file?path=${enc(path)}`)
-      const cur = String(f.text ?? ""), from = String(old)
+      const f = await readFile(ctx, path)
+      const cur = f.text, from = String(old)
       if (!from) throw new OpError("`old` is empty: give the text to replace")
       const n = cur.split(from).length - 1
       if (!n) throw new OpError(`\`old\` isn't in ${f.path}: read it again (it may have changed) and copy the text exactly`)
       if (n > 1 && !all) throw new OpError(`\`old\` is in ${f.path} ${n} times: give more text around it so it's found once, or set \`all\``)
       const text = all ? cur.split(from).join(String(by)) : cur.replace(from, () => String(by))
       try {
-        await ctx.api("PUT", "file", { path: f.path, text, base: cur })
+        await saveFile(ctx, { path: f.path, text, base: cur })
       } catch (e) {
         if (e instanceof OpError && e.status === 409) throw new OpError(`${f.path} changed on disk in the same lines: read it again and redo your change`, 409)
         throw e
@@ -230,10 +228,10 @@ Markdown link to what moved is pointed at its new path, and open tabs follow it.
     args: ["from", "to"],
     run: async ({ from, to }, ctx) => {
       const f = String(from).replace(/^\/+/, ""), t = String(to).replace(/^\/+|\/+$/g, "")
-      const file = ctx.vault.entries.has(f) || ctx.vault.others.has(f) // (a folder's name has no extension)
-      return await ctx.api("POST", "file/move", { from: f, to: file ? keepExt(f, t) : t })
+      const file = ctx.vault.entries.has(f) || ctx.vault.others.has(f)
+      return await moveFile(ctx, f, file ? keepExt(f, t) : t)
     },
-    text: (r) => `Moved to ${r.path}${r.updated?.length ? `; links updated in ${r.updated.join(", ")}` : ""}.`,
+    text: (r) => `Moved to ${r.path}${r.updated.length ? `; links updated in ${r.updated.join(", ")}` : ""}.`,
   }), defineOp({
     id: "file.actions",
     cli: "actions",
@@ -248,15 +246,15 @@ give. The app's menus show the same list. Run one with the op's id (vau <id>, th
     params: { path: PATH },
     args: ["path"],
     run: async ({ path }, ctx) => {
-      const t = await ctx.api("GET", "files") as Any
-      const f = [...(t.files ?? []), ...(t.others ?? [])].find((x: Any) => x.path === path)
+      const t = tree(ctx.vault)
+      const f = [...t.files, ...t.others].find((x) => x.path === path)
       if (!f) throw new OpError(`no file '${path}' (vau files lists them)`, 404)
       const file = { path, type: f.type ?? null, archived: !!f.archived }
       return { ...file, actions: actionsFor(app.catalog(), file).map(({ entry: _, menu: _m, ...a }) => a) }
     },
     text: (r) => {
       if (!r.actions.length) return `Nothing acts on ${r.path}${r.type ? ` (${r.type})` : ""} yet.`
-      return r.actions.map((a: Any) => {
+      return r.actions.map((a) => {
         const given = Object.entries(a.params).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ")
         return `- ${a.label}: ${a.op} ${given}${a.needs.length ? `, needs ${a.needs.join(", ")}` : ""}`
       }).join("\n")
@@ -281,17 +279,17 @@ the start of paths ("Dash").
     },
     args: ["folder"],
     run: async ({ folder, limit, offset }, ctx) => {
-      const t = await ctx.api("GET", "files") as Any
+      const t = tree(ctx.vault)
       const pre = String(folder ?? "").replace(/^\/+|\/+$/g, "")
-      const all = [...(t.files ?? []), ...(t.others ?? [])].sort((a: Any, b: Any) => String(a.path).localeCompare(String(b.path)))
-      let rows = all.filter((f: Any) => !pre || f.path === pre || String(f.path).startsWith(`${pre}/`))
-      if (!rows.length && pre) rows = all.filter((f: Any) => String(f.path).startsWith(pre))
-      const files = rows.slice(offset, offset + limit).map((f: Any) => ({ path: f.path, ...(f.type ? { type: f.type } : {}), ...(f.archived ? { archived: true } : {}) }))
+      const all = [...t.files, ...t.others].sort((a, b) => a.path.localeCompare(b.path))
+      let rows = all.filter((f) => !pre || f.path === pre || f.path.startsWith(`${pre}/`))
+      if (!rows.length && pre) rows = all.filter((f) => f.path.startsWith(pre))
+      const files = rows.slice(offset, offset + limit).map((f) => ({ path: f.path, ...(f.type ? { type: f.type } : {}), ...(f.archived ? { archived: true } : {}) }))
       return { folder: pre || null, total: rows.length, offset, files }
     },
     text: (r) => {
       if (!r.files.length) return r.offset ? `No files past ${r.offset} (${r.total} in all).` : r.folder ? `Nothing under ${r.folder}/.` : "The vault is empty."
-      const shown = r.files.map((f: Any) => `- ${f.path}${f.type ? ` (${f.type}${f.archived ? ", archived" : ""})` : f.archived ? " (archived)" : ""}`)
+      const shown = r.files.map((f) => `- ${f.path}${f.type ? ` (${f.type}${f.archived ? ", archived" : ""})` : f.archived ? " (archived)" : ""}`)
       const end = r.offset + shown.length
       return shown.join("\n") + (r.offset || r.total > end ? `\n(files ${r.offset + 1}-${end} of ${r.total}${r.total > end ? `; more: offset ${end}, or narrow it with a folder` : ""})` : "")
     },

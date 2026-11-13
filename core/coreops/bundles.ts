@@ -1,17 +1,17 @@
 // Bundles' ops (core/bundles.ts) through their routes, in-process. Apply, show and save act on the workspace the
 // user's window is on unless told another.
 import type { App } from "../app.ts"
-import { DEFAULT_BUNDLE, status } from "../bundles.ts"
+import { type Answers, DEFAULT_BUNDLE, type Info, status } from "../bundles.ts"
 import { starter } from "../start.ts"
 import { defineOp, type Op, OpError, type Param } from "../ops.ts"
-import { type Any, enc, lines, windowWorkspace } from "./common.ts"
+import { enc, lines, windowWorkspace } from "./common.ts"
 
 const ID = { type: "string", required: true, description: "the bundle's id (zen, my-desk)" } satisfies Param
 const WORKSPACE = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels and pins follow; the user's window's when left out" } satisfies Param
 const SKIP = { type: "array", items: { type: "string" }, commas: false,
   description: "changes to leave out, by the ids bundle.show lists (setting:pages.show, pin:Dashboards/Today.md, panels)" } satisfies Param
 const FRESH = { type: "boolean", description: "clean: without the tweaks remembered for it (Reset), which applying forgets" } satisfies Param
-const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
+const where = (b: Info) => (b.source === "app" ? "built-in" : "yours")
 
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
@@ -85,7 +85,7 @@ user first.
     kind: "write",
     lock: false,
     params: { agent: { type: "string", description: "the coding agent's plugin the user said to use (claude-code, codex)" } },
-    run: async ({ agent }) => ({ wrote: await starter(app.host(), { agent: typeof agent === "string" && agent ? agent : null }) }),
+    run: async ({ agent }) => ({ wrote: await starter(app.host(), { agent: agent || null }) }),
     text: (r) => (r.wrote.length ? `Wrote ${r.wrote.join(", ")}.` : "Nothing to write."),
   }), defineOp({
     id: "bundle.list",
@@ -93,13 +93,13 @@ user first.
     summary: "Bundles: setups of the app (plugins, settings, panels, pins, look) to apply, save, export and import.",
     help: HELP,
     kind: "read",
-    run: (_p, ctx) => ctx.api("GET", "bundles"),
+    run: (_p, ctx): Promise<Answers["list"]> => ctx.api("GET", "bundles"),
     text: (r) => {
-      const rows = (r.bundles as Any[]).map((b) => `${b.id.padEnd(18)} ${where(b).padEnd(9)} ${b.kind.padEnd(7)} ${b.name}` +
+      const rows = r.bundles.map((b) => `${b.id.padEnd(18)} ${where(b).padEnd(9)} ${b.kind.padEnd(7)} ${b.name}` +
         `${b.code?.length ? "  (runs code)" : ""}${b.problems?.length ? `  (can't be read: ${b.problems.join("; ")})` : ""}`)
-      const last = (r.bundles as Any[]).find((b) => b.applied), tweaked = (r.bundles as Any[]).filter((b) => b.tweaked && !b.applied)
+      const last = r.bundles.find((b) => b.applied), tweaked = r.bundles.filter((b) => b.tweaked && !b.applied)
       return lines(rows, "No bundles.") +
-        (last ? `\nIn use: ${last.name}${last.modified ? `, changed (differs: ${last.differs.join(", ")}): \`vau bundle apply ${last.id} --fresh\` resets it, \`vau bundle save --over ${last.id}\` keeps the changes` : ""}.` : "") +
+        (last ? `\nIn use: ${last.name}${last.modified ? `, changed (differs: ${(last.differs ?? []).join(", ")}): \`vau bundle apply ${last.id} --fresh\` resets it, \`vau bundle save --over ${last.id}\` keeps the changes` : ""}.` : "") +
         (tweaked.length ? `\nWith tweaks remembered (applied, they come back; --fresh forgets them): ${tweaked.map((b) => b.id).join(", ")}.` : "") +
         (r.trial ? `\nTrying ${r.trial.name}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.` :
           r.previous ? `\nApplied ${r.previous.name} at ${r.previous.at}: \`vau bundle restore\` puts back the setup from before.` : "")
@@ -115,11 +115,11 @@ user first.
       refresh: { type: "boolean", description: "fetch the directory again now" },
     },
     args: ["q"],
-    run: ({ q, refresh }, ctx) => ctx.api("GET", `bundles/browse?q=${enc(q ?? "")}${refresh ? "&refresh=1" : ""}`),
+    run: ({ q, refresh }) => app.bundleDirectory(q ?? "", !!refresh),
     text: (r) => {
       if (!r.available) return `The bundle directory can't be read now (${r.url}${r.error ? `: ${r.error}` : ""}).`
-      return lines((r.bundles as Any[]).map((b) => `- ${b.name} (${b.source}) by ${b.author}, ${b.stars} stars${b.updated ? `, updated ${b.updated.slice(0, 10)}` : ""}` +
-        `${b.runsCode ? `, runs code${b.installs.length ? ` (installs ${b.installs.map((x: Any) => x.name).join(", ")})` : ""}` : ""}` +
+      return lines(r.bundles.map((b) => `- ${b.name} (${b.source}) by ${b.author}, ${b.stars} stars${b.updated ? `, updated ${b.updated.slice(0, 10)}` : ""}` +
+        `${b.runsCode ? `, runs code${b.installs.length ? ` (installs ${b.installs.map((x) => x.name).join(", ")})` : ""}` : ""}` +
         `${b.imported ? `, imported as ${b.imported}${b.current ? "" : " (a newer commit is listed)"}` : ""}: ${b.description}\n  vau bundle import ${b.address}`), "No bundles match.")
     },
   }), defineOp({
@@ -130,19 +130,19 @@ user first.
     kind: "read",
     params: { id: ID, workspace: WORKSPACE, fresh: FRESH },
     args: ["id"],
-    run: async ({ id, workspace, fresh }, ctx) => {
+    run: async ({ id, workspace, fresh }, ctx): Promise<Answers["show"]> => {
       const n = workspace ?? await windowWorkspace(ctx)
       const q = new URLSearchParams({ ...n ? { workspace: String(n) } : {}, ...fresh ? { fresh: "1" } : {} }).toString()
       return ctx.api("GET", `bundles/${enc(id)}${q ? `?${q}` : ""}`)
     },
     text: (r) => {
-      const p = r.plan as Any, b = r.bundle as Any
+      const p = r.plan, b = r.bundle
       const out = [`${b.name} (${where(b)}): ${b.description}`]
       if (p.empty) out.push("Applying it changes nothing here: it's the setup already.")
-      else out.push("Changes (--skip <id> leaves one out):", ...(p.changes as Any[]).map((c) => `  ${c.id.padEnd(32)} ${c.label}${"to" in c ? `: ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}` : ""}`))
+      else out.push("Changes (--skip <id> leaves one out):", ...p.changes.map((c) => `  ${c.id.padEnd(32)} ${c.label}${"to" in c ? `: ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}` : ""}`))
       if (p.plugins.missing.length) out.push(`Not in this app (skipped): ${p.plugins.missing.join(", ")}`)
-      if (p.plugins.added?.length) out.push(`Plugins the user added stay as they are: ${p.plugins.added.join(", ")} (--off-added turns them off too)`)
-      if (p.code.length) out.push(`Runs code: brings vault plugins ${p.code.map((x: Any) => x.source && !x.kept ? `${x.id} (installed from ${x.source}${x.commit ? ` at commit ${x.commit.slice(0, 7)}` : x.tag ? ` at ${x.tag}` : ""})` : x.id).join(", ")} (apply with --code, after asking the user)`)
+      if (p.plugins.added.length) out.push(`Plugins the user added stay as they are: ${p.plugins.added.join(", ")} (--off-added turns them off too)`)
+      if (p.code.length) out.push(`Runs code: brings vault plugins ${p.code.map((x) => x.source && !x.kept ? `${x.id} (installed from ${x.source}${x.commit ? ` at commit ${x.commit.slice(0, 7)}` : x.tag ? ` at ${x.tag}` : ""})` : x.id).join(", ")} (apply with --code, after asking the user)`)
       if (p.panels.setup && p.panels.changed) out.push(`Panels: left ${p.panels.setup.left.join(", ") || "(none)"}; right ${p.panels.setup.right.join(", ") || "(none)"}`)
       if (p.pins) out.push(`Pinned pages: ${p.pins.list.join(", ") || "(none)"}`)
       for (const x of p.skipped) out.push(`Skipped ${x.plugin} ${x.key}: ${x.why}`)
@@ -159,7 +159,7 @@ user first.
       skip: SKIP, trial: { type: "boolean", description: "try it: the user keeps it (bundle.keep) or puts back the setup from before (bundle.restore)" },
       fresh: FRESH, quiet: { type: "boolean", description: "the app opens nothing after (its guide, its first page)" } },
     args: ["id"],
-    run: async ({ id, workspace, code, offAdded, skip, trial, fresh, quiet }, ctx) =>
+    run: async ({ id, workspace, code, offAdded, skip, trial, fresh, quiet }, ctx): Promise<Answers["apply"]> =>
       ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code, offAdded: !!offAdded, skip: skip ?? [], trial: !!trial,
         fresh: !!fresh, quiet: !!quiet }),
     text: (r) => r.trial ? `Trying ${r.applied}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.`
@@ -171,8 +171,7 @@ user first.
     help: HELP,
     kind: "write",
     params: { workspace: WORKSPACE },
-    // (from Standard itself, tweaked out of reach too: clean)
-    run: async ({ workspace }, ctx) => ctx.api("POST", `bundles/${DEFAULT_BUNDLE}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), quiet: true,
+    run: async ({ workspace }, ctx): Promise<Answers["apply"]> => ctx.api("POST", `bundles/${DEFAULT_BUNDLE}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), quiet: true,
       fresh: status(app.vault).applied?.id === DEFAULT_BUNDLE }),
     text: (r) => `Back to ${r.applied}. \`vau bundle restore\` puts back the setup from before.`,
   }), defineOp({
@@ -181,15 +180,15 @@ user first.
     summary: "Put back the setup from before the last bundle applied (files it added go to the trash).",
     help: HELP,
     kind: "destructive",
-    run: (_p, ctx) => ctx.api("POST", "bundles/restore", {}),
-    text: (r) => `Restored the setup from before ${r.restored}.${r.trashed?.length ? ` Files it added went to the trash: ${r.trashed.join(", ")}.` : ""}`,
+    run: (_p, ctx): Promise<Answers["restore"]> => ctx.api("POST", "bundles/restore", {}),
+    text: (r) => `Restored the setup from before ${r.restored}.${r.trashed.length ? ` Files it added went to the trash: ${r.trashed.join(", ")}.` : ""}`,
   }), defineOp({
     id: "bundle.keep",
     cli: "bundle keep",
     summary: "End trying a bundle, keeping its setup (bundle.restore still puts back the one from before).",
     help: HELP,
     kind: "write",
-    run: (_p, ctx) => ctx.api("POST", "bundles/keep", {}),
+    run: (_p, ctx): Promise<Answers["keep"]> => ctx.api("POST", "bundles/keep", {}),
     text: (r) => `Kept ${r.kept}.`,
   }), defineOp({
     id: "bundle.fork",
@@ -199,7 +198,7 @@ user first.
     kind: "write",
     params: { id: ID, skip: SKIP, workspace: WORKSPACE },
     args: ["id"],
-    run: async ({ id, skip, workspace }, ctx) => ctx.api("POST", `bundles/${enc(id)}/fork`, { skip: skip ?? [], workspace: workspace ?? await windowWorkspace(ctx) }),
+    run: async ({ id, skip, workspace }, ctx): Promise<Answers["fork"]> => ctx.api("POST", `bundles/${enc(id)}/fork`, { skip: skip ?? [], workspace: workspace ?? await windowWorkspace(ctx) }),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/ (not applied).`,
   }), defineOp({
     id: "bundle.save",
@@ -217,7 +216,7 @@ user first.
       over: { type: "string", description: "save changes to this bundle (its id): the user's is saved over, keeping its name, card and source; the app's is saved as \"My <Name>\" (or name)" },
     },
     args: ["name"],
-    run: async ({ name, description, hotkeys, vaultPlugins, look, workspace, over }, ctx) =>
+    run: async ({ name, description, hotkeys, vaultPlugins, look, workspace, over }, ctx): Promise<Answers["save"]> =>
       ctx.api("POST", "bundles", { ...over ? { over, ...name ? { name } : {} } : name ? { name, replace: true } : {}, description, ...hotkeys !== undefined ? { hotkeys } : {},
         ...vaultPlugins !== undefined ? { vaultPlugins } : {}, ...look !== undefined ? { look } : {}, workspace: workspace ?? await windowWorkspace(ctx) }),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/.`,
@@ -258,7 +257,7 @@ reads it from a file, or a folder shaped like a bundle.`,
     },
     args: ["bundle"],
     lock: false, // (fetching a repository waits on the network)
-    run: async ({ bundle, from, replace }, ctx) => {
+    run: async ({ bundle, from, replace }, ctx): Promise<Answers["import"]> => {
       if (from) return ctx.api("POST", "bundles/import", { from, replace: !!replace })
       let b = bundle
       if (typeof b === "string") { try { b = JSON.parse(b) } catch { throw new OpError("bundle isn't a bundle's JSON") } }
@@ -274,7 +273,7 @@ reads it from a file, or a folder shaped like a bundle.`,
     kind: "destructive",
     params: { id: ID },
     args: ["id"],
-    run: ({ id }, ctx) => ctx.api("DELETE", `bundles/${enc(id)}`),
+    run: ({ id }, ctx): Promise<Answers["delete"]> => ctx.api("DELETE", `bundles/${enc(id)}`),
     text: (r) => `Deleted ${r.deleted} (in ${r.trashed}).`,
   })]
 }

@@ -3,9 +3,9 @@
 import type { App } from "../app.ts"
 import { commandList, type CommandDef, panelsOf, sectionsOf } from "../appsource.ts"
 import { CORE_SECTIONS, isOpens, readNewTab, type SectionInfo, shownActions, shownSections, withIcon, withPanels } from "../newtab.ts"
-import { defineOp, type Op, OpError, type Param } from "../ops.ts"
+import { defineOp, type Op, OpError, type Param, type ParamsOf } from "../ops.ts"
 import { anchorFor, placeKey } from "../slots.ts"
-import { type Any, lines } from "./common.ts"
+import { lines } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
 type Section = SectionInfo & { plugin: string; on: boolean
@@ -71,6 +71,10 @@ function namedCommand(cmds: CommandDef[], q: string) {
 const SECTION = { type: "string", required: true, description: "the section: its key (core:actions), title or a plain name (buttons, terminals)" } satisfies Param
 const COMMAND = { type: "string", required: true, description: "the command: its id (file:new) or its name in the palette (Create new note)" } satisfies Param
 const TO = { type: "string", description: "where: a position from 1, up, down, top or bottom (left out: the end)" } satisfies Param
+const MOVE_TO = { ...TO, required: true } satisfies Param
+type To = { to?: typeof TO | typeof MOVE_TO }
+type OfSection = { section: typeof SECTION } & To
+type OfCommand = { command: typeof COMMAND } & To
 
 const HELP = `A blank tab (a new tab, ⌘T) shows sections, top to bottom, kept in .vaultite/newtab.json:
 {"sections": [keys], "actions": [command ids]}. A section is the app's (core:actions the buttons, core:opened the files
@@ -111,7 +115,7 @@ export function newTabOps(app: App): Op[] {
     return sectionList(app)
   }
   const result = { text: showList }
-  const section = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (shown: string[], s: Section, given: Any) => string[]): Op => (defineOp({
+  const section = (id: string, cli: string, summary: string, args: string[], params: To, fn: (shown: string[], s: Section, given: ParamsOf<OfSection>) => string[]): Op => (defineOp<OfSection, ReturnType<typeof write>>({
     id, cli, summary, help: `${summary} See vau newtab --help.`, kind: "write", params: { section: SECTION, ...params }, args: ["section", ...args],
     run: (given) => {
       const { sections } = sectionList(app)
@@ -120,7 +124,7 @@ export function newTabOps(app: App): Op[] {
     },
     ...result,
   }))
-  const button = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (list: string[], cmd: string, given: Any) => string[]): Op => (defineOp({
+  const button = (id: string, cli: string, summary: string, args: string[], params: To, fn: (list: string[], cmd: string, given: ParamsOf<OfCommand>) => string[]): Op => (defineOp<OfCommand, ReturnType<typeof write>>({
     id, cli, summary, help: `${summary} See vau newtab --help.`, kind: "write", params: { command: COMMAND, ...params }, args: ["command", ...args],
     run: (given) => write("actions", fn(sectionList(app).buttons.map((b) => b.id), namedCommand(cmds(), given.command), given)),
     ...result,
@@ -148,7 +152,7 @@ export function newTabOps(app: App): Op[] {
   section("newtab.show", "newtab show", "Show a section on a new tab's page (at the end, or at a position).", ["to"], { to: TO },
     (shown, s, { to }) => (shown.includes(s.key) && to === undefined ? shown : at(shown, s.key, to))),
   section("newtab.hide", "newtab hide", "Hide a section of a new tab's page.", [], {}, (shown, s) => shown.filter((k) => k !== s.key)),
-  section("newtab.move", "newtab move", "Move a section of a new tab's page: to a position (from 1), up, down, top or bottom.", ["to"], { to: { ...TO, required: true } },
+  section("newtab.move", "newtab move", "Move a section of a new tab's page: to a position (from 1), up, down, top or bottom.", ["to"], { to: MOVE_TO },
     (shown, s, { to }) => { shownOnly(shown, s.key, s.title); return at(shown, s.key, to) }),
   button("newtab.button.add", "newtab button add", "Add a button (a palette command) to a new tab's page (at the end, or at a position).", ["to"], { to: TO },
     (list, cmd, { to }) => (list.includes(cmd) && to === undefined ? list : at(list, cmd, to))),
@@ -199,6 +203,6 @@ export function newTabOps(app: App): Op[] {
     ...result,
   }),
   button("newtab.button.remove", "newtab button remove", "Remove a button from a new tab's page.", [], {}, (list, cmd) => list.filter((k) => k !== cmd)),
-  button("newtab.button.move", "newtab button move", "Move a button of a new tab's page: to a position (from 1), up, down, top or bottom.", ["to"], { to: { ...TO, required: true } },
+  button("newtab.button.move", "newtab button move", "Move a button of a new tab's page: to a position (from 1), up, down, top or bottom.", ["to"], { to: MOVE_TO },
     (list, cmd, { to }) => { shownOnly(list, cmd, cmd); return at(list, cmd, to) })]
 }

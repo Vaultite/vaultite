@@ -1,33 +1,34 @@
 // What the core's operations share: the user's window, the plugins that are on, and how lists read as text.
+import { z } from "zod"
 import type { App } from "../app.ts"
 import type { OpCtx } from "../ops.ts"
-import { enabled } from "../plugins.ts"
-
-export type Any = any
+import { enabled, type Plugin } from "../plugins.ts"
 
 /** Rows as lines, or what to say when there are none. */
 export const lines = (rows: string[], empty = "(none)") => (rows.length ? rows.join("\n") : empty)
 
-/** The workspace the user's window shows (the app tells the server: core/live.ts), or null: no window, or no server
- *  driving one (tests, scripts). */
-export async function windowWorkspace(ctx: OpCtx): Promise<number | null> {
-  try {
-    const n = (await ctx.ui(null) as Any)?.workspace
-    return Number.isInteger(n) ? n : null
-  } catch {
-    return null
-  }
+const NONE = { windows: 0, workspace: null }
+const Shown = z.object({ windows: z.number().catch(0), workspace: z.int().nullable().catch(null) }).catch(NONE)
+
+/** What the user's window answers (core/live.ts passes it on): a command's run, its commands, a pick. */
+export const Ran = z.object({ ran: z.boolean().optional(), notices: z.array(z.object({ text: z.string(), kind: z.string().optional() })).optional() }).loose().nullish()
+export const Commands = z.array(z.object({ id: z.string(), name: z.string(), keys: z.array(z.string()).optional(), available: z.boolean().nullable().optional() }).loose())
+export const Picked = z.object({ index: z.number().catch(-1), typed: z.string().nullable().catch(null) }).nullable().catch(null)
+
+async function shown(ctx: OpCtx) {
+  try { return Shown.parse(await ctx.ui(null)) } catch { return NONE }
 }
+
+/** The workspace the user's window shows, or null: no window, or no server driving one (tests, scripts). */
+export const windowWorkspace = async (ctx: OpCtx): Promise<number | null> => (await shown(ctx)).workspace
 
 /** The open windows, 0 when there's no server driving any. */
-export async function windowCount(ctx: OpCtx): Promise<number> {
-  try { return Number((await ctx.ui(null) as Any)?.windows ?? 0) } catch { return 0 }
-}
+export const windowCount = async (ctx: OpCtx): Promise<number> => (await shown(ctx)).windows
 
 /** Every plugin that's on offering service `name` (plugin.provide), in plugin order: their functions. */
-export function servicesOn(app: App, name: string): ((...a: Any[]) => Any)[] {
+export function servicesOn(app: App, name: string): Plugin["services"][string][] {
   const on = enabled(app.vault, app.plugins)
-  return app.plugins.filter((p) => on.has(p.id) && Object.hasOwn(p.services, name)).map((p) => p.services[name] as (...a: Any[]) => Any)
+  return app.plugins.filter((p) => on.has(p.id) && Object.hasOwn(p.services, name)).map((p) => p.services[name])
 }
 
 /** The first plugin that's on offering service `name`, or null. */

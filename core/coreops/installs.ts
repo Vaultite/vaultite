@@ -13,8 +13,9 @@ import { compareVersions, tagVersion } from "../version.ts"
 import { settingsFile } from "../rules.ts"
 import { digestOf, DIR } from "../vaultplugins.ts"
 import { notHereYet } from "../writegate.ts"
-import { type Any } from "./common.ts"
 import { strings } from "../values.ts"
+import { readJson } from "../jsonfile.ts"
+import { z } from "zod"
 
 const SOURCE = { type: "string", required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" } satisfies Param
 
@@ -47,6 +48,15 @@ export async function installFrom(app: App, source: string, tag?: string | null,
   }
 }
 
+/** An installed plugin's update: none newer, one that can't be had, or what the newer version changes. */
+type Current = { id: string; version: string; current: true; skipped?: string }
+type Failed = { id: string; version: string; to?: string; error: string; problems?: string[] }
+type Change = { id: string; name: string; version: string; to: string; tag: string | null; commit: string | null; files: string[]; disclosures: string[]
+  edited: boolean; applied: boolean; error?: string; notes?: string[]; allowed?: boolean }
+type UpdateRow = Current | Failed | Change
+
+const whyOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
+
 export function installOps(app: App): Op[] {
   const tiers = () => new Map(app.app.map((p) => [p.id, p.tier]))
   /** The vault's plugins but `id`, by folder. */
@@ -58,29 +68,28 @@ export function installOps(app: App): Op[] {
     const lock = readLock(app.vault)
     const ids = (only ? [only] : Object.keys(lock).sort()).filter((id) => !auto || (lock[id] && autoUpdates(app.vault.config("plugins"), id, lock[id].source)))
     if (only && !lock[only]) throw new OpError(`'${only}' wasn't installed from a repository (${Object.keys(lock).join(", ") || "none was"})`, 404)
-    const out: Any[] = []
+    const out: UpdateRow[] = []
     for (const id of ids) {
-      const l = lock[id] as Locked
+      const l: Locked = lock[id]
       const dir = app.vault.abs(`${DIR}/${id}`)
       let next: Awaited<ReturnType<typeof newer>>
-      try { next = await newer(l) } catch (e) { out.push({ id, version: l.version, error: (e as Error).message }); continue }
+      try { next = await newer(l) } catch (e) { out.push({ id, version: l.version, error: whyOf(e) }); continue }
       if (!next) { out.push({ id, version: l.version, current: true }); continue }
       const src = { ...parseSource(l.source), tag: next.tag }
       if (auto && next.tag && l.skip && tagVersion(next.tag) === l.skip) { out.push({ id, version: l.version, current: true, skipped: l.skip }); continue }
       let f
       try { f = await fetchSource(src, tiers(), vaultDirs(id)) } catch (e) {
-        out.push({ id, version: l.version, to: next.tag ?? next.commit?.slice(0, 7), error: (e as Error).message, problems: (e as OpError).problems ?? [] })
+        out.push({ id, version: l.version, to: next.tag ?? next.commit?.slice(0, 7), error: whyOf(e), problems: e instanceof OpError ? e.problems : [] })
         continue
       }
       try {
         if (f.id !== id) throw new OpError(`its new version's id is '${f.id}', not '${id}'`, 422)
-        let was: Any = {}
-        try { was = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { /* gone: all of it is new */ }
-        const changes = diff(dir, f.dir, was, f.manifest)
+        const was = readJson(path.join(dir, "manifest.json"), z.looseObject({}))
+        const changes = diff(dir, f.dir, was.ok ? was.value : {}, f.manifest)
         // (a newer commit of a repository of several plugins may not touch this one)
         if (!next.tag && !changes.files.length) { out.push({ id, version: l.version, current: true }); continue }
         const edited = fs.existsSync(dir) && !asLocked(dir, l)
-        const row: Any = { id, name: f.manifest.name ?? id, version: l.version, to: f.manifest.version ?? "", tag: f.tag, commit: f.commit, files: changes.files,
+        const row: Change = { id, name: f.manifest.name ?? id, version: l.version, to: f.manifest.version ?? "", tag: f.tag, commit: f.commit, files: changes.files,
           disclosures: changes.disclosures, edited, applied: false }
         const why = app.index.blockedWhy(id, row.to, [l.repo, f.manifest.repo ?? null])
         if (why) row.error = why
@@ -90,8 +99,8 @@ export function installOps(app: App): Op[] {
         // (the lock syncs with the vault: on its own, only from where this machine allowed it)
         else if (auto && app.vaultPlugins.trust.approval(id) && app.vaultPlugins.trust.approval(id)!.source !== l.source) row.error = "where it comes from changed since it was allowed here: update it by hand"
         else if (apply) {
-          row.notes = await releaseNotes(src, l.commit, f.commit)
-          await app.hold(() => place(app.vault, f, src, { how: auto ? "auto" : "manual", notes: row.notes }))
+          const notes = row.notes = await releaseNotes(src, l.commit, f.commit)
+          await app.hold(() => place(app.vault, f, src, { how: auto ? "auto" : "manual", notes }))
           // (a folder on this machine is its owner's work in progress: allowed before, it stays allowed)
           if (src.folder && app.vaultPlugins.trust.approval(id)) { app.vaultPlugins.allow(id, { version: row.to, edits: true }); row.allowed = true }
           else if (auto && app.vaultPlugins.trust.approval(id)) { app.vaultPlugins.trust.noEdits(id); app.vaultPlugins.allow(id, { version: row.to }); row.allowed = true }
@@ -107,8 +116,9 @@ export function installOps(app: App): Op[] {
         f.done()
       }
     }
-    if (out.some((r) => r.applied)) await app.syncPlugins()
-    if (auto) await app.tellUpdated(out.filter((r) => r.applied))
+    const applied = out.filter((r): r is Change => "applied" in r && r.applied)
+    if (applied.length) await app.syncPlugins()
+    if (auto) await app.tellUpdated(applied)
     return out
   }
 
@@ -179,18 +189,19 @@ here, one that says it does more beyond the vault than it did, nor a version rol
     },
     args: ["id"],
     run: ({ id, apply, force, auto }) => updates(id ?? null, !!apply || !!auto, !!force && !auto, !!auto),
-    text: (rows: Any[]) => {
+    text: (rows) => {
       if (!rows.length) return "No plugin was installed from a repository."
       return rows.map((r) => {
-        if (r.current) return `${r.id} ${r.version}: up to date${r.skipped ? ` (skipping ${r.skipped}, rolled back from)` : ""}.`
-        const head = `${r.id} ${r.version} -> ${r.to}${r.tag ? ` (${r.tag})` : ""}`
-        if (r.error) return `${head}: ${r.error}${r.problems?.length ? "\n" + r.problems.map((p: string) => `  - ${p}`).join("\n") : ""}`
+        if ("current" in r) return `${r.id} ${r.version}: up to date${r.skipped ? ` (skipping ${r.skipped}, rolled back from)` : ""}.`
+        const head = `${r.id} ${r.version} -> ${r.to}${"tag" in r && r.tag ? ` (${r.tag})` : ""}`
+        if (!("applied" in r)) return `${head}: ${r.error}${r.problems?.length ? "\n" + r.problems.map((p) => `  - ${p}`).join("\n") : ""}`
+        if (r.error) return `${head}: ${r.error}`
         const lines = [`${head}${!r.applied ? "" : r.allowed ? ": installed, and running" : ": installed. It waits to be allowed on this machine again: vau plugin allow " + r.id}`,
-          ...(r.notes ?? []).map((n: string) => `  new: ${n}`),
+          ...(r.notes ?? []).map((n) => `  new: ${n}`),
           ...(r.edited && !r.applied ? ["  its files were changed here since it was installed (--force replaces them)"] : []),
-          ...r.disclosures.map((d: string) => `  ${d}`), ...r.files.slice(0, 30).map((f: string) => `  ${f}`), ...(r.files.length > 30 ? [`  and ${r.files.length - 30} more`] : [])]
+          ...r.disclosures.map((d) => `  ${d}`), ...r.files.slice(0, 30).map((f) => `  ${f}`), ...(r.files.length > 30 ? [`  and ${r.files.length - 30} more`] : [])]
         return lines.join("\n")
-      }).join("\n") + (rows.some((r) => !r.current && !r.error && !r.applied) ? "\nvau plugin update <id> --apply installs one (ask the user first)." : "")
+      }).join("\n") + (rows.some((r) => !("current" in r) && !r.error && !("applied" in r && r.applied)) ? "\nvau plugin update <id> --apply installs one (ask the user first)." : "")
     },
   }), defineOp({
     id: "plugin.rollback",
@@ -253,8 +264,8 @@ update by hand takes it. Allowed on this machine if it was before.
         .filter((u) => !since || localDate(Date.parse(u.at)) >= since)
         .sort((a, b) => b.at.localeCompare(a.at))
     },
-    text: (rows: Any[]) => rows.length ? rows.map((u) => `- ${localDate(Date.parse(u.at))} ${localTime(Date.parse(u.at))} ${u.name} ${u.from} -> ${u.to}` +
-      ` (${u.how === "auto" ? "on its own" : u.how === "rollback" ? "rolled back" : "by hand"})${u.notes.map((n: string) => `\n  ${n}`).join("")}`).join("\n")
+    text: (rows) => rows.length ? rows.map((u) => `- ${localDate(Date.parse(u.at))} ${localTime(Date.parse(u.at))} ${u.name} ${u.from} -> ${u.to}` +
+      ` (${u.how === "auto" ? "on its own" : u.how === "rollback" ? "rolled back" : "by hand"})${u.notes.map((n) => `\n  ${n}`).join("")}`).join("\n")
       : "No plugin has been updated yet.",
   }), defineOp({
     id: "plugin.uninstall",
@@ -325,7 +336,7 @@ with \`vau plugin install <source>\` (its repository, and its folder in it when 
     text: (r) => {
       if (!r.available) return `The plugin directory can't be read now (${r.url}${r.error ? `: ${r.error}` : ""}).`
       if (!r.plugins.length) return "No plugins match."
-      return r.plugins.map((e: Any) => `- ${e.name} (${e.source}) ${e.version}, ${e.stars} stars${e.released ? `, released ${e.released.slice(0, 10)}` : ""}` +
+      return r.plugins.map((e) => `- ${e.name} (${e.source}) ${e.version}, ${e.stars} stars${e.released ? `, released ${e.released.slice(0, 10)}` : ""}` +
         `${e.installed !== null ? (e.update ? `, installed ${e.installed} (update out)` : ", installed") : ""}${e.blocked ? ", blocked" : ""}: ${e.description}` +
         (disclosed(e.disclosures).length ? `\n  says it ${disclosed(e.disclosures).join("; ")}` : "")).join("\n")
     },

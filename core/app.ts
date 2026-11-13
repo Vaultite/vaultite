@@ -23,7 +23,7 @@ import type { Present } from "./live.ts"
 import { enabled, hostOps, HTTPError, LOADED, LOCAL, load as loadPlugins, vaultHere, match, matchServed, type Plugin, propertyTypes, Reply, reply, type RequestEnd, type RequestStart, Request, service, settingDefaults, Text } from "./plugins.ts"
 import { readTypes } from "./proptypes.ts"
 import { blockOn, blockSources, render } from "./render.ts"
-import { type BlockDecls, COMMON, drawnBy, drawsOf } from "./blocks.ts"
+import { type BlockDecls, COMMON, drawnBy, drawsOf, type OptionDecl } from "./blocks.ts"
 import { topic, topics } from "./docs.ts"
 import * as SC from "./statechunks.ts"
 import * as SP from "./statepatch.ts"
@@ -45,7 +45,7 @@ import { disclosuresOf, saysMore } from "./pluginmeta.ts"
 import { browse, PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault, type Writer } from "./vault.ts"
-import { strings } from "./values.ts"
+import { isObj, strings } from "./values.ts"
 import { keepReads } from "./fmcache.ts"
 import { logger } from "./log.ts"
 
@@ -126,7 +126,7 @@ export class App {
   /** Whether this machine runs a job naming `machine` (else the writer: the sync hub, or Machines' first). Without
    *  Machines, only one naming none. */
   private async runsHere(machine?: string) {
-    const ids = (service(this.on(), "machines:ids")?.() ?? []) as string[]
+    const ids = strings(service(this.on(), "machines:ids")?.())
     if (!ids.length) return !machine
     const writer = String(await Promise.resolve(service(this.on(), "machines:writer")?.()).catch(() => null) ?? "") || ids[0]
     if (!this.self || Date.now() - this.self[0] > 300_000) {
@@ -244,7 +244,7 @@ export class App {
           const u = l.history!.at(-1)!
           await this.tellUpdated([{ id: vp.id, name: vp.manifest.name ?? vp.id, to: l.version, notes: u.to === l.version ? u.notes : [] }])
         } catch (e) {
-          log.error(`plugin updates: ${vp.id} couldn't be checked against its source: ${(e as Error).message}`)
+          log.error(`plugin updates: ${vp.id} couldn't be checked against its source: ${messageOf(e)}`)
         } finally {
           f?.done()
           vps.adopting.delete(vp.id)
@@ -257,7 +257,7 @@ export class App {
    *  The event, or null for a toast. */
   async notice(e: Item, button = "Open"): Promise<Item | null> {
     const add = service(this.on(), "inbox:event")
-    if (add) return await add(e) as Item
+    if (add) return await add(e)
     if (!this.ui) throw new OpError("no inbox to keep it and no window to show it", 503)
     await this.ui({ action: "notify", text: e.title, kind: e.kind === "error" ? "error" : null, ...(e.link ? { button: { label: button, open: e.link } } : {}) })
     return null
@@ -298,7 +298,7 @@ export class App {
   /** Which plugins are on, as one string; "offering:" before it while a new vault is being offered the bundles. */
   private onKey() {
     // (AI's switch aside: AI turned on turns none of its plugins on, so it writes none of their pages)
-    const conf = this.vault.config("plugins"), list = (k: string) => (Array.isArray(conf[k]) ? conf[k] as unknown[] : [])
+    const conf = this.vault.config("plugins"), list = (k: string) => strings(conf[k])
     const own = (p: Plugin) => !list("disabled").includes(p.id) && (!(p.manifest.offByDefault || p.tier === "vault") || list("enabled").includes(p.id))
     const set = enabled(this.vault, this.plugins)
     if (conf.ai === false) for (const p of this.plugins) if (p.manifest.ai === true && own(p)) set.add(p.id)
@@ -312,7 +312,7 @@ export class App {
     const on = enabled(this.vault, this.plugins)
     const loaded = new Map(this.plugins.map((p) => [p.id, p]))
     const drawers = (block: string) => this.plugins.filter((p) => drawsOf(p.manifest).includes(block))
-    const rows: Item[] = []
+    const rows: BlockRow[] = []
     const add = (id: string, name: string, tier: string, decls: BlockDecls, texts: Set<string> | null, draws: string[]) => {
       for (const [block, d] of Object.entries(decls)) {
         const by = d.by ? drawers(block) : null
@@ -326,8 +326,8 @@ export class App {
     }
     for (const p of this.app) add(p.id, p.manifest.name ?? p.id, p.tier, p.blocks, new Set(p.textBlocks.keys()), drawsOf(p.manifest))
     for (const v of this.vaultPlugins.list()) {
-      const p = loaded.get(v.id as string)
-      add(v.id as string, v.name as string, "vault", v.blocks as BlockDecls, p ? new Set(p.textBlocks.keys()) : null, v.draws as string[])
+      const p = loaded.get(v.id)
+      add(v.id, v.name, "vault", v.blocks, p ? new Set(p.textBlocks.keys()) : null, v.draws)
     }
     return { common: COMMON, blocks: rows }
   }
@@ -526,7 +526,7 @@ export class App {
     } catch (e) {
       if (e instanceof HTTPError) return reply(e.status, new Text(e.message, "text/plain; charset=utf-8"))
       log.error(`a plugin's ${prefix} route failed`, e, { path: rest })
-      return reply(500, new Text(String((e as Error).message ?? e), "text/plain; charset=utf-8"))
+      return reply(500, new Text(messageOf(e), "text/plain; charset=utf-8"))
     }
   }
 
@@ -569,12 +569,12 @@ export class App {
       return http ? await via(() => as(() => requestWriter.run(writer, go))) : await go()
     } catch (e) {
       log.error("a request failed", e)
-      return reply(500, { error: String((e as Error).message ?? e) })
+      return reply(500, { error: messageOf(e) })
     }
   }
 
   private async dispatch(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<unknown> {
-    const obj = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Item
+    const obj: Item = isObj<Item>(body) ? body : {}
     if (parts[0] === "ops") return await this.opsRoute(method, parts.slice(1), query, body, http)
     // A file from outside the vault, opened in the desktop app (core/outside.ts)
     if (parts.join("/") === "file" && O.isOutside(method === "GET" ? query.path : obj.path)) return O.handle(method, method === "GET" ? query.path : obj.path, saveBody(obj))
@@ -599,10 +599,7 @@ export class App {
       if (parts.length === 1) return topics(this.plugins).map(({ id, title, plugin }) => ({ id, title, plugin }))
       return new Text(topic(this.plugins, parts[1]).text + "\n", "text/markdown; charset=utf-8")
     }
-    if (parts.join("/") === "bundles/browse" && method === "GET") {
-      const got = await this.index.get(query.refresh === "1")
-      return { url: got.url, available: got.available, fetched: got.fetched, ...(got.error ? { error: got.error } : {}), bundles: browse(got.index, query.q ?? "", B.imports(this.vault)) }
-    }
+    if (parts.join("/") === "bundles/browse" && method === "GET") return await this.bundleDirectory(query.q ?? "", query.refresh === "1")
     if (parts[0] === "bundles") {
       const out = await B.handle(this.host(http), method, parts.slice(1), query, obj)
       if (out !== undefined) return out
@@ -630,10 +627,10 @@ export class App {
       if (method === "PUT" || method === "PATCH") {
         // Only the keys sent change (a setting written from an old copy of the file doesn't put back the others: another
         // app version's, the CLI's, a key an AI changed); PATCH's null removes one.
-        if (!body || typeof body !== "object" || Array.isArray(body)) {
+        if (!isObj<Item>(body)) {
           if (method === "PATCH") throw new HTTPError(400, "send an object of the keys to change")
           this.vault.setConfig(parts[1], body)
-        } else this.vault.patchConfig(parts[1], body as Item, { nullRemoves: method === "PATCH" })
+        } else this.vault.patchConfig(parts[1], body, { nullRemoves: method === "PATCH" })
       }
       return this.vault.config(parts[1])
     }
@@ -642,11 +639,11 @@ export class App {
     if (parts.length === 3 && parts[0] === "config" && parts[1] === "plugin" && /^[a-z0-9][a-z0-9-]*$/.test(parts[2])) {
       const p = this.plugins.find((x) => x.id === parts[2]), name = `plugins/${parts[2]}/data`
       if (method === "PUT" || method === "PATCH") {
-        if (!body || typeof body !== "object" || Array.isArray(body)) throw new HTTPError(400, "send an object of the keys to change")
+        if (!isObj<Item>(body)) throw new HTTPError(400, "send an object of the keys to change")
         const local = p?.localKeys().filter((k) => Object.hasOwn(body, k)) ?? []
         const why = local.length && http ? await this.ownerWhy(http, `changing ${local.join(", ")}`) : ""
         if (why) throw new HTTPError(403, why)
-        return p ? p.patchSettings(body as Item, { nullRemoves: method === "PATCH" }) : this.vault.patchConfig(name, body as Item, { nullRemoves: method === "PATCH" })
+        return p ? p.patchSettings(body, { nullRemoves: method === "PATCH" }) : this.vault.patchConfig(name, body, { nullRemoves: method === "PATCH" })
       }
       return p ? p.settings() : this.vault.config(name)
     }
@@ -660,13 +657,18 @@ export class App {
     return reply(404, { error: "not found" })
   }
 
+  async bundleDirectory(q: string, refresh: boolean) {
+    const got = await this.index.get(refresh)
+    return { url: got.url, available: got.available, fetched: got.fetched, ...(got.error ? { error: got.error } : {}), bundles: browse(got.index, q, B.imports(this.vault)) }
+  }
+
   // ---------- operations (core/ops.ts) ----------
 
   /** Every op that's available: the core's, then each plugin's that's on, with the plugin it's of (null: the core's). */
   ops(): { op: Op; plugin: string | null }[] {
     this.core ??= [...coreOps(this), ...eventOps(), ...hookOps(() => this.vaultPlugins.hooks), ...scheduleOps(() => this.scheduler)]
     return [...this.core.map((op) => ({ op, plugin: null })),
-      ...this.on().flatMap((p) => p.ops.map((op) => ({ op, plugin: p.id as string | null })))]
+      ...this.on().flatMap((p) => p.ops.map((op) => ({ op, plugin: p.id })))]
   }
 
   /** An op by its id, or by its CLI name (`note`). */
@@ -704,10 +706,10 @@ export class App {
     // Paths as the user says them ("Today", "Alice Park") are read as the vault's (core/ops.ts pathAsSaid).
     const paths = Object.entries(op.params ?? {}).filter(([k, p]) => p.format === "path" && params[k] !== undefined)
     if (paths.length) {
-      const tree = (await this.respond("GET", ["files"], {}, {}, undefined, true)).body as Item
+      const tree = F.tree(this.vault)
       for (const [k, p] of paths) {
         const said = (x: string) => pathAsSaid(tree, x, { root: this.vault.path, outside: p.outside })
-        params[k] = p.type === "array" ? (params[k] as string[]).map(said) : said(params[k] as string)
+        params[k] = p.type === "array" ? strings(params[k]).map(said) : said(String(params[k]))
       }
     }
     const ctx: OpCtx = {
@@ -844,7 +846,7 @@ export class App {
       return { entry: entryOf(op, plugin), params: out.params, result: out.result, text, image }
     } catch (e) {
       if (write) this.done(op, plugin, who, given, e, t0)
-      end?.({ status: e instanceof OpError || e instanceof HTTPError || e instanceof ConfigError ? e.status : 500, ms: performance.now() - t0, body: given, error: String((e as Error)?.message ?? e) })
+      end?.({ status: e instanceof OpError || e instanceof HTTPError || e instanceof ConfigError ? e.status : 500, ms: performance.now() - t0, body: given, error: messageOf(e) })
       throw e
     }
   }
@@ -853,8 +855,8 @@ export class App {
   private done(op: Op, plugin: string | null, who: Who, params: unknown, error: unknown, t0: number) {
     eventsOf(this.vault).emit("op.done", {
       id: op.id, plugin, kind: op.kind, who: { client: who.client, agent: who.agent, label: who.label },
-      params: params && typeof params === "object" && !Array.isArray(params) ? summary(params as Item) : {},
-      ok: !error, ...(error ? { error: String((error as Error)?.message ?? error).slice(0, 300) } : {}), ms: Math.round(performance.now() - t0),
+      params: isObj<Item>(params) ? summary(params) : {},
+      ok: !error, ...(error ? { error: messageOf(error).slice(0, 300) } : {}), ms: Math.round(performance.now() - t0),
     })
   }
 
@@ -889,7 +891,7 @@ export class App {
       end?.({ status: 500, ms: performance.now() - t0, body })
       throw e
     }
-    end?.({ status: res.status, ms: performance.now() - t0, body, ...(res.status >= 400 ? { error: String((res.body as Item)?.error ?? "") } : {}) })
+    end?.({ status: res.status, ms: performance.now() - t0, body, ...(res.status >= 400 ? { error: String(isObj<Item>(res.body) ? res.body.error ?? "" : "") } : {}) })
     return publicOf(bodyOrThrow(res))
   }
 
@@ -951,6 +953,12 @@ export class App {
   }
 }
 
+/** A block as GET /api/blocks lists it: `text`, whether it has a text side (null: its plugin isn't loaded). */
+export type BlockRow = { name: string; plugin: string; pluginName: string; tier: string; on: boolean; declared: boolean; text: boolean | null; description: string
+  options: Record<string, OptionDecl> }
+
+const messageOf = (cause: unknown) => String(cause instanceof Error ? cause.message : cause)
+
 /** A path part decoded (one that doesn't decode stays as sent). */
 export const decodePart = (s: string) => { try { return decodeURIComponent(s) } catch { return s } }
 
@@ -971,7 +979,7 @@ const asReply = (x: unknown) => (x instanceof Reply ? x : reply(200, x))
 
 /** An in-process answer's body (text for a text answer); a 4xx or 5xx throws an OpError with its message. */
 function bodyOrThrow(res: Reply) {
-  if (res.status >= 400) throw new OpError(String((res.body as Item)?.error ?? res.status), res.status)
+  if (res.status >= 400) throw new OpError(String(isObj<Item>(res.body) ? res.body.error ?? res.status : res.status), res.status)
   return res.body instanceof Text ? String(res.body.text) : res.body
 }
 
@@ -982,7 +990,7 @@ function errorReply(e: unknown): Reply | null {
   if (e instanceof NotFound) return reply(404, { error: e.message })
   if (e instanceof WriteRefused) return reply(403, { error: e.message })
   if (e instanceof ConflictError) return reply(409, { error: e.message })
-  if (notHereYet(e)) return reply(503, { error: (e as Error).message }) // (iCloud hasn't brought a file down yet)
+  if (notHereYet(e)) return reply(503, { error: messageOf(e) }) // (iCloud hasn't brought a file down yet)
   return null
 }
 
