@@ -54,9 +54,10 @@ export function fenceLayout(info: string, body: string): Layout {
 
 export function infoWithLayout(info: string, key: LayoutKey, on: boolean): string {
   const [lang = "", ...rest] = info.trim().split(/\s+/)
-  const set = new Set(rest.filter((w) => w !== key && (LAYOUT as string[]).includes(w)))
+  const isLayout = (w: string) => LAYOUT.some((k) => k === w)
+  const set = new Set(rest.filter((w) => w !== key && isLayout(w)))
   if (on) set.add(key)
-  return [lang, ...rest.filter((w) => !(LAYOUT as string[]).includes(w)), ...LAYOUT.filter((k) => set.has(k))].join(" ")
+  return [lang, ...rest.filter((w) => !isLayout(w)), ...LAYOUT.filter((k) => set.has(k))].join(" ")
 }
 
 export function unplaced(view: string[] | undefined, body: string): string[] {
@@ -74,6 +75,7 @@ export function withKindBlocks(view: string[] | undefined, body: string): string
 }
 
 const types = (d: OptionDecl) => (Array.isArray(d.type) ? d.type : [d.type])
+const typesGiven = (d: Record<string, unknown>): unknown[] => (Array.isArray(d.type) ? d.type : [d.type])
 
 export function declsOf(manifest: unknown): BlockDecls {
   const b = isMap(manifest) ? manifest.blocks : null
@@ -145,9 +147,10 @@ export function valueProblem(d: OptionDecl, v: unknown): string {
     if (t === "string") return typeof v === "string" || typeof v === "number"
     if (t === "number") return typeof v === "number" && Number.isFinite(v)
     if (t === "boolean") return typeof v === "boolean"
-    if (t === "list") return Array.isArray(v) && (!d.values || v.every((x) => d.values!.includes(x as string)))
+    const values = d.values ?? []
+    if (t === "list") return Array.isArray(v) && (!d.values || v.every((x) => values.some((y) => y === x)))
     if (t === "map") return isMap(v)
-    return (d.values ?? []).includes(v as string)
+    return values.some((y) => y === v)
   })
   if (!fits) {
     if (Array.isArray(v) && ts.includes("list") && d.values) return `takes only ${d.values.join(", ")}`
@@ -225,7 +228,8 @@ export function declProblems(blocks: unknown, where: string): string[] {
     if (!ONE_LINE(d.description)) out.push(`${at} needs a description (one line: what it shows)`)
     if (d.live !== undefined && !ONE_LINE(d.live)) out.push(`${at}: live is one line, where its live data comes from ("GitHub's API")`)
     if (d.reads !== undefined && (!Array.isArray(d.reads) || d.reads.some((r) => typeof r !== "string" || !r))) out.push(`${at}: reads is a list of vault paths`)
-    if (d.by !== undefined && !(typeof d.by === "string" && isMap(d.options) && isMap(d.options[d.by]) && types(d.options[d.by] as OptionDecl).includes("string"))) {
+    const by = typeof d.by === "string" && isMap(d.options) ? d.options[d.by] : undefined
+    if (d.by !== undefined && !(isMap(by) && typesGiven(by).includes("string"))) {
       out.push(`${at}: by names one of its options, a text (the plugin that draws it: its manifest's draws lists the block)`)
     }
     if (d.options === undefined) continue
@@ -242,7 +246,7 @@ export function declProblems(blocks: unknown, where: string): string[] {
 function optionProblems(o: unknown, ok: string): string[] {
   if (!isMap(o)) return [`${ok} must be an object with a type and a description`]
   const out: string[] = []
-  const ts = Array.isArray(o.type) ? o.type : [o.type]
+  const ts = typesGiven(o)
   if (!ts.length || ts.some((t) => !isOptionType(t))) out.push(`${ok}: type must be one of ${TYPES.join(", ")} (or a list of them)`)
   if (!ONE_LINE(o.description)) out.push(`${ok} needs a description (one line)`)
   if (o.values !== undefined && (!Array.isArray(o.values) || !o.values.length || o.values.some((v) => typeof v !== "string" && typeof v !== "number"))) {
@@ -310,10 +314,10 @@ export function settingDeclProblems(settings: unknown, where: string): string[] 
     if (!isMap(d)) { out.push(`${at} must be an object with a type, a label and a description`); continue }
     const { local, folder, lines, choices, preview, ...opt } = d
     if (local !== undefined && typeof local !== "boolean") out.push(`${at}: local must be true or false`)
-    if (preview !== undefined && (preview !== true || !types(opt as OptionDecl).every((t) => t === "enum"))) out.push(`${at}: preview is true, on an enum`)
-    if (folder !== undefined && (folder !== true || !types(opt as OptionDecl).every((t) => t === "string" || t === "list"))) out.push(`${at}: folder is true, on a string or a list`)
-    if (lines !== undefined && (lines !== true || !types(opt as OptionDecl).every((t) => t === "list"))) out.push(`${at}: lines is true, on a list`)
-    if (choices !== undefined && (typeof choices !== "string" || !/^[\w/-]+$/.test(choices) || !types(opt as OptionDecl).every((t) => t === "string"))) {
+    if (preview !== undefined && (preview !== true || !typesGiven(opt).every((t) => t === "enum"))) out.push(`${at}: preview is true, on an enum`)
+    if (folder !== undefined && (folder !== true || !typesGiven(opt).every((t) => t === "string" || t === "list"))) out.push(`${at}: folder is true, on a string or a list`)
+    if (lines !== undefined && (lines !== true || !typesGiven(opt).every((t) => t === "list"))) out.push(`${at}: lines is true, on a list`)
+    if (choices !== undefined && (typeof choices !== "string" || !/^[\w/-]+$/.test(choices) || !typesGiven(opt).every((t) => t === "string"))) {
       out.push(`${at}: choices is a route under /api/ ("terminals/shells"), on a string`)
     }
     out.push(...optionProblems(opt, at))

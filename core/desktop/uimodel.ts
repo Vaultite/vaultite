@@ -1,5 +1,6 @@
 // One model of a thing on screen, the same in Vaultite's UI (ARIA) and any app's (Accessibility): role, name, state and
 // actions; a target resolves to the part that acts, a condition is checked by reading it back. Node-free.
+import { isObj } from "../values.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 /** ARIA's words, for both sides: button, link, tab, treeitem, checkbox, switch, radio, menuitem, option, textbox,
@@ -179,7 +180,10 @@ export function nameFit(label: string, want: string) {
   if (l.startsWith(`${want} `) || l.endsWith(` ${want}`)) return 2
   return ` ${l} `.includes(` ${want} `) ? 1 : 0
 }
-const fitsState = (s: State, want?: State) => !want || Object.entries(want).every(([k, v]) => v === undefined || (s as Record<string, unknown>)[k] === v)
+const fitsState = (s: State, want?: State) => {
+  const have: Record<string, unknown> = s
+  return !want || Object.entries(want).every(([k, v]) => v === undefined || have[k] === v)
+}
 
 /** Every shown element of `tree` under `root` fitting `t` (its name, role, state, container), best first. */
 export function candidates<E>(tree: Tree<E>, root: E, t: Target): { e: E; thing: Thing; fit: number }[] {
@@ -259,23 +263,25 @@ export function stepEffect(action: Action | "click", before: Thing | null, after
 const clip = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : "")
 /** A state as sent, only its known keys. */
 export function stateFrom(v: unknown): State {
-  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>, s: State = {}
-  for (const k of ["expanded", "selected", "disabled", "focused"] as const) if (typeof o[k] === "boolean") s[k] = o[k] as boolean
-  if (typeof o.checked === "boolean" || o.checked === "mixed") s.checked = o.checked as boolean | "mixed"
+  const o = isObj(v) ? v : {}, s: State = {}
+  for (const k of ["expanded", "selected", "disabled", "focused"] as const) { const x = o[k]; if (typeof x === "boolean") s[k] = x }
+  const checked = o.checked
+  if (typeof checked === "boolean" || checked === "mixed") s.checked = checked
   if (typeof o.value === "string") s.value = o.value.slice(0, 200)
   return s
 }
-const ACTIONS = new Set<Action>(["press", "expand", "collapse", "focus", "select", "scroll", "menu"])
+const ACTIONS = ["press", "expand", "collapse", "focus", "select", "scroll", "menu"] as const satisfies readonly Action[]
+const isAction = (a: string): a is Action => ACTIONS.some((x) => x === a)
 /** An element as the Mac's helper (screen.swift near()) or the app's page lists it, in the model's shape: Accessibility's
  *  roles and actions in ARIA's words, `ax` kept (the helper finds it again by it). Null when it has no frame or words. */
 export function thingFrom(v: unknown): (Thing & { ax?: string }) | null {
-  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>, f = (o.frame ?? {}) as Record<string, unknown>
+  const o = isObj(v) ? v : {}, f = isObj(o.frame) ? o.frame : {}
   const r = [f.x, f.y, f.width, f.height].map(Number), label = clip(o.label, 120)
   if (!label || r.some((n) => !Number.isFinite(n))) return null
   const ax = clip(o.ax, 40), acts = Array.isArray(o.actions) ? o.actions.map(String) : []
   const inside = Array.isArray(o.inside) ? o.inside.slice(0, 4).flatMap((i: Record<string, unknown>) => (i && clip(i.label, 120) ? [{ role: i.ax ? roleOfAx(clip(i.ax, 40)) : clip(i.role, 40) || "group", label: clip(i.label, 120) }] : [])) : []
   return { role: ax ? roleOfAx(ax, clip(o.sub, 40)) : clip(o.role, 40) || "group", label, frame: { x: Math.round(r[0]), y: Math.round(r[1]), width: Math.round(r[2]), height: Math.round(r[3]) },
-    state: stateFrom(o.state), actions: ax ? actionsOfAx(acts) : acts.filter((a): a is Action => ACTIONS.has(a as Action)), inside,
+    state: stateFrom(o.state), actions: ax ? actionsOfAx(acts) : acts.filter(isAction), inside,
     ...(clip(o.ui, 200) ? { ui: clip(o.ui, 200) } : {}), ...(ax ? { ax } : {}), ...(clip(o.id, 8) ? { id: clip(o.id, 8) } : {}) }
 }
 
