@@ -2,10 +2,10 @@ import { agentIn, choiceOf, newTerminalId, parseTerminal, resumeTerminalId, star
 import { localDate, localTime, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { hand, keepHanded } from "./handed.ts"
-import { type InboxEvent } from "./model.ts"
+import { clip, type InboxEvent } from "./model.ts"
 import { REPLY_BLOCK } from "./reports.ts"
 import { editBody, resultAt } from "./results.ts"
-import { agentOfTerminal, clip, plugin, selfMachine } from "./server.ts"
+import { agentOfTerminal, plugin, selfMachine } from "./server.ts"
 import { fileOf, list, moveOn, resolve } from "./store.ts"
 
 /** The terminals a reply may be typed into: its agent running in it, never a shell at its prompt, which would run the

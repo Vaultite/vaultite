@@ -23,8 +23,6 @@ export function settings() {
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }
 }
 
-export const clip = (v: unknown, n = Infinity) => str(v).replace(/\s+/g, " ").trim().slice(0, n)
-export const TERMINAL = /^[\w-]{1,64}(@[a-z0-9][a-z0-9-]{0,62})?$/
 
 export const machineList = () => plugin.ask<Machine[]>("machines", [])
 

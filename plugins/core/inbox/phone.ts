@@ -1,8 +1,8 @@
 import { HTTPError, reply } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
-import { BLOCKED, type InboxEvent, questionLine } from "./model.ts"
+import { BLOCKED, clip, type InboxEvent, questionLine } from "./model.ts"
 import * as push from "./push.ts"
-import { clip, owner, plugin, settings } from "./server.ts"
+import { owner, plugin, settings } from "./server.ts"
 import { waitsOnYou } from "./threads.ts"
 
 /** Something snoozed is back: to the phones, unless push is off (the user asked for it back). `data`: its event's. */

@@ -60,6 +60,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "ops", deps: ["data","pages","cli","canvas","mcp"] },
   { name: "inbox", deps: ["pages","cli"] },
   { name: "inbox-logic", deps: ["pages","cli"] },
+  { name: "inbox-rows", deps: [] },
   { name: "clipper", deps: ["pages"] },
   { name: "claude-chat", deps: ["pages","cli"] },
   { name: "delegate", deps: ["pages","cli"] },

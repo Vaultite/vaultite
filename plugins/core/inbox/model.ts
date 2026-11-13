@@ -1,4 +1,5 @@
 import { type Question } from "../../../core/agents.ts"
+import { str } from "../../../core/vault.ts"
 import { isMessage } from "./threads.ts"
 
 /** Where an event stands for the user: open (in the inbox: a session or an ask needs them, a message is to read),
@@ -108,6 +109,9 @@ export const doneAs = (e: InboxEvent, done: boolean): InboxEvent => {
 }
 
 export const BLOCKED = new Set(["permission", "question", "auth", "plan"])
+
+export const clip = (v: unknown, n = Infinity) => str(v).replace(/\s+/g, " ").trim().slice(0, n)
+export const TERMINAL = /^[\w-]{1,64}(@[a-z0-9][a-z0-9-]{0,62})?$/
 
 export function pinnedAs(e: InboxEvent, on: boolean): InboxEvent {
   if (on) return e.state === "done" ? e : { ...e, pinned: true }

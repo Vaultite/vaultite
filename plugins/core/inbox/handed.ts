@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { writeAtomic } from "../../../core/vault.ts"
-import { dir, MAX, plugin, TERMINAL } from "./server.ts"
+import { TERMINAL } from "./model.ts"
+import { dir, MAX, plugin } from "./server.ts"
 
 // Terminals handed a task to do alone (a dispatch, a voice note, a reply's session): the turn that reports is their
 // last, then the terminal ends (a reply resumes the session, or starts a new one). Kept here: terminals outlive a restart.

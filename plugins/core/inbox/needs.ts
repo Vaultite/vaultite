@@ -6,7 +6,7 @@ import type { SampleAnswer, SampleAsk } from "../../../core/agents.ts"
 /** Why a session needs the user: what it asks before it goes on (permission, question, auth, plan), its last message
  *  (reply: it asks them something or couldn't do it; answer: only something to read), its report, or its turn failing. */
 export type Need = "permission" | "question" | "auth" | "plan" | "reply" | "answer" | "report" | "error"
-export type Verdict = { needs: boolean; why: Need | null; by: "rule" | "model" | "fallback"; ms?: number }
+export type Verdict = ({ needs: true; why: Need } | { needs: false; why: null }) & { by: "rule" | "model" | "fallback"; ms?: number }
 
 /** A turn as it ended: what the user said last, the agent's final message, and whether it ended in an error; `auto`:
  *  not the user but the session itself started it (its background task's notice, a schedule, another session). */

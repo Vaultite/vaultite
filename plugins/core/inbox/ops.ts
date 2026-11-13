@@ -1,10 +1,10 @@
 import { localTime, type Op, quoted } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { decisionRow } from "./asked.ts"
-import { type InboxEvent } from "./model.ts"
+import { clip, type InboxEvent } from "./model.ts"
 import { asResults, withTldr } from "./results.ts"
-import { clip, plugin } from "./server.ts"
-import { NEEDS } from "./sessions.ts"
+import { plugin } from "./server.ts"
+import { NEEDS } from "./rows.ts"
 import { stampOf } from "./snooze.ts"
 import { lists } from "./threads.ts"
 

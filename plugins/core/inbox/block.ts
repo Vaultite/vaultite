@@ -1,8 +1,9 @@
 import { bullets, fmtAgo, stampMs } from "../../../core/plugins.ts"
 import { str } from "../../../core/vault.ts"
 import { decisionLine, decisionsIn } from "./asked.ts"
+import { clip } from "./model.ts"
 import { asResults, latest, resultAt } from "./results.ts"
-import { clip, plugin } from "./server.ts"
+import { plugin } from "./server.ts"
 import { shown } from "./store.ts"
 import { lists, waitsOnYou } from "./threads.ts"
 

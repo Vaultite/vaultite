@@ -13,7 +13,8 @@ export default async ($: VaultTest) => {
   const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
-    const { asThreads, byThread, categoryOf, findEvent, fromHook, previewOf, prune, settled, stillOpen } = await import("../../../plugins/core/inbox/plugin.ts")
+    const { asThreads, byThread, categoryOf, findEvent, previewOf, prune, settled } = await import("../../../plugins/core/inbox/plugin.ts")
+    const { fromHook, stillOpen } = await import("../../../plugins/core/inbox/rows.ts")
     const { lists, countOf, waitsOnYou } = await import("../../../plugins/core/inbox/threads.ts")
     const { judge, sure, SYSTEM } = await import("../../../plugins/core/inbox/needs.ts")
     const { choiceOf } = await import("../../../core/agents.ts")
