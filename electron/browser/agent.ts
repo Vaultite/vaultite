@@ -36,8 +36,9 @@ function hold(p: EnginePage, again = false) {
     // Chromium shares a site's zoom among its pages.
     p.wc.setZoomMode(on ? "isolated" : "default")
     if (on) p.wc.setZoomFactor(1)
-    void (on ? cdp(p.wc, "Emulation.setDeviceMetricsOverride", { ...VIEWPORT, deviceScaleFactor: 0, mobile: false })
-      : cdp(p.wc, "Emulation.clearDeviceMetricsOverride")).catch(() => pinned.delete(p.wc))
+    void Promise.all(on ? [cdp(p.wc, "Emulation.setDeviceMetricsOverride", { ...VIEWPORT, deviceScaleFactor: 0, mobile: false }),
+      cdp(p.wc, "Emulation.setFocusEmulationEnabled", { enabled: true })]
+      : [cdp(p.wc, "Emulation.clearDeviceMetricsOverride"), cdp(p.wc, "Emulation.setFocusEmulationEnabled", { enabled: false })]).catch(() => pinned.delete(p.wc))
   }
   p.refit()
   changed(p.win)

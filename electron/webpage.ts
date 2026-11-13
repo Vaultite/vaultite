@@ -14,7 +14,7 @@ import { makeSpare, newView, prefsOf, takeSpare } from "./websession.ts"
 import { iconFrom } from "./webicons.ts"
 import { noteVisit } from "./webaccounts.ts"
 import { addPage, restack } from "./webstack.ts"
-import { fit, move, place, wake } from "./webspot.ts"
+import { fit, keysBackIfUnseen, move, place, wake } from "./webspot.ts"
 import { fromPlayer, strips, toPlayer } from "./webplayer.ts"
 import { end, keepPast, mayLeave, own, restoreMod, revive, unloading } from "./weblife.ts"
 import { go, unsafeOk, zoomOf, zoomTo } from "./webgo.ts"
@@ -187,7 +187,7 @@ export function make(win: AppWindow, url: string, profile: string, tab: string, 
     p.error = desc || `error ${code}`
     changed()
   })
-  wc.on("focus", () => { if (!p.player) tell(p.win, { type: "focus", id: p.id }) })
+  wc.on("focus", () => { if (p.player) return; if (shown(p.spot)) tell(p.win, { type: "focus", id: p.id }); else keysBackIfUnseen(p) })
   wc.on("enter-html-full-screen", () => {
     p.full = true
     const w = p.player

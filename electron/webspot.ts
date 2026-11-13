@@ -73,6 +73,7 @@ async function drawing(p: Page) {
   await frameIn(p, 1000)
   p.drew = Date.now()
 }
+export const keysBackIfUnseen = (p: Page) => { if (!shown(p.spot) && !p.player) SPOT_DOES.unfocus(p) }
 export const stow = (p: Page) => move(p, { type: "stow", drawn: !!p.drawn, now: Date.now() })
 
 export const keyboardFrom = new WeakMap<AppWindow, number>()

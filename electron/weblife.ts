@@ -9,7 +9,7 @@ import os from "node:os"
 import { MAC, type Page, pages, pagesChanged, playingNow, shows } from "./webbase.ts"
 import { endSpare, spare } from "./websession.ts"
 import { addPage, raise, run } from "./webstack.ts"
-import { fit, move, seeDraws, stow } from "./webspot.ts"
+import { fit, keysBackIfUnseen, move, seeDraws, stow } from "./webspot.ts"
 import { fromPlayer, leaveFull } from "./webplayer.ts"
 import { logger } from "../core/log.ts"
 
@@ -115,7 +115,9 @@ export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) 
 export function webWindow(win: AppWindow) {
   win.contentView.on("bounds-changed", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
-  win.on("focus", () => { for (const p of pages.values()) if (p.win === win && p.drawn && shown(p.spot)) void seeDraws(p) })
+  win.on("focus", () => {
+    for (const p of pages.values()) if (p.win === win) { if (p.drawn && shown(p.spot)) void seeDraws(p); else keysBackIfUnseen(p) }
+  })
   win.on("closed", () => {
     for (const p of [...pages.values()]) if (p.win === win && p.moving === undefined) end(p)
     if (!pages.size) endSpare()
