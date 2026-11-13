@@ -30,12 +30,12 @@ function ask(p: EnginePage, site: string, others: EnginePage[]): Promise<Choice>
     const items: MenuItemConstructorOptions[] = [
       { label: `${site} wants to share`, enabled: false },
       { type: "separator" },
-      ...(tabs.length ? [{ label: "A tab, with its sound", enabled: false } as MenuItemConstructorOptions] : []),
+      ...(tabs.length ? [{ label: "A tab, with its sound", enabled: false }] : []),
       ...tabs.slice(0, 20).map((t): MenuItemConstructorOptions => ({
         label: titleOf(t).slice(0, 70), sublabel: [hostOf(t), t.wc.isCurrentlyAudible() ? "playing sound" : ""].filter(Boolean).join(" · "),
         click: pick({ tab: t }),
       })),
-      ...(tabs.length ? [{ type: "separator" } as MenuItemConstructorOptions] : []),
+      ...(tabs.length ? [{ type: "separator" as const }] : []),
       { label: SYSTEM_PICKER ? "A window or screen…" : "Entire screen", click: pick("screen") },
       { label: "This tab", click: pick("this") },
     ]
@@ -61,7 +61,7 @@ async function shareWhat(req: DisplayMediaRequestHandlerHandlerRequest): Promise
     // (heard here still: Electron mutes a tab whose sound it captures, unless told not to; a test's isn't)
     return { video: t.wc.mainFrame, ...(sound ? { audio: t.wc.mainFrame, enableLocalEcho: !process.env.VAULTITE_QUIET } : {}) }
   }
-  if (SYSTEM_PICKER) return { video: systemPicker() as Electron.DesktopCapturerSource }
+  if (SYSTEM_PICKER) return { video: systemPicker() }
   const on = String(screen.getDisplayMatching(p.win.getBounds()).id)
   const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } })
   const source = sources.find((x) => x.display_id === on) ?? sources[0]
@@ -69,11 +69,10 @@ async function shareWhat(req: DisplayMediaRequestHandlerHandlerRequest): Promise
 }
 
 // Electron's inner setter lets our handler answer with macOS's picker; without it, the public one and no picker.
-type Inner = (h: (req: DisplayMediaRequestHandlerHandlerRequest, done: (s: Streams | null) => void) => void, o: { useSystemPicker: boolean }) => void
 eachSession((s: Session) => {
   const handler = (req: DisplayMediaRequestHandlerHandlerRequest, done: (s: Streams | null) => void) =>
-    void shareWhat(req).then((r) => done(r as Streams), () => done(null))
-  const inner = (s as unknown as { _setDisplayMediaRequestHandler?: Inner })._setDisplayMediaRequestHandler
+    void shareWhat(req).then(done, () => done(null))
+  const inner = "_setDisplayMediaRequestHandler" in s ? s._setDisplayMediaRequestHandler : undefined
   if (SYSTEM_PICKER && typeof inner === "function") inner.call(s, handler, { useSystemPicker: true })
-  else s.setDisplayMediaRequestHandler(handler as Parameters<Session["setDisplayMediaRequestHandler"]>[0], { useSystemPicker: false })
+  else s.setDisplayMediaRequestHandler(handler, { useSystemPicker: false })
 })

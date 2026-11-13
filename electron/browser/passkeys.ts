@@ -80,8 +80,7 @@ async function request(e: IpcMainInvokeEvent, kind: unknown, json: unknown) {
   const a: Ask = { n: ++lastAsk, page: p, abort: new AbortController(), site: prepared.rpId, create: kind === "create",
     qr: qrText({ identity: publicOf(identity, true), secret, type: prepared.type }) }
   asks.set(p.id, a)
-  const asked = (options as { timeout?: unknown }).timeout
-  const ms = Math.min(MAX_MS, Math.max(MIN_MS, typeof asked === "number" && Number.isFinite(asked) ? asked : 300_000))
+  const ms = Math.min(MAX_MS, Math.max(MIN_MS, prepared.timeout ?? 300_000))
   const timer = setTimeout(() => a.abort.abort(new WebAuthnError("NotAllowedError", "The operation either timed out or was not allowed.")), ms)
   try {
     const answer = await run({ secret, identity, command: prepared.command, signal: a.abort.signal, progress: (s) => show(a, s),

@@ -2,6 +2,7 @@
 // window (a sheet on a Mac) in the system's look, answering the fields' values, or null when cancelled.
 import { BrowserWindow, ipcMain, type BaseWindow, type WebContents } from "electron"
 import { fileURLToPath } from "node:url"
+import { ANSWERS } from "./pagewire.ts"
 
 export type SheetField = { name: string; label?: string; value?: string; password?: boolean }
 export type Sheet = { title: string; message?: string; fields: SheetField[]; ok: string
@@ -58,7 +59,7 @@ export function askSheet(win: BaseWindow, q: Sheet): Promise<Record<string, stri
     const gone = () => end(null)
     const moved = (d: { isMainFrame: boolean; isSameDocument: boolean }) => { if (d.isMainFrame && !d.isSameDocument) end(null) }
     q.until?.once("destroyed", gone).on("did-start-navigation", moved)
-    answers.set(id, (v) => end(v && typeof v === "object" ? Object.fromEntries(q.fields.map((f) => [f.name, String((v as Record<string, unknown>)[f.name] ?? "")])) : null))
+    answers.set(id, (v) => { const a = ANSWERS.safeParse(v); end(a.success ? Object.fromEntries(q.fields.map((f) => [f.name, a.data[f.name] ?? ""])) : null) })
     sheet.on("closed", () => end(null))
     // (nothing in it leaves: no links, no other pages)
     wc.setWindowOpenHandler(() => ({ action: "deny" }))

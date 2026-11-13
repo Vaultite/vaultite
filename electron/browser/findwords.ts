@@ -19,9 +19,9 @@ export function findWords(text: string) {
   // (each character's block: words across blocks are found only along one row, each just after the one before)
   let flat = "", block: Element | null = null, nb = 0
   const at: [Text, number][] = [], blocks: number[] = [], walk = document.createTreeWalker(document.body ?? document.documentElement, NodeFilter.SHOW_TEXT)
-  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
     const v = n.nodeValue ?? "", p = n.parentElement
-    if (!v.trim() || !p || p.closest("script, style, noscript, template")) continue
+    if (!(n instanceof Text) || !v.trim() || !p || p.closest("script, style, noscript, template")) continue
     const b = p.closest("p, div, li, dt, dd, td, th, tr, h1, h2, h3, h4, h5, h6, pre, blockquote, section, article, header, footer, nav, aside, main, figcaption, label, button, option, summary")
     if (b !== block) { nb++; if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, 0]); blocks.push(nb) } }
     block = b

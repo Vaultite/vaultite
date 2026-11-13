@@ -157,6 +157,55 @@ async function pageMessages(check: Check) {
   ]))
 }
 
+async function webAuthnAsks(check: Check) {
+  const w = await import("../../../electron/browser/webauthn.ts")
+  const b = (n: number, v = 7) => Buffer.from(Array<number>(n).fill(v)).toString("base64url")
+  const good = { rp: { id: "example.com", name: "Example" }, user: { id: b(8), name: "alice", displayName: "Alice" }, challenge: b(16), pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    excludeCredentials: [{ type: "public-key", id: b(4, 1) }, { type: "other", id: "x" }], authenticatorSelection: { residentKey: "preferred", userVerification: "required" }, extensions: { credProps: true }, attestation: "direct" }
+  const creates: ({} | null)[] = [good, null, 5, "x", [], {}, { ...good, rp: null }, { ...good, rp: 5 }, { ...good, rp: { id: 5 } }, { ...good, rp: { name: 5 } }, { ...good, user: null },
+    { ...good, user: { id: b(8), name: 5 } }, { ...good, user: { id: "" } }, { ...good, user: { id: b(80) } }, { ...good, challenge: b(8) }, { ...good, challenge: "*" }, { ...good, challenge: 5 },
+    { ...good, pubKeyCredParams: [] }, { ...good, pubKeyCredParams: "x" }, { ...good, pubKeyCredParams: [{ type: "public-key", alg: 1.5 }, null, 5] }, { ...good, pubKeyCredParams: [null, { type: "public-key", alg: -257 }] }, { ...good, pubKeyCredParams: [{ type: "other", alg: -8 }, { alg: -7 }] },
+    { ...good, excludeCredentials: [{ type: "public-key", id: 5 }] }, { ...good, excludeCredentials: "x" }, { ...good, excludeCredentials: [null, "x", { type: "public-key", id: b(4) }] },
+    { ...good, authenticatorSelection: null }, { ...good, authenticatorSelection: { authenticatorAttachment: "platform" } }, { ...good, authenticatorSelection: { requireResidentKey: true } },
+    { ...good, authenticatorSelection: { userVerification: "discouraged", residentKey: "discouraged" } }, { ...good, extensions: null }, { ...good, extensions: "x" }, { ...good, attestation: 5 },
+    { ...good, rp: [] }, { ...good, user: [] }]
+  const gets: ({} | null)[] = [{ rpId: "example.com", challenge: b(16), allowCredentials: [{ type: "public-key", id: b(4) }], userVerification: "discouraged" }, null, 5, [], {}, { challenge: b(16) },
+    { challenge: b(16), rpId: 5 }, { challenge: b(16), rpId: "evil.com" }, { challenge: b(16), allowCredentials: [{ type: "public-key", id: b(4) }, { type: "public-key", id: b(5) }] },
+    { challenge: b(16), allowCredentials: [5, null, [], { id: b(3) }] }, { challenge: b(16), allowCredentials: "x" }, { challenge: b(16), userVerification: 5 }]
+  const out = (f: () => ReturnType<typeof w.prepareGet>) => {
+    try { const p = f(); return { ...p, command: p.command.toString("hex"), only: p.only?.toString("hex") } } catch (e) { return e instanceof Error ? `${e.name}: ${e.message}` : "threw" }
+  }
+  const all = JSON.stringify([creates.map((o) => out(() => w.prepareCreate(o, "https://example.com"))), gets.map((o) => out(() => w.prepareGet(o, "https://example.com")))])
+  check("passkeys: a page's create and get options, well-formed or not, make the same phone command or error as before",
+    crypto.createHash("sha256").update(all).digest("hex").slice(0, 16) === "014b5d32a65b8545", all.slice(0, 300))
+  check("passkeys: a page's timeout is taken only as a number", same([
+    [w.prepareGet({ challenge: b(16), timeout: 5000 }, "https://example.com").timeout, 5000], [w.prepareGet({ challenge: b(16), timeout: "5000" }, "https://example.com").timeout, undefined],
+  ]))
+}
+
+async function pageChoices(check: Check) {
+  const P = await import("../../../electron/browser/pagewire.ts")
+  check("dark pages: a window's choice by its fields' types, colours lowercase, sites checked; the defaults from a non-object", same([
+    [P.DARK.parse({ on: true, look: "dark", bg: "#ABCDEF", fg: "red", off: ["a.com", "A.com", 5, "x y"] }), { on: true, look: "dark", bg: "#abcdef", fg: "#ffffff", off: ["a.com"] }],
+    [P.DARK.parse({ on: "yes", look: "light", bg: 5 }), { on: false, look: "theme", bg: "#000000", fg: "#ffffff", off: [] }], [P.DARK.parse(null), P.DARK.parse({})],
+  ]))
+  check("site styles: the look's variables and each well-formed site's style, at most 500", same([
+    [P.SITE_STYLES.parse({ vars: "--a: 1", styles: [{ site: "a.com", css: "x", extra: 1 }, { site: "A.com", css: "x" }, null, 5, { site: "b.com", css: 5 }] }),
+      { vars: "--a: 1", styles: [{ site: "a.com", css: "x" }] }],
+    [P.SITE_STYLES.parse({ vars: "x".repeat(20_001), styles: "x" }), { vars: "", styles: [] }], [P.SITE_STYLES.parse({ styles: [{ site: "a.com", css: "x".repeat(1_000_001) }] }).styles, []], [P.SITE_STYLES.parse(5), { vars: "", styles: [] }],
+    [P.SITE_STYLES.parse({ styles: Array(600).fill({ site: "a.com", css: "" }) }).styles.length, 500],
+  ]))
+  const picked = (r: {} | null) => { const p = P.PICKED.safeParse(r); return p.success ? p.data.selector : null }
+  const answers = (v: {} | null) => { const a = P.ANSWERS.safeParse(v); return a.success ? a.data : null }
+  check("pages: a picked element, a sheet's answers and a login form's words by their types; a list or non-object is nothing", same([
+    [picked({ selector: ".ad", x: 1 }), ".ad"], [picked({ selector: 5 }), null], [picked(null), null],
+    [answers({ a: 1, b: null, c: "x", d: true }), { a: "1", b: "", c: "x", d: "true" }], [answers([]), null], [answers("x"), null],
+    [P.FORM_SAID.parse({ form: true, password: 1, url: "https://a/" }), { form: true, password: false, url: "https://a/" }], [P.FORM_SAID.parse({ url: 5 }), { form: false, password: false }],
+    [P.FORM_SAID.safeParse([]).success, false], [P.SUBMITTED.parse({ username: "  alice  ", password: "pw" }), { username: "alice", password: "pw" }],
+    [P.SUBMITTED.parse({ username: 5, password: "x".repeat(1025) }), { username: "", password: "" }], [P.SUBMITTED.safeParse(null).success, false],
+  ]))
+}
+
 export default async ($: VaultTest) => {
-  for (const t of [sessionCookies, runSteps, passwordsConfig, passwordEdits, extensionPolicy, chromeHistory, darkColors, cdpAnswers, pageMessages]) await t($.check)
+  for (const t of [sessionCookies, runSteps, passwordsConfig, passwordEdits, extensionPolicy, chromeHistory, darkColors, cdpAnswers, pageMessages, webAuthnAsks, pageChoices]) await t($.check)
 }

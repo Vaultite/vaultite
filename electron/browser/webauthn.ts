@@ -2,8 +2,9 @@
 // attestation "none"). Buffers travel as base64url, as in WebAuthn's JSON. No Electron here: tools/test_web.ts runs it.
 import crypto from "node:crypto"
 import { getPublicSuffix } from "tldts-experimental"
-import { bytesAt, decode, decodeFirst, encode, mapAt, numAt, textAt, type Cbor, type CborMap } from "./cbor.ts"
+import { bytesAt, decode, decodeFirst, encode, mapAt, numAt, textAt, type Cbor } from "./cbor.ts"
 import { CTAP, type RequestType } from "./hybrid.ts"
+import { z } from "zod"
 
 /** What the page's promise rejects with: a DOMException's name and message. */
 export class WebAuthnError extends Error {
@@ -25,7 +26,16 @@ const str = (v: unknown, what: string, max = 512) => {
   if (typeof v !== "string" || v.length > max) throw new WebAuthnError("TypeError", `${what} isn't text`)
   return v
 }
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {})
+const objectOr = <T extends z.ZodType>(s: T) => z.preprocess((x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {}), s)
+const ANY = z.unknown().optional(), TIMEOUT = z.number().optional().catch(undefined)
+const DESCRIPTORS = z.array(objectOr(z.object({ type: ANY, id: ANY }))).optional().catch(undefined)
+const CREATE = objectOr(z.object({
+  rp: objectOr(z.object({ id: ANY, name: ANY })), user: objectOr(z.object({ id: ANY, name: ANY, displayName: ANY })), challenge: ANY,
+  pubKeyCredParams: z.array(objectOr(z.object({ type: ANY, alg: z.number().refine(Number.isInteger).optional().catch(undefined) }))).optional().catch(undefined),
+  authenticatorSelection: objectOr(z.object({ authenticatorAttachment: ANY, residentKey: ANY, requireResidentKey: ANY, userVerification: ANY })),
+  excludeCredentials: DESCRIPTORS, extensions: objectOr(z.object({ credProps: ANY })), attestation: ANY, timeout: TIMEOUT,
+}))
+const GET = objectOr(z.object({ rpId: ANY, challenge: ANY, allowCredentials: DESCRIPTORS, userVerification: ANY, timeout: TIMEOUT }))
 
 /** The RP ID a page at `origin` may use: its host, or a registrable domain it's under (never a public suffix). */
 export function rpIdFor(origin: string, asked: unknown): string {
@@ -46,30 +56,30 @@ export function rpIdFor(origin: string, asked: unknown): string {
 export const clientData = (type: "webauthn.create" | "webauthn.get", challenge: Uint8Array, origin: string) =>
   `{"type":${JSON.stringify(type)},"challenge":${JSON.stringify(b64u(challenge))},"origin":${JSON.stringify(origin)},"crossOrigin":false}`
 
-const descriptors = (list: unknown, what: string) => (Array.isArray(list) ? list : []).slice(0, 64).flatMap((c) => {
-  const d = obj(c)
-  return d.type === "public-key" ? [new Map<string, Cbor>([["id", bytes(d.id, `${what}.id`, 1023)], ["type", "public-key"]])] : []
+const descriptors = (list: z.infer<typeof DESCRIPTORS>, what: string) => (list ?? []).slice(0, 64).flatMap((d) => {
+  if (d.type !== "public-key") return []
+  const id = bytes(d.id, `${what}.id`, 1023)
+  return [{ id, cbor: new Map<string, Cbor>([["id", id], ["type", "public-key"]]) }]
 })
 const wantsUv = (uv: unknown) => uv !== "discouraged"
 
 /** A request the page made, ready to go: the phone's command, what to check its answer against, and the QR's type. */
 export type Prepared = { type: RequestType; command: Buffer; clientDataJSON: string; rpId: string; origin: string
   /** create: whether it asked for credProps, and what rk was. */
-  credProps?: boolean; rk?: boolean; attestation?: string
+  credProps?: boolean; rk?: boolean; attestation?: string; timeout?: number
   /** get: the one credential it allowed, when the phone leaves it out. */
   only?: Buffer }
 
 export function prepareCreate(options: unknown, origin: string): Prepared {
-  const o = obj(options), rp = obj(o.rp), user = obj(o.user), sel = obj(o.authenticatorSelection)
+  const o = CREATE.parse(options), rp = o.rp, user = o.user, sel = o.authenticatorSelection
   const rpId = rpIdFor(origin, rp.id)
   if (sel.authenticatorAttachment === "platform") throw new WebAuthnError("NotAllowedError", "only a phone's passkeys are available here")
   const challenge = bytes(o.challenge, "challenge")
   if (challenge.length < 16) throw new WebAuthnError("TypeError", "the challenge is too short")
   const userId = bytes(user.id, "user.id", 64)
   if (!userId.length) throw new WebAuthnError("TypeError", "user.id is empty")
-  const algs = (Array.isArray(o.pubKeyCredParams) ? o.pubKeyCredParams : []).map(obj)
-    .filter((p) => p.type === "public-key" && Number.isInteger(p.alg)).map((p) => new Map<string, Cbor>([["alg", p.alg as number], ["type", "public-key"]]))
-  if (!algs.length && Array.isArray(o.pubKeyCredParams) && o.pubKeyCredParams.length) throw new WebAuthnError("NotSupportedError", "no supported algorithm")
+  const algs = (o.pubKeyCredParams ?? []).flatMap((p) => (p.type === "public-key" && p.alg !== undefined ? [new Map<string, Cbor>([["alg", p.alg], ["type", "public-key"]])] : []))
+  if (!algs.length && o.pubKeyCredParams?.length) throw new WebAuthnError("NotSupportedError", "no supported algorithm")
   if (!algs.length) algs.push(new Map<string, Cbor>([["alg", -7], ["type", "public-key"]]), new Map<string, Cbor>([["alg", -257], ["type", "public-key"]]))
   const rk = sel.residentKey === "required" || sel.residentKey === "preferred" || (sel.residentKey === undefined && sel.requireResidentKey === true)
   const clientDataJSON = clientData("webauthn.create", challenge, origin)
@@ -80,15 +90,15 @@ export function prepareCreate(options: unknown, origin: string): Prepared {
     [2, new Map<string, Cbor>([["id", rpId], ["name", typeof rp.name === "string" ? rp.name.slice(0, 256) : rpId]])],
     [3, new Map<string, Cbor>([["id", userId], ["name", str(user.name ?? "", "user.name", 256)], ["displayName", str(user.displayName ?? "", "user.displayName", 256)]])],
     [4, algs],
-    [5, exclude.length ? exclude : undefined],
+    [5, exclude.length ? exclude.map((d) => d.cbor) : undefined],
     [7, [...options_.values()].some((v) => v !== undefined) ? options_ : undefined],
   ])
   return { type: "mc", command: Buffer.concat([Buffer.from([CTAP.makeCredential]), encode(m)]), clientDataJSON, rpId, origin,
-    credProps: obj(o.extensions).credProps === true, rk, attestation: typeof o.attestation === "string" ? o.attestation : "none" }
+    credProps: o.extensions.credProps === true, rk, attestation: typeof o.attestation === "string" ? o.attestation : "none", timeout: o.timeout }
 }
 
 export function prepareGet(options: unknown, origin: string): Prepared {
-  const o = obj(options)
+  const o = GET.parse(options)
   const rpId = rpIdFor(origin, o.rpId)
   const challenge = bytes(o.challenge, "challenge")
   if (challenge.length < 16) throw new WebAuthnError("TypeError", "the challenge is too short")
@@ -97,11 +107,11 @@ export function prepareGet(options: unknown, origin: string): Prepared {
   const m = new Map<number, Cbor>([
     [1, rpId],
     [2, crypto.createHash("sha256").update(clientDataJSON).digest()],
-    [3, allow.length ? allow : undefined],
+    [3, allow.length ? allow.map((d) => d.cbor) : undefined],
     [5, wantsUv(o.userVerification) ? new Map<string, Cbor>([["uv", true]]) : undefined],
   ])
   return { type: "ga", command: Buffer.concat([Buffer.from([CTAP.getAssertion]), encode(m)]), clientDataJSON, rpId, origin,
-    only: allow.length === 1 ? allow[0].get("id") as Buffer : undefined }
+    only: allow.length === 1 ? allow[0].id : undefined, timeout: o.timeout }
 }
 
 /** The page's error for a CTAP2 status the phone answered. */
@@ -146,7 +156,7 @@ export function readCreate(answer: Uint8Array, p: Prepared) {
   if (!a.credentialId) throw new WebAuthnError("NotAllowedError", "the phone made no passkey")
   // (attestation the page didn't ask for is "none", as browsers send it)
   const keep = p.attestation === "direct" || p.attestation === "enterprise" || p.attestation === "indirect"
-  const att = new Map<string, Cbor>([["fmt", keep ? fmt : "none"], ["attStmt", keep ? attStmt : new Map() as CborMap], ["authData", authData]])
+  const att = new Map<string, Cbor>([["fmt", keep ? fmt : "none"], ["attStmt", keep ? attStmt : new Map<number | string, Cbor>()], ["authData", authData]])
   const key = spki(a.cose)
   return {
     id: b64u(a.credentialId), rawId: b64u(a.credentialId), type: "public-key", authenticatorAttachment: "cross-platform",

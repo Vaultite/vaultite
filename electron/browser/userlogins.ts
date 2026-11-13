@@ -10,6 +10,7 @@ import { saveOffer } from "./loginform.ts"
 import { ranNear, siteOf } from "./pagesecrets.ts"
 import { configured, entriesForUrl, samePassword, saveLogin, secretsOf } from "./passwords.ts"
 import { messageOf } from "./messageof.ts"
+import { FORM_SAID, SUBMITTED } from "./pagewire.ts"
 
 const log = logger("logins")
 
@@ -40,14 +41,15 @@ const tellForm = (p: EnginePage) => tell(p.win, { type: "engine:passwords:form",
 
 ipcMain.on("vaultite:logins:form", (e, given: unknown) => {
   const p = senderPage(e)
-  if (!p || !given || typeof given !== "object") return
-  const g = given as Partial<Shows> & { url?: unknown }, f = e.senderFrame!
+  const said = FORM_SAID.safeParse(given)
+  if (!p || !said.success) return
+  const g = said.data, f = e.senderFrame!
   // (a word from the document before this one, come late)
-  if (typeof g.url === "string" && g.url !== f.url) return
+  if (g.url !== undefined && g.url !== f.url) return
   const map = forms.get(p.wc) ?? new Map<string, Shows>()
   forms.set(p.wc, map)
   const was = shows(p, "form")
-  map.set(`${f.processId}:${f.routingId}`, { form: g.form === true, password: g.password === true })
+  map.set(`${f.processId}:${f.routingId}`, { form: g.form, password: g.password })
   if (shows(p, "form") !== was) tellForm(p)
   weigh(p)
 })
@@ -103,11 +105,10 @@ const weighed = new Map<string, number>()
 
 ipcMain.on("vaultite:logins:submitted", (e, given: unknown) => {
   const p = senderPage(e)
-  if (!p || openedByAgent(p.id) || !given || typeof given !== "object") return
+  const g = SUBMITTED.safeParse(given)
+  if (!p || openedByAgent(p.id) || !g.success) return
   const url = e.senderFrame!.url
-  const g = given as { username?: unknown; password?: unknown }
-  const username = typeof g.username === "string" ? g.username.trim().slice(0, 256) : ""
-  const password = typeof g.password === "string" && g.password.length <= 1024 ? g.password : ""
+  const { username, password } = g.data
   if (!/^https?:/i.test(url)) return
   const site = siteOf(url)
   if (!password) { if (username) named.set(p.wc, { site, username, at: Date.now() }); return }

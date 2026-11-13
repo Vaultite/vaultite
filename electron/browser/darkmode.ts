@@ -4,6 +4,7 @@ import { ipcMain, type Session } from "electron"
 import { fileURLToPath } from "node:url"
 import { AUTO_BG, tintFilter } from "./darkcolors.ts"
 import { cdp, type CdpParams } from "./cdp.ts"
+import { DARK } from "./pagewire.ts"
 import { canvasChanged, canvasFrom, eachPage, eachSession, handle, type EnginePage, type EngineWindow } from "./engine.ts"
 
 const PRELOAD = fileURLToPath(new URL("./darkmode-preload.cjs", import.meta.url))
@@ -181,15 +182,10 @@ ipcMain.on("vaultite:darkmode:dark", (e, dark) => {
   tellFrames(s)
 })
 
-const site = (x: unknown): x is string => typeof x === "string" && /^[a-z0-9.-]{1,253}$/.test(x)
-const sites = (x: unknown) => (Array.isArray(x) ? x.filter(site).slice(0, 2000) : [])
-const hex = (x: unknown, or: string) => (typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x) ? x.toLowerCase() : or)
 
 /** The window's dark pages (the app's stylestate.ts): its pages follow at once, no reload. */
 handle("darkmode:set", (win, x) => {
-  const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>
-  const c: Choice = { on: o.on === true, look: o.look === "dark" ? "dark" : "theme", bg: hex(o.bg, NONE.bg), fg: hex(o.fg, NONE.fg),
-    off: sites(o.off) }
+  const c = DARK.parse(x)
   const id = win.id, was = choices.get(id)
   if (was && JSON.stringify(was) === JSON.stringify(c)) return
   if (!was) win.once("closed", () => choices.delete(id))

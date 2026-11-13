@@ -3,6 +3,7 @@
 import { ipcMain, type Session } from "electron"
 import { fileURLToPath } from "node:url"
 import { eachPage, eachSession, handle, type EnginePage, type EngineWindow } from "./engine.ts"
+import { SITE_STYLES } from "./pagewire.ts"
 
 const PRELOAD = fileURLToPath(new URL("./sitestyles-preload.cjs", import.meta.url))
 
@@ -46,11 +47,7 @@ ipcMain.on("vaultite:sitestyles:frame", (e, url) => {
 
 /** The vault's site styles and look (the app's sitestyles.ts): the window's pages show the change at once. */
 handle("sitestyles:set", (win, x) => {
-  const o = (x && typeof x === "object" ? x : {}) as { vars?: unknown; styles?: unknown }
-  const vars = typeof o.vars === "string" && o.vars.length <= 20_000 ? o.vars : ""
-  const styles = (Array.isArray(o.styles) ? o.styles : []).filter((s): s is Style => !!s && typeof s.site === "string"
-    && /^[a-z0-9.-]+$/.test(s.site) && typeof s.css === "string" && s.css.length <= 1_000_000).slice(0, 500)
-  const c: Choice = { vars, styles }
+  const c = SITE_STYLES.parse(x)
   const id = win.id, was = choices.get(id)
   if (was && JSON.stringify(was) === JSON.stringify(c)) return
   if (!was) win.once("closed", () => choices.delete(id))

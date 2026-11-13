@@ -15,13 +15,14 @@ function live() {
 
 export const scrub = (text: string, secrets: Iterable<string> = live()) => mask(text, secrets)
 const BINARY = new Set(["png", "pdf"])
-export function scrubDeep<T>(v: T): T {
+export function scrubDeep<T>(v: T): T
+export function scrubDeep<T>(v: T) {
   const secrets = live()
   if (!secrets.length) return v
   const go = (x: unknown): unknown => typeof x === "string" ? scrub(x, secrets) : Array.isArray(x) ? x.map(go)
     : x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype
       ? Object.fromEntries(Object.entries(x).map(([k, y]) => [k, BINARY.has(k) && typeof y === "string" ? y : go(y)])) : x
-  return go(v) as T
+  return go(v)
 }
 export const hasSecret = (text: string) => { const s = live(); return s.length > 0 && scrub(text, s) !== text }
 

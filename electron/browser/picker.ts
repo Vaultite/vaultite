@@ -2,7 +2,9 @@
 // app keeps it in the blocked elements list, which comes back to Shields (adblock.ts `adblock:rules`) like every rule.
 import fs from "node:fs"
 import { fileURLToPath } from "node:url"
+import { AT } from "./agentwire.ts"
 import { allPages, handle, type EngineWindow } from "./engine.ts"
+import { PICKED } from "./pagewire.ts"
 
 const WORLD = 1020
 let source = ""
@@ -28,12 +30,12 @@ handle("adblock:pick", async (win, id, site, at) => {
     wc.once("destroyed", closed)
     off = () => { if (!wc.isDestroyed()) { wc.off("did-start-navigation", left); wc.off("destroyed", closed) } }
   })
-  const z = wc.getZoomFactor(), pt = at as { x?: unknown; y?: unknown } | undefined
-  const point = pt && Number.isFinite(pt.x) && Number.isFinite(pt.y) ? { x: Number(pt.x) / z, y: Number(pt.y) / z } : undefined
+  const z = wc.getZoomFactor(), pt = AT.safeParse(at)
+  const point = pt.success ? { x: pt.data.x / z, y: pt.data.y / z } : undefined
   const args = JSON.stringify({ site: typeof site === "string" ? site.slice(0, 300) : "", at: point })
   try {
     const r = await Promise.race([wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code: `(${code()})(${args})` }], true), gone])
-    const selector = r && typeof r === "object" && typeof (r as { selector?: unknown }).selector === "string" ? (r as { selector: string }).selector.trim() : ""
+    const picked = PICKED.safeParse(r), selector = picked.success ? picked.data.selector.trim() : ""
     return selector && selector.length <= 2000 && !/[\n\r]/.test(selector) ? { selector } : null
   } finally { off() }
 })
