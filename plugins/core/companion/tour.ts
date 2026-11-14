@@ -155,7 +155,7 @@ export type Fx = {
   sleep: (ms: number) => Promise<void>
   follow?: (step: Step, at: (Aim | null)[]) => Promise<void> | void
 }
-export type Played = { n: number; how: "played" | "model" | "lost" | "stopped"; ms: number; waited?: Watched; why?: string; missing?: string[] }
+export type Played = { n: number; how: "played" | "model" | "lost" | "stopped"; ms: number; waited?: Watched; why?: string; missing?: string[]; hidden?: string[] }
 export type Result = { ended: "done" | "stopped" | "lost"; steps: Played[] }
 
 export function anchorFor(t: Pick<Tour, "anchors" | "app" | "site">, s: Spot): Anchor | "lost" | null {
@@ -213,8 +213,9 @@ export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, fr
       } else {
         const hidden = aims.find((a): a is Extract<Aim, { ok: true }> => !!a?.ok && !a.shown)
         if (hidden) {
+          const away = spots.flatMap((s, i) => { const a = aims[i]; return a?.ok && !a.shown ? [labelOf(s)] : [] })
           const got = await intoView(t, spots, hidden.dir ?? "down", mode, fx, signal)
-          if (!got) { out.push({ n: step.n, how: signal?.aborted ? "stopped" : "lost", ms: Date.now() - t0, why: "it didn't come into view" }); return { ended: signal?.aborted ? "stopped" : "lost", steps: out } }
+          if (!got) { out.push({ n: step.n, how: signal?.aborted ? "stopped" : "lost", ms: Date.now() - t0, why: "it didn't come into view", hidden: away }); return { ended: signal?.aborted ? "stopped" : "lost", steps: out } }
           aims.splice(0, aims.length, ...got)
         }
         await fx.show({ ...step, tags }, pairUp(tags, aims))

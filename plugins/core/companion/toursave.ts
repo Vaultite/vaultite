@@ -71,7 +71,9 @@ A job's proof (--job) is a video by default: --record <address> plays its steps 
 (your worktree's dev server or a sandbox server, never the user's live app), in a headless Chrome with no sound, each
 step's words as a caption and its marks drawn in, and keeps the mp4 beside it (Guides/Proofs/<title>/). A step's
 (before: <png>) flips over its thing; (after: <png>) shows a still of the Mac's own UI (the menu bar, the notch), which
-no browser shows, as a before and after slide. --video keeps an mp4 you recorded yourself instead.
+no browser shows, as a before and after slide. --video keeps an mp4 you recorded yourself instead. A change that shows
+only on another device (the iPhone app, another machine): its first step says where ("On your iPhone, open a terminal"),
+its steps what to do there; Show me says them, or plays its video, never looks for it on the Mac's screen.
 
   vau companion tour-save "Start a chat"
   vau companion tour-save "Start a chat" --text '1. Start one here [ring "New chat"]. (wait: click)'

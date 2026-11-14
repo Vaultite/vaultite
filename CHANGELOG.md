@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the site's width settings (YouTube's titles, in its new narrow font).
 - **The web demo keeps file history**: an edit there keeps the note's earlier text, and search reads long notes whole.
 - **Electron 45**: the desktop app's browser is Chromium 156, up from 152; sharing your screen in it keeps working.
+- **Show me on a change it can't see here**: a change on the iPhone or another machine is said where to see it there,
+  with its recording when it has one, never looked for on the Mac's screen; and a tour that loses its way says why in one
+  plain sentence.
 - **The companion finds its way around Settings**: asked to take you to a setting, it opens Settings at that row in one
   step, flashed (`vau settings show summoned_model`); it now reads Settings and other app pages, switches and all, and
   the companion's model for summoned asks sits under its row in Settings, AI.

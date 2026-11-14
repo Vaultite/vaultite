@@ -5,6 +5,7 @@ import { type Knock, READY_HOLD_MS } from "../../../core/desktop/knocks.ts"
 import type { Moment } from "./types.ts"
 import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, type NotYet, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"
+import { deviceOf, lostSaid, seeOn } from "./showsaid.ts"
 import type { Screen } from "./tours.ts"
 import { messageOf } from "./errors.ts"
 
@@ -81,14 +82,11 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     try {
       if (!proof) return await plain(j, mine, `It didn't leave a demo to show you, so here's what it says it did. ${summaryOf(j)}`)
       if (proof.problems.length) return await plain(j, mine, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j, proof.tour.open)}`)
-      const t = proof.tour
+      const t = proof.tour, device = deviceOf(t)
+      if (device) return await elsewhere(j, mine, t, proof.path, device)
       if (!live && t.video && d.has(t.video)) {
-        if (!(await d.play(t.video, t.title, proof.path))) return await plain(j, mine, `I can't play its video here. ${summaryOf(j, proof.tour.open)}`)
-        for (const [at, said] of narration(t)) {
-          await new Promise((r) => setTimeout(r, Math.max(0, at - (Date.now() - began))))
-          if (mine.stopped) return
-          if (said) await d.say(said).catch(() => {})
-        }
+        if (!(await video(t, proof.path, mine, began))) return await plain(j, mine, `I can't play its video here. ${summaryOf(j, proof.tour.open)}`)
+        if (mine.stopped) return
         return await choose(j, mine)
       }
       await mainRead
@@ -106,14 +104,26 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       const r = await d.tours.show(name, s, t)
       if (mine.stopped || r.ended === "stopped") return
       d.clear()
-      if (r.ended === "lost") {
-        const why = r.steps.at(-1)?.why?.replace(/^not found: /, "") ?? "what it changed"
-        return await plain(j, mine, `I can't find ${why} on your screen now, so I can't show you that part. ${summaryOf(j, proof.tour.open)}`)
-      }
+      if (r.ended === "lost") return await plain(j, mine, `${lostSaid(r)} ${summaryOf(j, proof.tour.open)}`)
       await choose(j, mine)
     } finally {
       if (playing?.ctl === mine) { playing = null; d.showing(null) }
     }
+  }
+  async function video(t: Tour, path: string, mine: { stopped: boolean }, began = Date.now()) {
+    if (!t.video || !(await d.play(t.video, t.title, path))) return false
+    for (const [at, said] of narration(t)) {
+      await new Promise((r) => setTimeout(r, Math.max(0, at - (Date.now() - began))))
+      if (mine.stopped) return true
+      if (said) await d.say(said).catch(() => {})
+    }
+    return true
+  }
+  async function elsewhere(j: Job, mine: { stopped: boolean }, t: Tour, path: string, device: string) {
+    const recorded = !!t.video && d.has(t.video)
+    if (recorded) await d.say(`That change is on ${device}, so here's its recording.`).catch(() => {})
+    if (recorded && !mine.stopped && (await video(t, path, mine))) return mine.stopped ? undefined : await choose(j, mine)
+    return await plain(j, mine, seeOn(t, device))
   }
   async function plain(j: Job, mine: { stopped: boolean }, text: string) {
     if (mine.stopped) return
@@ -166,7 +176,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     summary: "Show the user a job's change (Show me on its ready knock): the demo video its worker recorded, narrated, by the notch (else its tour, live on their screen), then their choice: Keep and merge, Needs changes, or Not yet.",
     help: `Only when they ask to see that job's change: from an agent, id the job they mean and said quoting their words
 asking to see it ("show me the header"); never in answer to anything else. Its video plays wherever the change is (a
-branch, another machine), each step's words said as it comes. --live plays its tour on their own screen instead, when
+branch, another machine), each step's words said as it comes. A change on another device (its first step says where:
+"On your iPhone, ...") is never looked for here: its video plays, else it says its steps for there. --live plays its tour on their own screen instead, when
 they ask to see it live: a change not in the app on this Mac yet is said so, with an offer to merge it first. No proof,
 one that can't play or a thing it names gone: it says so plainly, with what the job says it changed. The choice is their click or word, the app's: Keep and
 merge (its own worker lands it as its repo says; the job closes once merged; with no change of its own, or one
@@ -212,12 +223,13 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
       if (Array.isArray(p.displays)) d.showing({ voice: p.voice !== false, displays: p.displays })
       const proof = d.tours.proofOf(j.id)
       void show(j, p.voice !== false, p.live === true).catch((e) => log.error(`showing ${j.id}: ${messageOf(e)}`))
-      const video = proof && !proof.problems.length && p.live !== true && proof.tour.video && d.has(proof.tour.video) ? proof.tour.video : null
-      return { job: j.id, title: j.title, proof: proof && !proof.problems.length ? proof.path : null, ...(video ? { video } : {}) }
+      const ok = proof && !proof.problems.length ? proof : null, device = ok ? deviceOf(ok.tour) : ""
+      const video = ok && (p.live !== true || device) && ok.tour.video && d.has(ok.tour.video) ? ok.tour.video : null
+      return { job: j.id, title: j.title, proof: ok ? ok.path : null, device, ...(video ? { video } : {}) }
     },
     text: (r) => "landing" in r ? "Kept: its job is merging it, and closes once it says it merged." : "kept" in r ? "Kept: closed as done." : "later" in r ? "Not yet: it waits in Jobs."
       : "recording" in r ? (r.recording ? "Recording what they show: it goes to the job when they say stop." : "Waiting for their words on what to change.")
-      : r.video ? `Playing "${r.title}"'s video (${r.video}), narrated; their choice follows.` : r.proof ? `Showing "${r.title}" (${r.proof}) live; their choice follows.` : `"${r.title}" left no proof: saying what it changed, then their choice.`,
+      : r.device && !r.video ? `"${r.title}" is a change on ${r.device}: saying where to see it there, then their choice.` : r.video ? `Playing "${r.title}"'s video (${r.video}), narrated; their choice follows.` : r.proof ? `Showing "${r.title}" (${r.proof}) live; their choice follows.` : `"${r.title}" left no proof: saying what it changed, then their choice.`,
   })
 
   return {
