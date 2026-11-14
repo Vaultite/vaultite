@@ -763,7 +763,7 @@ function Loaded({ store, initial, pane, docked, onGone }: { store: Store; initia
   const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit} views={views}
     settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />
   const phoneToggle = phoneTab && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="header" />
-  const note = pane && isMd(path) && !dash && !format && !json && !notebook && !code
+  const note = pane && !dash && !json && !notebook && (format ? !!format.prose : isMd(path) && !code)
   const size = useTextSize("note")
   useTextSizeWheel(article, note ? "note" : null)
   const zoom = note && size !== 100 ? size / 100 : 0
@@ -823,7 +823,7 @@ function Loaded({ store, initial, pane, docked, onGone }: { store: Store; initia
 
   const parted = withParts(path, !!source, !!drawing), place = pane ? "page" : "sheet"
   const fileArticle = (
-    <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
+    <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || (format && !format.prose) ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       data-grid={editGrid ? "" : undefined} data-docked={docked}
       onContextMenu={outsideMenu}
       style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>

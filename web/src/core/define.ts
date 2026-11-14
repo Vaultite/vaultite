@@ -133,6 +133,8 @@ export type FileFormat = {
   json?: boolean
   /** Its source is code rather than Markdown: highlighted as HTML, or plain text. */
   code?: "html" | "text"
+  /** Reads as a document (an Org file): the note's column and text size. */
+  prose?: boolean
   /** Named and listed like a note (an artifact): shown without its extension, pinnable. Its backend says so to the
    *  server with the service `looks:<ext>`. */
   page?: boolean
