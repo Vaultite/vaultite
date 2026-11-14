@@ -7,6 +7,8 @@ import { isMessage } from "./threads.ts"
 export type State = "open" | "working" | "done"
 const STATES: State[] = ["open", "working", "done"]
 
+export type Fix = { label: string; op: string; args: Record<string, string>; why: string }
+
 export type InboxEvent = {
   id: string; t: number
   /** Who: a coding agent's name (claude, codex), or anything that posts ("vau", "backup"). */
@@ -53,6 +55,7 @@ export type InboxEvent = {
   /** Pinned by the user: on top of the inbox whatever it waits on, until it's done or unpinned. */
   pinned?: boolean
   stays?: boolean
+  fix?: Fix
   /** The session that delegated this one its task (Delegation), by its name then: the thread says "from" it. */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
   /** The session that asked (a gate's, a waiting ask's made in its request), by its name then: "Go to session" opens it. */

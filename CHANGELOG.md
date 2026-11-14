@@ -79,7 +79,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   pages were offered FedCM with no account chooser and Google's button frame was told a different browser than its site.
 - **Editing a plugin's notes no longer pauses it, and a paused plugin can't go unnoticed**: a vault plugin waits to be
   allowed again only when its code changes, not its Markdown notes (an agent's brief) or settings; one that does stays in
-  the inbox until it's allowed (settling or clearing leaves it), and Errors and the schedule list say each run it misses;
+  the inbox until it's allowed (its row's Allow button does it; Settle says it stays paused), and Errors and the schedule list say each run it misses;
   a Python command no longer pauses its own plugin by writing bytecode into its folder.
 - **The Mac's traffic lights and the sidebar button sit at the window's top again**: with panes as cards and the left
   sidebar pinned, they no longer sit a gap low in the window's corner.

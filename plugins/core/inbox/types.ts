@@ -42,6 +42,8 @@ export type Question = { question: string; header?: string; multi?: boolean; clo
 export type State = "open" | "working" | "done"
 
 /** Something an agent said, or an agent's session (one thread each): model.ts' InboxEvent. */
+export type Fix = { label: string; op: string; args: Record<string, string>; why: string }
+
 export type InboxEvent = {
   id: string; t: number; source: string
   /** session (a coding agent's thread), waiting (something asks the user), else a message (info, error...). */
@@ -76,6 +78,7 @@ export type InboxEvent = {
   /** Pinned on top of the inbox till it's done or unpinned. */
   pinned?: boolean
   stays?: boolean
+  fix?: Fix
   /** A session's latest progress (inbox.progress), each replacing the last: shown on its row, never told. */
   progress?: string
   /** The session that delegated this one its task, by its name then (its own thread, if any, by its terminal or session). */

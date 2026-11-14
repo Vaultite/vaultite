@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { activePane, askMove, closePane, getStore, isViewOpen, notify, openFile, openView, optimistic, paneTab, panesShowing, plural, put, selectPane, setProperty, type Store } from "@vaultite"
-import { getEvents, markEventsDone, pinEvents, unsettle, useEvents } from "./events"
+import { fixEvent, getEvents, markEventsDone, pinEvents, unsettle, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { snoozed, snoozeMs } from "./snooze"
 import { countOf, lists, reviewing } from "./threads"
@@ -98,10 +98,16 @@ export async function markManyDone(list: InboxItem[], done = true, pinned: boole
     { action: { label: "Undo", run: () => void markManyDone(now, !done, done ? ok.map((x) => !!x.was.pinned) : []) } })
 }
 
+function tellHeld(e: InboxEvent) {
+  const { fix } = e
+  if (!fix) return notify(`“${e.title}” stays in the inbox until it's dealt with`)
+  notify(`${fix.why}, so it stays in the inbox`, { action: { label: fix.label, run: () => fixEvent(e) } })
+}
+
 export function markManyEventsDone(all: InboxEvent[], done = true) {
   const held = done ? all.filter((e) => e.stays && e.state !== "done") : []
   const evs = all.filter((e) => !held.includes(e))
-  if (held.length && !evs.length) return notify(`“${held[0].title}” stays in the inbox until it's dealt with`)
+  if (held.length) tellHeld(held[0])
   if (!evs.length) return
   void markEventsDone(evs.map((e) => e.id), done)
   notify(evs.length === 1 ? (done ? `Settled “${evs[0].title}”` : `Back in the inbox: “${evs[0].title}”`) : (done ? `Settled ${plural(evs.length, "item")}` : `Put back ${plural(evs.length, "item")} in the inbox`),

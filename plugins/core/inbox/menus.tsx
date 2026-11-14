@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react"
-import { AlarmClockOff, Check, Clock, ExternalLink, FileText, FolderInput, Globe, Mail, MailOpen, MoreHorizontal, Pin, PinOff, RotateCcw, SquareTerminal, Trash2 } from "lucide-react"
+import { AlarmClockOff, Check, Clock, ExternalLink, FileText, FolderInput, Globe, Mail, MailOpen, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldCheck, SquareTerminal, Trash2 } from "lucide-react"
 import { askMoveMany, cn, DoIt, getStore, haptic, menuBelow, openFile, openMenu, openWebLink, pluginFileGroups, useSelectable, useStoreWith, type FileHead, type MenuItem, type Store, type SwipeAction, type TabButton } from "@vaultite"
-import { forget, getEvents, markRead, markUnread, openAsker, openEvent, snoozable, targetOf } from "./events"
+import { fixEvent, forget, getEvents, markRead, markUnread, openAsker, openEvent, snoozable, targetOf } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { snoozed } from "./snooze"
 import { reviewing } from "./threads"
@@ -54,7 +54,7 @@ export const eventSwipe = (e: InboxEvent, reply?: SwipeAction): SwipeAction[] =>
     { label: "More", icon: MoreHorizontal, run: moreAt(eventItems(e, !e.read)) },
     ...(snoozable(e) ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([eventKey(e)]) }] : []),
     ...(reply ? [reply] : []),
-    { label: "Settle", icon: Check, run: () => markManyEventsDone([e]), removes: true },
+    e.fix ? { label: e.fix.label, icon: ShieldCheck, run: () => fixEvent(e) } : { label: "Settle", icon: Check, run: () => markManyEventsDone([e]), removes: true },
   ]
 
 const resultItems = (r: InboxItem): MenuItem[] => [
@@ -83,6 +83,7 @@ export const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: stri
     : { label: "Mark as unread", icon: Mail, run: () => markUnread([e.id]) },
   ...(e.state !== "done" ? [pinItem([eventKey(e)], !!e.pinned)] : []),
   ...(snoozable(e) ? [snoozeMenu([eventKey(e)])] : []),
+  ...(e.fix && e.state !== "done" ? [{ label: e.fix.label, icon: ShieldCheck, sep: true, run: () => fixEvent(e) }] : []),
   e.state === "done"
     ? { label: "Back to inbox", icon: RotateCcw, sep: true, run: () => markManyEventsDone([e], false) }
     : { label: "Settle", icon: Check, sep: true, run: () => { markManyEventsDone([e]); touched?.(e.id) } },

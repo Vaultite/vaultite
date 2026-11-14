@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { AlarmClockOff, Bell, Check, CircleAlert, CircleCheck, Clock, FileText, Globe, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, RotateCcw } from "lucide-react"
+import { AlarmClockOff, Bell, Check, CircleAlert, CircleCheck, Clock, FileText, Globe, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, RotateCcw, ShieldCheck } from "lucide-react"
 import { Badged, cn, DoIt, fmtAgo, haptic, Markdown, menuFor, openFile, rightClickBelow, rowMenu, selectClick, selectedAttr, snippet, SwipeRow, useAgents, useSelected, type SwipeAction } from "@vaultite"
-import { agentOf, answerable, markRead, openEvent, openSession, threadTitle, snoozable, targetOf } from "./events"
+import { agentOf, answerable, fixEvent, markRead, openEvent, openSession, threadTitle, snoozable, targetOf } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { whenText } from "./snooze"
 import { useHasDraft } from "./drafts"
@@ -125,7 +125,11 @@ export function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean
         <button type="button" className={cn(iconButton, !replying && onHover, replying && "text-foreground")} aria-label="Reply" data-tip="Reply"
           aria-expanded={replying} data-row-reply-button onClick={reply}><MessageSquareReply className="size-4" strokeWidth={2.25} /></button>
       )}
-      {!asks && (e.state === "done"
+      {e.fix && e.state !== "done" && (
+        <button type="button" className={iconButton} aria-label={e.fix.label} data-tip={e.fix.label} data-fix onClick={() => fixEvent(e)}>
+          <ShieldCheck className="size-4" strokeWidth={2.25} /></button>
+      )}
+      {!asks && !(e.fix && e.state !== "done") && (e.state === "done"
         ? <button type="button" className={cn(iconButton, onHover)} aria-label="Back to inbox" data-tip="Back to inbox" onClick={() => { haptic("medium"); markManyEventsDone([e], false) }}>
           <RotateCcw className="size-4" strokeWidth={2.25} /></button>
         : <button type="button" className={cn(iconButton, onHover)} aria-label="Settle" data-tip="Settle" data-done onClick={() => { haptic("medium"); markManyEventsDone([e]); touched?.(e.id) }}>

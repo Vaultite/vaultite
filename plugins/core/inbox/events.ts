@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openOutside, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, haptic, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openOutside, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent } from "./types"
@@ -88,7 +88,7 @@ export function unsettle(evs: InboxEvent[]) {
   return markEventsDone(evs.map((e) => e.id), false).then((ok) => { if (ok && pinned.length) pinEvents(pinned, true) })
 }
 
-export const snoozable = (e: InboxEvent) => !e.gate && e.state !== "done" && !(e.state === "open" && e.ask === "permission")
+export const snoozable = (e: InboxEvent) => !e.gate && !e.stays && e.state !== "done" && !(e.state === "open" && e.ask === "permission")
 
 export function snoozeEvents(ids: string[], until: number | null) {
   const want = new Set(ids)
@@ -134,6 +134,12 @@ export async function openSession({ terminal = "", session = "", agent = "", mac
   if (bare && sessions.some((s) => s.id === bare)) openView(`terminal/${onMachine(bare, there)}`, { newTab: true })
   else if (session && agent) openAgent(agent, { resume: session, machine: there })
   else notify("Its terminal has ended, and it names no session to resume")
+}
+
+export function fixEvent(e: InboxEvent) {
+  if (!e.fix) return
+  haptic("medium")
+  void post<{ text: string }>(`inbox/events/${encodeURIComponent(e.id)}/fix`, {}).then((r) => notify(r.text), (err) => notifyError(err, `Couldn't ${e.fix!.label.toLowerCase()} it`))
 }
 
 export async function answerAsk(e: InboxEvent, answer: "approve" | "deny") {

@@ -1,9 +1,9 @@
 import type { MouseEvent, ReactNode } from "react"
-import { Check, CheckCheck, CircleCheck, Clock, FileText, Inbox as InboxIcon, ListTodo, Maximize2, MessageCircleQuestion, MoreHorizontal, Pin } from "lucide-react"
+import { Check, CheckCheck, CircleCheck, Clock, FileText, Inbox as InboxIcon, ListTodo, Maximize2, MessageCircleQuestion, MoreHorizontal, Pin, ShieldCheck } from "lucide-react"
 import {
   Badged, cn, fmtAgo, haptic, HeadingButton, menuFor, openFile, rightClickBelow, rowMenu, selectClick, selectedAttr, SidebarHeading, SwipeRow, useSelected, useSidebars, useStore, useTick, type SidebarCtx, type SwipeAction,
 } from "@vaultite"
-import { answerable, markRead, openEvent, snoozable, useEvents } from "./events"
+import { answerable, fixEvent, markRead, openEvent, snoozable, useEvents } from "./events"
 import type { InboxEvent } from "./types"
 import { DraftTag } from "./Reply"
 import { acceptAll, keepDefault } from "./DecisionRows"
@@ -84,7 +84,8 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
       time={e.state === "working" ? "working" : fmtAgo(e.t, { short: true })} dim={e.state === "working"}
       icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
       <GateButtons e={e} className={small} size="size-3.5" />
-      {!answerable(e) && <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
+      {e.fix ? <HeadingButton icon={ShieldCheck} label={e.fix.label} data-fix onClick={stop(() => fixEvent(e))} />
+        : !answerable(e) && <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
       {snoozable(e) && e.state !== "working" && <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([eventKey(e)])} />}
       {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
     </PanelRow>

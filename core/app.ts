@@ -248,7 +248,8 @@ export class App {
       const jobs = p.jobs.map((j) => `${j.name} (every ${j.every}${j.at ? ` at ${j.at}` : ""})`)
       const title = `${p.name} changed and is paused until you allow it again${jobs.length ? `: ${jobs.join(", ")} won't run` : ""}`
       const body = `Changed: ${p.changed.join(", ")}. Allow it: vau plugin allow ${p.id}`
-      const e = { source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}`, stays: true }
+      const e = { source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}`, stays: true,
+        fix: { label: "Allow", op: "plugin.allow", args: { id: p.id }, why: `${p.name} stays paused until you allow it` } }
       const first = vps.trust.tellPaused(p.id)
       if (first) { log.error(`${title}. ${body}`); if (!add) this.notice(e, "Review").catch(() => {}) }
       if (add) Promise.resolve(add(e)).then(() => { this.pausedTold.add(p.id) }, () => {})

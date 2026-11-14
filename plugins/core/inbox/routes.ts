@@ -1,24 +1,44 @@
 import crypto from "node:crypto"
-import { type Handler, HTTPError, NOT_THE_USER, reply, type RouteOptions, splitMachine, userSurface, whoOf } from "../../../core/plugins.ts"
+import { type Handler, HTTPError, type Request, NOT_THE_USER, reply, type RouteOptions, splitMachine, userSurface, whoOf } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { byMachine, isOne, onMachine, others } from "./live.ts"
 import { doneAs, type InboxEvent, pinnedAs, readThere, snoozedAs, unreadThere } from "./model.ts"
 import { holdNow, owner, plugin } from "./server.ts"
 import { askerOf } from "./sessions.ts"
+import { Fix, Fixed } from "./wire.ts"
 import { addEvent, changed, eventOf, gates, list, markDone, markRead, markUnread, needing, pin, remotes, sameKey, shown, snooze, told, unread } from "./store.ts"
 
 export async function postEvent(b: Item, inner = false) {
   const e = eventOf(b)
   if (inner && b.stays === true && e.key) {
     e.stays = true
+    const fix = Fix.safeParse(b.fix)
+    if (fix.success) e.fix = fix.data
     const open = list().find((x) => x.state !== "done" && sameKey(x, e.source, e.key!))
-    if (open?.stays && open.title === e.title) return open
+    if (open?.stays && open.title === e.title && JSON.stringify(open.fix) === JSON.stringify(e.fix)) return open
   }
   const from = e.kind === "waiting" && !(e.terminal || e.session) ? await askerOf() : undefined
   return addEvent(from ? { ...e, from } : e)
 }
 
-const stays = (e: InboxEvent) => `"${e.title}" stays in the inbox until it's dealt with${e.body ? ` (${e.body})` : ""}: settling it would hide it`
+const stays = (e: InboxEvent) => e.fix ? `${e.fix.why}, so "${e.title}" stays in the inbox: ${e.fix.label} deals with it`
+  : `"${e.title}" stays in the inbox until it's dealt with${e.body ? ` (${e.body})` : ""}: settling it would hide it`
+
+async function byTheUser(req: Request) {
+  await owner(req)
+  const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
+  if (req.http && !userSurface(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_THE_USER)
+}
+
+async function fixWithConsent(req: Request) {
+  await byTheUser(req)
+  const [bare, there] = splitMachine(req.arg(0))
+  if (there) return Fixed.parse(await (await onMachine(there, "POST", `inbox/events/${encodeURIComponent(bare)}/fix`, {}, (x) => x)).json())
+  const e = list().find((x) => x.id === bare && x.state !== "done")
+  if (!e?.fix) throw new HTTPError(404, "nothing to do for it: it was dealt with already")
+  const r = await plugin.runOp(e.fix.op, e.fix.args)
+  return { id: req.arg(0), text: r.text }
+}
 
 export async function askGate(b: Item) {
   const e = eventOf({ ...b, kind: "waiting", ask: "permission" })
@@ -110,9 +130,7 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   /** Answer a permission the server waits on (gate: the service "inbox:ask"): approve or deny. The owner's only, so what
  *  asked can't answer itself. */
   ["POST", "inbox/events/*/answer", async (req) => {
-    await owner(req)
-    const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
-    if (req.http && !userSurface(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_THE_USER)
+    await byTheUser(req)
     const answer = str(req.body?.answer)
     if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
     const [bare, there] = splitMachine(req.arg(0))
@@ -129,6 +147,7 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
     told(done)
     return { id: e.id, answer }
   }],
+  ["POST", "inbox/events/*/fix", fixWithConsent],
   ["DELETE", "inbox/events", async (req) => {
     await owner(req)
     const done = !!req.query.done
