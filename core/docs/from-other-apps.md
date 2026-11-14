@@ -24,5 +24,9 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
   by name alone, as Obsidian's shortest path writes them).
 - `.obsidian/hotkeys.json`: the keys of the commands the app has too (its core ones matched by id, its plugins' kept
   under their own ids), under `.vaultite/hotkeys.json`'s; Settings ▸ Hotkeys marks them Obsidian's keys.
+- Citations: Obsidian's Citations, Zotero Integration, ZotLit and Pandoc Reference List users get the References plugin
+  (the Research layout turns it on): the same Pandoc citations (`[@key, p. 33]`), the same Better BibTeX export or the
+  Zotero app itself as the library, `bibliography:` and `csl:` in a note's frontmatter, and literature notes as notes
+  with `type: reference` and a `citekey` (`vau docs references`).
 - Not read: `workspace.json` (a layout, not settings).
 - Obsidian is a trademark of Dynalist Inc.; Vaultite is not affiliated with or endorsed by it.

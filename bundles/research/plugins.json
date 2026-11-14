@@ -1,0 +1,9 @@
+{
+  "disabled": [],
+  "enabled": [
+    "glance",
+    "note-composer",
+    "references",
+    "web-viewer"
+  ]
+}

@@ -266,6 +266,7 @@ by its path.
 - `note-dates:stamps` (note-dates): The dates it keeps in a file (path, fm): any edit moves them, so Review leaves them out.
 - `now:file` (now)
 - `obsidian:stand-ins` (other-apps)
+- `page-text` (references)
 - `pages:installed` (pages)
 - `pins:installed` (workspaces): Pages a plugin just pinned in the vault's list: a workspace with a list of its own gets them too, at its end.
 - `pins:of` (workspaces): Workspace n's pinned pages, for Pinned's ops (`vau pin`): its own list (null: pages.json's) and one change to it.

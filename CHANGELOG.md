@@ -46,6 +46,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   up in the app and its commands to try; settings rows say a few words, the rest on hover. Plugin updates sit at the top
   of Plugins, Get plugins' categories scroll with arrows, and the Standard layout starts without Inbox or Workspaces
   (the Inbox button shows when something waits). A note's top bar spans its pane, its line only once it scrolls.
+- **Research, a layout for academics, and References**: cite from Zotero (live on its computer, its zotero.org library,
+  or its Better BibTeX export), JabRef, Mendeley, EndNote or any BibTeX, RIS or CSL file as you type (`[@`), Pandoc's
+  citations shown in APA, Chicago, MLA, Harvard, IEEE, Vancouver or any CSL style, each note's references in the right
+  sidebar and at the end of an exported PDF, literature notes with Zotero's annotations, and references added by DOI,
+  arXiv id or ISBN. Agents search the library and read papers with their citations formatted.
 - **A phone's terminal holds still**: the keyboard coming and going no longer resizes the shell (Claude Code redrew its
   whole screen each time); the grid slides up to keep the cursor in sight. Back from the background, the terminal stays
   on the lines you were reading, with no blank flash while it reconnects.

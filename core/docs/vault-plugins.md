@@ -140,7 +140,8 @@ in a sheet guards what isn't saved with `useSheetGuard(() => lines)`.
   lines; its backend's service `fence:<lang>`, `({path, text, host}) => Markdown`, is their text for agents. Inline code it
   draws (Dataview's `` `= this.file.name` ``) is an `editor` extension, and the service `inline-code`, `({path, code, host})
   => Markdown`, or null to leave it as it is, its text. What it draws under a note's title (`noteTop`) is, for agents, the
-  service `page-head`, `({path, type, fm}) => Markdown` or null.
+  service `page-head`, `({path, type, fm}) => Markdown` or null; what it makes of a note's text as it reads (citations
+  formatted, a bibliography after), the service `page-text`, `({path, type, fm, text}) => Markdown`, the whole text.
 - `files: { types, page }` draws a type of file as a page. `settingsPanel: ({ store }) => ...` draws what a form can't,
   below its declared settings (above with `settingsPanelFirst: true`). `editor: (ctx) => extensions` adds CodeMirror extensions to every editor (may return a
   promise; `ctx.kind` "markdown" for notes): `@codemirror/state`, `view`, `language`, `commands`, `autocomplete`,

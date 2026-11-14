@@ -1,0 +1,19 @@
+{
+  "density": "comfortable",
+  "sidebarScroll": "panels",
+  "panelDividers": false,
+  "panelHeadings": "shown",
+  "snippets": [],
+  "fileIcons": true,
+  "tabBar": true,
+  "paneTabBars": true, "dimPanes": true, "paneCards": false,
+  "rails": true, "peekShade": false, "sidebarButtons": false, "fileBarFade": "typing",
+  "lineNumbers": false,
+  "statusBar": ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"],
+  "statusBarMore": [],
+  "statusBarLeft": null,
+  "fileBar": null,
+  "fileBarHidden": [],
+  "sidebarHeader": null,
+  "pullActions": null
+}

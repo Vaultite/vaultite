@@ -103,6 +103,12 @@ async function visit(name, browser) {
   is("...on Browser: its panels, the switcher for a new tab", (await api("GET", "bundles")).json?.previous?.bundle === "browser" && nt?.opens === "switcher" &&
     await page.locator("aside[data-side=left] [data-panel]").count() > 0 && !web?.problems?.length, { web, nt })
 
+  await page.goto("about:blank")
+  await page.goto(`${base}?bundle=research`)
+  is("?bundle=research opens its paper, its citations in APA and its references beside it", !(await drawn()) && decodeURIComponent(page.url()).includes("Papers/Paper machines/Draft.md") &&
+    await until(async () => (await page.locator(".cm-citation").count()) > 3 && (await page.locator("[data-references-panel] [data-reference]").count()) > 10, 30000) &&
+    /\(Bush, 1945\)/.test(await page.locator(".cm-citation").first().innerText()), page.url())
+
   const DAYS = path.join(ROOT, "tools/fixtures/bundles/days")
   const daysFiles = Object.fromEntries(fs.readdirSync(DAYS, { recursive: true }).filter((f) => fs.statSync(path.join(DAYS, f)).isFile())
     .map((f) => [f, f.endsWith(".json") ? JSON.parse(fs.readFileSync(path.join(DAYS, f), "utf8")) : fs.readFileSync(path.join(DAYS, f), "utf8")]))

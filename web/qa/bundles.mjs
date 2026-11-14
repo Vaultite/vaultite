@@ -58,11 +58,11 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await shot(page, "new-vault-standard")
   await picker(page, FB)
   const ids = await page.locator("[data-layout-pick]").evaluateAll((els) => els.map((e) => e.dataset.layoutPick))
-  check("Settings > Appearance opens on the layouts: the three built in, Standard first", ids.join() === "standard,zen,browser" &&
+  check("Settings > Appearance opens on the layouts: the four built in, Standard first", ids.join() === "standard,zen,research,browser" &&
     await page.locator("[data-layout-picker]").count() === 1, ids)
   check("a new vault: Standard is the one in use", (await current(page)).join() === "standard", await current(page))
   const drawn = await page.locator("[data-layout-drawing]").evaluateAll((els) => els.map((e) => e.dataset.layoutDrawing))
-  check("each built-in its own drawing, the one in use described under them (no tip)", drawn.join() === "standard,zen,browser" &&
+  check("each built-in its own drawing, the one in use described under them (no tip)", drawn.join() === "standard,zen,research,browser" &&
     /^Notes and links/.test(await page.locator("[data-layout-about]").innerText()) && !(await page.locator('[data-layout-pick="browser"]').getAttribute("data-tip")), drawn)
   await shot(page, "picker-new-vault")
   await page.locator('[data-layout-pick="browser"]').click()
@@ -107,7 +107,7 @@ const { ctx, page } = await open(1600, 900)
 const original = settings(VAULT)
 await picker(page, B)
 await until(() => page.locator('[data-layout-pick="days"]').count(), 6000)
-check("the built-ins, then the user's own", (await page.locator("[data-layout-pick]").evaluateAll((els) => els.map((e) => e.dataset.layoutPick))).slice(0, 4).join() === "standard,zen,browser,days")
+check("the built-ins, then the user's own", (await page.locator("[data-layout-pick]").evaluateAll((els) => els.map((e) => e.dataset.layoutPick))).slice(0, 5).join() === "standard,zen,research,browser,days")
 check("the user's own drawn from what it sets", await page.locator('[data-layout="days"] [data-layout-drawing="drawn"]').count() === 1)
 const tiles = await page.locator("[data-layout]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)))
 check("tiles are one height", tiles.length >= 4 && new Set(tiles).size === 1, tiles)

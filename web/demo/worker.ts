@@ -7,6 +7,7 @@ import { NEEDS_APP } from "./node/stub.ts"
 import { fitForDemo, isObj, machineOff, OFF, panelsOff, SHOWN, type PluginsJson } from "./machine.ts"
 import { fromGitHub } from "./github.ts"
 import { SITES } from "./sites.ts"
+import { RESEARCH_FILES } from "./researchfiles.ts"
 import { jsonOf, open, type App } from "../../core/app.ts"
 import { Live } from "../../core/live.ts"
 import { contentType, HTTPError, matchSocket, Text } from "../../core/plugins.ts"
@@ -37,6 +38,11 @@ for (const site of SITES) {
   const file = `/app/bundles/browser/${site.note}`
   fs.mkdirSync(file.slice(0, file.lastIndexOf("/")), { recursive: true })
   fs.writeFileSync(file, site.body)
+}
+for (const [rel, text] of RESEARCH_FILES) {
+  const file = `/app/bundles/research/${rel}`
+  fs.mkdirSync(file.slice(0, file.lastIndexOf("/")), { recursive: true })
+  fs.writeFileSync(file, text)
 }
 
 // ---------- the vault, kept in IndexedDB ----------

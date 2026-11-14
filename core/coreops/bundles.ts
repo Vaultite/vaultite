@@ -20,7 +20,7 @@ const answer = <K extends keyof Answers>(_route: K, reply: Promise<unknown>) =>
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
 pins; its picture is drawn from them); a part it leaves out stays as it is when it's applied. The app's own are
-Standard (standard, the app's defaults), Zen (zen) and Browser (browser), layouts; Life OS and Agents, packs (plugins
+Standard (standard, the app's defaults), Zen (zen), Research (research) and Browser (browser), layouts; Life OS and Agents, packs (plugins
 and pages, applied over the layout), are in the directory (browse); the user's are in .vaultite/bundles/<id>/. A layout
 leaves the user's theme, colours and fonts alone. \`vau docs bundles\` has the format, so you can write one too.
 

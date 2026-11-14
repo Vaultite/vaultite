@@ -4,6 +4,7 @@ import { forgetLocal, SPACE } from "./space.ts"
 import { SHOWN } from "./machine.ts"
 import { NEEDS_APP } from "./node/stub.ts"
 import { SITES } from "./sites.ts"
+import { PAPER, RESEARCH } from "./research.ts"
 import { frameSites } from "../../plugins/core/web-viewer/framed.ts"
 import neodisk from "./sites/neodisk.png?inline"
 import olimpicos from "./sites/olimpicos.png?inline"
@@ -96,7 +97,6 @@ globalThis.fetch = async (input, init) => {
   if ((init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase() !== "GET") return answer({ error: NEEDS_APP }, 501)
   made ??= import("@/core/plugins").then(({ PLUGINS }) => Object.assign({}, ...PLUGINS.filter((p) => SHOWN.includes(p.id)).map((p) => p.mockLive?.() ?? {})))
   const mock = await made, path = rel.slice(4)
-  // (as a preview finds them: the route, or the route with a query)
   const key = Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
   return key ? answer(mock[key]) : answer({ error: NEEDS_APP }, 501)
 }
@@ -247,7 +247,7 @@ async function bundles() {
       const r = await api(`bundles/${encodeURIComponent(id)}/apply`, { workspace: null, allowCode: false })
       if (r.error) return fail(asked, r.error)
       // (the app opens on its first page, not the tab another bundle left)
-      const first = r.plan?.pins?.list?.[0] ?? p.plan.pins?.list?.[0]
+      const first = id === RESEARCH ? PAPER : r.plan?.pins?.list?.[0] ?? p.plan.pins?.list?.[0]
       if (first && !location.hash) history.replaceState(null, "", `#file/${encodeURIComponent(first)}`)
     }
     on = id
@@ -266,12 +266,20 @@ async function bundles() {
   if (asked && asked !== on) await openBundle(asked).catch((e) => fail(asked, String(e?.message ?? e)))
   post({ type: "vaultite-demo:bundle", bundle: on })
   if (on === BROWSER) void liveSites(true, was !== BROWSER)
+  if (on === RESEARCH && was !== RESEARCH) void openPaper()
   addEventListener("message", async (e) => {
     if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:apply" || typeof e.data.bundle !== "string") return
     const was = on
     try { await openBundle(e.data.bundle, true) } catch (err) { fail(e.data.bundle, String((err as Error)?.message ?? err)) } finally { post({ type: "vaultite-demo:bundle", bundle: on }) }
     if (on !== was && (on === BROWSER || was === BROWSER)) void liveSites(on === BROWSER, true)
+    if (on !== was && on === RESEARCH) void openPaper()
   })
+
+  async function openPaper() {
+    await appUp()
+    const { openTab } = await import("@/core/workspace")
+    openTab(`file:${PAPER}`)
+  }
 
   /** The Browser's live sites (sites.ts): its favourites while it's on, and open in tabs, the first in front, whenever
    *  it's on and no web page is (the demo keeps no tabs between visits). */
@@ -297,7 +305,6 @@ function leftOut(info: { needsApp: string[]; notInDemo: string[]; madeUp?: strin
   else if (parts.length) void toast(`Off in the demo: ${parts.join("; ")}. The rest is here to try`)
 }
 
-/** Once the app is there (it starts after the demo's server), or 10 seconds on. */
 /** The site's look and its visitor's answer about AI (vaultite.com: ?theme=light|dark and ?ai=on|off, then its
  *  vaultite-demo:theme and vaultite-demo:ai messages as they change there), followed once the app is up. */
 async function siteLook() {

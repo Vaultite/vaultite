@@ -127,4 +127,4 @@ export const ROOT_EXPORTS = [{ file: "core/plugins.ts", name: "ROOT" }]
 export const GENERATED = ["electron/build.json", "electron/cli.json", "electron/shell.json", "web/dist/**", "electron/bin/**", "plugins/core/*/bin/**"]
 /** A built-in plugin's files its server reads besides code (`new Plugin(import.meta.url)`: core/plugins.ts reads its
  *  folder): its manifest, docs, pages, skills, cards, helpers' sources. Not its frontend's code and styles, nor CLAUDE.md. */
-export const PLUGIN_READS = /^(?!.*\/CLAUDE\.md$).*\.(json|md|html|swift|py|wasm|txt|svg|png|yml|yaml)$/
+export const PLUGIN_READS = /^(?!.*\/CLAUDE\.md$).*\.(json|md|html|swift|py|wasm|txt|svg|png|yml|yaml|csl|xml)$/

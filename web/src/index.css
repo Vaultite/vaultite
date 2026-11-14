@@ -19,6 +19,8 @@
 @source "../../plugins";
 /* (QA scripts' Playwright selectors would become rules: [data-x]:visible) */
 @source not "../qa";
+@source not "../../plugins/core/references/styles";
+@source not "../demo/research";
 
 @custom-variant dark (&:is(.dark *));
 

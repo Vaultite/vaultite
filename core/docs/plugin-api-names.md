@@ -418,11 +418,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NewTabCtx`
 - `newTabId()`
 - `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.
-- `NoteBody({ store, path, body, fm, className })`: `path`'s body (no frontmatter), drawn read-only.
+- `NoteBody({ store, path, body, fm, className, print })`: `path`'s body drawn read-only (`fm`: its frontmatter's text); `print`: with the parts noteEnd prints (`print`).
 - `NoteEditor(props)`: Markdown that isn't a file, edited like a note (a canvas's text card).
 - `NoteEditorProps`
 - `noteFor(store, target, from)`: The note an embed names, or null (not a note, or no such file).
-- `NoteItem`: Drawn in a note's page above its text (noteTop) or under it (noteEnd), in every mode but source; `place`: in a tab or a sheet.
+- `NoteItem`: Drawn in a note's page above its text (noteTop) or under it (noteEnd), in every mode but source; `place`: in a tab or a sheet, or "print".
 - `NotePreview({ store, target, from })`: A note drawn whole for a glance (Page preview's popover), scrolled to the heading `target` names; a block target shows only that block.
 - `Notice`: The toasts shown lately, newest last: what an agent asks after its command (`vau command`), and the companion when the user points at one that's gone.
 - `noticesSince(t)`: Toasts shown since `t` (ms), newest last.

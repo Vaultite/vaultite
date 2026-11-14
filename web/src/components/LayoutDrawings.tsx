@@ -142,6 +142,55 @@ function Browser() {
   </>
 }
 
+function Research() {
+  const tree: [number, number, boolean][] = [[0, 16, false], [4, 18, false], [4, 14, false], [0, 12, false], [0, 17, true], [4, 13, false], [0, 15, false], [0, 11, false], [0, 14, false]]
+  const prose = (y: number, chips: [number, number][], w = 64) => <g>
+    <R x={50} y={y} w={w} h={3} r={1.5} c={ink(11)} />
+    {chips.map(([x, cw]) => <R key={x} x={50 + x} y={y - 0.6} w={cw} h={4.2} r={1.2} c={tint(ACCENT, 30)} />)}
+  </g>
+  return <>
+    <R x={0} y={0} w={W} h={H} c={BG} />
+    <Side x={0} w={40}>
+      <Lights />
+      <R x={5} y={12} w={30} h={6} r={3} c={ink(8)} />
+      {tree.map(([indent, w, open], i) => {
+        const y = 25 + i * 7.6
+        return <g key={i}>
+          {open && <R x={3} y={y - 3.2} w={34} h={6.4} r={2} c={tint(ACCENT, 16)} />}
+          <R x={5 + indent} y={y - 1.8} w={4.2} h={3.6} r={0.9} c={open ? ACCENT : indent ? ink(18) : ink(28)} />
+          <R x={11.5 + indent} y={y - 1.5} w={w - indent} h={3} r={1.5} c={open ? ink(36) : ink(16)} />
+        </g>
+      })}
+    </Side>
+    <Side x={122} w={38}>
+      <R x={126} y={7} w={15} h={3} r={1.5} c={ink(26)} />
+      <R x={146} y={7} w={9} h={3} r={1.5} c={ink(12)} />
+      {[0, 1, 2, 3].map((i) => {
+        const y = 16 + i * 19.5
+        return <g key={i}>
+          <R x={126} y={y} w={[24, 20, 26, 22][i]} h={2.6} r={1.3} c={ink(24)} />
+          <R x={129} y={y + 4.5} w={[25, 27, 21, 26][i]} h={2.4} r={1.2} c={ink(11)} />
+          <R x={129} y={y + 8.8} w={[17, 22, 19, 14][i]} h={2.4} r={1.2} c={ink(11)} />
+          {i % 2 === 0 && <R x={129} y={y + 13.1} w={20} h={2.4} r={1.2} c={tint(ACCENT, 60)} />}
+        </g>
+      })}
+    </Side>
+    <TabBar x={40} w={82} />
+    <R x={48} y={18} w={68} h={20} r={2.5} c={ink(5)} />
+    {[[24, 30], [20, 26], [22, 18], [16, 34]].map(([k, v], i) => <g key={i}>
+      <R x={51} y={21 + i * 4.3} w={k * 0.55} h={2.2} r={1.1} c={tint(ACCENT, 55)} />
+      <R x={53 + k * 0.55} y={21 + i * 4.3} w={v * 0.9} h={2.2} r={1.1} c={ink(16)} />
+    </g>)}
+    <R x={50} y={44} w={30} h={5} r={2} c={ink(26)} />
+    {prose(55, [[38, 16]])}
+    {prose(62, [[10, 18]])}
+    {prose(69, [[44, 18]], 62)}
+    {prose(76, [], 58)}
+    {prose(83, [[22, 20]], 64)}
+    {prose(90, [], 40)}
+  </>
+}
+
 function panel(key: string, x: number, y: number, w: number, folded: boolean, out: ReactNode[]): number {
   const kind = key.split(":")[0], k = out.length
   if (kind === "search") { out.push(<R key={k} x={x} y={y} w={w} h={6} r={3} c={ink(8)} />); return 6 }
@@ -208,7 +257,7 @@ function Drawn({ b, shadow, desk }: { b: Drawable; shadow: string; desk: string 
 }
 
 const BUILT_IN: Record<string, (shadow: string) => ReactNode> = {
-  standard: () => <Standard />, zen: (s) => <Zen shadow={s} />, browser: () => <Browser />,
+  standard: () => <Standard />, zen: (s) => <Zen shadow={s} />, research: () => <Research />, browser: () => <Browser />,
 }
 
 export function LayoutDrawing({ b, className }: { b: Drawable; className?: string }) {

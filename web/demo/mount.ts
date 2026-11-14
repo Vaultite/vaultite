@@ -5,7 +5,7 @@ import official from "virtual:demo-official-files"
 
 // What the server reads: manifests, docs, pages, bundles, the sample vault.
 const FILES = {
-  ...import.meta.glob(["../../{core,plugins/core,bundles}/**/*.{md,json,css}", "../../package.json", "../../web/src/index.css"], { query: "?raw", import: "default", eager: true }),
+  ...import.meta.glob(["../../{core,plugins/core,bundles}/**/*.{md,json,css,csl,xml}", "../../package.json", "../../web/src/index.css"], { query: "?raw", import: "default", eager: true }),
   ...import.meta.glob("../../examples/vault/**/*", { query: "?raw", import: "default", eager: true, exhaustive: true }), // (its .vaultite/ too)
 } as Record<string, string>
 // Fonts bundles bring beside their snippets, as data URLs: ?raw would mangle the bytes.

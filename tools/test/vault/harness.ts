@@ -61,6 +61,7 @@ process.exitCode = 1
   const { officialBundles, officialRepos } = await import("../official.ts")
   officialRepos(path.join(tmp, "official"))
   process.env.VAULTITE_BUNDLES = officialBundles(path.join(tmp, "official"))
+  Object.assign(process.env, { VAULTITE_ZOTERO_URL: "http://127.0.0.1:9", VAULTITE_ZOTERO_API: "http://127.0.0.1:9", VAULTITE_DOI_URL: "http://127.0.0.1:9", VAULTITE_OPENLIBRARY_URL: "http://127.0.0.1:9" })
   // Imported after the environment is set: plugins read it when they load.
   const { open } = await import("../../../core/app.ts")
   const { merge3 } = await import("../../../core/textedit.ts")

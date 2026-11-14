@@ -33,7 +33,7 @@ export default async ($: VaultTest) => {
     const deskBefore = await slot1()
 
     let [code, r] = await api("GET", "bundles")
-    check("bundles: the app's three, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,zen,browser" &&
+    check("bundles: the app's four, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,zen,research,browser" &&
       r.bundles.every((b: Any) => !b.problems.length || b.source !== "app") && r.default === "standard", r.bundles.map((b: Any) => [b.id, b.problems]))
     const LIFE = "Dashboards/Today.md,Dashboards/Home.md,Dashboards/People.md,Dashboards/Health.md,Dashboards/Learning.md,Dashboards/Projects.md,People/Alice Park.md"
     // (the pages of the plugins it installs are known once they are)
@@ -407,7 +407,7 @@ export default async ($: VaultTest) => {
     check("bundles: saved, it states the whole look but the user's own, and the app's bundles' settings, defaults too", Object.keys(LOOK).every((k) => (k in savedLook) !== PERSONAL_LOOK.includes(k as Any)) &&
       JSON.parse(read(`.vaultite/bundles/${whole}/editor.json`)).propertiesInDocument === "hidden" &&
       JSON.parse(read(`.vaultite/bundles/${whole}/plugins/errors/data.json`)).notify === true && (await api("GET", `bundles/${whole}`))[1].plan.empty, savedLook)
-    for (const other of ["days", "standard", "zen", "browser"]) {
+    for (const other of ["days", "standard", "zen", "research", "browser"]) {
       ;[code] = await apply(other)
       const between = setup()
       ;[code, r] = await apply(whole)
@@ -442,14 +442,14 @@ export default async ($: VaultTest) => {
     check("bundles: and so it is after another (a value it skipped is this setup's, said)", setup() === partial, [partial, setup()])
 
     // Layouts leave the user's look alone: the app's say none of it, and applying one keeps theirs.
-    for (const id of ["standard", "zen", "browser"]) {
+    for (const id of ["standard", "zen", "research", "browser"]) {
       const said = Object.keys(JSON.parse(fs.readFileSync(path.join(process.env.VAULTITE_BUNDLES ?? path.join(import.meta.dirname, "../../../bundles"), id, "appearance.json"), "utf8")))
       check(`bundles: ${id} says none of the user's own look`, !said.some((k) => PERSONAL_LOOK.includes(k as Any)), said)
     }
     await api("PATCH", "config/appearance", { theme: "dark", scheme: "dracula", textFont: "Georgia", animation: "off" })
     const mine = () => { const a = conf("appearance"); return JSON.stringify([a.theme, a.scheme, a.textFont, a.animation]) }
     const myLook = mine()
-    for (const id of ["zen", "browser", "standard"]) { await apply(id); check(`bundles: ${id} applied, the user's theme, colours and fonts stay`, mine() === myLook, conf("appearance")) }
+    for (const id of ["zen", "research", "browser", "standard"]) { await apply(id); check(`bundles: ${id} applied, the user's theme, colours and fonts stay`, mine() === myLook, conf("appearance")) }
     ;[code, r] = await api("POST", "bundles", { name: "Dracula desk", look: true })
     const looked = JSON.parse(read(`.vaultite/bundles/${r.bundle.id}/appearance.json`))
     check("bundles: saved with look, it says them (a bundle about looks)", code === 200 && looked.scheme === "dracula" && looked.textFont === "Georgia", looked)
@@ -513,7 +513,7 @@ export default async ($: VaultTest) => {
     write(".vaultite/bundles/tint/appearance.json", JSON.stringify({ scheme: "nord" }))
     write(".vaultite/bundles/odd/bundle.json", JSON.stringify({ name: "Odd", kind: "theme" }))
     const kinds = Object.fromEntries((await api("GET", "bundles"))[1].bundles.map((b: Any) => [b.id, b.kind]))
-    check("bundles: each has its kind: the app's layouts, a pack said, a restyle a look", kinds.standard === "layout" && kinds.zen === "layout" && kinds.browser === "layout" &&
+    check("bundles: each has its kind: the app's layouts, a pack said, a restyle a look", kinds.standard === "layout" && kinds.zen === "layout" && kinds.research === "layout" && kinds.browser === "layout" &&
       kinds.kit === "pack" && kinds.tint === "look" && kinds.days === "layout", kinds)
     check("bundles: a kind that isn't one is a problem", /kind/.test((await entry("odd")).problems.join()), (await entry("odd")).problems)
     ;[code] = await apply("kit")

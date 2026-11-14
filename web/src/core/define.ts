@@ -510,11 +510,13 @@ export type FileBarItem = {
 }
 
 /** Drawn in a note's page above its text (noteTop) or under it (noteEnd), in every mode but source; `place`: in a tab
- *  or a sheet. Nothing when render answers null. */
+ *  or a sheet, or "print". Nothing when render answers null. */
 export type NoteItem = {
-  render: (file: FileHead & { place: "page" | "sheet" }) => ReactNode
+  render: (file: FileHead & { place: "page" | "sheet" | "print" }) => ReactNode
   /** Its place, top to bottom, when several plugins have one. */
   sort?: number
+  /** A noteEnd part a printed note has too (Export to PDF), under its text: a note's references. */
+  print?: true
 }
 
 /** A plugin that keeps the sidebars' setup itself (Workspaces), in sidebars.json's

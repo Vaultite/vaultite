@@ -434,7 +434,7 @@ export default function App() {
       ...(isMac ? {} : { name: isWindows ? "Show current file in Explorer" : "Show current file in folder" }) },
     ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
     { id: "page:get", name: "Get plugins and layouts", words: "setup store directory install bundles packs", run: () => openSetup("get"), icon: StoreIcon },
-    { id: "layouts:choose", name: "Choose a layout…", words: "bundle setup zen browser standard", run: () => openSettings("appearance"), icon: LayoutTemplate },
+    { id: "layouts:choose", name: "Choose a layout…", words: "bundle setup zen research browser standard", run: () => openSettings("appearance"), icon: LayoutTemplate },
     { id: "layouts:save", name: "Save layout as new…", words: "bundle setup", run: () => saveAsNew(currentLayout()), icon: CopyPlus },
     { id: "bundles:import", name: "Import a bundle…", words: "layout pack", run: () => openDetail("bundle-import"), icon: Import },
     { id: "bundles:restore", name: "Restore previous layout", words: "bundle setup undo", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },

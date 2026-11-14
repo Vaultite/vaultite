@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import { z } from "zod"
 import os from "node:os"
 import { drawnBy, drawsOf, fallbackText, notesText, optionNotes, parseOptions, resolveOptions } from "./blocks.ts"
 import { blockName, blocksIn, extract, scan, splitAnchor, stripHidden } from "./sections.ts"
@@ -327,6 +328,25 @@ function noteFile(vault: Vault, name: string, from: string) {
   return otherFile(vault, name, from)
 }
 
+type Page = { path: string; type: string | null; fm: Item }
+
+function pageHeads(plugins: Plugin[], on: Set<string>, page: Page): string[] {
+  return plugins.flatMap((p) => {
+    const said = z.string().safeParse(on.has(p.id) ? p.services["page-head"]?.(page) : null)
+    return said.success && said.data ? [said.data] : []
+  })
+}
+
+async function pageText(plugins: Plugin[], on: Set<string>, page: Page, text: string): Promise<string> {
+  for (const p of plugins) {
+    const fn = on.has(p.id) ? p.services["page-text"] : undefined
+    if (!fn) continue
+    const said = z.string().safeParse(await Promise.resolve().then(() => fn({ ...page, text })).catch(() => null))
+    if (said.success) text = said.data
+  }
+  return text
+}
+
 export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) {
   const rel = vault.relocated(String(relPath ?? "").replace(/^\/+|\/+$/g, ""))
   if (vault.others.has(rel)) {
@@ -346,12 +366,10 @@ export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) 
   const m = FM.exec(raw)
   const [head, body] = m ? [raw.slice(0, m[0].length), raw.slice(m[0].length)] : ["", raw]
   const on = enabled(vault, plugins)
-  const text = await expand(vault, plugins, on, rel, e.fm, body, [rel])
+  const page = { path: rel, type: e.type, fm: e.fm }
+  const text = await pageText(plugins, on, page, await expand(vault, plugins, on, rel, e.fm, body, [rel]))
   let title = `# ${stemOf(rel)}\n\n`
-  for (const p of plugins) {
-    const under = on.has(p.id) && Object.hasOwn(p.services, "page-head") ? (p.services["page-head"] as (x: unknown) => unknown)({ path: rel, type: e.type, fm: e.fm }) : null
-    if (typeof under === "string" && under) title += under + "\n\n"
-  }
+  for (const under of pageHeads(plugins, on, page)) title += under + "\n\n"
   const notes = typeNotes(propertyTypes(vault, plugins), e.fm)
   if (notes.length) title += `_(properties: ${notes.join("; ")})_\n\n`
   return head + (head ? "\n" : "") + title + text + "\n"

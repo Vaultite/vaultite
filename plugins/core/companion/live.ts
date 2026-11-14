@@ -336,7 +336,7 @@ export function hunksIn(a: string[], b: string[], spans: [number, number, number
 const LEAD = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/
 const MENTION_AT = new RegExp(`${LEAD.source}$`)
 const MENTION_RE = /(?<![\w@./])@([\w-]+)/g
-export const canMention = (before: string) => !/[\w@./]$/.test(before)
+export const canMention = (before: string) => !/[\w@./[-]$/.test(before)
 export const midNames = () => (share ? [] : [...new Set([state.name, ...liveAgents().map((a) => a.name)].map((n) => n.toLowerCase()))])
 export type Mention = { from: number; to: number; name: string }
 export function mentionsOf(line: string, names = mentionNames(), mid = midNames()): Mention[] {

@@ -1,0 +1,8 @@
+{
+  "name": "Research",
+  "description": "Your library beside your writing: Zotero and every reference manager, citations as you type in any style, each paper's references on the right and literature notes a click away.",
+  "icon": "graduation-cap",
+  "tint": "orange",
+  "sort": 3,
+  "guide": "Guides/How Research works.md"
+}

@@ -1,0 +1,10 @@
+.vau-ref-text a { color: var(--primary); text-decoration: none; overflow-wrap: anywhere; }
+.vau-ref-text a:hover { text-decoration: underline; }
+.vau-ref-text .csl-entry { overflow-wrap: anywhere; }
+.vau-ref-hanging .vau-ref-text, .vau-ref-text.vau-ref-hanging { padding-left: 1.4em; text-indent: -1.4em; }
+:is(.vau-ref-numbered .vau-ref-text, .vau-ref-text.vau-ref-numbered) .csl-entry { display: flex; gap: 0.5em; }
+:is(.vau-ref-numbered .vau-ref-text, .vau-ref-text.vau-ref-numbered) .csl-left-margin { flex: none; min-width: 1.8em; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+:is(.vau-ref-numbered .vau-ref-text, .vau-ref-text.vau-ref-numbered) .csl-right-inline { flex: 1; min-width: 0; }
+@media (max-width: 767px) {
+  [data-references-panel] .vau-ref-text { font-size: 15px; line-height: 21px; }
+}

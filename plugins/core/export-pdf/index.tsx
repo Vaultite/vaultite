@@ -58,7 +58,7 @@ function PrintRoot({ j }: { j: Job }) {
     <div id="vau-print" ref={ref} className="scheme-preview" aria-hidden data-print={j.path}>
       <style>{CSS}</style>
       <h1 className="print-title">{stem(j.path)}</h1>
-      <NoteBody store={j.store} path={j.path} body={body} fm={fm} className="print-body" />
+      <NoteBody store={j.store} path={j.path} body={body} fm={fm} className="print-body" print />
     </div>,
     document.body,
   )

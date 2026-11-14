@@ -109,7 +109,7 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   note's first line `# <its name>` is then hidden outside source mode, the title saying it) | false (only in the tab
   and the path bar; a sheet keeps it). Not read from Obsidian's.
 
-**Layout**: Settings, Appearance opens on the layouts (Standard, Zen, Browser, then the user's own: bundles, `vau docs
+**Layout**: Settings, Appearance opens on the layouts (Standard, Zen, Research, Browser, then the user's own: bundles, `vau docs
 bundles`), each a drawing of its window; a click applies one, with Undo. Plugins, and packs and layouts to get, are in
 Plugins (Your plugins, Get).
 

@@ -1,0 +1,21 @@
+{
+  "id": "references",
+  "icon": "book-bookmark",
+  "category": "writing",
+  "offByDefault": true,
+  "name": "References",
+  "description": "Cite as you write, from your reference manager: Zotero (live, or its library exported with Better BibTeX), JabRef, Mendeley, EndNote or any BibTeX, CSL JSON or RIS file, and references of your own as notes. Pandoc's citations ([@ahrens2017, p. 33]) show in the style you pick (APA, Chicago, MLA, Harvard, IEEE, Vancouver or any CSL style), with the note's references in the right sidebar and at the end of an exported PDF.",
+  "tint": "orange",
+  "replaces": { "obsidian": ["obsidian-citation-plugin", "obsidian-zotero-desktop-connector", "zotlit", "obsidian-pandoc-reference-list"] },
+  "settings": {
+    "style": { "type": "string", "default": "apa", "choices": "references/styles", "label": "Citation style", "description": "how citations and references are written: a style the app has (apa, chicago-author-date, modern-language-association, harvard-cite-them-right, ieee, nlm-citation-sequence) or a .csl file in the vault; a note's csl: says its own" },
+    "locale": { "type": "string", "default": "en-US", "label": "Language", "description": "the language citations are written in (en-US; a locales-<code>.xml file from the CSL project in the vault adds one); a note's lang: says its own" },
+    "bibliographies": { "type": "list", "label": "Bibliography files", "description": "the vault's BibTeX (.bib), CSL JSON (.json), CSL YAML (.yaml) or RIS (.ris) files to cite from, beside those found on their own; a note's bibliography: adds its own" },
+    "findBibliographies": { "type": "boolean", "default": true, "label": "Find bibliography files", "description": "cite from every .bib and .ris file in the vault, and CSL JSON or YAML files named like a library (My Library.json, references.csl.yaml)" },
+    "zoteroLocal": { "type": "boolean", "default": true, "label": "Zotero on this computer", "description": "read the library of the Zotero app running on the server's computer, live (Zotero 7 or later, with Allow other applications on this computer to communicate with Zotero on in its Settings, Advanced)" },
+    "zoteroGroups": { "type": "boolean", "default": true, "label": "Zotero group libraries", "description": "cite from your Zotero groups' libraries too" },
+    "folder": { "type": "string", "folder": true, "label": "Literature notes folder", "description": "where a new literature note goes (default: where the others are, else Literature)" },
+    "template": { "type": "string", "label": "Literature note template", "description": "a note to make literature notes from: {{citekey}}, {{title}}, {{authors}}, {{year}}, {{bibliography}}, {{doi}}, {{url}}, {{zotero}} and {{annotations}} filled in" },
+    "inDocument": { "type": "boolean", "default": false, "label": "References in document", "description": "a note's references show under its text, as they do in an exported PDF" }
+  }
+}
