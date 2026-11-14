@@ -65,8 +65,9 @@ the vault. On the web and phones a web tab links out instead.
   class. A managed extension's blocking isn't here, and nothing here gets around it.
 - Site styles: `.vaultite/plugins/web-viewer/sites/<site>.css` (its subdomains too; a host's own file, like
   `docs.google.com.css`, over its parent site's), applied before pages paint and again on save. Every declaration wins
-  over the site's (the app makes it !important, in a layer), so write none. The vault's look is variables: use them,
-  not colours of your own, and on a site with colour tokens of its own map those: `--vault-background`,
+  over the site's (the app makes it !important, in a layer), so write none. A rule setting a font (`font-family`,
+  `font`) also resets the site's `font-variation-settings`, set for its own font, unless it sets them. The vault's look
+  is variables: use them, not colours of your own, and on a site with colour tokens of its own map those: `--vault-background`,
   `--vault-foreground`, `--vault-card`, `--vault-popover`, `--vault-muted`, `--vault-muted-foreground`,
   `--vault-primary`, `--vault-accent`, `--vault-border` and the app's other colours, `--vault-font-ui`,
   `--vault-font-text`, `--vault-font-code`, `--vault-radius`, `--vault-color-scheme` (light or dark),

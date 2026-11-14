@@ -33,16 +33,24 @@ const PLAIN = /^@(?:-webkit-)?(?:keyframes|font-face|property|counter-style|font
 const kindOf = (prelude: string, parent: Block): Block =>
   parent === "plain" || PLAIN.test(prelude) ? "plain" : !prelude.startsWith("@") || /^@page\b/i.test(prelude) ? "style" : parent
 
+type RuleFonts = { setsFont: boolean; setsAxes: boolean }
+const SITE_FONT_AXES_RESET = "; font-variation-settings: normal !important"
+const DECLARATION = /^(-*[a-z][\w-]*)\s*:/i
+
 const made = new Map<string, string>()
 // Text, not the CSSOM: Chromium writes a var() shorthand back as empty longhands once one of them follows it.
 export function winning(css: string) {
   const had = made.get(css)
   if (had !== undefined) return had
-  const stack: Block[] = []
+  const stack: Block[] = [], fonts: RuleFonts[] = []
   let out = "", cur = "", quote = "", depth = 0
   const end = (ch: string) => {
-    const d = cur.trim()
-    out += stack.at(-1) === "style" && /^-*[a-z][\w-]*\s*:/i.test(d) && !/!\s*important$/i.test(d) ? `${cur.trimEnd()} !important${ch}` : cur + ch
+    const d = cur.trim(), prop = stack.at(-1) === "style" ? DECLARATION.exec(d)?.[1].toLowerCase() : undefined
+    const f = fonts.at(-1)
+    if (f && (prop === "font-family" || prop === "font")) f.setsFont = true
+    if (f && prop === "font-variation-settings") f.setsAxes = true
+    const tail = ch === "}" && f?.setsFont && !f.setsAxes ? SITE_FONT_AXES_RESET : ""
+    out += prop && !/!\s*important$/i.test(d) ? `${cur.trimEnd()} !important${tail}${ch}` : tail ? `${cur.trimEnd()}${tail}${ch}` : cur + ch
     cur = ""
   }
   for (let i = 0; i < css.length; i++) {
@@ -58,8 +66,8 @@ export function winning(css: string) {
     else if (ch === "(" || ch === "[") { depth++; cur += ch }
     else if (ch === ")" || ch === "]") { depth = Math.max(0, depth - 1); cur += ch }
     else if (depth || (ch !== "{" && ch !== ";" && ch !== "}")) cur += ch
-    else if (ch === "{") { stack.push(kindOf(cur.trim(), stack.at(-1) ?? "group")); out += `${cur}{`; cur = "" }
-    else { end(ch); if (ch === "}") stack.pop() }
+    else if (ch === "{") { stack.push(kindOf(cur.trim(), stack.at(-1) ?? "group")); fonts.push({ setsFont: false, setsAxes: false }); out += `${cur}{`; cur = "" }
+    else { end(ch); if (ch === "}") { stack.pop(); fonts.pop() } }
   }
   out += cur
   if (made.size > 200) made.clear()

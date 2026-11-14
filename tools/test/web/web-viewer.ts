@@ -139,6 +139,13 @@ import { plugin } from "./lib.ts"
     out.includes("from { opacity: 0 }") && out.includes(`src: url("x;y.woff") }`) && out.includes(`@import url("a;b.css");`) && !out.includes("comment"), out)
   check("Browser: a site style's nested rules and strings with braces",
     out.includes("color: blue !important;") && out.includes("color: green !important;") && out.includes(`content: "a;}b" !important}`), out)
+  const fonts = winning(`ytd-app * { font-family: var(--vault-font-ui) } h1 { font: 600 2rem X; color: red; }
+.kept { font-family: Y; font-variation-settings: "wdth" 80 } .other { color: blue; &:hover { font-family: Z } }`)
+  check("Browser: a site style's rule that sets a font resets the site's axes, set for its own font, unless it sets them",
+    fonts.includes("ytd-app * { font-family: var(--vault-font-ui) !important; font-variation-settings: normal !important}")
+    && fonts.includes("color: red !important;; font-variation-settings: normal !important}")
+    && fonts.includes(`font-variation-settings: "wdth" 80 !important}`) && !fonts.includes(".kept { font-family: Y !important; font-variation-settings: normal")
+    && fonts.includes(".other { color: blue !important; &:hover { font-family: Z !important; font-variation-settings: normal !important} }"), fonts)
 }
 
 {
