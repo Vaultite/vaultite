@@ -6,6 +6,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.14.0 (2026-11-14)
+
+Research arrives: a layout for academics with References, Zotero and citations, and a web demo of its own. Settings are
+simpler, jobs can run in the cloud and go to a Mac when they need one, and sharing and connections go through Vaultite
+Cloud. Also an iPhone Downloads page and steadier typing there, block references and several cursors as in Obsidian,
+editable docked notes, search results in a note, pinned commands, previews in the slash menu and note switcher,
+Electron 45, and lighter, faster starts.
+
 - **Settings, simpler**: each page shows what most people set and folds the rest under Advanced (AI's agent files,
   inbox and MCP; Files' history, links and tabs), which search still opens. AI's Talk key model and its effort are one
   menu, as Claude's model picker is. Share & sync is redrawn: Vaultite Cloud's sign-in a row with its button, notes
