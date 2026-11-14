@@ -44,7 +44,7 @@ export default definePlugin({
   ],
   slash: () => [{
     id: "query:base", title: "Base", section: "Database", keywords: "base bases database table query obsidian", detail: "A base, inline",
-    line: true,
+    line: true, icon: Database, description: "A table of notes and their properties.", sample: "```base\n" + baseText("") + "```",
     run: (put) => put("```base\n" + baseText(besideActive("")) + "```\n"),
   }],
 })

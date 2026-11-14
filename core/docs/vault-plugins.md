@@ -47,6 +47,7 @@ only settings (`data.json`, `<name>.json`) is settings, not a plugin.
   "options": {"months": {"type": "number", "default": 1, "description": "how many months back"}}}}`. `type` is
   `string`, `number`, `boolean`, `list`, `map` or `enum` (with `values`), or a list of them; optional `default`, `min`,
   `max`, `required`; descriptions are one lowercase line. The app checks blocks' options against it and suggests them.
+  `example`: options its preview in the slash menu draws it with, when the plugin's own pages use it with none.
 - `settings`: its `data.json`'s keys, in the same words plus a `label` (sentence case), for an enum `labels`, and for a
   vault folder (a string, or a list of them) `"folder": true`, which the form picks from the vault's:
   `{"months": {"type": "number", "default": 3, "min": 1, "label": "Months shown", "description": "how many months the

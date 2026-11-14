@@ -4,6 +4,7 @@ import {
   op, openNew, post, readFile, splitFm, stem, type Store,
 } from "@vaultite"
 import { fillVars, FORMATS, fromTemplate, mergeFm } from "./fill"
+import { TemplateSample } from "./Sample"
 
 let folder = "Templates"
 let formats = FORMATS
@@ -126,7 +127,8 @@ export default definePlugin({
   slash: (s) => {
     void templatesFolder()
     return listOf(s, folder).map((f) => ({
-      id: `template:${f.path}`, title: stem(f.path), section: "Templates", keywords: "template", detail: "Template",
+      id: `template:${f.path}`, title: stem(f.path), section: "Templates", keywords: "template", detail: "Template", icon: FilePlus2,
+      preview: () => <TemplateSample path={f.path} formats={formats} />,
       run: (put) => insertInto(f.path, put),
     }))
   },

@@ -27,7 +27,9 @@ export function inFrontmatter(ctx: CompletionContext) {
   return true
 }
 
-export function slashSource(items: () => SlashItem[]) {
+export type SlashLook = { info: (it: SlashItem) => Completion["info"]; icon: (icon: NonNullable<SlashItem["icon"]>) => Node }
+
+export function slashSource(items: () => SlashItem[], look?: SlashLook) {
   return (ctx: CompletionContext) => {
     const m = ctx.matchBefore(/(?:^|\s)\/[\p{L}\p{N}-]*$/u)
     if (!m) return null
@@ -47,8 +49,8 @@ export function slashSource(items: () => SlashItem[]) {
     if (!hits.length) return null
     const ranks = new Map<string, number>()
     for (const { it } of hits) if (it.section && !ranks.has(it.section)) ranks.set(it.section, ranks.size)
-    const options: Completion[] = hits.map(({ it }, i) => ({
-      label: it.title, detail: it.detail, boost: Math.max(-99, -i),
+    const options: (Completion & { glyph?: () => Node })[] = hits.map(({ it }, i) => ({
+      label: it.title, detail: it.detail, boost: Math.max(-99, -i), info: look?.info(it), glyph: look && it.icon && (() => look.icon(it.icon!)),
       section: q || !it.section ? undefined : { name: it.section, rank: ranks.get(it.section)! },
       apply: (view: EditorView, _c: Completion, a: number, b: number) => {
         view.dispatch({ changes: { from: a, to: b }, selection: { anchor: a }, userEvent: "delete" })

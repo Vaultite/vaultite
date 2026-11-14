@@ -15,6 +15,7 @@ import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, 
 import { textStart, textStartIn } from "./scan"
 import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, shownStart, titled, titleEnd, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
+import { iconNode, placeInfo, slashInfo } from "./slashPreview"
 import { followReader, sightMargins } from "./sight"
 import { blockOptionSource } from "./blockOptions"
 import { highlightSource, optionDot } from "./highlights"
@@ -321,8 +322,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, links,
           }),
           suggestKeys,
           autocompletion({
-            override: [linkSource(() => cb.current.links), tagSource(() => cb.current.tags?.() ?? []), slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
-            icons: false, interactionDelay: PICK_DELAY, addToOptions: [{ render: optionDot, position: 20 }, { render: optionGlyph, position: 20 }, { render: optionTrail, position: 90 }],
+            override: [linkSource(() => cb.current.links), tagSource(() => cb.current.tags?.() ?? []), slashSource(() => cb.current.slash?.() ?? [], { info: slashInfo, icon: iconNode }), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
+            icons: false, interactionDelay: PICK_DELAY, positionInfo: placeInfo, addToOptions: [{ render: optionDot, position: 20 }, { render: optionGlyph, position: 20 }, { render: optionTrail, position: 90 }],
           }),
           keymap.of([
             { key: "Mod-b", run: wrap("**") }, { key: "Mod-i", run: wrap("*") },

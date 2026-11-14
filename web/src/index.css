@@ -1135,7 +1135,12 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 /* [[ suggestions and the slash menu (.cm-editor first: CodeMirror's own theme is one class more specific); .vau-tooltips:
    the same drawn over the page (Editor's floatingTooltips: a canvas card) */
 :is(.cm-editor, .vau-tooltips) .cm-tooltip.cm-tooltip-autocomplete { background: var(--card); border: 0.5px solid var(--border); border-radius: 10px; padding: 4px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); overflow: hidden; }
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); overflow: visible; }
+/* An option's preview (slashPreview.tsx): its own card beside the list, so CodeMirror's box around it goes. */
+:is(.cm-editor, .vau-tooltips) .cm-tooltip.cm-completionInfo:has(.slash-preview) { background: none; border: 0; padding: 0; box-shadow: none; max-width: none; white-space: normal; }
+:is(.cm-editor, .vau-tooltips) .cm-tooltip-autocomplete .cm-slash-icon { display: inline-grid; place-items: center; flex-shrink: 0; align-self: center; margin-right: 8px;
+  font-size: 16px; color: var(--muted-foreground); }
+:is(.cm-editor, .vau-tooltips) .cm-tooltip-autocomplete li[aria-selected] .cm-slash-icon { color: var(--foreground); }
 :is(.cm-editor, .vau-tooltips) .cm-tooltip.cm-tooltip-autocomplete > ul { font-family: var(--font-sans); max-height: 320px; min-width: 260px; max-width: min(360px, 90vw); }
 :is(.cm-editor, .vau-tooltips) .cm-tooltip.cm-tooltip-autocomplete > ul > li { display: flex; align-items: baseline; padding: 5px 8px; border-radius: 6px;
   font-size: 14px; line-height: 20px; color: var(--foreground); }
@@ -1155,6 +1160,7 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
     font-size: 17px; line-height: 22px; }
   :is(.cm-editor, .vau-tooltips) .cm-tooltip.cm-tooltip-autocomplete > ul > completion-section { padding: 10px 12px 4px; font-size: 13px; line-height: 18px; }
   :is(.cm-editor, .vau-tooltips) .cm-tooltip-autocomplete .cm-completionDetail { font-size: 14px; }
+  :is(.cm-editor, .vau-tooltips) .cm-tooltip-autocomplete .cm-slash-icon { font-size: 20px; margin-right: 12px; }
 }
 
 /* With no right sidebar on screen (data-right-sidebar, App.tsx), its toggle (fixed in the window's top-right corner)

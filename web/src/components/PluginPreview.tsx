@@ -1,9 +1,10 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Folder, Laptop, RefreshCw, Server, ShieldAlert } from "lucide-react"
 import { dateText, PreviewLive, reload, type Store } from "@/core/data"
-import { mockStore } from "@/core/mock"
+import { mockLive, mockStore } from "@/core/mock"
+import { Zoomed } from "@/components/PreviewCard"
 import { noteParts } from "@/core/frontmatter"
-import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tileTint,
+import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tileTint,
   updatePlugin, usePluginsVersion, type Plugin } from "@/core/plugins"
 import { op } from "@/core/http"
 import { updatable } from "../../../core/updates.ts"
@@ -48,8 +49,6 @@ function preview(p: Plugin, s: Store, disabled: string[]): ReactNode {
   })
 }
 
-const mockLive = () => Object.assign({}, ...PLUGINS.map((p) => p.mockLive?.() ?? {}))
-
 function Frame({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(0)
@@ -65,10 +64,7 @@ function Frame({ children }: { children: ReactNode }) {
     // The zoom rounds, so nothing may scroll sideways.
     <div ref={box} className="h-[300px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[12px] border-[0.5px] border-border bg-background [scrollbar-gutter:stable]">
       {w > 0 && (
-        // translateZ(0) keeps position: fixed parts (the phone's compact title bar) inside the frame.
-        <div inert style={{ width: inner, zoom: w / inner, transform: "translateZ(0)" }} className="px-4 pb-6">
-          {children}
-        </div>
+        <Zoomed inner={inner} width={w} className="px-4 pb-6">{children}</Zoomed>
       )}
     </div>
   )
@@ -302,7 +298,7 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
   const on = switchedOn(plugin, prefs) && !plugin.problems?.length && !waiting
   const switched = switchedOn(plugin, prefs) && !waiting
   const mock = useMemo(() => mockStore(store), [store])
-  const live = useMemo(mockLive, [])
+  const live = useMemo(() => mockLive(), [])
   const blocked = (plugin.requires ?? []).filter((r) => !isEnabled(r, disabled))
   const toggle = (v: boolean) => setSwitch(plugin, v)
   return (

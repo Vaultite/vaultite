@@ -74,7 +74,7 @@ export function segments(body: string): Segment[] {
 export function chooseBlock(store: Store, pick: (fence: string) => void) {
   const items = slashItems(store).filter((i) => i.section === "Blocks" && i.text)
   choose({
-    title: "Add a block", placeholder: "Find a block…", items: items.map((i) => ({ id: i.id, label: i.title, detail: i.detail, icon: Blocks })),
+    title: "Add a block", placeholder: "Find a block…", items: items.map((i) => ({ id: i.id, label: i.title, detail: i.detail, icon: i.icon ?? Blocks })),
     onPick: (c) => { const it = items.find((i) => i.id === c.id); if (it?.text) pick(it.text.replace("$|", "")) },
   })
 }

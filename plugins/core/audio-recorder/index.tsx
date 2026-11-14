@@ -21,9 +21,10 @@ export default definePlugin({
     { id: "audio-recorder:voice-note", name: "Record a voice note for your inbox", when: () => idle() && pluginOn("inbox"), run: () => void voiceNote(), icon: Mic },
   ],
   slash: () => [recording()
-    ? { id: "audio-recorder:stop", title: "Stop recording", section: "Media", keywords: "record audio voice memo stop", run: (put) => { put(""); stop() } }
+    ? { id: "audio-recorder:stop", title: "Stop recording", section: "Media", keywords: "record audio voice memo stop", icon: Square,
+        description: "Stops the recording and adds it to the note.", run: (put) => { put(""); stop() } }
     : { id: "audio-recorder:record", title: "Record audio", section: "Media", keywords: "record audio voice memo microphone dictate", detail: "Microphone",
-        run: (put) => { put(""); void start(activeFile()?.path ?? null) } }],
+        icon: Mic, description: "Records from the microphone into this note, transcribed when it can be.", run: (put) => { put(""); void start(activeFile()?.path ?? null) } }],
   fileMenu: (path) => {
     if (/\.md$/i.test(path) && !path.startsWith(".")) {
       return recording()

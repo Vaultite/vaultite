@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The slash menu shows what each option makes**: every option has its icon, and the one highlighted (by the arrow
+  keys or the pointer) shows a preview beside it, drawn from a sample: a real heading, table, callout or block.
 - **Cards as see-through as pages**: with translucent pages, a pane shown as a card lets the desktop through as much as
   one without cards; the tint between the cards no longer sits under them too.
 - **A site style's font keeps its own width**: a page whose style puts it in the vault's font no longer squeezes it with

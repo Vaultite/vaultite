@@ -560,6 +560,14 @@ export type SlashItem = { id: string; title: string
   keywords?: string
   /** A short hint drawn at the right. */
   detail?: string
+  /** Its icon at the left. */
+  icon?: IconType
+  /** What it makes, in a sentence: under its preview. */
+  description?: string
+  /** What it makes, as a note's Markdown, drawn (blocks too, on the mock store) as its preview. Left out: `text`. */
+  sample?: string
+  /** Its preview drawn by the plugin instead (on the mock store `sample`); null: none. */
+  preview?: (sample: Store) => ReactNode
   /** It starts a line of its own (a heading, a block): typed after a line break when the "/" isn't at the start. */
   line?: boolean
   text?: string

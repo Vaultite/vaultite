@@ -1,4 +1,4 @@
-import { acceptCompletion, closeCompletion, completionStatus, currentCompletions, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete"
+import { acceptCompletion, closeCompletion, completionStatus, currentCompletions, selectedCompletionIndex, setSelectedCompletion, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete"
 import { type EditorState, Prec, StateEffect, StateField } from "@codemirror/state"
 import { keymap, ViewPlugin, type EditorView } from "@codemirror/view"
 import { trackSoon } from "@/core/unsaved"
@@ -59,7 +59,19 @@ const settles = ViewPlugin.define((view) => {
   }
 })
 
-export const suggestKeys = [settles, dismissed, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
+const hoverPicks = ViewPlugin.define((view) => {
+  const move = (e: PointerEvent) => {
+    const moved = e.movementX || e.movementY
+    if (e.pointerType !== "mouse" || !moved || !view.hasFocus || completionStatus(view.state) !== "active") return
+    const li = e.target instanceof Element ? e.target.closest(".cm-tooltip-autocomplete li[role=option]") : null
+    const i = Number(/-(\d+)$/.exec(li?.id ?? "")?.[1] ?? NaN)
+    if (Number.isInteger(i) && i !== selectedCompletionIndex(view.state)) view.dispatch({ effects: setSelectedCompletion(i) })
+  }
+  document.addEventListener("pointermove", move)
+  return { destroy: () => document.removeEventListener("pointermove", move) }
+})
+
+export const suggestKeys = [settles, dismissed, hoverPicks, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
 
 export function optionGlyph(c: Completion) {
   const glyph = "glyph" in c && c.glyph instanceof Function ? c.glyph() : null

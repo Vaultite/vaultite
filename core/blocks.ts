@@ -24,7 +24,8 @@ export type BlockDecl = { description: string; options?: Record<string, OptionDe
   reads?: string[]
   /** The option naming who draws it: a plugin whose manifest's `draws` lists it (`block-agent-usage` with `agent: codex`,
    *  Codex's). It takes the ids of those that are on; with that plugin off, the block is off. */
-  by?: string }
+  by?: string
+  example?: ReturnType<typeof parseOptions>["options"] }
 export type BlockDecls = Record<string, BlockDecl>
 
 const TYPES: OptionType[] = ["string", "number", "boolean", "list", "map", "enum"]
@@ -227,6 +228,7 @@ export function declProblems(blocks: unknown, where: string): string[] {
     if (!isMap(d)) { out.push(`${at} must be an object with a description and its options`); continue }
     if (!ONE_LINE(d.description)) out.push(`${at} needs a description (one line: what it shows)`)
     if (d.live !== undefined && !ONE_LINE(d.live)) out.push(`${at}: live is one line, where its live data comes from ("GitHub's API")`)
+    if (d.example !== undefined && !isMap(d.example)) out.push(`${at}: example is its options, {"<option>": <value>}`)
     if (d.reads !== undefined && (!Array.isArray(d.reads) || d.reads.some((r) => typeof r !== "string" || !r))) out.push(`${at}: reads is a list of vault paths`)
     const by = typeof d.by === "string" && isMap(d.options) ? d.options[d.by] : undefined
     if (d.by !== undefined && !(isMap(by) && typesGiven(by).includes("string"))) {

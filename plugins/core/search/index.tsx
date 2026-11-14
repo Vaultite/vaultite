@@ -18,7 +18,8 @@ export default definePlugin({
     },
   },
   slash: () => [{
-    id: "search:query", title: "Search results", section: "Blocks", keywords: "query search embed results obsidian", detail: "A search, inline", line: true,
+    id: "search:query", title: "Search results", section: "Blocks", keywords: "query search embed results obsidian", detail: "A search, inline", line: true, icon: Search,
+    description: "A search's results, kept up to date in the note.", sample: "```query\ntrip\n```",
     run: (put) => put("```query\n\n```\n"),
   }],
   commands: [

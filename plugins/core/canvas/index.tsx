@@ -54,7 +54,8 @@ export default definePlugin({
   ],
   slash: () => [{
     id: "canvas:new", title: "Canvas", section: "Canvas", keywords: "canvas board cards whiteboard json", detail: "New canvas",
-    line: true,
+    line: true, icon: LayoutDashboard, description: "A new board of cards, shown in this note.",
+    preview: (mock) => <div className="relative h-[300px]">{box(<Board text={SAMPLE} editable={false} place="embed" path="Lighthouse.canvas" onChange={() => {}} store={mock} />)}</div>,
     run: async (put) => { const p = await newCanvas(); put(`![[${p}]]\n`) },
   }],
   preview: (mock) => <div className="relative h-[240px] overflow-hidden rounded-[12px]">{box(<Board text={SAMPLE} editable={false} place="embed" path="Lighthouse.canvas" onChange={() => {}} store={mock} />)}</div>,

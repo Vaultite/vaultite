@@ -6,6 +6,7 @@ import { cell } from "@/core/signal"
 import { trackSoon } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
 import { nodeOf } from "@/core/dom"
+import { Picture, PreviewCard } from "@/components/PreviewCard"
 
 /** One state of a setting and its picture (drawn in a `Frame`, to fill its box). */
 export type PreviewOption = { value: string; label: string; picture: ReactNode }
@@ -187,7 +188,7 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
     <div ref={el} popover="manual" aria-hidden data-setting-preview={row.current?.getAttribute("data-settings-row") ?? row.current?.getAttribute("data-setting") ?? ""} data-side={at?.side} data-cold={cold || undefined}
       onPointerEnter={keep} onPointerLeave={(e) => { if (e.pointerType === "mouse") later() }}
       className={cn("fixed inset-auto m-0 overflow-visible border-0 bg-transparent p-0 text-foreground", pad, !at && "invisible")} style={{ left: at?.left ?? 0, top: at?.top ?? 0, transition: at?.glide ? "left var(--motion-spring) var(--spring), top var(--motion-spring) var(--spring)" : undefined }}>
-      <div ref={box} className="preview-card glass-strong rounded-[12px] p-2.5 shadow-xl" style={{ transformOrigin: origin }}>
+      <PreviewCard ref={box} style={{ transformOrigin: origin }}>
         <div className="relative flex gap-3">
           {current >= 0 && <span aria-hidden data-preview-ring className={cn("pointer-events-none absolute -top-[3px] -left-[3px] rounded-[10px] border-2 border-primary", both && "transition-transform duration-[var(--motion-spring)] ease-[var(--spring)]")}
             style={{ width: PIC_W + 6, height: PIC_H + 6, transform: `translateX(${current * (PIC_W + GAP)}px)` }} />}
@@ -197,13 +198,13 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
               <button key={o.value} type="button" tabIndex={-1} data-preview-pick={o.value} data-current={on || undefined} onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { if (!on) { haptic("selection"); void preview.set(o.value) } }}
                 className={cn("group/pp flex flex-col items-center gap-1.5", on ? "cursor-default" : "cursor-pointer")}>
-                <span className={cn("block overflow-hidden rounded-[7px] ring-[0.5px] ring-border transition-shadow", !on && "group-hover/pp:shadow-[0_0_0_2.5px_var(--border)]")} style={{ width: PIC_W, height: PIC_H }}>{o.picture}</span>
+                <Picture width={PIC_W} height={PIC_H} className={cn("transition-shadow", !on && "group-hover/pp:shadow-[0_0_0_2.5px_var(--border)]")}>{o.picture}</Picture>
                 <Name label={o.label} on={on} />
               </button>
             )
           })}
         </div>
-      </div>
+      </PreviewCard>
     </div>, row.current?.closest("dialog") ?? document.body) // (a sheet's in its dialog: the modal sheet makes the rest inert)
 }
 

@@ -21,6 +21,7 @@
     },
     "area": {
       "description": "an area's weeks and latest sessions",
+      "example": { "area": "workouts" },
       "options": {
         "area": { "type": "string", "required": true, "description": "the area (its slug)" },
         "meta": { "type": ["string", "list"], "description": "a field, or a list of them, shown on each session" },

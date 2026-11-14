@@ -63,7 +63,8 @@ export default definePlugin({
   ] satisfies PluginCommand[]).map((c) => ({ ...c, keysWhen: () => keysInEditor() })),
   slash: () => (!activeFile() ? [] : [{
     id: "editor:add-photo", title: "Photo", section: "Media", keywords: "photo image picture camera library attachment upload",
-    detail: coarse() ? "Library or camera" : "Image file", line: true,
+    detail: coarse() ? "Library or camera" : "Image file", line: true, icon: ImagePlus,
+    description: coarse() ? "A photo from your library or camera, kept with the note." : "An image file, kept with the note.",
     run: (put) => { const f = activeFile(); if (f) return addPhotos(f.path, put) },
   }]),
   fileMenu: (path) => (/\.md$/i.test(path) && !path.startsWith(".")
