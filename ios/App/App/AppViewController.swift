@@ -20,6 +20,7 @@ class AppViewController: CAPBridgeViewController {
 
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(shell)
+        KeyboardBar.hide()
         _ = LocalStore.shared // (its network monitor knows the path by the time a page asks)
         // A server's page that doesn't load (unreachable, or reloaded after iOS ended the page in the background) opens
         // the offline app on its vault's copy, else goes back to the first screen, saying why, instead of a blank screen.
