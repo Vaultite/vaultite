@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A server no longer hangs on a slow machine**: a request to another machine that timed out could leave the server
+  stuck in a loop, answering nothing while its memory grew (its fetch now speaks HTTP/1.1, not Node 26's HTTP/2). A
+  service's server that stops answering for 30 seconds anyway is killed and restarted, not left hanging.
 - **The slash menu shows what each option makes**: every option has its icon, and the one highlighted (by the arrow
   keys or the pointer) shows a preview beside it, drawn from a sample: a real heading, table, callout or block.
 - **Cards as see-through as pages**: with translucent pages, a pane shown as a card lets the desktop through as much as

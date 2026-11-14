@@ -31,6 +31,7 @@ if (Number(process.env.VAULTITE_PARENT_PID) > 1) {
   new Worker(`const pid = ${Number(process.env.VAULTITE_PARENT_PID)}
 setInterval(() => { if (process.ppid === pid) return; try { process.kill(pid, 0); return } catch {} process.kill(process.pid, "SIGKILL") }, 1000)`, { eval: true }).unref()
 }
+if ((await (await import("./core/http1.ts")).fetchOverHttp1()) !== "http1") log.warn("fetch may speak HTTP/2: Node's undici keeps its dispatcher elsewhere now")
 const { askedAt, span } = await import("./core/spans.ts")
 const starting = span("server.start", {}, askedAt - performance.timeOrigin)
 starting.mark("spawn")
@@ -85,6 +86,9 @@ const ready = open(VAULT_AT, { timing: starting, watch: (v) => { live = new Live
   log.info(`vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
   starting.end()
   module.flushCompileCache?.() // Node writes the cache only on a normal exit, and a server ends by a signal
+  const restartedByServiceManager = !DESKTOP && !!(process.env.VAULTITE_SERVICE || process.env.VAULTITE_UPDATES)
+  const pausedByDebugger = process.execArgv.some((x) => x.startsWith("--inspect"))
+  if (restartedByServiceManager && !pausedByDebugger && process.env.VAULTITE_WATCHDOG !== "off") void import("./core/watchdog.ts").then((w) => w.killWhenMainThreadStalls())
 }, (e) => {
   log.error("couldn't open the vault", e)
   process.exit(1)

@@ -90,7 +90,8 @@ function post(d: Device, cfg: Apns, key: crypto.KeyObject, body: string): Promis
       ...kind, "apns-priority": "10", "content-type": "application/json",
     })
     let status = 0, data = ""
-    req.setTimeout(10_000, () => { req.close(); done(0, "timed out") })
+    const abandonSessionNotStream = () => { client.destroy(); resolve({ status: 0, reason: "timed out" }) }
+    req.setTimeout(10_000, abandonSessionNotStream)
     req.on("response", (h) => { status = Number(h[":status"]) })
     req.on("data", (c) => { data += c })
     req.on("end", () => { let reason = ""; try { reason = JSON.parse(data).reason ?? "" } catch { /* empty when sent */ } done(status, reason) })

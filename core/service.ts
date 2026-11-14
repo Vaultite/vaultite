@@ -84,14 +84,13 @@ export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   // (following a branch: the store's current root behind a path that stays, the checkout its first clone and fallback)
   const stored = !!o.updates && platform !== "win32"
   const server = p.join(o.root, stored ? p.join("bin", "vaultite-server") : "server.ts")
-  // Login shells set their own PATH; this one is for what the server runs itself (git, tailscale, the agents' CLIs).
-  // (Linux: also where its package managers put CLIs, when they're there: snap, linuxbrew, bun, cargo, volta, npm's -g)
+  // PATH for what the server runs itself (git, tailscale, the agents' CLIs); on Linux also its package managers' bins.
   const extra = platform === "linux" ? ["/snap/bin", "/home/linuxbrew/.linuxbrew/bin", ...[".bun/bin", ".cargo/bin", ".volta/bin", ".npm-global/bin"].map((d) => path.join(home, d))]
     .filter((d) => fs.existsSync(d)) : []
   const PATH = [path.dirname(o.node), path.join(home, ".local", "bin"), platform === "darwin" && "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", ...extra]
     .filter((d): d is string => !!d)
     .filter((d, i, all) => all.indexOf(d) === i).join(":")
-  const env: Record<string, string> = { VAULTITE_VAULT: o.vault, PATH }
+  const env: Record<string, string> = { VAULTITE_VAULT: o.vault, VAULTITE_SERVICE: "1", PATH }
   if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = "1" // vau run by the desktop app's own Node
   if (o.port) env.PORT = String(o.port)
   if (o.host) env.HOST = o.host
@@ -101,8 +100,7 @@ export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   if (platform === "darwin") {
     const file = path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`)
     const log = path.join(home, "Library", "Logs", "vaultite.log")
-    // (Interactive: its terminals, agents and test browsers are the user's; a Standard job's children get timers
-    // coalesced to ~70 ms, so a page there animates at 15 fps)
+    // (Interactive: a Standard job's children get timers coalesced to ~70 ms, so its pages animate at 15 fps)
     const text = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

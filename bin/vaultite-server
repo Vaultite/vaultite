@@ -56,6 +56,7 @@ const at = pick()
 const root = at?.root ?? checkout
 if (at) console.log(`vaultite: runs the code store's ${at.from} root ${path.basename(root).slice(0, 7)}`)
 process.env.VAULTITE_SERVICE_CHECKOUT = checkout // (its store's first clone, and where it falls back to)
+process.env.VAULTITE_SERVICE = "1" // (a service manager restarts it: core/watchdog.ts)
 // (this machine's own files, its secrets, stay the checkout's: a root is read-only, and goes)
 process.env.VAULTITE_LOCAL ||= path.join(checkout, "data")
 process.chdir(root)
