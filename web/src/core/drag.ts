@@ -203,12 +203,12 @@ export function edgeScroller(axis: "x" | "y" = "y") {
  *  pointer is still (a card held over another groups them after a moment: TabSwitcher). */
 export function rehit() { if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y, drag.item.elsewhere ? takesElsewhere : undefined) }) }
 
-/** What a drop on this target would do right now, while something is dragged over it: the same object while the answer
- *  is (targets answer anew on every move), so it's drawn again only when that changes. */
-export function useDropHit<H>(id: DropId<H>): H | null {
+/** What a drop on this target would do now (of its answers, those `only` keeps): the same object while the answer is
+ *  (targets answer anew on every move), so it's drawn again only when that changes. */
+export function useDropHit<H>(id: DropId<H>, only?: (hit: H) => boolean): H | null {
   const last = useRef<{ raw: H | null; key: string; data: H | null }>({ raw: null, key: "null", data: null })
   return subs.use(() => {
-    const raw = hitOn(drag?.hit, id)
+    const hit = hitOn(drag?.hit, id), raw = hit !== null && only && !only(hit) ? null : hit
     const l = last.current
     if (raw !== l.raw) {
       const key = raw == null ? "null" : JSON.stringify(raw)

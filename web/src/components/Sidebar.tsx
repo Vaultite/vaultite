@@ -70,10 +70,10 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     closeMovedIn(item)
   }, { hint: () => { const it = getDrag()?.item; return it && intoHint(it, side) }, weak: (h) => h.weak, end: edge.stop })
 
-  const over = useDrag((d) => d?.hit?.target ?? null)
   const mine = item?.from === "panel" ? item.panel : undefined
   const other = side === "left" ? "right" : "left"
-  const leaving = !!mine && (over === `${PANELS}:${other}` || over === `toggle:${other}`) && panels.some((p) => p.key === mine)
+  const overOther = useDrag((d) => d?.hit?.target === `${PANELS}:${other}` || d?.hit?.target === `toggle:${other}`)
+  const leaving = !!mine && overOther && panels.some((p) => p.key === mine)
   const making = hit && ctx.open && panels.length ? hit.order : leaving && ctx.open ? panels.map((p) => p.key).filter((k) => k !== mine) : null
   useSlide(box, making, "y")
   const madeWay = useRef(false)

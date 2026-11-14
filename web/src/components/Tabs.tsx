@@ -745,7 +745,7 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const l = useTabList(), { tabs, active } = l
   const { fileIcons } = usePrefs()
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
-  const hit = useDropHit<Drop>(PANES)
+  const hit = useDropHit<Drop>(PANES, (h) => h.kind === "list")
   const item = useDragItem()
   const preview = item ? previewIn(l, item, hit) : null
   const drawn = groupsAsDrawn(preview?.tabs ?? tabs)
@@ -933,10 +933,10 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
 function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: string; places: Pane[]; focused: boolean; info: (t: Tab | Pane) => TabInfo
   menu: (e: React.MouseEvent) => void
   adds: boolean; children: React.ReactNode }) {
-  const item = useDragItem(), hit = useDropHit<Drop>(PANES)
+  const item = useDragItem(), hit = useDropHit<Drop>(PANES, (h) => h.kind === "places" && h.pane === id)
   const row = useRef<HTMLDivElement>(null)
   const moving = item?.pane ?? item?.tab ?? item?.to
-  const order = moving && hit?.kind === "places" && hit.pane === id ? reorder(places.map((p) => p.id), [moving], hit.index).order : null
+  const order = moving && hit?.kind === "places" ? reorder(places.map((p) => p.id), [moving], hit.index).order : null
   useSlide(row, order && adds ? [...order, "new"] : order, "x")
   return (
     <div data-pane-bar={id} data-title-row data-place-strip={id} onContextMenu={menu}

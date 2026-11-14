@@ -781,7 +781,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useDictation`: The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it).
 - `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not under a menu or palette, nor if `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
 - `useDrag`: The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
-- `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it: the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.
+- `useDropHit(id, only?)`: What a drop on this target would do now (of its answers, those `only` keeps): the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.
 - `useDropTarget(id, at, drop, opts?)`: Take drops while mounted.
 - `useEarlier(key)`: Whether a list's Earlier is open (closed to start, kept per workspace under `key`), and what opens or closes it.
 - `useEnabled()`
