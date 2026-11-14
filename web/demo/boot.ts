@@ -278,7 +278,12 @@ async function bundles() {
   async function openPaper() {
     for (let i = 0; i < 3 && !document.querySelector("#root [data-pane]"); i++) await appUp()
     const { openTab } = await import("@/core/workspace")
-    openTab(`file:${PAPER}`)
+    const shown = () => decodeURIComponent(location.hash).includes(PAPER)
+    for (let i = 0; i < 5; i++) {
+      if (!shown()) openTab(`file:${PAPER}`)
+      await new Promise((ok) => setTimeout(ok, 1500))
+      if (shown()) return
+    }
   }
 
   /** The Browser's live sites (sites.ts): its favourites while it's on, and open in tabs, the first in front, whenever

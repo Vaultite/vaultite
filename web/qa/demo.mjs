@@ -109,7 +109,7 @@ async function visit(name, browser) {
   is("?bundle=research opens its paper, its citations in APA and its references beside it",
     await until(async () => decodeURIComponent(page.url()).includes("Papers/Paper machines/Draft.md") && (await page.locator(".cm-citation").count()) > 3 &&
       (await page.locator("[data-references-panel] [data-reference]").count()) > 10, 30000) &&
-    /\(Bush, 1945\)/.test(await page.locator(".cm-citation").first().innerText()), page.url())
+    /\(Bush, 1945\)/.test(await page.locator(".cm-citation").first().innerText()), [page.url(), await page.locator("[data-sonner-toast]").allInnerTexts()])
 
   const DAYS = path.join(ROOT, "tools/fixtures/bundles/days")
   const daysFiles = Object.fromEntries(fs.readdirSync(DAYS, { recursive: true }).filter((f) => fs.statSync(path.join(DAYS, f)).isFile())
