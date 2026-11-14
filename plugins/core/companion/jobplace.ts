@@ -6,8 +6,9 @@ import { type Machine, OpError, type Plugin, ROOT } from "../../../core/plugins.
 import { type Handoff, type Where, str } from "./jobs.ts"
 import { cap, type Machines } from "./jobmachines.ts"
 import type { workerLinks } from "./links.ts"
-import { CLOUD, cloudIn, lacks, type Needs, type Ranked, RepoRules, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
+import { CLOUD, cloudIn, lacks, type Needs, type Ranked, type RepoRule, RepoRules, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
 import type { JobAsk } from "./types.ts"
+import { osLine, osNeed, type OsNeed } from "./jobos.ts"
 import type { Checkout } from "./checkouts.ts"
 import { APP_REPO, appUiOf, branchOf, checkoutNamed, checkoutsLine, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, rootsLine, routeCovers, sitesIn, tilde, unpushed, urlsIn, watched } from "./where.ts"
 
@@ -31,8 +32,9 @@ export function siteOf(site: URL, repo: string) {
   const name = repo.trim().replace(/\/+$/, "").replace(/\.git$/, "").split(/[/:]/).pop()!.toLowerCase()
   return name.length > 2 && site.hostname.toLowerCase().split(".").some((l) => l === name || l.replace(/-/g, "") === name.replace(/-/g, ""))
 }
-type Base = { words: string; agent: Pick<Needs, "agent" | "account"> }
-const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...rulesNeed(far.rules ?? [], base.words)] })
+type Base = { words: string; agent: Pick<Needs, "agent" | "account">; os: OsNeed | null }
+const needsOf = (rules: RepoRule[] | undefined, base: Base) => [...new Set([...rulesNeed(rules ?? [], base.words), ...(base.os ? [base.os.need] : [])])]
+const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...needsOf(far.rules, base)] })
 type Asker = { ranking: Machines["ranking"]; atMachine: ReturnType<typeof workerLinks>["atMachine"] }
 async function siteElsewhere(site: URL, base: Base, { ranking, atMachine }: Asker) {
   for (const { t, why } of (await ranking({ has: [], ...base.agent })).ranked.filter((x) => !x.t.self && !x.t.cloud)) {
@@ -156,7 +158,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
       const here = await placeHere(o, str(p.cwd), repo)
       if (here.missing) throw new OpError(await missingLine(here, ""), 404)
       const cloud = (await traitsOf()).find((t) => t.cloud)
-      const no = !cloud ? "jobs_cloud names no Claude Code account to start it" : lacks(cloud, { has: rulesNeed(here.rules ?? [], baseOf(m, p).words), repo: await githubOf(here.cwd) || here.repo, ...(here.cloudOk ? { cloud: true } : {}) })
+      const no = !cloud ? "jobs_cloud names no Claude Code account to start it" : lacks(cloud, { has: needsOf(here.rules, base), repo: await githubOf(here.cwd) || here.repo, ...(here.cloudOk ? { cloud: true } : {}) })
       const got = no ? `the cloud ${no}` : await inCloud(here, "as asked")
       if (typeof got === "string") throw new OpError(`it can't run in the cloud: ${got}`, 409)
       if (got.there.refused) throw new OpError(`it can't run there: ${got.there.refused}`, 403)
@@ -172,13 +174,13 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there, base))
     else if (repo && !machine && !str(p.cwd)) ({ machine, there } = await named(there, base))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
-    return { machine, label: there.cloud ? "Cloud" : await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
+    return { machine, label: there.cloud ? "Cloud" : await labelOf(machine), cwd: there.cwd, repo: there.repo, why: base.os && !str(p.machine).trim() ? `${osLine(base.os)}; ${there.why}` : there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
       ...(there.cloud ? { cloud: true } : {}),
       ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}), ...(there.from ? { from: there.from } : {}) }
   }
   const baseOf = (m: JobAsk | undefined, p: Handoff): Base => {
     const account = str(p.account).trim().toLowerCase()
-    return { words: [str(p.task), m?.text ?? ""].join("\n"), agent: { agent: str(p.agent) || "claude", ...(account && account !== "default" ? { account } : {}) } }
+    return { words: [str(p.task), m?.text ?? ""].join("\n"), agent: { agent: str(p.agent) || "claude", ...(account && account !== "default" ? { account } : {}) }, os: osNeed(p, m) }
   }
   async function inCloud(here: Placed, why: string, left: string | null = null): Promise<{ there: Placed; moved?: string } | string> {
     if (!(await githubOf(here.cwd))) return "its repo isn't on GitHub, so the cloud can't have it"
@@ -204,7 +206,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
   async function named(here: Placed, base: Base): Promise<{ machine: string; there: Placed }> {
     if (here.refused) return { machine: "", there: here }
     const slug = await githubOf(here.cwd), left = slug ? await unpushed(here.cwd) : ""
-    return placed(here, { has: rulesNeed(here.rules ?? [], base.words), repo: slug || here.repo, ...base.agent, ...(here.cloudOk ? { cloud: true } : {}) }, async ({ t, why }) => {
+    return placed(here, { has: needsOf(here.rules, base), repo: slug || here.repo, ...base.agent, ...(here.cloudOk ? { cloud: true } : {}) }, async ({ t, why }) => {
       if (!slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
       if (left) return `${left} it starts from would be missing on ${t.label}`
       const far = await atMachine(t.id, "companion.where", { url: `https://github.com/${slug}` }, 6).then((r) => Placed.parse(r)).catch(() => null)
@@ -220,7 +222,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     let gh = urlsIn(o).find((u) => u.hostname === "github.com")?.href ?? (here.from === "site" || here.from === "vault" ? sitesIn(o)[0]?.href : undefined)
     const slug = here.repo ? await githubOf(here.cwd) : "", left = local && slug ? await onlyHere(here.cwd) : ""
     if (local && slug) gh = `https://github.com/${slug}`
-    const n: Needs = { has: [...(here.repo || gh ? [] : ["vault" as const]), ...rulesNeed(here.rules ?? [], base.words)], ...(here.repo ? { repo: slug || here.repo } : {}), ...base.agent,
+    const n: Needs = { has: [...(here.repo || gh ? [] : ["vault" as const]), ...needsOf(here.rules, base)], ...(here.repo ? { repo: slug || here.repo } : {}), ...base.agent,
       ...(here.repo && here.cloudOk ? { cloud: true } : {}) }
     return placed(here, n, async ({ t, why }) => {
       if (local && !slug) return `its repo isn't on GitHub, so ${t.label} can't have it`

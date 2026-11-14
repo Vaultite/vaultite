@@ -1,3 +1,4 @@
+import { ONLY_OS } from "./jobos.ts"
 import { type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import { cardOf, followTask, type Handoff, type Queued, str } from "./jobs.ts"
 import type { Machines } from "./jobmachines.ts"
@@ -67,6 +68,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over; one not on that machine is its own checkout of that repo there" },
       repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's); only when their words name it, chosen from the machines' checkouts (this tool's list) by what each is (its README, the site it deploys), not the closest name: a product's website is the checkout deploying it (vaultite.com: the site's repo, not the app's); over a page, its own checkout (the one serving or deploying it) wins over a repo guessed from its title. Vaultite's own UI: about app instead" },
       about: { type: "string", enum: ["app", "work"], description: "what their ask is about: app, Vaultite itself (how its panels, sidebars, menus, views, the web viewer's own bar, the Talk list or you look or behave: a bug or a change in the app), which runs in Vaultite's repo whatever page or note is in the pane; work, their notes, errands or a page's own content, even asked over the app's panels. Left out, what was under their pointer decides (the app's own UI: app)" },
+      os: { type: "string", enum: [...ONLY_OS], description: "the one OS the thing their ask is about exists on, by what it is, not its words: macos for the Mac's own UI (the desktop app's window chrome and its traffic lights, the menu bar, the notch and its island, the Swift helper), ios for the iPhone app; it then runs on a Mac (the iPhone app builds there), never on a Linux machine however idle. Left out when it exists everywhere (the app's pages, panels, notes, the web)" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },
       land: { type: "boolean", description: "with job: their word to merge what it made (merge it, ship it): it's told to land it as its repo's rules say, and closes once merged" },

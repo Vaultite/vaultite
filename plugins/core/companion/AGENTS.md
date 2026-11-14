@@ -209,7 +209,10 @@ above that), act, run it again, and never end your turn.
   research, a GitHub page, a repo it names) goes to a machine that's on and has what it needs: its repo checked out, this
   vault for the vault's own work (a coding job may go to a machine with another vault or none: its worker's knocks, inbox
   asks, reports and proof reach the user here), the OS or desktop its repo's `.vaultite-jobs.json` asks for (`{"needs":
-  [{"when": "swift|notch", "needs": ["macos", "desktop"]}]}`); the one with the most headroom first (load per core, free
+  [{"when": "swift|notch", "needs": ["macos", "desktop"]}]}`), and the one OS what the ask is about exists on (handoff's
+  `os`, by what it is: macos for the Mac's own UI, the desktop app's window chrome, its traffic lights, the menu bar, the
+  notch; ios for the iPhone app, which builds on a Mac; left out, an ask over the desktop app on a Mac about its window
+  chrome is macos), never an idler machine of another OS, its `why` saying so; the one with the most headroom first (load per core, free
   memory, its jobs against its cap, `companion capacity`), then the user's order (the setting `jobs_machine`: auto, the
   always-on ones, then the cloud, then this one). The cloud, once `jobs_cloud` names the Claude Code account that starts
   it: a session of Claude Code on the web per job (`machine: cloud` asks for it), for a coding job needing nothing of a

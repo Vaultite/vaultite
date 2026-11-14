@@ -6,7 +6,7 @@ import type { JobAsk } from "./types.ts"
 export const str = (v: unknown) => (typeof v === "string" ? v : "")
 export const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
 export type Handoff = { task?: string; say?: string; agent?: string; account?: string; model?: string; effort?: string; title?: string; cwd?: string; repo?: string
-  about?: string; machine?: string; job?: string; land?: boolean; ask?: boolean; which?: string; on?: string; page?: boolean }
+  about?: string; os?: string; machine?: string; job?: string; land?: boolean; ask?: boolean; which?: string; on?: string; page?: boolean }
 export const JOB_STATES = ["waiting", "starting", "working", "needs you", "ready for review", "done", "failed", "stopped"] as const
 export type JobState = typeof JOB_STATES[number]
 export const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])

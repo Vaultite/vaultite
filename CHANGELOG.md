@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Mac-only work runs on a Mac**: a job about something only the Mac has (the window's traffic lights, the menu bar,
+  the notch) or about the iPhone app goes to a Mac, even when a Linux machine is idler, and its why there says so.
 - **A server no longer hangs on a slow machine**: a request to another machine that timed out could leave the server
   stuck in a loop, answering nothing while its memory grew (its fetch now speaks HTTP/1.1, not Node 26's HTTP/2). A
   service's server that stops answering for 30 seconds anyway is killed and restarted, not left hanging.

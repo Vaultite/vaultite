@@ -236,6 +236,20 @@ export default async ($: VaultTest) => {
       rules.length === 2 && P.rulesNeed(rules, "Fix the Swift helper's crash").join() === "macos,desktop,vault" && P.rulesNeed(rules, "Fix the sidebar").join() === "vault" &&
       P.rulesIn("not json").length === 0, rules)
     {
+      const O = await import("../../../plugins/core/companion/jobos.ts")
+      const onMac = { app: "app.vaultite.main", appName: "Vaultite Main", window: 42, text: "the traffic lights flicker when the window loses focus" }
+      const mac = O.osNeed({ task: "Fix the flicker", about: "app" }, onMac), said = O.osNeed({ task: "Lights sit too low", os: "macos" }), phone = O.osNeed({ task: "Fix the tab bar", os: "ios" })
+      const phoneWords = O.osNeed({ task: "The iPhone app's tab bar hides behind the keyboard", about: "app" })
+      const idle = ms.map((m) => (m.id === "box" ? { ...m, load: 0, jobs: 0 } : m.id === "m1" ? { ...m, load: 6, jobs: 2 } : m))
+      const linuxFirst = P.place(idle, { has: [], repo: "lighthouse/site" }, "auto"), macOnly = P.place(idle, { has: [mac!.need], repo: "lighthouse/site" }, "auto")
+      check("placement: an ask about something one OS alone has (the Mac's window chrome, the iPhone app) runs on a Mac, however idle a Linux machine is; why says so",
+        mac?.need === "macos" && /desktop app on a Mac, about its traffic lights/.test(mac.why) && said?.need === "macos" && phone?.need === "macos" && /iPhone app/.test(phone.why) &&
+        phoneWords?.need === "macos" && /iPhone app/.test(phoneWords.why) &&
+        O.osNeed({ task: "Fix the flicker", about: "app" }, { text: onMac.text }) === null && O.osNeed({ task: "Fix the flicker", about: "work" }, onMac) === null &&
+        O.osNeed({ task: "The sidebar's width", about: "app" }, { ...onMac, text: "the sidebar is too wide" }) === null && O.osLine(mac!).endsWith(": on a Mac") &&
+        linuxFirst.ranked[0].t.id === "box" && ids(macOnly) === "lap,m1" && macOnly.left.includes("BOX runs Linux, not macOS"), [mac, phone, phoneWords, ids(linuxFirst), ids(macOnly)])
+    }
+    {
       // The cloud: a session per job, no cap; after the always-on machines with room, before this one; only work needing nothing local.
       const cloud: Any = { id: "cloud", label: "Cloud", self: false, online: true, standalone: false, cloud: true, platform: "linux", vault: false, display: false, app: false, agents: ["claude"], accounts: ["personal"] }
       const all = [...ms, cloud], set = { has: [], repo: "lighthouse/site", cloud: true }
