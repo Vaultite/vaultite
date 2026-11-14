@@ -29,12 +29,12 @@ const leaks = (page, sel) => page.evaluate(([sel, CONTENT]) => {
 const selectsAs = (page, sel) => page.evaluate((sel) => { const el = [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length); if (!el) return null; const st = getComputedStyle(el); return st.webkitUserSelect || st.userSelect }, sel)
 const selection = (page) => page.evaluate(() => getSelection().toString())
 const clear = (page) => page.evaluate(() => getSelection().removeAllRanges())
-/** A text node's middle in `sel` (the first shown one with words): where a press lands on text, not padding. */
+/** A text node's middle in `sel` (the first shown one with a letter or digit: a fresh vault's status bar holds only "0/4"): where a press lands on text, not padding. */
 const textAt = (page, sel) => page.evaluate((sel) => {
   for (const root of document.querySelectorAll(sel)) {
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     for (let n = w.nextNode(); n; n = w.nextNode()) {
-      if (!/\w{3}/.test(n.textContent)) continue
+      if (!/\w/.test(n.textContent)) continue
       const r = document.createRange(); r.selectNodeContents(n)
       const b = r.getBoundingClientRect()
       if (b.width < 8 || !b.height || b.bottom > innerHeight || b.right > innerWidth) continue
