@@ -215,7 +215,7 @@ Some words before the steps.
   }
   const tool = { name: "say", description: "", schema: {}, run: async () => ({}) }
   const dir = (await import("node:fs")).mkdtempSync((await import("node:path")).join((await import("node:os")).tmpdir(), "vaultite-lane-"))
-  const lane = summonedLane({ file: () => `${dir}/kept.json`, chat: () => chat as never, name: () => "Claude", model: () => "sonnet", options: () => ({}) as never,
+  const lane = summonedLane({ file: () => `${dir}/kept.json`, chat: () => chat as never, name: () => "Claude", model: () => "sonnet", effort: () => "low", options: () => ({}) as never,
     text: async (ms) => ({ text: ms.map((m) => m.text).join("\n"), images: [] }), acts: () => ({ say: tool, look: tool, draw: tool }) as never, found: async () => null,
     caption() {}, thinking() {}, watching() {}, did() {}, say() {}, talk: () => ({ me: "", now: null, said: "" }) })
   const moment = (seq: number, text: string, tour = false) => ({ kind: "ask", for: "Claude", summoned: true, text, t: Date.now(), seq, ...(tour ? { tour: true } : {}) }) as never as Parameters<typeof lane.take>[0]

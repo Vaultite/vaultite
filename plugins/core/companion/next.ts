@@ -129,7 +129,7 @@ plugin.op({
     const at = t.frame ? { x: t.frame.x, y: t.frame.y, w: t.frame.width, h: t.frame.height } : t.sx !== undefined && t.sy !== undefined ? { x: t.sx, y: t.sy } : undefined
     const on = at ? undefined : placeText(t, t.pane ? paneById(t.pane)?.title : undefined)
     showed(name, [{ t: Date.now(), what: "your cursor pointed", ...(at ? { at } : { on }) }])
-    did(name, "look", undefined, at ? `at ${Math.round(at.x)},${Math.round(at.y)} on the screen` : `at ${on}`)
+    did(name, "look", undefined, at ? `at ${Math.round(t.sx ?? at.x)},${Math.round(t.sy ?? at.y)} on the screen` : `at ${on}`)
     setAgent(name, { ...t, pointed: Date.now() })
     return t
   },

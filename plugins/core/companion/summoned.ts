@@ -16,7 +16,7 @@ type Start = ChatHow & { prompt?: string }
 export type Lane = ReturnType<typeof summonedLane>
 type Runners = { [K in EffectKind]: (x: Effect<Moment, Tag, K>) => void }
 const BUSY = new Set<State["state"]>(["working", "waiting", "starting"])
-const Kept = z.object({ id: z.string(), model: z.string(), t: z.number(), handed: z.number(), v: z.string().optional(), last: z.number().optional(), context: z.number().optional() })
+const Kept = z.object({ id: z.string(), model: z.string(), effort: z.string().optional(), t: z.number(), handed: z.number(), v: z.string().optional(), last: z.number().optional(), context: z.number().optional() })
 type Kept = z.infer<typeof Kept>
 const Open = z.record(z.string(), z.unknown())
 const ToolResult = Open.and(z.object({ isError: z.boolean().optional(), endsTurn: z.boolean().optional(), content: z.array(Open.and(z.object({ text: z.string().optional() }))).optional() }))
@@ -67,8 +67,8 @@ export function wordsGate(speak: (use: string, text: string, end?: "done" | "sto
 }
 
 export function summonedLane(o: {
-  file: () => string; chat: () => Chat | null; name: () => string; model: () => string
-  options: (model: string) => Start; text: (ms: Moment[]) => Promise<{ text: string; images: string[] }>
+  file: () => string; chat: () => Chat | null; name: () => string; model: () => string; effort: () => string
+  options: (model: string, effort: string) => Start; text: (ms: Moment[]) => Promise<{ text: string; images: string[] }>
   acts: () => { say: Tool; look: Tool; draw: Tool }
   found: (text: string) => Promise<{ sx: number; sy: number } | null>
   caption: (name: string, text: string) => void
@@ -95,7 +95,7 @@ export function summonedLane(o: {
   const moves: string[] = []
   const on = () => !!o.model() && !!o.chat()
   const hostedNow = () => (kept ? o.chat()?.list().find((s) => s.id === kept!.id && s.state !== "error") ?? null : null)
-  const due = () => !kept || kept.model !== o.model() || kept.v !== VERSION || (kept.context ?? 0) >= FRESH_TOKENS || kept.handed >= FRESH_ASKS ||
+  const due = () => !kept || kept.model !== o.model() || (kept.effort ?? "") !== o.effort() || kept.v !== VERSION || (kept.context ?? 0) >= FRESH_TOKENS || kept.handed >= FRESH_ASKS ||
     Date.now() - (kept.last ?? kept.t) > FRESH_AFTER_MS
   const world = { on, fresh: () => !kept || due() || (!hostedNow() && kept.handed === 0) }
   const turnWaiters: (() => void)[] = []
@@ -132,7 +132,7 @@ export function summonedLane(o: {
   const tools = (ts: Tool[]) => ts.map((t) => ({ ...inPixels(t),
     run: (args: unknown, use?: string) => { const of = talk.turn.n; return marksShown(t.name).then((no) => no ?? inSummoned.run(true, () => t.run(onScreen(t.name, args), use)).then((r) => (t.name === "draw" ? drew(r, of) : r)).then(unsaid).then(told)) },
     ...(t.stream ? { stream: (use: string, json: string, end?: "done" | "stop") => inSummoned.run(true, () => t.stream!(use, json, end)) } : {}) }))
-  const options = (model: string) => { const x = o.options(model); return { ...x, tools: tools(x.tools ?? []), onText: gated } }
+  const options = (model: string, effort: string) => { const x = o.options(model, effort); return { ...x, tools: tools(x.tools ?? []), onText: gated } }
 
   const origin = () => { const at = talk.turn.asks.findLast((m) => m.shotAt)?.shotAt; return { x: at?.x ?? 0, y: at?.y ?? 0 } }
   function onScreen(tool: string, args: unknown) {
@@ -216,26 +216,26 @@ export function summonedLane(o: {
   }
 
   async function begin(ms: Moment[]) {
-    const c = o.chat()!, model = o.model()
+    const c = o.chat()!, model = o.model(), effort = o.effort()
     if (kept) { const old = kept.id; keep(null); void c.stop(old).catch(() => {}) }
     hear()
     const first = ms.length ? await o.text(ms) : null, before = ms.length ? recap(ms) + unseen() : ""
     if (ms.length && !go({ type: "made" }).some((e) => e.do === "handed")) return
     try {
-      const s = await c.start({ ...options(model), ...(first ? { prompt: before + first.text, ...(first.images.length ? { images: first.images } : {}) } : {}) })
-      keep({ id: s.id, model, t: Date.now(), handed: ms.length, v: VERSION, ...(ms.length ? { last: Date.now() } : {}) })
+      const s = await c.start({ ...options(model, effort), ...(first ? { prompt: before + first.text, ...(first.images.length ? { images: first.images } : {}) } : {}) })
+      keep({ id: s.id, model, effort, t: Date.now(), handed: ms.length, v: VERSION, ...(ms.length ? { last: Date.now() } : {}) })
       const now = c.list().find((x) => x.id === s.id)
       go({ type: "started", news: now ? news(now) : null })
     } catch (e) { go({ type: "start-failed", why: e instanceof Error ? e.message : String(e) }) }
   }
   async function send(ms: Moment[], round: number) {
-    const c = o.chat()!, model = o.model(), s = hostedNow()
+    const c = o.chat()!, s = hostedNow()
     const before = (kept!.handed === 0 ? recap(ms) : "") + unseen()
     keep({ ...kept!, handed: kept!.handed + ms.length, last: Date.now() })
     try {
       const { text, images } = await o.text(ms)
       if (talk.round !== round || !kept) return
-      await c.send(kept.id, before + text, { ...options(model), ...(images.length ? { images } : {}) })
+      await c.send(kept.id, before + text, { ...options(kept.model, kept.effort ?? ""), ...(images.length ? { images } : {}) })
       inSummoned.run(true, () => o.did(o.name(), "sent"))
       if (!s) { const now = c.list().find((x) => x.id === kept?.id); if (now) { const n = news(now); if (n) go(n) } }
     } catch (e) { go({ type: "send-failed", round, why: e instanceof Error ? e.message : String(e) }) }
@@ -248,7 +248,7 @@ export function summonedLane(o: {
     takes: (m: Moment) => on() && !!m.summoned && m.for === o.name() && (m.kind === "ask" || m.kind === "point"),
     take(m: Moment) { o.chat()?.touch(); go({ type: "asked", ask: m }) },
     warm() { if (on()) o.chat()!.touch(); go({ type: "pressed", cold: !(hostedNow() && !due()) }) },
-    serve() { hear(); if (kept && on()) o.chat()!.serve(kept.id, options(kept.model)) },
+    serve() { hear(); if (kept && on()) o.chat()!.serve(kept.id, options(kept.model, kept.effort ?? "")) },
     busy: () => turning(talk),
     asking: () => handed(talk),
     turnEnd: () => (handed(talk) ? new Promise<void>((r) => turnWaiters.push(r)) : null),

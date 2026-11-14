@@ -46,13 +46,14 @@ function confirmTool(name: () => string): ChatTool {
 
 const SCREEN_CHARS = 4000
 export const summonedModel = () => { const m = setting("summoned_model"); return onChat(agentSetting()) && m !== "companion" ? m : "" }
+export const summonedEffort = () => setting("summoned_effort")
 const shotsOf = (ms: Moment[]) => [...new Set(ms.flatMap((m) => [m.shotDown, m.shot, m.closeUp?.shot].filter((f): f is string => !!f && fs.existsSync(f))))].slice(-3)
 export let laneOf: { vault: Vault; lane: Lane } | null = null
 export const lane = (): Lane => {
   if (laneOf?.vault === plugin.vault) return laneOf.lane
   const l = summonedLane({
-    file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel,
-    options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
+    file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel, effort: summonedEffort,
+    options: (model, effort) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort, quick: true, system: SUMMONED_PROMPT,
       builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "auto", allowed: SUMMONED_ALLOWED,
       denied: ["Bash(vau companion:*)", ...READ_ONLY.denied], dirs: READ_ONLY.dirs, confirm: "confirm", never: [...NEVER_RUN, escaped(path.resolve(LOCAL))], autoMode: AUTO_RULES,
       tools: [...toolsFor(ownName(), SUMMONED_TOOLS), confirmTool(ownName)] }),

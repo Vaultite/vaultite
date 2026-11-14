@@ -11,7 +11,7 @@ const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((ok) 
 
 type Held = { what: string; ok: () => void; no: (why: string) => void }
 type Bench = { log: string[]; held: Held[]; hold: boolean; on: boolean; textFails: number; sessions: Map<string, ChatState>; n: number; seq: number
-  marks: boolean[]; results: Any[]; onText: Any; tools: Any[]; agent: Any; lane: Lane | null }
+  marks: boolean[]; results: Any[]; onText: Any; tools: Any[]; agent: Any; lane: Lane | null; model: string; effort: string; how: string[] }
 
 /** The summoned lane over a made-up chat and plugin: everything it does lands in `log`, in order. `hold`: its chat's
  *  start and send, and its asks' text, wait in `held` till let go. */
@@ -20,7 +20,7 @@ export function laneRig(make: typeof summonedLane = summonedLane, store: typeof 
   const log: string[] = [], sessions = new Map<string, ChatState>(), ears = new Set<(id: string, s: ChatState | null) => void>()
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "talkturn-"))
   const held: Held[] = []
-  const r: Bench = { log, held, hold: false, on: true, textFails: 0, sessions, n: 0, seq: 0, marks: [], results: [], onText: null, tools: [], agent: undefined, lane: null }
+  const r: Bench = { log, held, hold: false, on: true, textFails: 0, sessions, n: 0, seq: 0, marks: [], results: [], onText: null, tools: [], agent: undefined, lane: null, model: "haiku", effort: "low", how: [] }
   const later = <T>(what: string, v: () => T) => new Promise<T>((ok, no) => {
     const go = () => { try { ok(v()) } catch (e) { no(e) } }
     if (r.hold) held.push({ what, ok: go, no: (why) => no(new Error(why)) }); else queueMicrotask(go)
@@ -33,7 +33,7 @@ export function laneRig(make: typeof summonedLane = summonedLane, store: typeof 
   const tool = (name: string, run: (args: Any) => Any) => ({ name, description: `${name} (in screen points)`, schema: { properties: {} }, run: async (args: Any) => run(args) })
   const marked = () => { const ok = r.marks.length ? r.marks.shift()! : true; return ok ? { content: [{ type: "text", text: "Drew it." }] } : { isError: true, content: [{ type: "text", text: "nothing on the user's screen says that" }] } }
   const chat: Chat = {
-    start: (x: Any) => { log.push(`start:${x.prompt ? "asked" : "warm"}`); r.onText = x.onText; r.tools = x.tools
+    start: (x: Any) => { log.push(`start:${x.prompt ? "asked" : "warm"}`); r.how.push(`${x.model} ${x.effort}`); r.onText = x.onText; r.tools = x.tools
       return later("start", () => { const id = `s${++r.n}`, s: ChatState = { id, state: x.prompt ? "working" : "idle" }; sessions.set(id, s); return s }) },
     send: (id: string, _text: string, x: Any) => { log.push(`send:${id}`); r.onText = x.onText; r.tools = x.tools; return later("send", () => { if (!sessions.has(id)) throw new Error("no such session") }) },
     stop: async (id: string) => { log.push(`stop:${id}`); emit(id, null) },
@@ -42,8 +42,8 @@ export function laneRig(make: typeof summonedLane = summonedLane, store: typeof 
     on: (f) => { ears.add(f); return () => ears.delete(f) },
   }
   const lane = make({
-    file: () => path.join(dir, "summoned.json"), chat: () => (r.on ? chat : null), name: () => "Claude", model: () => (r.on ? "haiku" : ""),
-    options: () => ({ tools: [tool("draw", () => { did("Claude", "draw"); return marked() }), tool("act", () => { did("Claude", "act"); return r.results.shift() ?? { content: [{ type: "text", text: "Pressed Send." }] } }),
+    file: () => path.join(dir, "summoned.json"), chat: () => (r.on ? chat : null), name: () => "Claude", model: () => (r.on ? r.model : ""), effort: () => r.effort,
+    options: (model, effort) => ({ model, effort, tools: [tool("draw", () => { did("Claude", "draw"); return marked() }), tool("act", () => { did("Claude", "act"); return r.results.shift() ?? { content: [{ type: "text", text: "Pressed Send." }] } }),
       tool("pass", () => { did("Claude", "pass"); return { endsTurn: true, content: [{ type: "text", text: "Passed." }] } }),
       tool("end", () => ({ endsTurn: true, content: [{ type: "text", text: "Opened the page." }] })), tool("see", () => r.results.shift() ?? { content: [{ type: "text", text: "A page about cats (pane p1)." }] }), tool("handoff", () => { did("Claude", "handoff"); return { content: [{ type: "text", text: "Handed off." }] } })] }),
     text: (ms) => { log.push(`text:${ms.map((m) => m.seq)}`); return later("text", () => { if (r.textFails && r.textFails--) throw new Error("no picture"); return { text: ms.map((m) => m.text).join("\n"), images: [] } }) },
@@ -212,6 +212,12 @@ export const SCENARIOS = {
   "an ask as it stops goes on, to a fresh session": [async (r) => {
     r.lane.warm(); await r.settle(); r.ask(1); await r.settle(); r.busy(); const stopping = r.lane.stop(); r.ask(2); await stopping; await r.settle()
   }, "start:warm | did:handed[1] | text:1 | send:s1 | did:sent | agent:thinking | stop:s1 | text:2 | did:handed[2] | start:asked | stop:s2"],
+  "a new model or effort: its warm session ends and the next press starts one on them": [async (r) => {
+    r.lane.warm(); await r.settle(); r.lane.warm(); await r.settle()
+    r.effort = "medium"; r.lane.warm(); await r.settle()
+    r.model = "opus"; r.lane.warm(); await r.settle(); r.log.push(`how:${r.how.join(",")}`)
+    r.ask(1); await r.settle()
+  }, "start:warm | stop:s1 | start:warm | stop:s2 | start:warm | how:haiku low,haiku medium,opus medium | did:handed[1] | text:1 | send:s3 | did:sent | stop:s3"],
   "a kept session that never had a turn and isn't up gets a fresh one (09b4c2ef)": [async (r) => {
     r.lane.warm(); await r.settle(); r.sessions.clear(); r.ask(1); await r.settle(); r.idle("[point a1] Hi."); await r.settle()
   }, "start:warm | stop:s1 | text:1 | did:handed[1] | start:asked | agent:thinking | did:say Hi. | say:Hi. | agent:watching | did:done | did:look | stop:s2"],

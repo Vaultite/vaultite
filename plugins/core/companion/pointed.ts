@@ -55,7 +55,7 @@ export function placeAt(x: number, y: number): Record<string, unknown> | null {
   const at = noteAt(x, y) ?? paneAt(x, y)
   if (!at) return told ? notices : null
   if ("path" in at && at.path) {
-    const near = landmarks(x, y, new Set())
+    const seen = new Set<string>(), near = [...landmarks(x, y, seen), ...sidebarFootLinks(seen)]
     return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}), ...(near.length ? { near } : {}), ...notices }
   }
   const { text, ...p } = at as PanePlace, near = elementsNear(x, y)
@@ -80,7 +80,20 @@ export function elementsNear(x: number, y: number, radius = 260, most = 30): Thi
   }
   const area = (e: { frame: { width: number; height: number } }) => e.frame.width * e.frame.height
   const nearest = out.sort((a, b) => a.d - b.d || area(a) - area(b)).slice(0, most).map(({ d: _, ...e }) => e)
-  return [...nearest, ...landmarks(x, y, new Set(nearest.map((e) => key(e.frame))), tree)]
+  const seenNear = new Set(nearest.map((e) => key(e.frame)))
+  return [...nearest, ...landmarks(x, y, seenNear, tree), ...sidebarFootLinks(seenNear, tree)]
+}
+function sidebarFootLinks(seen: Set<string>, tree = domTree()): Thing[] {
+  const out: Thing[] = []
+  for (const el of document.querySelectorAll<HTMLElement>("[data-sidebar-foot] :is(a[href], button)")) {
+    const r = el.getBoundingClientRect()
+    if (r.width < 4 || r.height < 4 || el.closest(".companion-overlay") || !onTop(el, r)) continue
+    const t = tree.thing(el)
+    if (!t?.label || seen.has(key(t.frame))) continue
+    seen.add(key(t.frame))
+    out.push(t)
+  }
+  return out
 }
 export const key = (f: { x: number; y: number; width: number; height: number }) => `${f.x},${f.y},${f.width},${f.height}`
 const LANDMARKS = "[data-ui^='panel:'], section[data-pane-frame]:not([data-away]), [data-status-bar], [data-sidebar-foot]"

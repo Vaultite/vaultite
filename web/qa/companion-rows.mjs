@@ -1,10 +1,10 @@
-// A sidebar tab row or tab group row the companion follows shows an eye, whose click stops it.
+// A sidebar tab row or tab group row the companion follows shows an eye, whose click stops it; an ask lists the sidebar foot's links.
 // WRITES the companion's data.json, plugins.json, sidebars and appearance: throwaway server only.
 //   node web/qa/companion-rows.mjs <base url> <vault path> [out dir]
-// Paths: plugins/core/companion/panes.ts, plugins/core/tabs/index.tsx
+// Paths: plugins/core/companion/panes.ts, plugins/core/companion/pointed.ts, plugins/core/tabs/index.tsx
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, wait } from "./lib/qa.mjs"
-const { args: [BASE, VAULT, OUT = "/tmp/companion-rows-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [BASE, VAULT, OUT = "/tmp/companion-rows-shots/"], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
 mkdirSync(OUT, { recursive: true })
 const file = (rel) => `${VAULT}/${rel}`
@@ -58,6 +58,26 @@ try {
   check("the group's row shows the eye", await until(async () => (await page.locator(`[data-ui="group:${gid}"] button[aria-label^="Stop Claude following"]`).count()) === 1, 4000))
   await op("companion.unfollow", { as: "Claude" })
   await ctx.close()
+  noErrors()
+
+  const desk = await browser.newContext({ viewport: { width: 1400, height: 860 } })
+  await desk.addInitScript(() => {
+    const done = Promise.resolve(undefined)
+    const any = new Proxy(function () {}, { get: (_t, k) => (k === "then" ? done.then.bind(done) : k === "toJSON" || k === Symbol.toPrimitive ? undefined : any), apply: () => any })
+    const bridge = (own) => new Proxy(own, { get: (t, k) => (k in t ? t[k] : any[k]) })
+    window.vaultite = bridge({ dictation: bridge({ placeAt: (fn) => { window.qaPlaceAt = fn; return () => {} } }) })
+  })
+  const app = await desk.newPage()
+  await app.goto(`${B}/#file/${encodeURIComponent(notes[0])}`)
+  await app.waitForFunction(() => !!window.qaPlaceAt && !!document.querySelector(".cm-line"), null, { timeout: 30_000 })
+  const line = await app.locator(".cm-line").nth(1).boundingBox()
+  const place = await app.evaluate(([x, y]) => window.qaPlaceAt(x, y), [line.x + 20, line.y + line.height / 2])
+  const near = place?.near ?? [], settings = near.find((e) => e.role === "link" && e.label === "Settings")
+  const real = await app.locator('[data-sidebar-foot] [data-app-page="settings"]').boundingBox()
+  check("an ask over a note lists the sidebar foot's Settings link by name, at its own frame, beside the foot whole",
+    !!settings && Math.abs(settings.frame.x - real.x) < 2 && Math.abs(settings.frame.width - real.width) < 2 && near.some((e) => e.role === "navigation" && e.label === "App") && place?.path === notes[0],
+    near.map((e) => `${e.role} ${e.label}`))
+  await desk.close()
 } finally {
   for (const r of restore) r()
 }

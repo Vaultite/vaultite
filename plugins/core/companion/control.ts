@@ -15,7 +15,7 @@ import { followed } from "./windowpanes.ts"
 import { stopStreams, cut } from "./edits.ts"
 import { session, sessionId, sessions, running, isChat, runsOf, nextCmd, start, fresh, stop } from "./alwayson.ts"
 import { chat } from "./chat.ts"
-import { summonedModel, lane } from "./lane.ts"
+import { summonedModel, summonedEffort, lane } from "./lane.ts"
 import { pump, INTERRUPT, STOPPED, stopped } from "./chatturns.ts"
 import { LINE, who } from "./args.ts"
 import { followText } from "./opening.ts"
@@ -31,7 +31,7 @@ plugin.op({
     const id = sessionId()
     const all = await Promise.all(sessions().map(async (s) => ({ ...s, running: await running(s.id) })))
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
-      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel(), ...(lane().trouble() ? { trouble: lane().trouble() } : {}) } : null,
+      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel(), effort: summonedEffort(), ...(lane().trouble() ? { trouble: lane().trouble() } : {}) } : null,
       agents: [...agents.values()].map(shown).map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
       realtime: pausedNow() ? { state: "paused" as const, ...pausedNow()! } : realtimePaused.size ? { state: "on" as const } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)), ...(calls.size ? { call: [...calls.values()].at(-1) } : {}) }
