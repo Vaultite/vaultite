@@ -419,19 +419,11 @@ export default async ($: VaultTest) => {
     check("where: two repos deploying a site alike, or none, say so in why there and stay in the vault; a page's title alone names no repo",
       both.cwd === VAULT && /beacon\.example is deployed from .*beacon-a and .*beacon-b alike, so which is unclear: the vault/.test(both.why) &&
       none.cwd === VAULT && /no checkout here deploys nowhere\.example/.test(none.why) && title.cwd === VAULT && /nothing on screen named a project/.test(title.why), [both, none, title])
-    check("where: the routes a deploy names cover an address by host, wildcard and path, most closely",
-      W.routeCovers("harbor.example/api/*", new URL("https://harbor.example/api/x")) > W.routeCovers("harbor.example", new URL("https://harbor.example/api/x")) &&
-      W.routeCovers("*.harbor.example/*", new URL("https://a.harbor.example/")) > 0 && !W.routeCovers("*.harbor.example/*", new URL("https://harbor.example/")) &&
-      !W.routeCovers("harbor.example/api/*", new URL("https://harbor.example/")) && !W.routeCovers("harbor.examples", new URL("https://harbor.example/")))
     const page = { cwd: site.dir, repo: "harbor-site", from: "site" as const }
     check("handoff: over a page with its own checkout, a repo the handoff named from its title is set aside; one their words name as a repo, or the same repo, stays",
       pageWins(page, "harbor", "try a serif font in the Harbor hero") && pageWins(page, "lighthouse/harbor", "make the harbor headline bigger") &&
       !pageWins(page, "harbor", "do it in the harbor repo instead") && !pageWins(page, "lighthouse/harbor", "port this to lighthouse/harbor") && !pageWins(page, "harbor-site", "x") &&
       !pageWins({ ...page, from: "vault" }, "harbor", "x") && namesRepo("in the repository harbor", "harbor") && !namesRepo("the harbor-site repo", "harbor"))
-    const { siteOf } = await import("../../../plugins/core/companion/jobplace.ts")
-    check("handoff: a site is a repo's project's own when its host holds the repo's name", siteOf(new URL("https://harbor.example/"), "lighthouse/harbor") &&
-      siteOf(new URL("https://docs.harbor.example/"), "harbor") && siteOf(new URL("https://harbor-notes.example/"), "harbornotes") && !siteOf(new URL("https://harbors.example/"), "harbor") &&
-      !siteOf(new URL("https://news.example.org/"), "harbor"))
     site.gg("worktree", "remove", "--force", path.join(roots[0], "harbor-site-j1"))
     for (const d of ["harbor", "harbor-site", "harbor-api", "beacon-docs", "beacon-a", "beacon-b"]) fs.rmSync(path.join(roots[0], d), { recursive: true, force: true })
     W.checkoutsIn()
@@ -674,6 +666,9 @@ export default async ($: VaultTest) => {
               const footer = { text: "take the tagline off the footer and redeploy", pane: "psite", title: "Harbor - Private notes for you", under: "Harbor\nDownload" }
               const over = await runs(footer, { repo: "harbor" })
               check("handoff: over the web viewer's page, the repo deploying its address wins over one the handoff named from its title", over.cwd === site && /harbor\.example is deployed from .*harbor-site.*\(not harbor, which the handoff named/.test(over.why), over)
+              const idea = await runs({ text: "an idea for the Harbor website: render the hero in full glass", pane: "pnews", title: "Today's news" }, { repo: "harbor" })
+              check("handoff: an idea for a product's website, asked over another site, runs in the checkout deploying the site, not the app's repo the handoff named",
+                idea.cwd === site && idea.why.startsWith("their ask is about the website, and harbor deploys none: lighthouse/harbor-site is harbor's site (it deploys harbor.example): "), idea)
               const other = await runs({ text: "keep the gist of this in my notes", pane: "pnews", title: "Today's news" }, { repo: "harbor" })
               check("handoff: another site no checkout deploys, nor named like the repo, keeps the repo the handoff named", other.cwd === harbor, other)
               fs.rmSync(path.join(roots[0], "harbor-site"), { recursive: true, force: true }); W.checkoutsIn(roots)

@@ -8,7 +8,8 @@ import { cap, type Machines } from "./jobmachines.ts"
 import type { workerLinks } from "./links.ts"
 import { CLOUD, cloudIn, lacks, type Needs, type Ranked, RepoRules, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
 import type { JobAsk } from "./types.ts"
-import { APP_REPO, appUiOf, branchOf, checkoutNamed, checkoutsLine, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, rootsLine, sitesIn, tilde, unpushed, urlsIn, watched } from "./where.ts"
+import type { Checkout } from "./checkouts.ts"
+import { APP_REPO, appUiOf, branchOf, checkoutNamed, checkoutsLine, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, rootsLine, routeCovers, sitesIn, tilde, unpushed, urlsIn, watched } from "./where.ts"
 
 export const sameDir = (a: string, b: string) => { try { return fs.realpathSync(a) === fs.realpathSync(b) } catch { return false } }
 export const sameRepo = (at: { cwd: string; repo: string }, repo: string) => {
@@ -50,6 +51,39 @@ async function siteOrNamed(o: { site?: URL; said: string; repo: string; page: Fo
   const r = await named()
   return { ...r, why: `${r.why}, as the handoff named (${here})` }
 }
+export type Card = Checkout & { label?: string }
+const SITE_WORDS = /\b(?:web\s?site|site|homepage|home page|landing page)\b/i
+const nameOf = (repo: string) => repo.trim().replace(/\/+$/, "").replace(/\.git$/, "").split(/[/:]/).pop()!.toLowerCase()
+const isRepo = (c: Card, repo: string) => repo.includes("/") ? c.repo.toLowerCase() === repo.trim().toLowerCase().replace(/\.git$/, "") : nameOf(c.repo) === nameOf(repo) || path.basename(c.dir).toLowerCase() === nameOf(repo)
+const rootHost = (pattern: string) => { const m = /^([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?$/i.exec(pattern.replace(/\/\*?$/, "")); return m ? m[1].toLowerCase().replace(/^www\./, "") : "" }
+const hostsOf = (c: Card) => [...new Set(c.deploys.map(rootHost).filter(Boolean))]
+const deploysHost = (c: Card, host: string) => c.deploys.some((p) => routeCovers(p, new URL(`https://${host}/`)) > 0) || (SITE_WORDS.test(c.what) && new RegExp(`https?://(?:www\\.)?${host.replace(/\./g, "\\.")}(?![\\w.-])`, "i").test(c.what))
+const siteLike = (c: Card) => SITE_WORDS.test(`${nameOf(c.repo).replace(/-/g, " ")} ${c.title}`) || /^\s*(?:the\s+)?(?:web\s?site|site|homepage|landing page)\b/i.test(c.what)
+const related = (c: Card, name: string) => { const own = nameOf(c.repo); return own.startsWith(`${name}-`) || own.endsWith(`-${name}`) || new RegExp(`(?<![\\w-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`, "i").test(`${c.title} ${c.what}`) }
+const unique = (cs: Card[]) => [...new Map(cs.map((c) => [c.repo.toLowerCase(), c])).values()]
+export function siteRepo(words: string, repo: string, cards: Card[]): { repo: string; why: string } | null {
+  const name = nameOf(repo), named = cards.filter((c) => isRepo(c, repo)), others = cards.filter((c) => !isRepo(c, repo))
+  const what = (c: Card) => `${c.repo}${c.title && nameOf(c.title) !== nameOf(c.repo) ? ` (${c.title})` : ""}`
+  for (const host of new Set([...words.matchAll(/(?<![\w@.-])((?:[a-z0-9-]+\.)+[a-z]{2,})(?![\w-])/gi)].map((m) => m[1].toLowerCase().replace(/^www\./, "")))) {
+    if (named.some((c) => deploysHost(c, host))) return null
+    const by = unique(others.filter((c) => deploysHost(c, host)))
+    if (by.length === 1) return { repo: by[0].repo, why: `their ask names ${host}, which ${what(by[0])} deploys, not ${repo}` }
+  }
+  if (!SITE_WORDS.test(words) || named.some((c) => hostsOf(c).length || siteLike(c))) return null
+  const own = unique(others.filter((c) => hostsOf(c).some((h) => siteOf(new URL(`https://${h}/`), name)) || (siteLike(c) && related(c, name))))
+  const pick = own.length === 1 ? own : own.filter(siteLike).length === 1 ? own.filter(siteLike) : own.filter((c) => siteLike(c) && hostsOf(c).length)
+  if (pick.length !== 1) return null
+  const hosts = hostsOf(pick[0])
+  return { repo: pick[0].repo, why: `their ask is about the website, and ${repo} deploys none: ${what(pick[0])} is ${repo}'s site${hosts.length ? ` (it deploys ${hosts.join(", ")})` : ""}` }
+}
+async function toSite(m: JobAsk | undefined, p: Handoff, words: string, cards: () => Promise<Card[]>, routed: (m: JobAsk | undefined, p: Handoff) => Promise<Routed>) {
+  const repo = str(p.repo).trim()
+  if (!repo || p.page || str(p.about) === "app" || str(p.cwd) || namesRepo(str(m?.text), repo)) return null
+  const to = siteRepo(words, repo, await cards())
+  if (!to) return null
+  const r = await routed(m, { ...p, repo: to.repo, page: true })
+  return { ...r, why: `${to.why}: ${r.why}` }
+}
 export const pageWins = (page: { cwd: string; repo: string; from?: Found["from"] }, repo: string, text: string) =>
   !!page.from && page.from !== "vault" && !sameRepo(page, repo) && !namesRepo(text, repo)
 
@@ -59,7 +93,7 @@ export const Placed = z.object({ cwd: z.string(), why: z.string(), from: z.enum(
 export type Placed = z.output<typeof Placed> & Found
 
 export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typeof workerLinks>["atMachine"]) {
-  const { machines, hostOf, labelOf, traitsOf, ranking, harnessOf, cloudAccount } = m
+  const { machines, hostOf, labelOf, traitsOf, ranking, harnessOf, cloudAccount, checkoutsAll } = m
   const lines = (k: string) => { const v = plugin.settings()[k] ?? plugin.manifest.settings?.[k]?.default; return Array.isArray(v) ? v.map(String).filter((x) => x.trim()) : [] }
 
   async function placeHere(o: Over, cwd: string, repo = "", fresh = true): Promise<Placed> {
@@ -95,7 +129,8 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     const { from: _, ...r } = await routed(m, p)
     return r
   }
-  async function routed(m: JobAsk | undefined, p: Handoff): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort"> & { from?: Found["from"] }> {
+  const routed = async (m: JobAsk | undefined, p: Handoff): Promise<Routed> => await toSite(m, p, baseOf(m, p).words, checkoutsAll, routedAt) ?? await routedAt(m, p)
+  async function routedAt(m: JobAsk | undefined, p: Handoff): Promise<Routed> {
     const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under, ui: m.ui, chrome: m.chrome } : {}
     const own = !str(p.repo).trim() && !str(p.cwd) ? appAsk(o, str(p.about)) : ""
     if (own) {
@@ -106,7 +141,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     }
     let machine = str(p.machine).trim()
     if (machine && (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self) machine = ""
-    const repo = str(p.repo).trim(), asked = !!machine || !!str(p.cwd) || !!repo
+    const repo = str(p.repo).trim(), asked = !!machine || !!str(p.cwd) || !!repo, base = baseOf(m, p)
     if (repo && !p.page && str(p.about) !== "app" && !machine && !str(p.cwd) && !o.path && (urlsIn(o).length || sitesIn(o).length)) {
       const page = await routed(m, { ...p, repo: "" }).catch(() => null)
       if (page && pageWins(page, repo, m?.text ?? ""))
@@ -132,7 +167,6 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
         ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }).then((r) => Placed.parse(r))
       : await placeHere(o, str(p.cwd), repo)
     if (there.missing && machine) throw new OpError(await missingLine(there, machine), 404)
-    const base = baseOf(m, p)
     if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), repo, there, base))
     let moved = ""
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there, base))

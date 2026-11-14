@@ -5,12 +5,13 @@ import { inDesktop, type Machine, OpError, type Plugin } from "../../../core/plu
 import { type Handoff, type ProofMode, str } from "./jobs.ts"
 import type { workerLinks } from "./links.ts"
 import { capOf, CLOUD, type Needs, place, type Traits } from "./placement.ts"
+import { Checkout, checkoutCards } from "./checkouts.ts"
 import { checkoutNames } from "./where.ts"
 
 export const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
 const Capacity = z.object({ jobs: z.number(), cap: z.number(), repos: z.array(z.string()).optional(), agents: z.array(z.string()).optional(),
-  accounts: z.array(z.string()).optional() })
+  accounts: z.array(z.string()).optional(), checkouts: z.array(Checkout).optional() })
 
 export function jobMachines(plugin: Plugin, links: ReturnType<typeof workerLinks>) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
@@ -32,7 +33,7 @@ export function jobMachines(plugin: Plugin, links: ReturnType<typeof workerLinks
     const set = Number(plugin.settings().jobs_cap) || 0
     const agents = [...new Set(KNOWN_AGENTS.map((a) => a.terminal ?? a.id))].filter((a) => typeof plugin.service(`agent:${a}`) === "function")
     const accounts = await plugin.ask<string[] | null>("agent-accounts:claude", null).catch(() => null)
-    return { jobs: await links.running(), cap: set > 0 ? Math.round(set) : capOf(os.cpus().length, os.totalmem() / 1048576), repos: checkoutNames(), agents, ...(accounts ? { accounts } : {}) }
+    return { jobs: await links.running(), cap: set > 0 ? Math.round(set) : capOf(os.cpus().length, os.totalmem() / 1048576), repos: checkoutNames(), checkouts: checkoutCards(), agents, ...(accounts ? { accounts } : {}) }
   }
   async function traitsOf(): Promise<Traits[]> {
     const vault = await plugin.ask<string>("machines:vault", ""), all = (await machines()).filter((m) => m.self || m.plugins?.includes("companion"))
@@ -70,6 +71,21 @@ export function jobMachines(plugin: Plugin, links: ReturnType<typeof workerLinks
     const effort = str(p.effort) || (claude ? setting("jobs_effort") : ""), profile = parseTerminal(`${agent}-x`)?.profile ?? ""
     return { agent, account: profile ? cap(profile) : "", model, effort, harness: [agentName(agent.split("_")[0]) ?? cap(agent), cap(label)].filter(Boolean).join(" ") }
   }
-  return { setting, machines, away, hostOf, labelOf, capacity, traitsOf, ranking, cloudAccount, lands, proofMode, jobsAgent, harnessOf }
+  return { ...everyCheckout(machines, atMachine), setting, machines, away, hostOf, labelOf, capacity, traitsOf, ranking, cloudAccount, lands, proofMode, jobsAgent, harnessOf }
 }
 export type Machines = ReturnType<typeof jobMachines>
+
+type Labelled = Checkout & { label: string }
+function everyCheckout(machines: () => Promise<Machine[]>, atMachine: ReturnType<typeof workerLinks>["atMachine"]) {
+  const seen = { at: 0 }
+  let known: Labelled[] = []
+  async function checkoutsAll(): Promise<Labelled[]> {
+    const peers = (await machines()).filter((m) => !m.self && m.online && m.plugins?.includes("companion"))
+    const far = await Promise.all(peers.map(async (m) => (Capacity.safeParse(await atMachine(m.id, "companion.capacity", {}, 4).catch(() => null)).data?.checkouts ?? []).map((c) => ({ ...c, label: m.label }))))
+    known = [...checkoutCards().map((c) => ({ ...c, label: "" })), ...far.flat()]
+    seen.at = Date.now()
+    return known
+  }
+  const checkoutsKnown = () => { if (Date.now() - seen.at > 5 * 60_000) void checkoutsAll().catch(() => {}); return known }
+  return { checkoutsAll, checkoutsKnown }
+}

@@ -94,7 +94,7 @@ const DEFAULT_ROOTS = ["~/Projects", "~/Documents/personal/Projects", "~/Documen
 let ROOTS = DEFAULT_ROOTS
 let scanned: { at: number; key: string; repos: string[] } | null = null
 export const checkoutsIn = (roots?: string[]) => { ROOTS = roots ?? DEFAULT_ROOTS; scanned = null }
-function checkouts(roots: string[]) {
+export function checkouts(roots: string[] = ROOTS) {
   const key = roots.join("\n")
   if (scanned && scanned.key === key && Date.now() - scanned.at < 60_000) return scanned.repos
   const repos: string[] = [], dirs = (d: string) => { try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules").map((e) => path.join(d, e.name)) } catch { return [] } }
@@ -106,7 +106,7 @@ function checkouts(roots: string[]) {
   return repos
 }
 // A worktree's .git is a file naming its own git folder.
-function remotes(dir: string) {
+export function remotes(dir: string) {
   try {
     let git = path.join(dir, ".git")
     if (fs.statSync(git).isFile()) git = path.resolve(dir, /gitdir: (.+)/.exec(fs.readFileSync(git, "utf8"))?.[1]?.trim() ?? "", "../..")
@@ -135,10 +135,11 @@ const firstWord = (t: string) => nocomment(t).split(/\s+/).filter(Boolean).slice
 const siteKey = (t: string) => [...nocomment(t).matchAll(/\b(?:site|url)\s*:\s*["'`](https?:\/\/[^"'`]+)/g)].map((m) => m[1])
 type Deploy = [string, (text: string) => string[], number]
 const Package = z.object({ homepage: z.string().regex(/^https?:/) })
-const DEPLOYS: Deploy[] = [
+export const HOMEPAGE_ONLY = "package.json"
+export const DEPLOYS: Deploy[] = [
   ["wrangler.toml", patterns, 1], ["wrangler.json", patterns, 1], ["wrangler.jsonc", patterns, 1],
   ["CNAME", firstWord, 1], ["public/CNAME", firstWord, 1], ["static/CNAME", firstWord, 1], ["docs/CNAME", firstWord, 1],
-  ["package.json", (t) => { const h = parseJson(t, Package)?.homepage; return h ? [h] : [] }, 0],
+  [HOMEPAGE_ONLY, (t) => { const h = parseJson(t, Package)?.homepage; return h ? [h] : [] }, 0],
   ...["astro.config.mjs", "astro.config.ts", "astro.config.js", "docusaurus.config.js", "docusaurus.config.ts"].map((f): Deploy => [f, siteKey, 0]),
 ]
 export function routeCovers(pattern: string, u: URL) {
@@ -149,7 +150,7 @@ export function routeCovers(pattern: string, u: URL) {
   const pathOk = !rest || rest === "/" || rest === "/*" ? true : rest.endsWith("*") ? u.pathname.startsWith(rest.slice(0, -1)) : u.pathname.replace(/\/$/, "") === rest.replace(/\/$/, "")
   return pathOk ? (host.startsWith("*") ? 1000 : 2000) + rest.replace(/\*$/, "").replace(/\/$/, "").length : 0
 }
-function gitHome(dir: string) {
+export function gitHome(dir: string) {
   try {
     const git = path.join(dir, ".git")
     return fs.realpathSync(fs.statSync(git).isFile() ? path.resolve(dir, /gitdir: (.+)/.exec(fs.readFileSync(git, "utf8"))?.[1]?.trim() ?? "", "../..") : git)

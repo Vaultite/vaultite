@@ -11,6 +11,7 @@ import { toolUse, type Streaming, streamed, streamDone } from "./edits.ts"
 import { turning } from "./chatturns.ts"
 import { inSummoned } from "./summoned.ts"
 import { messageOf } from "./errors.ts"
+import { toolNotes } from "./toolnotes.ts"
 
 export type ChatTool = { name: string; description: string; schema: { properties?: Record<string, object>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
   streams?: boolean; ends?: boolean; hidden?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
@@ -65,6 +66,7 @@ export function toolsFor(name: string, list = TOOLS): ChatTool[] {
       return [k, s]
     }))
     const description = [op.summary, ...(op.help ?? "").split("\n").filter((l) => !/^\s*vau /.test(l) && !/^\s+[{[]/.test(l))].join("\n").replace(/\n{3,}/g, "\n\n").trim()
+      + (toolNotes.get(short)?.() ? `\n\n${toolNotes.get(short)!()}` : "")
     const ends = ENDS.has(short) && !LAST.has(short), streams = STREAMS.find((x) => x === short)
     if (ends) properties.done = DONE
     return [{ name: short, description, schema: { properties, required: params.filter(([, p]) => p.required).map(([k]) => k) },

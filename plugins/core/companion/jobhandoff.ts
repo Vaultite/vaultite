@@ -1,6 +1,8 @@
 import { type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import { cardOf, followTask, type Handoff, type Queued, str } from "./jobs.ts"
 import type { Machines } from "./jobmachines.ts"
+import type { Card } from "./jobplace.ts"
+import { toolNotes } from "./toolnotes.ts"
 import { tellerOf, type Told, toldTogether } from "./jobtold.ts"
 import type { Moment } from "./types.ts"
 import type { JobCore, JobDeps } from "./workers.ts"
@@ -8,8 +10,16 @@ import type { JobCore, JobDeps } from "./workers.ts"
 const ANSWERING_MS = 10 * 60_000
 
 const withPage = (d: JobDeps, m: Moment | undefined) => { const url = m?.pane && !m.url ? d.pageOf?.(m.pane) : ""; return m && url ? { ...m, url } : m }
+export function checkoutsText(cards: Card[], n = 40) {
+  const by = new Map<string, { c: Card; on: string[] }>()
+  for (const c of cards) { const k = c.repo.toLowerCase(), had = by.get(k); if (had) had.on.push(c.label || "here"); else by.set(k, { c, on: [c.label || "here"] }) }
+  if (!by.size) return ""
+  const line = ({ c, on }: { c: Card; on: string[] }) => `- ${c.repo}: ${[c.title, c.what].filter(Boolean).join(": ") || "no README"}${c.deploys.length ? `; deploys ${c.deploys.join(", ")}` : ""} (on ${[...new Set(on)].join(", ")})`
+  const all = [...by.values()]
+  return `The machines' checkouts (repo: what its README says it is; the sites it deploys). Pick repo from these by what each is, never by the closest name: an ask about a product's website or a domain goes to the checkout deploying it, not the app's repo of that name.\n${all.slice(0, n).map(line).join("\n")}${all.length > n ? `\n(and ${all.length - n} more: vau companion where --repo <name>)` : ""}`
+}
 export function handoffOps(plugin: Plugin, d: JobDeps, core: JobCore, machines: Machines) {
-  const { jobOf, unsure, keep, land, steer, retitle, begin } = core, { away } = machines, { holding, heldTold, release } = toldTogether(d)
+  const { jobOf, unsure, keep, land, steer, retitle, begin } = core, { away } = machines, { holding, heldTold, release } = toldTogether(d); toolNotes.set("handoff", () => checkoutsText(machines.checkoutsKnown()))
   plugin.op({
     id: "companion.handoff",
     cli: "companion handoff",
@@ -55,7 +65,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
       title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over; one not on that machine is its own checkout of that repo there" },
-      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's); only when their words name it: over a page, its own checkout (the one serving or deploying it) wins over a repo guessed from its title. Vaultite's own UI: about app instead" },
+      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's); only when their words name it, chosen from the machines' checkouts (this tool's list) by what each is (its README, the site it deploys), not the closest name: a product's website is the checkout deploying it (vaultite.com: the site's repo, not the app's); over a page, its own checkout (the one serving or deploying it) wins over a repo guessed from its title. Vaultite's own UI: about app instead" },
       about: { type: "string", enum: ["app", "work"], description: "what their ask is about: app, Vaultite itself (how its panels, sidebars, menus, views, the web viewer's own bar, the Talk list or you look or behave: a bug or a change in the app), which runs in Vaultite's repo whatever page or note is in the pane; work, their notes, errands or a page's own content, even asked over the app's panels. Left out, what was under their pointer decides (the app's own UI: app)" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },

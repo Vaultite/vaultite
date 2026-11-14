@@ -251,7 +251,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Jobs over a live site run in the repo that deploys it**: work asked over a page like your website, in another
   browser or the app's own web viewer, goes to the checkout whose deploy config names its address (its wrangler route
   or CNAME), on a machine that has it, never a repo of the site's name guessed from the page's title; when no machine
-  has that checkout, the companion is told so instead of starting it in the wrong repo.
+  has that checkout, the companion is told so instead of starting it in the wrong repo. An idea for a product's website
+  asked anywhere ("the Vaultite website", "vaultite.com") goes to the checkout deploying that site, not the app's repo
+  of the same name: the companion picks repos from every machine's checkouts by what each is (its README, the sites it
+  deploys), and the job's "why there" says why it moved.
 - **Jobs about Vaultite itself run in Vaultite's repo**: work asked about the app's own look or behaviour (a sidebar
   panel, a menu, a pane's bar, the web viewer's own bar, the companion) goes to your checkout of Vaultite, whatever page
   or note the pane shows, not the vault; your notes and errands still run in the vault.
