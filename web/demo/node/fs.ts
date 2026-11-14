@@ -1,6 +1,7 @@
 // node:fs for the demo's server (web/demo/worker.ts): a tree of folders and files in memory, with the calls the server
 // makes. Sync like Node's; `changes` tells the worker what to keep in IndexedDB.
 import path from "path-browserify"
+import { Readable, Writable } from "./stream.ts"
 
 type File = { dir: false; data: Uint8Array; ns: bigint; born: bigint; ino: number }
 type Dir = { dir: true; kids: Map<string, Node>; ns: bigint; born: bigint; ino: number }
@@ -234,8 +235,25 @@ export function watch(p: unknown, o: unknown, fn?: (event: string, name: string 
   watchers.add(w)
   return { on() { return this }, close() { watchers.delete(w) }, unref() {}, ref() {} }
 }
-export function createReadStream(): never { throw new Error("streams need the Vaultite app") }
-export const createWriteStream = createReadStream
+export function createReadStream(p: string | URL, { start = 0, end = Infinity, highWaterMark = 64 * 1024 } = {}) {
+  const a = abs(p)
+  function* chunks() {
+    const n = get(a, "open")
+    if (n.dir) fail("EISDIR", "read", a)
+    const data = n.data.subarray(start, end + 1)
+    for (let at = 0; at < data.length; at += highWaterMark) yield Buffer.from(data.subarray(at, at + highWaterMark))
+  }
+  return new Readable(chunks())
+}
+export function createWriteStream(p: string | URL, { flags = "w" } = {}) {
+  const a = abs(p), parts: Uint8Array[] = []
+  const out = new Writable({
+    write: (chunk, _enc, done) => { parts.push(chunk); done() },
+    final: (done) => { try { writeFileSync(a, Buffer.concat(parts), { flag: "a" }); done() } catch (e) { done(e instanceof Error ? e : new Error(String(e))) } },
+  })
+  try { writeFileSync(a, "", { flag: flags.startsWith("a") ? "a" : flags }) } catch (e) { out.destroy(e instanceof Error ? e : new Error(String(e))) }
+  return out
+}
 
 const later = <A extends unknown[], T>(fn: (...a: A) => T) => (...a: A) => new Promise<T>((ok, no) => { try { ok(fn(...a)) } catch (e) { no(e) } })
 export function stat(p: unknown, o: unknown, cb?: (e: unknown, s?: unknown) => void) {

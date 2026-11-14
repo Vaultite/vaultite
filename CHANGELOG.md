@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The web demo keeps file history**: an edit there keeps the note's earlier text, and search reads long notes whole.
 - **The companion finds its way around Settings**: asked to take you to a setting, it opens Settings at that row in one
   step, flashed (`vau settings show summoned_model`); it now reads Settings and other app pages, switches and all, and
   the companion's model for summoned asks sits under its row in Settings, AI.

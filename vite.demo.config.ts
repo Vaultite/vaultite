@@ -17,10 +17,10 @@ const under = (dir: string, file: string) => {
 }
 const node = (file: string) => path.join(ROOT, 'web/demo/node', file)
 const STUBBED = ['node:child_process', 'node:http', 'node:https', 'node:http2', 'node:net', 'node:dns', 'node:readline', 'node:module',
-  'node:stream', 'node:stream/promises', 'node:perf_hooks', 'node:inspector/promises', 'node:zlib', 'node:sqlite', 'ws', 'node-pty', '@tailwindcss/node', '@tailwindcss/oxide', 'rolldown']
+  'node:perf_hooks', 'node:inspector/promises', 'node:zlib', 'node:sqlite', 'ws', 'node-pty', '@tailwindcss/node', '@tailwindcss/oxide', 'rolldown']
 const ALIASES: Alias[] = [
   ...Object.entries({ fs: 'fs.ts', path: 'path.ts', crypto: 'crypto.ts', os: 'os.ts', url: 'url.ts', util: 'util.ts', async_hooks: 'async_hooks.ts',
-    'timers/promises': 'timers.ts' }).map(([m, file]) => ({ find: `node:${m}`, replacement: node(file) })),
+    'timers/promises': 'timers.ts', events: 'events.ts', 'stream/promises': 'stream.ts', stream: 'stream.ts' }).map(([m, file]) => ({ find: `node:${m}`, replacement: node(file) })),
   ...STUBBED.map((m) => ({ find: new RegExp(`^${m}$`), replacement: node('stub.ts') })),
   // (a vault plugin's backend imports the core as @vaultite/core/<name>.ts)
   { find: /^@vaultite\/core\/(\w+)(?:\.ts)?$/, replacement: path.join(ROOT, 'core/$1.ts') },

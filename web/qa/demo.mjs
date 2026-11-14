@@ -130,6 +130,8 @@ async function visit(name, browser) {
   await page.keyboard.press("ControlOrMeta+End")
   await page.keyboard.type(`\n${MARK}\n`)
   const autosaved = await until(saved, 15000)
+  const history = () => api("GET", "history?path=Notes%2FLisbon%20trip.md").then((r) => r.json)
+  is("file history kept its text from before the edit", await until(async () => (await history())?.versions?.length > 0, 15000), await history())
   await open("Notes/Lisbon trip.md")
   is("an edit is kept across a reload", await until(async () => (await shown()).includes(MARK), 15000), (await shown()).slice(-300))
   is("and the server has it", autosaved && await saved())

@@ -17,17 +17,15 @@ export const createRequire = () => needsApp
 export const monitorEventLoopDelay = () => ({ enable() {}, disable() {}, reset() {}, mean: 0, max: 0, percentile: () => 0 })
 export const STATUS_CODES: Record<number, string> = {}
 export const isIP = () => 0
-export class Readable { static from = needsApp }
-export class Writable {}
 // (made freely, as a plugin may at its start: only a socket coming in needs the app)
 export class WebSocketServer { handleUpgrade = needsApp; on() { return this } close() {} }
 export class WebSocket { static OPEN = 1; constructor() { needsApp() } }
 export class Session { connect() { needsApp() } disconnect() {} post() { return needsApp() } }
 export const constants = {}
 export const {
-  execFileSync, execSync, spawn, spawnSync, fork, pipeline, request, get, createServer, connect, createConnection, lookup,
+  execFileSync, execSync, spawn, spawnSync, fork, request, get, createServer, connect, createConnection, lookup,
   createInterface, compile, Scanner, rolldown, DatabaseSync, Terminal, SerializeAddon, inflateRawSync, inflateSync, deflateRawSync,
   createInflateRaw, createInflate, createGunzip, createBrotliDecompress, zstdDecompressSync, crc32, gunzipSync, gzipSync, brotliCompressSync,
 } = new Proxy({}, { get: () => needsApp }) as Record<string, typeof needsApp>
-export default new Proxy({ execFile, exec, isBuiltin, registerHooks, createRequire, monitorEventLoopDelay, STATUS_CODES, isIP, Readable, Writable, WebSocketServer, WebSocket, constants },
+export default new Proxy({ execFile, exec, isBuiltin, registerHooks, createRequire, monitorEventLoopDelay, STATUS_CODES, isIP, WebSocketServer, WebSocket, constants },
   { get: (t, k) => (k in t ? t[k as keyof typeof t] : needsApp) })
