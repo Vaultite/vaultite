@@ -539,6 +539,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pluginById(id)`
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").
 - `PluginDef`
+- `pluginEditorExtensions(ctx)`
 - `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, share (in sight even in a tab's short menu), more, away…
 - `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on the Plugins page and the answers to its plugins' buttons.
 - `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and whenever the file changes.

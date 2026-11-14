@@ -856,6 +856,8 @@ export async function editorExtensions(ctx: EditorCtx, disabled: string[]): Prom
   return got
 }
 
+export const pluginEditorExtensions = (ctx: EditorCtx) => editorExtensions(ctx, getPrefs().disabled)
+
 /** What the plugins that are on add to this editor's right-click menu (`editorMenu`). */
 export function editorMenuItems(view: EditorView): MenuItem[] {
   const ctx = { view, path: editorOf(view)?.path }, { disabled } = getPrefs()

@@ -111,7 +111,7 @@ export { changedFiles, RecentList, useFileIcon, useOpenedFiles, type RecentKind 
 export { agentOfTerminal, agentsOn, askAbout, iconNamed, pinOfView, resolveView, useAgents, useEnabled, viewMenuItems, viewOnScreen, viewPinLabel, viewShown, viewSurfaces, type Agent } from "@/core/plugins"
 export { parseTerminal, type TerminalAgent } from "../../core/terminalids.ts"
 // Plugins' colours (--<id>), which an artifact gets too (as --vau-<id>).
-export { editorMenuItems, tintNames, webContainers, webPageActions } from "@/core/plugins"
+export { editorMenuItems, pluginEditorExtensions, tintNames, webContainers, webPageActions } from "@/core/plugins"
 export { blockFor, fileRowsChanged, kindFolder, offText, pluginById, tabButtons } from "@/core/plugins"
 export { besideActive, newNoteFolder } from "@/core/conventions"
 // How a file looks where it's listed (its `icon:` and `tint:`, or its plugin's), and pages:
