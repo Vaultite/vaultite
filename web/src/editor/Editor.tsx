@@ -76,6 +76,7 @@ type Props = {
   tags?: () => { tag: string; count: number }[]
   onAttach?: (d: Dropped) => Promise<string | null>
   docPath?: string
+  extensionsPath?: string
   slash?: () => SlashItem[]
   onReady?: (api: EditorApi) => void | (() => void)
   placeholderText?: string
@@ -214,7 +215,7 @@ function traceUpdate(u: ViewUpdate, path: string) {
 }
 const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
-export default function Editor({ doc, editable, config, onChange, onOpen, links, tags, slash, onReady, placeholderText, label, source, frontmatter: hides, title, code, language, onAttach, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
+export default function Editor({ doc, editable, config, onChange, onOpen, links, tags, slash, onReady, placeholderText, label, source, frontmatter: hides, title, code, language, onAttach, docPath, extensionsPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const cfg = useRef(new Compartment())
@@ -414,7 +415,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, links,
   useEffect(() => {
     let live = true
     const kind = language !== undefined ? "code" : code ? "text" : "markdown"
-    editorExtensions({ kind, path: docPath, source: !!source }, disabled).then((ext) => {
+    editorExtensions({ kind, path: docPath ?? (kind === "markdown" ? undefined : extensionsPath), source: !!source }, disabled).then((ext) => {
       if (live) view.current?.dispatch({ effects: plugged.current.reconfigure(ext) })
     })
     return () => { live = false }

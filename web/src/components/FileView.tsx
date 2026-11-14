@@ -853,7 +853,7 @@ function Loaded({ store, initial, pane, docked, onGone }: { store: Store; initia
                 onChange={(text) => { cur.current = { fm: "", body: text }; redraw(); changed() }} />
             ) : (
               <Editor key={source ? `${path}:source` : `${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} config={config} {...wiring} label={stem(path)}
-                docPath={isMd(path) ? path : undefined} onAttach={outside ? undefined : attach}
+                docPath={isMd(path) ? path : undefined} extensionsPath={path} onAttach={outside ? undefined : attach}
                 {...(source ? { editable: !ro, source: true, numbered: true, code: strict ? "json" : format?.code, language: code ? path : format?.source ? `source.${format.source}` : undefined }
                   : { frontmatter: !fmText, title: titled && !page ? stem(path) : undefined, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
                     onUndoFrontmatter: () => revealProps(article.current) })}
