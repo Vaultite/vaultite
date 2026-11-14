@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react"
 import { GitCompareArrows } from "lucide-react"
-import { currentFile, definePlugin, isHidden, Panel, stem } from "@vaultite"
+import { currentFile, definePlugin, isHidden, stem } from "@vaultite"
 import { argOf, reviewFileView, reviewView } from "./open"
 import { ReviewChip, ReviewCount, ReviewSettings } from "./Chip"
 
@@ -22,13 +22,4 @@ export default definePlugin({
     { id: "review:open", name: "Review AI changes", run: () => reviewView(), icon: GitCompareArrows },
     { id: "review:file", name: "Review AI changes to this file", when: onFile, run: () => reviewFileView(currentFile()), icon: GitCompareArrows },
   ],
-  preview: () => (
-    <Panel title="Review" icon={GitCompareArrows} tint="var(--review)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        When an AI app or a coding agent changes your vault, the file waits here for you, like a pull request: who changed it
-        and when, the lines added and removed, and Keep or Revert. A count in the status bar and a line in the file's header
-        lead here.
-      </p>
-    </Panel>
-  ),
 })

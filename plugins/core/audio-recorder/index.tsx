@@ -1,7 +1,7 @@
 // Browsers give the microphone only to secure pages: phones need https.
 import { useEffect } from "react"
 import { Captions, Mic, Square } from "lucide-react"
-import { activeFile, definePlugin, Panel, pluginOn, useLive } from "@vaultite"
+import { activeFile, definePlugin, pluginOn } from "@vaultite"
 import { Indicator } from "./Indicator"
 import { canTranscribe, isAudio, recording, start, stop, transcribe, transcribeHere, transcriber, voiceNote } from "./recorder"
 
@@ -12,22 +12,6 @@ function Background() {
   return <Indicator />
 }
 
-function Preview() {
-  const t = useLive<{ available: boolean; name?: string; why?: string }>("audio-recorder/transcriber").data
-  return (
-    <Panel title="Audio recorder" icon={Mic} tint="var(--red)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Record from the microphone into the note you're writing: Start recording audio in the command palette, /record in a
-        note, or Record audio in a note's menu. The recording is saved as an attachment and embedded where the cursor is,
-        then transcribed under it. Record a voice note for your inbox sends what you say to the inbox instead, as the
-        iPhone's voice note widget does.
-      </p>
-      <p className="mt-2 text-[15px] leading-[20px] text-muted-foreground">
-        {t ? (t.available ? `Transcripts by ${t.name}, on the machine the app runs on.` : t.why) : "Looking for a transcriber…"}
-      </p>
-    </Panel>
-  )
-}
 
 export default definePlugin({
   commands: [
@@ -50,5 +34,4 @@ export default definePlugin({
     return []
   },
   background: () => <Background />,
-  preview: () => <Preview />,
 })

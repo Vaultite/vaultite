@@ -54,7 +54,7 @@ function translucentSub() {
 
 // `id` and `name` first, literal: core/appsource.ts lists commands from the source.
 const CORE: SwitchDef[] = [
-  { id: "setting:ai", name: "Use AI", section: "ai", icon: Sparkles, sub: () => "Agents, the companion and AI apps. Vaultite works fully without them.",
+  { id: "setting:ai", name: "Use AI", section: "ai", icon: Sparkles, sub: () => "Agents, the companion and AI apps",
     words: "artificial intelligence agents claude codex companion chatgpt llm no ai", get: () => getPrefs().ai, set: setAi },
   { id: "setting:file-icons", name: "File icons", section: "appearance", icon: Shapes, ...pref("fileIcons") },
   { id: "setting:tab-bar", name: "Tab bar", section: "appearance", icon: PanelTop, words: "tabs", ...pref("tabBar") },

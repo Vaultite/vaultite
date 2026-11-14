@@ -27,7 +27,7 @@ const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed
 const shot = (p, name) => p.screenshot({ path: `${OUT}${name}.png` })
 const toasts = (p = page) => p.locator("[data-sonner-toast]")
 const toastWith = (text, p = page, ms) => until(async () => (await toasts(p).allInnerTexts()).find((t) => t.includes(text)), ms)
-const count = () => page.locator("aside [data-inbox-button]").getAttribute("data-count").then(Number).catch(() => -1)
+const count = async () => (await page.locator("aside [data-inbox-button]").count()) ? Number(await page.locator("aside [data-inbox-button]").getAttribute("data-count")) : -1
 const enc = encodeURIComponent
 const pastMarkSeen = () => wait(2000)
 const PAGE = "Qa inbox.md"
@@ -35,14 +35,13 @@ writeFileSync(path.join(VAULT, PAGE), "---\ntype: dashboard\n---\n\n```block-inb
 
 writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "files:files"], right: [], collapsed: [] }))
 await page.goto(`${B}#file/${enc(PAGE)}`)
-await page.waitForSelector("aside [data-inbox-button]")
 await ui.idle()
-check("the Inbox button is in the sidebar's header, nothing new", (await count()) === 0, await count())
+check("nothing new: no Inbox button in the sidebar's header", (await count()) === -1, await count())
 
 await api("POST", "inbox/events", { source: "backup", kind: "done", title: "Backup finished", body: "12 GB in 4 min" })
 check("a message toasts", !!(await toastWith("Backup finished: 12 GB in 4 min")), await toasts().allInnerTexts())
 await ui.idle()
-check("and doesn't count on the button: nothing needs you", (await count()) === 0, await count())
+check("and doesn't count on the button: nothing needs you", (await count()) <= 0, await count())
 await api("POST", "inbox/events", { source: "browser", kind: "waiting", title: "Lighthouse needs you in the browser" })
 check("an ask counts", (await until(async () => (await count()) === 1)) === true, await count())
 await shot(page, "1-toast-and-badge")

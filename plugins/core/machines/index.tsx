@@ -139,5 +139,4 @@ export default definePlugin({
   views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, pinAs: (id) => id || null, render: (ctx) => <Suspense fallback={null}><MachineFiles {...ctx} /></Suspense> } },
   commands: [{ id: "machines:open-tab", name: "Open machines in a tab", run: () => openView("machines", { newTab: true }) }],
   mockLive: () => ({ machines: mock }),
-  preview: () => <MachinesBlock />,
 })

@@ -24,7 +24,7 @@ const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed
 const shot = (p, name) => p.screenshot({ path: `${OUT}${name}.png` })
 const toastWith = (text, p = page) => until(async () => (await p.locator("[data-sonner-toast]").allInnerTexts()).find((t) => t.includes(text)), 15000)
 await page.goto(B)
-await page.waitForSelector("aside [data-inbox-button]")
+await page.waitForSelector("aside")
 await wait(1500)
 
 await there("POST", `inbox/hook?agent=claude&terminal=${term}`,

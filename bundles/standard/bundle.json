@@ -1,6 +1,6 @@
 {
   "name": "Standard",
-  "description": "Notes and links: your files, search and pinned pages on the left, backlinks, the outline, the inbox and tags on the right, with tabs above your pages. Nothing written into your notes.",
+  "description": "Notes and links: your files, search and pinned pages on the left, backlinks, the outline and tags on the right, with tabs above your pages. Nothing written into your notes.",
   "icon": "feather",
   "tint": "purple",
   "sort": 1

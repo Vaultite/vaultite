@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { FileDown, Printer } from "lucide-react"
-import { activeFile, cell, currentFile, definePlugin, dismissNotice, getStore, NoteBody, notify, notifyError, Panel, plural, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
+import { activeFile, cell, currentFile, definePlugin, dismissNotice, getStore, NoteBody, notify, notifyError, plural, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
 
 type Job = { path: string; text: string; how: "pdf" | "print"; store: Store; ready: () => void }
 const job = cell<Job | null>(null)
@@ -106,12 +106,4 @@ export default definePlugin({
   ],
   fileMenu: (path) => (isNote(path) ? [{ label: "Export to PDF", icon: FileDown, section: "more", run: () => void printNote(path, "pdf") }] : []),
   background: () => <Background />,
-  preview: () => (
-    <Panel title="Export to PDF" icon={FileDown} tint="var(--blue)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Print a note or save it as a PDF, the way it reads: its title and text with images, embeds and math, on white,
-        without the app around it. From the command palette or the note's menu.
-      </p>
-    </Panel>
-  ),
 })

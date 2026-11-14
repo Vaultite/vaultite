@@ -67,7 +67,10 @@ export function HotkeysSheet() {
   const [rec, setRec] = useState<Recording | null>(null)
   const [held, setHeld] = useState("")
 
-  const holders = (k: string, id?: string) => known.filter((c) => c.id !== id && keysOf(c).some((x) => sameKeys(x, k)))
+  const holders = (k: string, id?: string) => {
+    const self = known.find((c) => c.id === id)
+    return known.filter((c) => c.id !== id && !(self?.contextual && c.contextual) && keysOf(c).some((x) => sameKeys(x, k)))
+  }
   const add = (id: string, k: string) => { const c = known.find((x) => x.id === id); const now = c ? keysOf(c) : []; if (!now.some((x) => sameKeys(x, k))) setHotkeys(id, [...now, k]) }
   const take = (id: string, k: string, from: Known[]) => { for (const o of from) setHotkeys(o.id, keysOf(o).filter((x) => !sameKeys(x, k))); add(id, k) }
 
@@ -117,7 +120,7 @@ export function HotkeysSheet() {
 
   return (
     <>
-      <SheetHead icon={Keyboard} tint="var(--gray)" title="Hotkeys" sub="Every command's keys, saved in the vault (.vaultite/hotkeys.json)" />
+      <SheetHead icon={Keyboard} tint="var(--gray)" title="Hotkeys" sub="Every command's keys" />
       <KeyMap known={known} mods={mods} setMods={setMods} picked={onKey} pick={(k) => { setOnKey(k && onKey && sameKeys(k, onKey) ? null : k); setQuery("") }} />
       <div className="sticky top-0 z-10 -mx-1 mb-1 flex flex-wrap items-center gap-2 bg-background/95 px-1 py-2 backdrop-blur" data-hotkeys-bar>
         {onKey ? (

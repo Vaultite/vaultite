@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
-  devicePref, offerPanel, PageHeader, Panel, panelSide, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
+  devicePref, offerPanel, PageHeader, panelSide, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
 import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
@@ -14,22 +14,6 @@ let chunk: Promise<typeof import("./Terminal")> | null = null
 const preload = () => (chunk ??= Promise.all([import("./Terminal"), vtModule()]).then(([m]) => m))
 const TerminalView = lazy(preload)
 
-function Preview() {
-  return (
-    <Panel title="Terminal" icon={SquareTerminal} tint="var(--gray)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        A shell in a tab, started in the vault's folder: run a coding agent (Claude Code, Codex, OpenCode, Cursor) on your
-        notes without leaving the app. Open one from the command palette or the Terminals panel, in a new tab or in a split
-        on the right. Reloading, or the server restarting, keeps the shell running, with its history. Closing its tab ends a shell at its prompt, but whatever runs in one (an agent, a server) keeps running in the Terminals panel until you end it (End session); typing exit closes the tab. An agent's tab keeps its logo, with a dot saying what it's doing: breathing while it works, yellow when it needs you, blue with an answer to read, red if it failed. Pasted screenshots
-        reach the shell as files.
-      </p>
-      <pre className="mt-3 rounded-[8px] bg-background px-3 py-2 font-mono text-[12px] leading-[17px]">
-        <span className="text-ink-(--green)">vault</span> % claude{"\n"}
-        <span className="text-muted-foreground">Welcome to Claude Code</span>
-      </pre>
-    </Panel>
-  )
-}
 
 const AGENTS = "agents:agents"
 const offered = devicePref<boolean>("agents:offered", false)
@@ -103,7 +87,7 @@ function AgentsTold() {
   if (!useAi()) return null
   return (
     <Group>
-      <SettingRow label="What agents are told" sub="Added to a coding agent's instructions when it starts in a terminal here" onClick={showInstructions} />
+      <SettingRow label="What agents are told" sub="Added to an agent's instructions in a terminal here" onClick={showInstructions} />
     </Group>
   )
 }
@@ -173,5 +157,4 @@ export default definePlugin({
   ambient: { agents: { title: "Agents at work", sort: 20, ai: true, render: () => <AgentsAtWork /> } },
   sidebar: { sessions: { title: "Terminals", names: ["terminals", "terminal", "shells"], heading: false, sort: 30, view: "terminals", render: (ctx) => <Sessions {...ctx} /> } },
   newTab: { sessions: { title: "Terminals", sort: 5, hidden: true, render: () => <SessionList /> } },
-  preview: () => <Preview />,
 })

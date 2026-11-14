@@ -42,17 +42,6 @@ function SettingsPanel() {
   )
 }
 
-function Preview() {
-  return (
-    <Panel title="AI import" icon={MessagesSquare} tint={TINT}>
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Brings your history from ChatGPT and Claude: export your data there, then Import from ChatGPT or Claude in the command palette.
-        Every chat becomes a note in Chats, Claude's projects too, and what they remembered about you becomes a list you review: only
-        what you tick reaches ME.md or People.
-      </p>
-    </Panel>
-  )
-}
 
 const isReview = (path: string) => /(^|\/)Memories to review\.md$/.test(path)
 
@@ -68,5 +57,4 @@ export default definePlugin({
   },
   settingsPanel: () => <SettingsPanel />,
   settingsPanelFirst: true,
-  preview: () => <Preview />,
 })

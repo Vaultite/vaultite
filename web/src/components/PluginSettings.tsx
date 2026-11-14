@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react"
 import { refuse } from "@/core/animation"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
 import { type Store, useLive, useStore } from "@/core/data"
@@ -13,6 +13,7 @@ import { pluginSettings, revealRow, settingsFile, takeGoingTo, valueLabel } from
 import { grantsOf, setGrant } from "@/core/grants"
 import { usePrefs } from "@/core/prefs"
 import { capitalize, cn } from "@/lib/utils"
+import { brief } from "@/core/brief"
 import { Group, Loading, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { JsonView } from "@/components/JsonView"
 import { Catch } from "@/components/Guard"
@@ -127,7 +128,7 @@ function Writes({ store, plugin }: { store: Store; plugin: string }) {
     <Section title="Writes on its own">
       <Group>
         {list.map((g) => (
-          <SettingRow key={g.place} label={`${g.at}${g.folder ? "/" : ""}`} sub={`${capitalize(g.why)}, on its own. ${g.answer === "allowed" ? "Allowed" : "Not allowed: it keeps that to itself"}`} data-grant={g.place}>
+          <SettingRow key={g.place} label={`${g.at}${g.folder ? "/" : ""}`} sub={capitalize(g.why)} data-grant={g.place}>
             <Switch on={g.answer === "allowed"} onChange={(v) => void setGrant(g, v)} label={`Let ${g.name} write ${g.place}`} />
           </SettingRow>
         ))}
@@ -138,13 +139,20 @@ function Writes({ store, plugin }: { store: Store; plugin: string }) {
 
 const field = "h-8 min-w-0 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[16px] outline-none focus:border-primary md:h-7 md:text-[14px]"
 
+export function subOf(d: SettingDecl): ReactNode {
+  const full = capitalize(d.description ?? "").replace(/\.$/, "")
+  const short = brief(d.description, [...(d.values ?? []).map(String), ...Object.values(d.labels ?? {})])
+  if (!short) return undefined
+  return short === full ? short : <span data-tip={`${full}.`}>{short}</span>
+}
+
 /** One setting as a form row, by its declaration: what the sheet draws for each declared key, and a plugin's panel can
  *  use for settings kept elsewhere (File explorer's, in .vaultite/files.json). `set(undefined)` puts the default back. */
 export function Field({ k, d, value, set, offer }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void; offer?: Offer }) {
   const ts = types(d)
   if (offer && ts.length === 1 && ts[0] === "string") return <OfferedChoice k={k} d={d} value={value} set={set} offer={offer} />
   const shown = value ?? d.default
-  const sub = capitalize(d.description)
+  const sub = subOf(d)
   const attrs = { "data-setting": k }
   if (ts.length === 1 && ts[0] === "boolean") {
     return (
@@ -162,7 +170,7 @@ export function Field({ k, d, value, set, offer }: { k: string; d: SettingDecl; 
   if (d.folder && ts.length === 1 && ts[0] === "string") return <FolderField k={k} d={d} value={value} set={set} />
   const words = !Array.isArray(value) || value.every((x) => typeof x === "string" || typeof x === "number")
   if (ts.every((t) => t === "string" || t === "list") && words) return <TextField k={k} d={d} value={value} set={set} list={ts.includes("list")} />
-  return <SettingRow label={d.label} sub={`${sub}. Edit it in the file below`} {...attrs} />
+  return <SettingRow label={d.label} sub={<>{sub}{sub && ". "}Edit it in the file below</>} {...attrs} />
 }
 
 
@@ -179,7 +187,7 @@ function OfferedChoice({ k, d, value, set, offer }: { k: string; d: SettingDecl;
 function ServerChoice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const { data } = useLive<{ choices: { value: string; label: string }[] }>(d.choices!)
   const list = data?.choices ?? []
-  if (!list.length) return <SettingRow label={d.label} sub={capitalize(d.description)} value={typeof value === "string" ? value : ""} data-setting={k} />
+  if (!list.length) return <SettingRow label={d.label} sub={subOf(d)} value={typeof value === "string" ? value : ""} data-setting={k} />
   const enumOf: SettingDecl = { ...d, type: "enum", values: list.map((c) => c.value), labels: Object.fromEntries(list.map((c) => [c.value, c.label])) }
   return <Choice k={k} d={enumOf} value={typeof value === "string" ? value : String(d.default ?? "")} set={set} />
 }
@@ -205,7 +213,7 @@ function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknow
   const short = values.length <= 3 && values.every((v) => valueLabel(d, v).length <= 12)
   if (short) {
     return (
-      <SettingRow stack label={d.label} sub={capitalize(d.description)} data-setting={k}>
+      <SettingRow stack label={d.label} sub={subOf(d)} data-setting={k}>
         <Segmented className="w-full sm:w-auto sm:shrink-0 [&>button]:whitespace-nowrap" label={d.label} value={value === undefined ? "" : String(value)}
           options={values.map((v) => ({ value: String(v), label: valueLabel(d, v) }))} onChange={(s) => set(back(s))} />
       </SettingRow>
@@ -213,7 +221,7 @@ function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknow
   }
   return (
     <div data-setting={k}>
-      <SettingRow label={d.label} sub={capitalize(d.description)} value={value === undefined ? "" : valueLabel(d, value)} onClick={() => setOpen(!open)}
+      <SettingRow label={d.label} sub={subOf(d)} value={value === undefined ? "" : valueLabel(d, value)} onClick={() => setOpen(!open)}
         chevron={open ? ChevronDown : ChevronRight} aria-expanded={open} />
       {open && (
         <div role="radiogroup" aria-label={d.label} className="-mt-1 pb-2 pl-1">
@@ -240,7 +248,7 @@ function NumberField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
   const why = n === null ? "" : Number.isNaN(n) ? "should be a number" : valueProblem(d, n)
   const save = () => { if (typed !== null && !why) set(n); if (!why) setTyped(null) }
   return (
-    <SettingRow label={d.label} sub={why ? <span className="text-ink-(--red)">{capitalize(why)}</span> : capitalize(d.description)} data-setting={k}>
+    <SettingRow label={d.label} sub={why ? <span className="text-ink-(--red)">{capitalize(why)}</span> : subOf(d)} data-setting={k}>
       <input inputMode="decimal" aria-label={d.label} value={text} placeholder={d.default !== undefined ? String(d.default) : ""}
         aria-invalid={!!why || undefined} onChange={(e) => setTyped(e.target.value)} onBlur={save}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (why) refuse(e.currentTarget); else e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
@@ -264,7 +272,7 @@ function TextField({ k, d, value, set, list }: { k: string; d: SettingDecl; valu
     if (e.key === "Enter" && !lines) { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) }
   }
   return (
-    <SettingRow stack label={d.label} sub={capitalize(d.description) + (lines ? " (one per line)" : list ? " (separate them with commas)" : "")} data-setting={k}>
+    <SettingRow stack label={d.label} sub={<>{subOf(d)}{lines ? " (one per line)" : list ? " (separate them with commas)" : ""}</>} data-setting={k}>
       {lines
         ? <textarea aria-label={d.label} value={text} placeholder={asText(d.default)} spellCheck={false} autoComplete="off" rows={Math.min(8, Math.max(3, text.split("\n").length + 1))}
           onChange={(e) => setTyped(e.target.value)} onBlur={save} onKeyDown={keys} className={cn(field, "h-auto w-full resize-y py-1.5 font-mono md:h-auto sm:w-72")} />
@@ -284,7 +292,7 @@ function FolderField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
   const folders = useFolders()
   const v = typeof value === "string" ? value.replace(/^\/+|\/+$/g, "") : ""
   return (
-    <SettingRow stack label={d.label} sub={v && !folders.has(v) ? missing(v) : capitalize(d.description)} data-setting={k}>
+    <SettingRow stack label={d.label} sub={v && !folders.has(v) ? missing(v) : subOf(d)} data-setting={k}>
       <div className="flex w-full items-center gap-1 sm:w-56">
         <button type="button" aria-label={d.label} onClick={() => chooseFolder(d.label, set)} data-folder-field
           className={cn(field, "flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left hover:bg-foreground/[0.03]")}>
@@ -307,7 +315,7 @@ function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unkno
   const list = (Array.isArray(value) ? value : []).map((x) => String(x).replace(/^\/+|\/+$/g, "")).filter(Boolean)
   const chip = "flex min-h-8 items-center gap-1 rounded-full border-[0.5px] text-[14px] md:min-h-7 md:text-[13px]"
   return (
-    <SettingRow stack label={d.label} sub={capitalize(d.description)} data-setting={k}>
+    <SettingRow stack label={d.label} sub={subOf(d)} data-setting={k}>
       <div className="flex flex-wrap gap-1.5 sm:max-w-[60%] sm:justify-end">
         {list.map((f) => (
           <span key={f} data-folder-chip={f} data-tip={folders.has(f) ? undefined : `There's no folder ${f}`}
@@ -331,7 +339,7 @@ function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unkno
 function Chips({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const list = Array.isArray(value) ? value : []
   return (
-    <SettingRow below label={d.label} sub={capitalize(d.description)} data-setting={k}>
+    <SettingRow below label={d.label} sub={subOf(d)} data-setting={k}>
       <div className="flex flex-wrap gap-1.5">
         {(d.values ?? []).map((v) => {
           const on = list.includes(v)

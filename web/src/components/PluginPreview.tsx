@@ -3,7 +3,7 @@ import { Folder, Laptop, RefreshCw, Server, ShieldAlert } from "lucide-react"
 import { dateText, PreviewLive, reload, type Store } from "@/core/data"
 import { mockStore } from "@/core/mock"
 import { noteParts } from "@/core/frontmatter"
-import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tileTint, tintOfPlugin,
+import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tileTint,
   updatePlugin, usePluginsVersion, type Plugin } from "@/core/plugins"
 import { op } from "@/core/http"
 import { updatable } from "../../../core/updates.ts"
@@ -19,7 +19,9 @@ import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { notify, notifyError } from "@/core/notify"
 import { closeDetail } from "@/core/nav"
-import { ErrorDetails, Group, List, Row, Section, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { ErrorDetails, IconTile, List, Row, Section, Switch } from "@/components/kit"
+import { PluginParts } from "@/components/PluginParts"
+import { brief } from "@/core/brief"
 import { plainError } from "../../../core/plainerror.ts"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { capitalize, cn } from "@/lib/utils"
@@ -61,7 +63,7 @@ function Frame({ children }: { children: ReactNode }) {
   return (
     // A scrollbar coming narrows the frame, shrinks the zoomed page and goes again, a flicker: its room is always kept.
     // The zoom rounds, so nothing may scroll sideways.
-    <div ref={box} className="h-[440px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[12px] border-[0.5px] border-border bg-background [scrollbar-gutter:stable]">
+    <div ref={box} className="h-[300px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[12px] border-[0.5px] border-border bg-background [scrollbar-gutter:stable]">
       {w > 0 && (
         // translateZ(0) keeps position: fixed parts (the phone's compact title bar) inside the frame.
         <div inert style={{ width: inner, zoom: w / inner, transform: "translateZ(0)" }} className="px-4 pb-6">
@@ -268,6 +270,30 @@ function Problems({ plugin }: { plugin: Plugin }) {
 
 const kickerOf = (p: Plugin) => categoryOf(p.category).label
 
+function Head({ plugin, kicker, children }: { plugin: Plugin; kicker?: string; children?: ReactNode }) {
+  const [more, setMore] = useState(false)
+  const short = brief(plugin.description), full = plugin.description ?? ""
+  return (
+    <div className="mb-5 flex items-start gap-3" data-plugin-head>
+      <IconTile icon={plugin.icon} tint={tileTint(plugin.id)} className="mt-0.5 size-11 rounded-[11px]" iconClassName="size-[24px]" />
+      <div className="min-w-0 flex-1">
+        {kicker && <div className="text-[12px] font-semibold tracking-wide text-muted-foreground">{kicker}</div>}
+        <h2 id="sheet-title" className="text-[22px] leading-[28px] font-bold break-words">{plugin.name}</h2>
+        {full && (
+          <p className="mt-0.5 text-[15px] leading-[20px] text-muted-foreground md:text-[14px]" data-plugin-about>
+            {more || !short ? full : short}
+            {short && short.length < full.replace(/\.$/, "").length && (
+              <button type="button" onClick={() => setMore(!more)} aria-expanded={more} data-plugin-more
+                className="ml-1.5 cursor-pointer text-foreground/70 underline decoration-border underline-offset-2 hover:text-foreground">{more ? "Less" : "More"}</button>
+            )}
+          </p>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export function PluginPreview({ store, plugin: given, kicker = true }: { store: Store; plugin: Plugin; kicker?: boolean }) {
   usePluginsVersion()
   const plugin = pluginById(given.id) ?? given
@@ -281,26 +307,23 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
   const toggle = (v: boolean) => setSwitch(plugin, v)
   return (
     <>
-      <SheetHead icon={plugin.icon} tint={kicker ? tintOfPlugin(plugin.id) : tileTint(plugin.id)} kicker={!kicker ? undefined : plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
-        title={plugin.name} sub={plugin.description} />
-      {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && !kicker ? (
-        <div className="mb-5"><Group><SettingRow label={switched && !blocked.length ? "On" : "Off"} sub="Off keeps its files and settings" data-plugin-switch>
-          <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
-        </SettingRow></Group></div>
-      ) : !plugin.alwaysOn && (
-        <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2" data-plugin-switch>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15px]">{switched && !blocked.length ? "On" : "Off"}</span>
-            <span className="block text-[13px] leading-[18px] text-muted-foreground">Off keeps its files and settings: turn it on again any time.</span>
+      <Head plugin={plugin} kicker={kicker ? plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin) : undefined}>
+        {!waiting && !plugin.alwaysOn && (
+          <span className={cn("shrink-0 pt-1", kicker && "mr-9")} data-plugin-switch data-tip={switched && !blocked.length ? "Off keeps its files and settings" : undefined}>
+            <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
           </span>
-          <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
-        </div>
+        )}
+      </Head>
+      {waiting && <Approval plugin={plugin} />}
+      {!(plugin.tier === "vault" && !on) && <PluginParts plugin={plugin} on={on} />}
+      {!(plugin.tier === "vault" && !on) && preview(plugin, mock, disabled) && (
+        <div className="mb-6"><PreviewLive.Provider value={live}><Frame><Catch fallback={noPreview}>{preview(plugin, mock, disabled)}</Catch></Frame></PreviewLive.Provider></div>
       )}
       {plugin.tier === "vault" && on && !plugin.meta?.source && (
-        <div className="-mt-3 mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5" data-plugin-edits={plugin.id}>
+        <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5" data-plugin-edits={plugin.id}>
           <span className="min-w-0 flex-1">
             <span className="block text-[15px]">Run its edits without asking</span>
-            <span className="block text-[13px] leading-[18px] text-muted-foreground">While you write it on this machine. Anyone who can change the vault's files could then run code here.</span>
+            <span className="block text-[13px] leading-[18px] text-muted-foreground">Anyone who can change the vault's files could then run code here.</span>
           </span>
           <Switch on={!!plugin.meta?.edits} onChange={(v) => void allowPlugin(plugin, v)} label={`Run ${plugin.name}'s edits without asking`} />
         </div>
@@ -338,13 +361,8 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
           </div>
         </Section>
       )}
-      {plugin.tier === "vault" && !on ? !switched && (
-        <p className="px-1 text-[15px] text-muted-foreground">
-          A vault plugin runs code on the machine that serves this app, so nothing of it runs, not even its preview, until you turn it on.
-          Turn on only plugins you trust.
-        </p>
-      ) : preview(plugin, mock, disabled) && (
-        <PreviewLive.Provider value={live}><Frame><Catch fallback={noPreview}>{preview(plugin, mock, disabled)}</Catch></Frame></PreviewLive.Provider>
+      {plugin.tier === "vault" && !switched && (
+        <p className="mb-5 px-1 text-[14px] text-muted-foreground">It runs code on the server's machine: nothing of it runs, not even its preview, until you turn it on.</p>
       )}
       <Kept plugin={plugin} files={store.pluginSettings ?? []} />
       {plugin.tier === "vault" && (

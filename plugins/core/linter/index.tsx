@@ -1,5 +1,5 @@
 import { Sparkles } from "lucide-react"
-import { currentEditor, definePlugin, notify, notifyError, Panel, pluginSettings, post } from "@vaultite"
+import { currentEditor, definePlugin, notify, notifyError, pluginSettings, post } from "@vaultite"
 import { formatMarkdown, rulesOf } from "./format"
 
 async function formatOpen() {
@@ -28,12 +28,4 @@ async function formatFile(path: string) {
 export default definePlugin({
   commands: [{ id: "linter:format", name: "Format note", when: () => currentEditor()?.kind === "markdown", run: () => void formatOpen() }],
   fileMenu: (path) => (/\.md$/i.test(path) ? [{ label: "Format note", icon: Sparkles, section: "actions", run: () => void formatFile(path) }] : []),
-  preview: () => (
-    <Panel title="Linter" icon={Sparkles} tint="var(--purple)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Format note tidies the note you're on by your rules: no trailing spaces or runs of blank lines, a blank line around
-        headings, one kind of bullet. Frontmatter, code and math stay as they are; undo takes it back.
-      </p>
-    </Panel>
-  ),
 })

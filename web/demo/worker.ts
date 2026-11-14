@@ -106,7 +106,6 @@ async function restore() {
     meta = was
   } else {
     makeSandbox(VAULT, today)
-    fs.rmSync(`${VAULT}/${MARKER}`) // (the app's "changes here are lost" notice: here they're kept until Reset)
     machineOffFile(`${VAULT}/.vaultite/plugins.json`)
     await tx(["files"], (t) => t.objectStore("files").clear())
     meta = { day: today, sample, edited: false }
@@ -129,6 +128,7 @@ type Answer = { status: number; headers: Record<string, string>; body: string | 
 let app: App, live: Live
 const ready = restore().then(() => open(VAULT)).then((a) => {
   app = a
+  fs.rmSync(`${VAULT}/${MARKER}`, { force: true }) // (after open(), which skips a new sandbox's upgrades: here edits are kept until Reset)
   live = new Live(a.vault).start()
   live.listen((c) => app.changed(c.paths))
   app.ui = live.drive

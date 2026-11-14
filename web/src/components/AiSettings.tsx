@@ -51,7 +51,6 @@ function CodingAgents() {
   return (
     <section aria-label="Coding agents" data-ai-agents>
       <Section title="Coding agents">
-        <Sub>Agents run in Vaultite's terminals. Your companion is the one you talk to.</Sub>
         <Group>
           {!list ? (error ? <p className="py-3 text-[15px] text-muted-foreground md:text-[13px]">Couldn't look for them on this computer.</p> : <LoadingRows count={2} meta={false} />)
             : found.length ? found.map((a) => <AgentRow key={a.id} a={a} on={!!pluginById(a.id) && switchedOn(pluginById(a.id)!, prefs)} />)

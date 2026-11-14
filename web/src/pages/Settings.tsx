@@ -51,9 +51,9 @@ function UpdatesRow() {
 }
 
 const PLUGIN_UPDATES: Record<UpdatePolicy, string> = {
-  vaultite: "Vaultite's own update by themselves; others wait for you to update them",
-  all: "Every installed plugin updates by itself, on each machine that allowed it",
-  off: "None: update each from its page in Plugins",
+  vaultite: "Vaultite's update by themselves",
+  all: "Every installed plugin updates by itself",
+  off: "Update each from its page",
 }
 
 function PluginUpdatesRow() {
@@ -109,13 +109,13 @@ const CORE: Sec[] = [
   ...(desktopApp?.permission ? [headed("permissions", "Permissions", ShieldCheck, "var(--blue)", () => <PermissionsPanel />, "What macOS lets Vaultite do on this Mac")] : []),
   headed("about", "About", Info, "var(--gray)", () => <About />, "Version, updates and errors"),
   headed("ai", "AI", Bot, "var(--purple)", (store) => <AiPanel store={store} />, "Agents, the apps you connect and what they read"),
-  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--blue)", render: (store) => <><PluginsPane store={store} tab="plugins" pick={pickSetup} /><PluginUpdates /></> },
+  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--blue)", render: (store) => <PluginsPane store={store} tab="plugins" pick={pickSetup} top={<PluginUpdates />} /> },
   { id: "get", label: "Get plugins", icon: StoreIcon, tint: "var(--blue)", render: (store) => <PluginsPane store={store} tab="get" pick={pickSetup} /> },
 ]
 const AI_GROUP = ["ai"], PLUGINS_GROUP = ["plugins", "get"]
 
 function PluginUpdates() {
-  return <Section title="Updates" className="mt-6"><Group><PluginUpdatesRow /></Group></Section>
+  return <div className="mb-4"><Group><PluginUpdatesRow /></Group></div>
 }
 
 function membersOf(store: Store, disabled: string[], section: string) {

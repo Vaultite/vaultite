@@ -5,6 +5,7 @@ import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { official } from "../../../core/updates.ts"
 import { capitalize, cn, plural } from "@/lib/utils"
+import { brief } from "@/core/brief"
 import { usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
 import { showInTree } from "@/components/FileTree"
@@ -21,7 +22,6 @@ import { glide } from "@/core/animation"
 
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
-const blurb = (d: string | undefined) => (d ?? "").split(/(?<=[\w)])[.:;] /)[0].replace(/\.$/, "")
 
 const certified = (p: Plugin) => p.tier === "core" || (p.tier === "vault" && !!p.meta?.source && official(p.meta.source.source))
 
@@ -99,7 +99,7 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: 
                 className="pointer-events-auto cursor-pointer underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">
                 use {theirs ? mine : kind} instead</button>
             </div>
-          ) : p.description && <div className={cn(line, "text-muted-foreground")} data-plugin-blurb>{blurb(p.description)}</div>}
+          ) : p.description && <div className={cn(line, "text-muted-foreground")} data-plugin-blurb>{brief(p.description)}</div>}
       </div>
       {waiting && (
         <button type="button" onClick={() => open(p.id)} data-plugin-review={p.id}

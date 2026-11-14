@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, MessageSquareReply, Pin, RotateCcw } from "lucide-react"
-import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
+import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, notify, openFile, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, markUnread, onFresh, pinEvents, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
@@ -85,19 +85,6 @@ function Background({ store }: { store: Store }) {
 
 const resultAt = (path: string): InboxItem | undefined => getStore()?.inbox?.find((r) => `${r.id}.md` === path)
 
-function Preview() {
-  return (
-    <Panel title="Inbox" icon={InboxIcon} tint="var(--inbox)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        What your agents need you to decide, in one place. Each question an agent asks is its own item, its options as
-        buttons and the default it takes if you don't answer: the ones it waits on come first, with a toast and a push to
-        your phone; the ones where it went with the default already wait quietly, and Accept all defaults takes them all.
-        What agents finish goes in the morning brief, one line each; their progress shows on their own rows. Results to
-        read later, like research or a clipped page, land in the Inbox folder too.
-      </p>
-    </Panel>
-  )
-}
 
 function mock(): Partial<Store> {
   const at = (min: number) => new Date(Date.now() - min * 60000).toISOString().slice(0, 19).replace("T", " ")
@@ -174,5 +161,4 @@ export default definePlugin({
     { id: "inbox:read", name: "Mark inbox events read", when: () => getEvents().unread > 0, run: () => markRead(), icon: CheckCheck },
   ],
   mock,
-  preview: () => <Preview />,
 })

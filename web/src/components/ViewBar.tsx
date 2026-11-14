@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react"
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useCommandKeys } from "@/core/commands"
 import { canNavigate, navigate, paneById, useTabList } from "@/core/workspace"
@@ -26,11 +26,34 @@ function NavButtons() {
   )
 }
 
+const EDGE = 8
+
+function usePaneWide(ref: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const el = ref.current, parent = el?.parentElement, scroller = el?.closest<HTMLElement>("[data-pane]")
+    if (!el || !parent || !scroller) return
+    const fit = () => {
+      const s = scroller.getBoundingClientRect(), p = parent.getBoundingClientRect(), cs = getComputedStyle(parent)
+      if (!p.width) return
+      const left = s.left + scroller.clientLeft, right = left + scroller.clientWidth
+      const from = p.left + parseFloat(cs.paddingLeft), to = p.right - parseFloat(cs.paddingRight)
+      el.style.marginLeft = `${Math.min(-EDGE, left + EDGE - from)}px`
+      el.style.marginRight = `${Math.min(-EDGE, to - right + EDGE)}px`
+    }
+    fit()
+    const watch = new ResizeObserver(fit)
+    watch.observe(scroller)
+    watch.observe(parent)
+    return () => watch.disconnect()
+  }, [ref])
+}
+
 export function ViewBar({ children, right, className }: { children?: ReactNode; right?: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   usePaneTopBar(ref)
+  usePaneWide(ref)
   return (
-    <div ref={ref} data-view-bar className={cn("group/bar sight-top sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 border-b-[0.5px] border-border/70 bg-background px-2 text-[13px]", className)}>
+    <div ref={ref} data-view-bar className={cn("group/bar sight-top sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
       <NavButtons />
       <div data-view-bar-fill className="flex min-w-0 flex-1 items-center overflow-clip [overflow-clip-margin:4px]">{children}</div>
       {right}

@@ -9,6 +9,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion finds its way around Settings**: asked to take you to a setting, it opens Settings at that row in one
   step, flashed (`vau settings show summoned_model`); it now reads Settings and other app pages, switches and all, and
   the companion's model for summoned asks sits under its row in Settings, AI.
+- **Simpler pages and settings**: a plugin's page is its name, one line and its switch, then a drawing of where it shows
+  up in the app and its commands to try; settings rows say a few words, the rest on hover. Plugin updates sit at the top
+  of Plugins, Get plugins' categories scroll with arrows, and the Standard layout starts without Inbox or Workspaces
+  (the Inbox button shows when something waits). A note's top bar spans its pane, its line only once it scrolls.
 - **A phone's terminal holds still**: the keyboard coming and going no longer resizes the shell (Claude Code redrew its
   whole screen each time); the grid slides up to keep the cursor in sight. Back from the background, the terminal stays
   on the lines you were reading, with no blank flash while it reconnects.

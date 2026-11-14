@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { Cloud, Send } from "lucide-react"
-import { activeFile, choose, currentFile, definePlugin, devicePref, isViewOpen, offerPanel, openView, panelSide, notify, notifyError, Panel, readFile, splitFm, stem, type CloudAccount } from "@vaultite"
+import { activeFile, choose, currentFile, definePlugin, devicePref, isViewOpen, offerPanel, openView, panelSide, notify, notifyError, readFile, splitFm, stem, type CloudAccount } from "@vaultite"
 import { getCloud, hasCloud, newSession, openSession, pickedNow, pickedOf, repoOf, settings, shownAccounts, STATUS, statusOf, subscribeCloud } from "./cloud"
 import { CloudList, CloudPanel } from "./CloudPanel"
 import { CloudView } from "./CloudPage"
@@ -41,18 +41,6 @@ function Watch() {
   return null
 }
 
-function Preview() {
-  return (
-    <Panel title="Cloud sessions" icon={Cloud} tint="var(--orange)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Claude Code on the web's sessions in the sidebar, live: a dot while one works, bold when it waits for you, and the
-        Inbox tells you when one finishes or needs you. Pick an account on the panel's heading, or see all of them, and a
-        click opens a session in the logins it belongs to. As a tab, they're a list with their repository, branch and pull
-        request, to search, continue in a terminal here or archive. Start a new one with +, or send a note as its prompt.
-      </p>
-    </Panel>
-  )
-}
 
 export default definePlugin({
   background: () => <Watch />,
@@ -79,6 +67,5 @@ export default definePlugin({
     },
   },
   agentRuns: useCloudRuns,
-  preview: () => <Preview />,
 })
 

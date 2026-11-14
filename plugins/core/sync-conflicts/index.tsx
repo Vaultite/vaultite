@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { GitCompareArrows } from "lucide-react"
-import { Banner, definePlugin, fmtStamp, get, mergeIntoFile, notify, notifyError, Panel, post, useStoreWith } from "@vaultite"
+import { Banner, definePlugin, fmtStamp, get, mergeIntoFile, notify, notifyError, post, useStoreWith } from "@vaultite"
 
 type Listed = { id: string; at: number; from: string }
 declare module "@vaultite" {
@@ -69,13 +69,4 @@ function OtherVersion({ path }: { path: string }) {
 
 export default definePlugin({
   noteTop: { version: { render: ({ path }) => <OtherVersion key={path} path={path} /> } },
-  preview: () => (
-    <Panel title="Sync conflicts" icon={GitCompareArrows} tint="var(--gray)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        When two devices change a note in iCloud Drive at once, iCloud shows one version and keeps the other out of
-        sight. A note that has one says so at its top: merge it in (where both changed the same lines, you choose in
-        place) or keep the note as it is. The other version's text is kept in the note's history either way.
-      </p>
-    </Panel>
-  ),
 })

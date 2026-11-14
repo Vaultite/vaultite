@@ -1,8 +1,7 @@
-import { FileInput, Import } from "lucide-react"
-import { definePlugin, Group, notify, notifyError, Panel, SettingRow } from "@vaultite"
+import { FileInput } from "lucide-react"
+import { definePlugin, Group, notify, notifyError, SettingRow } from "@vaultite"
 import type { Job } from "./job"
 
-const TINT = "var(--importer)"
 const TOAST = "importer"
 const HEADERS = { "X-Vaultite-Client": "app" }
 
@@ -61,20 +60,9 @@ function SettingsPanel() {
   )
 }
 
-function Preview() {
-  return (
-    <Panel title="Importer" icon={Import} tint={TINT}>
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Brings your notes from Notion, Evernote, Google Keep, Bear, Roam and other apps' HTML pages: pick the export with Import notes from another app in the command palette.
-        Pages keep their subpages, links, attachments and database properties; notes their tags, dates, to-dos and attachments.
-      </p>
-    </Panel>
-  )
-}
 
 export default definePlugin({
   commands: [{ id: "importer:import", name: "Import notes from another app…", run: pickExport }],
   settingsPanel: () => <SettingsPanel />,
   settingsPanelFirst: true,
-  preview: () => <Preview />,
 })

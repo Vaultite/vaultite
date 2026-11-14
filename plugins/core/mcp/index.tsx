@@ -1,19 +1,8 @@
 import { Bot, Copy, Globe, Plug } from "lucide-react"
-import { aiOn, copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
+import { aiOn, copyText, definePlugin, Group, notify, notifyError, openView, Section, SettingRow } from "@vaultite"
 import { AiApps, CONNECTION_DETAIL, ConnectionSheet, ConnectionsView, ConnectSection, connectionTitle, RemoteAccess, SETUP_DETAIL, SetupSheet, setupTitle } from "./Connections"
 import { GrokBotIcon, MuseIcon } from "./marks"
 
-function Preview() {
-  return (
-    <Panel title="MCP" icon={Plug}>
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Lets an AI outside the app use your vault: Claude Code or Claude desktop on this machine search it, read pages as you see them, and
-        write notes, logs, timeline lines, facts about you and clipped web pages the vault's way. Everything they do shows in Activity
-        as theirs. Only this machine and your own devices on the tailnet can connect.
-      </p>
-    </Panel>
-  )
-}
 
 const here = () => (typeof location === "undefined" ? "http://127.0.0.1:8793" : location.origin)
 
@@ -36,7 +25,6 @@ function Connect() {
 }
 
 export default definePlugin({
-  preview: () => <Preview />,
   settingsPanel: () => <Connect />,
   settingsPanelFirst: true,
   icons: { "grok-bot": GrokBotIcon, muse: MuseIcon },
@@ -45,7 +33,7 @@ export default definePlugin({
     [CONNECTION_DETAIL]: { title: (_s, [id]) => connectionTitle(id), render: (_s, [id]) => <ConnectionSheet id={id} /> },
   },
   settingsPages: {
-    apps: { label: "Connect an AI app", icon: Bot, sub: "They can read and write your notes.", in: "ai", render: () => <AiApps bare /> },
+    apps: { label: "Connect an AI app", icon: Bot, in: "ai", render: () => <AiApps bare /> },
     remote: { label: "Share & sync", icon: Globe, sub: "Optional: open your vault remotely from your phone or AI apps, and share folders", render: () => <RemoteAccess /> },
   },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },

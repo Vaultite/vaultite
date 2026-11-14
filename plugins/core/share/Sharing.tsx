@@ -88,7 +88,7 @@ export function ShareSheet({ folder }: { folder: string }) {
   const [fresh, setFresh] = useState<Fresh | null>(null)
   const online = useGuestAddress() !== ""
   const head = <SheetHead icon={Share2} tint="var(--primary)" title={`Share ${name(folder)}`}
-    sub="Each person gets a link of their own: they see this folder and nothing else of your vault, and no agent works for them." />
+    sub="Each person gets a link of their own, to this folder only" />
   if (over) return <div className="flex flex-col gap-5" data-share-sheet={folder}>{head}<OnThisMac>Folders are shared on this Mac.</OnThisMac></div>
   return (
     <div className="flex flex-col gap-5" data-share-sheet={folder}>
@@ -159,7 +159,7 @@ export function SharedView() {
       <Panel title="Guests' address" icon={Globe}>
         <Group>
           {address ? <SettingRow label="Links open at" sub={<code className="break-all text-[12px]">{address}</code>} chevron={Copy} onClick={() => void copy(address)} data-shared-address />
-            : <SettingRow label="No address yet" sub="Sign this Mac in to Vaultite Cloud, and the people you share with open their folders there" onClick={() => openView("connections", { newTab: true })} data-shared-address="" />}
+            : <SettingRow label="No address yet" sub="Sign this Mac in to Vaultite Cloud" onClick={() => openView("connections", { newTab: true })} data-shared-address="" />}
         </Group>
       </Panel>
     </div>

@@ -131,7 +131,7 @@ export function StoreBundles({ query: q }: { query: string }) {
   return (
     <section ref={root} className="relative mb-6 @container" data-file-drop data-bundles-browse>
       <div className="mb-1.5 flex min-h-7 items-center gap-2 px-1">
-        <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-muted-foreground md:text-[12px]">Layouts and packs</h2>
+        <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-muted-foreground md:text-[12px]">Layouts</h2>
         <button type="button" onClick={() => openDetail("bundle-import")} data-bundles-import data-tip="A bundle someone sent: paste it or drop its file here too"
           className="-my-1 -mr-1 flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 text-[13px] text-primary hover:bg-foreground/[0.05] max-md:h-11 max-md:text-[15px]">
           <Import className="size-3.5 max-md:size-4" strokeWidth={2.25} />Import…
@@ -139,7 +139,7 @@ export function StoreBundles({ query: q }: { query: string }) {
       </div>
       {!dir && !failed ? <CardSkeletons count={cards} />
         : failed || (dir && !dir.available)
-        ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared layouts and packs can't be reached right now.</p>
+        ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared layouts can't be reached right now.</p>
         : dir && !list.length ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared layouts or packs match." : "No layouts or packs are shared yet."}</p>
         : <div className={GRID} data-keylist data-bundles-listed>{list.map((e) => <ListedCard key={e.address} e={e} />)}</div>}
       {over && (

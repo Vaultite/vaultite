@@ -52,7 +52,7 @@ export const isOn = (c: Pick<Command, "on">) => { try { return !!c.on?.() } catc
 export const commandName = (c: Pick<Command, "name" | "on" | "nameWhenOn">) => (c.nameWhenOn && isOn(c) ? c.nameWhenOn : c.name)
 
 const reg = new Map<string, Command>()
-type Known = { id: string; name: string; keys?: string[]; nameWhenOn?: string; where?: string; icon?: Command["icon"] }
+type Known = { id: string; name: string; keys?: string[]; nameWhenOn?: string; where?: string; icon?: Command["icon"]; contextual?: boolean }
 const known = new Map<string, Known>()
 const commandsChanged = signal()
 let list: Command[] = []
@@ -63,7 +63,7 @@ const changed = () => { list = [...reg.values()]; knownList = [...known.values()
 export function registerCommands(cs: Command[]) {
   cs = cs.filter((c) => guestCommand(c.id))
   if (!cs.length) return () => {}
-  for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name, icon: c.icon }) }
+  for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name, icon: c.icon, contextual: !!(c.when || c.keysWhen) }) }
   changed()
   return () => { for (const c of cs) if (reg.get(c.id) === c) reg.delete(c.id); changed() }
 }

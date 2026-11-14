@@ -138,7 +138,7 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
       </p>
       <Group>
         <SettingRow label="Address" sub={<code className="break-all text-[12px]">{app}</code>} chevron={ExternalLink} onClick={() => openWebLink(app)} data-connect-url />
-        <SettingRow label="Terminals and coding agents" sub="Off: over this address the app doesn't run anything on this Mac">
+        <SettingRow label="Terminals and coding agents">
           <Switch on={tools} onChange={turn} label="Terminals and coding agents over this address" />
         </SettingRow>
       </Group>

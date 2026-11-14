@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect } from "react"
+import { useEffect, useLayoutEffect, type ReactNode } from "react"
 import { Puzzle, Store as StoreIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { openSetup, showSettingsSection, type SetupTab } from "@/core/apppages"
@@ -11,6 +11,7 @@ import { getCategories, getCategory, primeCategories } from "@/components/Plugin
 import { StoreBundles } from "@/pages/Bundles"
 import { Plugins } from "@/pages/Plugins"
 import { cn } from "@/lib/utils"
+import { ScrollStrip } from "@/components/ScrollStrip"
 
 type Tab = SetupTab
 
@@ -42,13 +43,14 @@ function PluginsList({ store, tab, pick }: { store: Store; tab: Tab; pick: (to: 
     above={tab === "get" ? (query, filters) => !filters.source && !filters.cat && <StoreBundles query={query} /> : undefined} />
 }
 
-export function PluginsPane({ store, tab, pick }: { store: Store; tab: Tab; pick: (to: Tab) => void }) {
+export function PluginsPane({ store, tab, pick, top }: { store: Store; tab: Tab; pick: (to: Tab) => void; top?: ReactNode }) {
   return (
     <div data-setup={tab}>
       {tab === "get"
-        ? <SheetHead icon={StoreIcon} tint="var(--blue)" title="Get plugins" sub="Plugins, layouts and packs others made" />
+        ? <SheetHead icon={StoreIcon} tint="var(--blue)" title="Get plugins" sub="Plugins and layouts others made" />
         : <SheetHead icon={Puzzle} tint="var(--blue)" title="Plugins" sub="Turn features on or off" />}
       {tab === "get" && <Categories />}
+      {top}
       <PluginsList store={store} tab={tab} pick={pick} />
     </div>
   )
@@ -58,21 +60,23 @@ function Categories() {
   const cats = getCategories.use(), picked = getCategory.use()
   useEffect(primeCategories, [])
   if (!cats.length) return null
-  const chip = (id: string, label: string, count?: number) => {
+  const chip = (id: string, label: string) => {
     const on = picked === id
     return (
       <button key={id || "all"} type="button" aria-pressed={on} data-setup-nav={id ? `cat:${id}` : "cat:"}
         onClick={() => getCategory.set(on && id ? "" : id)}
         className={cn("flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] whitespace-nowrap transition-colors",
           on ? "bg-foreground/[0.1] font-medium text-foreground" : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground")}>
-        {label}{count !== undefined && <span className="tabular-nums opacity-60">{count}</span>}
+        {label}
       </button>
     )
   }
   return (
-    <div role="group" aria-label="Categories" className="-mx-1 mb-3 flex gap-1 overflow-x-auto [scrollbar-width:none]" data-setup-categories>
-      {chip("", "All")}
-      {cats.map((c) => chip(c.id, c.label, c.count))}
+    <div className="mb-3">
+      <ScrollStrip role="group" aria-label="Categories" className="-mx-1 flex gap-1" data-setup-categories>
+        {chip("", "All")}
+        {cats.map((c) => chip(c.id, c.label))}
+      </ScrollStrip>
     </div>
   )
 }

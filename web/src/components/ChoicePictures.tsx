@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react"
+import { useLayoutEffect, useRef, type HTMLAttributes, type ReactNode, type RefObject } from "react"
+import { ScrollStrip } from "@/components/ScrollStrip"
 import { Globe } from "lucide-react"
 import { haptic } from "@/core/haptics"
 import { usePrefs } from "@/core/prefs"
@@ -93,6 +94,10 @@ export function SystemPicture({ scene }: { scene: Scene }) {
 
 export type PictureOption<T extends string> = { value: T; label: string; picture: ReactNode; tip?: string }
 
+function Strip({ scroll, strip, children, ...rest }: { scroll: boolean; strip: RefObject<HTMLDivElement | null>; children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
+  return scroll ? <ScrollStrip strip={strip} {...rest}>{children}</ScrollStrip> : <div ref={strip} {...rest}>{children}</div>
+}
+
 export function PictureChoice<T extends string>({ value, options, onChange, label, scroll }: {
   value: T; options: PictureOption<T>[]; onChange: (v: T) => void; label: string; scroll?: boolean
 }) {
@@ -105,8 +110,8 @@ export function PictureChoice<T extends string>({ value, options, onChange, labe
     if (end > el.clientWidth) el.scrollLeft = end - el.clientWidth
   }, [scroll])
   return (
-    <div ref={ref} role="radiogroup" aria-label={label} data-picture-choice={label}
-      className={cn("flex gap-3", scroll ? "edge-fade-x -mx-3 -my-[6px] overflow-x-auto px-3 py-[6px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "flex-wrap")}>
+    <Strip scroll={!!scroll} strip={ref} role="radiogroup" aria-label={label} data-picture-choice={label}
+      className={cn("flex gap-3", scroll ? "-mx-3 -my-[6px] px-3 py-[6px]" : "flex-wrap")}>
       {options.map((o) => {
         const on = o.value === value
         return (
@@ -121,6 +126,6 @@ export function PictureChoice<T extends string>({ value, options, onChange, labe
           </button>
         )
       })}
-    </div>
+    </Strip>
   )
 }

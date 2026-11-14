@@ -82,7 +82,7 @@ export function ChipsSettings({ store }: { store: Store }) {
           value={all.length ? plural(all.length, "property", "properties") : ""} onClick={() => openView("properties")} data-properties-all />
       </Group>
       <Section title="In files' headers">
-        <p className="mb-1.5 px-1 text-[12px] leading-[16px] text-muted-foreground">A property shown as a chip at the top of each file, set from there, its values each with an icon and a colour.</p>
+        <p className="mb-1.5 px-1 text-[12px] leading-[16px] text-muted-foreground">Shown as a chip at the top of each file.</p>
         <div className="space-y-2">
           {list.map((c, i) => (
             <div key={c.key} data-chip-settings={c.key} className="space-y-2">

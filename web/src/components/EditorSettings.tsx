@@ -17,14 +17,14 @@ export function EditorPanel({ store }: { store: Store }) {
     <div className="flex flex-col gap-6">
       <Section title="Views">
         <Group>
-          <SettingRow stack label="Default view for new tabs" sub="Each tab keeps the view picked in it" data-settings-row="default-view">
+          <SettingRow stack label="Default view for new tabs" data-settings-row="default-view">
             <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
               <ResetButton on={editorSet("defaultView")} onClick={() => setEditor({ defaultView: null })} label="Reset default view for new tabs" />
               <Segmented<NoteView> label="Default view for new tabs" value={e.defaultView ?? (desktop ? "editing" : "reading")} onChange={(v) => setEditor({ defaultView: v })}
                 className="min-w-0 flex-1 sm:w-[240px] sm:flex-none" options={NOTE_VIEWS} />
             </div>
           </SettingRow>
-          <SettingRow stack label="Default editing mode" sub="How a new tab edits, and what leaving reading goes back to" data-settings-row="editing-mode">
+          <SettingRow stack label="Default editing mode" data-settings-row="editing-mode">
             <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
               <ResetButton on={editorSet("editingMode")} onClick={() => setEditor({ editingMode: null })} label="Reset default editing mode" />
               <Segmented<EditingMode> label="Default editing mode" value={e.editingMode} onChange={(v) => setEditor({ editingMode: v })}
@@ -37,7 +37,7 @@ export function EditorPanel({ store }: { store: Store }) {
         <Group>
           <FlagRow row="readable-line-length" />
           <FlagRow row="show-inline-title" />
-          <SettingRow stack label="Properties in document" sub="As text: their YAML at the top of the note while editing" data-settings-row="properties-in-document"
+          <SettingRow stack label="Properties in document" data-settings-row="properties-in-document"
             preview={propertiesPreview(e.propertiesInDocument)}>
             <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
               <ResetButton on={editorSet("propertiesInDocument")} onClick={() => setEditor({ propertiesInDocument: null })} label="Reset properties in document" />

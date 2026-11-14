@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RectangleEllipsis, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
@@ -210,18 +210,6 @@ function Background() {
   return <><Card /><Sounds /></>
 }
 
-function Preview() {
-  return (
-    <Panel title="Browser" icon={Globe} tint="var(--web-viewer)">
-      <p className="text-[15px] leading-[20px] text-muted-foreground">
-        A web browser in the desktop app's tabs, next to your notes: containers for several accounts, Shields against ads and
-        trackers, Chrome extensions, history and bookmarks, and agents that work beside you. Save to vault clips a page as you
-        see it into Clippings. Links in notes and terminals open here, {modKey}-click behind your tab; ⌥{modKey}-click opens them
-        in another browser. On the web and on phones links open in your browser as before.
-      </p>
-    </Panel>
-  )
-}
 
 export default definePlugin({
   containers: () => containers().map(({ id, name, color }) => ({ id, name, color })),
@@ -371,5 +359,4 @@ export default definePlugin({
   settingsSearch: [{ key: "sites", label: "Sites and logins", description: "the sites signed in to in each container's and workspace's logins: sign out, clear trackers" },
     { key: "passwords", label: "Passwords", description: "your KeePass file (KeePassXC's, Strongbox's), its passwords listed, edited and filled in pages" }],
   background: Background,
-  preview: () => <Preview />,
 })

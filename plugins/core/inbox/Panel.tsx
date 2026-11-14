@@ -20,7 +20,7 @@ const usePanelShown = () => { const s = useSidebars(); return s.left.includes(PA
 export function InboxButton({ store, open, phone }: SidebarCtx) {
   const n = useCount(store)
   const shown = usePanelShown()
-  if (shown && !phone) return null
+  if (!phone && (shown || !n)) return null
   const label = n ? `Inbox, ${n} new` : "Inbox"
   return (
     <button type="button" data-inbox-button data-count={n} onClick={openInbox} aria-label={label} data-tip={open && !phone ? label : undefined}
