@@ -34,6 +34,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The note switcher previews the highlighted result**: on a wide enough computer window, ⌘O shows the note under the
   arrow keys or the pointer beside the list, drawn as it reads (a dashboard as a dashboard, an image as itself); a note
   found by its text shows the passage found, lit.
+- **Conversations, tidied**: a turn's time and what the companion did sit on one line under it, cut to fit, never over
+  the job below; no cursor beside its answers; jobs are quiet rows, the tabs smaller, and each comment a card with who
+  wrote it, its quoted text and its reply.
 - **The slash menu shows what each option makes**: every option has its icon, and the one highlighted (by the arrow
   keys or the pointer) shows a preview beside it, drawn from a sample: a real heading, table, callout or block.
 - **Cards as see-through as pages**: with translucent pages, a pane shown as a card lets the desktop through as much as

@@ -132,6 +132,11 @@ check("phone: the drawer shows the talk", await until(async () => (await pp.getA
 await wait(500)
 const send = await pp.locator("[data-ask-line] [data-send]").boundingBox(), seg = await pp.locator('[data-option="talk"]').boundingBox()
 check("phone: its targets fit a finger", !!send && send.width >= 40 && !!seg && seg.height >= 40, { send, seg })
+const asides = await pp.evaluate((el) => [...el.querySelectorAll("[data-turn-meta], [data-turn-did]")].map((a) => {
+  const r = a.getBoundingClientRect(), turn = a.closest("[data-companion-turn]").getBoundingClientRect()
+  return { h: r.height, inside: r.bottom <= turn.bottom + 0.5, shown: getComputedStyle(a).opacity === "1" }
+}))
+check("phone: each turn's time shows on one line inside its turn, never over the next", asides.length > 0 && asides.every((a) => a.h <= 20 && a.inside && a.shown), asides)
 await pq.screenshot({ path: `${OUT}phone.png` })
 await ph.close()
 

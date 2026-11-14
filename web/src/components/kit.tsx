@@ -368,21 +368,23 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
     : <div ref={attach} {...pv?.props} {...rest} className={cls}>{body}</div>
 }
 
-/** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. An option's `count`: how many it
- *  has, after its label (none at 0). */
-export function Segmented<T extends string>({ value, options, onChange, label, big, className }: {
-  value: T; options: { value: T; label: string; icon?: LucideIcon; count?: number; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
+/** A choice of a few, side by side. `big`: a page's tabs, finger-tall on phones; `small`: a sidebar's, at its rows'
+ *  size. An option's `count`: how many it has, after its label (none at 0). */
+export function Segmented<T extends string>({ value, options, onChange, label, big, small, className }: {
+  value: T; options: { value: T; label: string; icon?: LucideIcon; count?: number; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; small?: boolean; className?: string
 }) {
   return (
-    <div role="radiogroup" aria-label={label} aria-describedby={useContext(Described)} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
+    <div role="radiogroup" aria-label={label} aria-describedby={useContext(Described)} className={cn("flex bg-muted p-[2px]", small ? "rounded-[8px]" : "rounded-[9px]", className)}>
       {options.map((o) => {
         const on = o.value === value
         return (
           <button key={o.value} type="button" role="radio" aria-checked={on} data-option={o.value} {...o.attrs} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
             className={cn(
-              "relative flex min-h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[7px] px-4 text-[13px] whitespace-nowrap transition-[background,box-shadow] duration-200",
+              "relative flex flex-1 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap transition-[background,box-shadow] duration-200",
+              small ? "h-6.5 rounded-[6px] px-2.5 text-[12.5px]" : "min-h-8 rounded-[7px] px-4 text-[13px]",
               big && "max-md:min-h-10 max-md:text-[15px]",
-              on ? "bg-card font-semibold shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)] dark:bg-[var(--segment-on)]" : "font-medium text-foreground/80",
+              on ? cn("bg-card font-semibold dark:bg-[var(--segment-on)]", small ? "shadow-[0_1px_3px_rgb(0_0_0/0.12)]" : "shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)]")
+                : cn("font-medium", small ? "text-muted-foreground hover:text-foreground" : "text-foreground/80"),
             )}>
             {o.icon && <o.icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />}{o.label}
             {!!o.count && <span className="-ml-0.5 font-medium tabular-nums opacity-60">{o.count}</span>}

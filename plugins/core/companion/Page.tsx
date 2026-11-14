@@ -3,7 +3,6 @@ import { AudioLines, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck,
 import { addDays, Button, cn, Empty, HeadingButton, fmtLongDay, fmtStamp, isDesktop, Loading, menuFor, type MenuItem, notifyError, op, openInSplit, openTab, Panel, today, useTick } from "@vaultite"
 import type { Exchange, PressLine, Spent } from "./conversation"
 import { getState, subscribe } from "./live"
-import { Arrow } from "./Cursor"
 
 export type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; why?: string; now?: string; ended?: number }
 export type Day = { day: string; exchanges: Exchange[]; spent: Spent[]; jobs: JobCard[] }
@@ -53,7 +52,7 @@ export function ConversationBlock() {
   const name = useSyncExternalStore(subscribe, () => getState().name)
   const shown = data?.day === day ? data : null
   const isToday = day === today()
-  const items = talkOf(shown, day).map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} name={name} /> : <Job key={`j${x.j.id}`} j={x.j} />))
+  const items = talkOf(shown, day).map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} /> : <Job key={`j${x.j.id}`} j={x.j} />))
   const nav = (
     <div className="flex items-center gap-0.5">
       <HeadingButton icon={ChevronLeft} label="Day before" onClick={() => setDay((d) => addDays(d, -1))} />
@@ -72,36 +71,33 @@ export function ConversationBlock() {
   )
 }
 
-export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange; name: string; tint?: string; compact?: boolean }) {
+export function Turn({ e, compact }: { e: Exchange; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const did = e.did.filter((d) => d !== "pointed")
   const waiting = !e.said.length && !did.length && e.total === undefined && Date.now() - e.t < 120_000
-  if (compact) return <CompactTurn e={e} name={name} tint={tint} did={did} waiting={waiting} />
+  if (compact) return <CompactTurn e={e} did={did} waiting={waiting} />
   const words = "text-[15px] leading-[20px]", meta = "text-[12px]"
   return (
     <div className="flex flex-col gap-1.5" data-companion-turn data-kind={e.kind}>
       <div className="flex flex-col items-end gap-0.5">
         <Trigger e={e} className={cn(words, "rounded-[14px] rounded-br-[4px] bg-foreground/[0.06] px-3 py-2")} />
-        <div className={cn("flex max-w-full min-w-0 items-center gap-1 text-muted-foreground", meta)} data-tip={fmtStamp(e.t)}>
-          <TriggerMeta e={e} />
+        <div className={cn("flex max-w-[85%] min-w-0 items-center gap-1 text-muted-foreground", meta)} data-tip={fmtStamp(e.t)}>
+          <TriggerMeta e={e} truncate />
         </div>
       </div>
-      <div className="flex max-w-[85%] gap-2">
-        <Arrow tint={tint} size={16} className="mt-[3px] shrink-0" aria-label={name} />
-        <div className="min-w-0 flex-1">
-          {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
-            : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "Silence"}</div>}
-          <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", meta)}>
-            {did.length > 0 && <span>{did.join(", ")}</span>}
-            {e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
-            {(e.press || e.shot) && (
-              <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-mx-1 flex cursor-pointer items-center gap-0.5 rounded-[5px] px-1 hover:bg-foreground/[0.05] hover:text-foreground">
-                Details<ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
-              </button>
-            )}
-          </div>
-          {open && <Details e={e} />}
+      <div className="max-w-[85%] min-w-0">
+        {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
+          : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "Silence"}</div>}
+        <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", meta)}>
+          {did.length > 0 && <span>{did.join(", ")}</span>}
+          {e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
+          {(e.press || e.shot) && (
+            <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-mx-1 flex cursor-pointer items-center gap-0.5 rounded-[5px] px-1 hover:bg-foreground/[0.05] hover:text-foreground">
+              Details<ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
+        {open && <Details e={e} />}
       </div>
     </div>
   )
@@ -146,26 +142,23 @@ function Reaction({ e, r, compact }: { e: Exchange; r: Reacted; compact?: boolea
   )
 }
 
-const ASIDE = "pointer-events-none absolute top-full mt-[3px] flex max-w-full min-w-0 items-center gap-1 text-[11.5px] leading-[15px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100"
+const ASIDE = "pointer-events-none flex h-[15px] max-w-full min-w-0 items-center gap-1 text-[11.5px] leading-[15px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100"
 
-function CompactTurn({ e, name, tint, did, waiting }: { e: Exchange; name: string; tint: string; did: string[]; waiting: boolean }) {
+function CompactTurn({ e, did, waiting }: { e: Exchange; did: string[]; waiting: boolean }) {
   const words = "text-[13px] leading-[19px]"
   const acts = did.length ? did.join(", ") : ""
   return (
-    <div className="group/turn flex flex-col gap-[22px]" data-companion-turn data-kind={e.kind}>
-      <div className="relative flex flex-col items-end">
-        <Trigger e={e} compact className={cn(words, "rounded-[16px] bg-foreground/[0.07] px-3 py-[7px]")} />
-        <div className={cn(ASIDE, "right-1")} data-tip={fmtStamp(e.t)} data-turn-meta>
+    <div className="group/turn flex flex-col gap-2" data-companion-turn data-kind={e.kind}>
+      <div className="flex min-w-0 flex-col items-end gap-1">
+        <Trigger e={e} compact className={cn(words, "rounded-[16px] rounded-br-[4px] bg-foreground/[0.07] px-3 py-[7px]")} />
+        <div className={cn(ASIDE, "max-w-[85%] pr-1.5")} data-tip={fmtStamp(e.t)} data-turn-meta>
           <TriggerMeta e={e} truncate />
         </div>
       </div>
-      <div className="relative flex max-w-[94%] gap-2">
-        <Arrow tint={tint} size={14} className="mt-[3px] shrink-0" aria-label={name} />
-        <div className="min-w-0 flex-1">
-          {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
-            : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{waiting ? "Thinking…" : acts ? acts.charAt(0).toUpperCase() + acts.slice(1) : "Silence"}</div>}
-        </div>
-        {e.said.length > 0 && acts && <div className={cn(ASIDE, "left-[22px]")} data-turn-did>{acts}</div>}
+      <div className="flex min-w-0 flex-col gap-1 px-0.5">
+        {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
+          : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{waiting ? "Thinking…" : acts ? acts.charAt(0).toUpperCase() + acts.slice(1) : "Silence"}</div>}
+        {e.said.length > 0 && acts && <div className={ASIDE} data-tip={acts} data-turn-did><span className="truncate">{acts.charAt(0).toUpperCase() + acts.slice(1)}</span></div>}
       </div>
     </div>
   )
@@ -233,13 +226,13 @@ export function Job({ j }: { j: JobCard }) {
 export function JobRow({ j }: { j: JobCard }) {
   const st = STATES[j.state] ?? STATES.working, Icon = st.icon
   const body = <>
-    <Icon className="size-3.5 shrink-0" style={{ color: st.tint }} strokeWidth={2.25} />
-    <span className="line-clamp-2 min-w-0 flex-1 leading-[17px] font-medium">{j.title || "A job"}</span>
-    <span className="shrink-0 text-[11.5px] text-muted-foreground">{st.word}</span>
+    <Icon className={cn("size-3.5 shrink-0", j.state === "working" && "animate-pulse")} style={{ color: st.tint }} strokeWidth={2.25} />
+    <span className="min-w-0 flex-1 truncate font-medium" data-tip={j.title || undefined}>{j.title || "A job"}</span>
+    <span className="shrink-0 text-[11.5px] font-medium" style={{ color: st.tint === "var(--muted-foreground)" ? undefined : st.tint }}>{st.word}</span>
   </>
-  const cls = "flex min-h-7 w-full items-center gap-1.5 rounded-[7px] border border-border/60 px-2 py-1 text-left text-[13px]"
+  const cls = "flex h-8 w-full min-w-0 items-center gap-2 rounded-control bg-foreground/[0.05] px-2.5 text-left text-[13px]"
   return j.link
-    ? <button type="button" className={cn(cls, "cursor-pointer hover:border-border hover:bg-foreground/[0.03]")} onClick={() => openJob(j)} onContextMenu={jobMenu(j)} data-companion-job={j.id} data-state={j.state}>{body}</button>
+    ? <button type="button" className={cn(cls, "cursor-pointer transition-colors hover:bg-foreground/[0.08]")} onClick={() => openJob(j)} onContextMenu={jobMenu(j)} data-companion-job={j.id} data-state={j.state}>{body}</button>
     : <div className={cls} data-companion-job={j.id} data-state={j.state}>{body}</div>
 }
 

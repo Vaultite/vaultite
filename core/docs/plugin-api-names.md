@@ -625,7 +625,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
 - `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it), clear of a fading edge.
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
-- `Segmented({ value, options, onChange, label, big, className })`: A choice of a few, side by side.
+- `Segmented({ value, options, onChange, label, big, small, className })`: A choice of a few, side by side.
 - `segments(body)`
 - `Selectable`: What a list's selected things can do together: its rows' right-click and the phone's bar.
 - `selectAllIn(view)`: Select an editor's whole text: in reading view, the page's selection over what it shows.
