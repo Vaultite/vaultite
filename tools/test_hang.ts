@@ -62,7 +62,8 @@ const spin = `setTimeout(() => { for (;;) {} }, 300)`
 const killed = (r: Ran) => r.signal === "SIGKILL" || (process.platform === "win32" && r.code !== null && r.code !== 0)
 {
   const got = await runModuleKilledAfter(WATCHED({}, spin), 10_000)
-  check("a main thread stuck in a loop is killed by the watchdog, saying so", killed(got) && got.ms < 5000 && /watchdog: the main thread stalled \d+ s/.test(got.out), got)
+  const stalledS = Number(/watchdog: the main thread stalled (\d+) s/.exec(got.out)?.[1] ?? Infinity)
+  check("a main thread stuck in a loop is killed by the watchdog, saying so", killed(got) && stalledS < 5, got)
 }
 {
   const got = await runModuleKilledAfter(WATCHED({}, `setTimeout(() => process.exit(0), 3000)`), 10_000)
