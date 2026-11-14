@@ -40,8 +40,8 @@ export async function askPermission(profile: string, wc: WebContents, perm: stri
   // app comes only here, never past otherApp)
   const scheme = perm === "openExternal" ? otherAppScheme(details.externalURL ?? "") : ""
   if (perm === "openExternal" && !scheme) return false
-  // (media with no camera or microphone is sharing the screen: its picker asks, browser/screenshare.ts)
-  if (perm === "media" && !details.mediaTypes?.length) return true
+  // (sharing the screen: its picker asks, browser/screenshare.ts)
+  if (perm === "display-capture") return true
   const kinds = perm === "media" ? [...new Set((details.mediaTypes ?? []).map((t) => (t === "video" ? "camera" : "microphone")))] : [scheme ? `openExternal:${scheme}` : perm]
   if (!kinds.length || kinds.some((k) => !ASKED[k.split(":")[0]])) return false
   const site = siteOf(hostOfUrl(details.requestingUrl || wc.getURL()))
