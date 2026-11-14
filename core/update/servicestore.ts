@@ -16,7 +16,7 @@ export type StoreServiceOptions = Omit<UpdaterOptions, "apply" | "root" | "bare"
   store: string
   /** The root this server runs (its ROOT): the commit it runs, and the web build it serves till it takes another. */
   root: string
-  /** Serve another root's web build from now on (server.ts' web.adopt). */
+  /** Serve another root's web build from now on (server.ts' web.adopt): its root is leased while served, so gc keeps it. */
   adoptWeb: (dist: string) => void
   /** Default npm and serverRecipe. */
   install?: (dir: string, o: { fresh: boolean }) => Promise<void>
@@ -33,7 +33,14 @@ export async function inStore({ checkout, store: dir, root, adoptWeb, install, r
   const running = await git(root, "rev-parse", "HEAD")
   // (what started on a root runs well: it's what a crash at start falls back to, bin/vaultite-server)
   if (store.prepared(running)) store.markGood(running)
-  let web = running
+  let web = running, unholdWeb = () => {}
+  const serveWeb = async (sha: string, dist: string) => {
+    const release = sha === running ? () => {} : await store.lease(sha, { pid: process.pid, what: "server's web" })
+    adoptWeb(dist)
+    unholdWeb()
+    unholdWeb = release
+    web = sha
+  }
   const apply = async (u: Update): Promise<Applied> => {
     let r
     try { r = await store.prepare(u.to) } catch (e) { return { failed: errText(e), cause: e } }
@@ -47,9 +54,12 @@ export async function inStore({ checkout, store: dir, root, adoptWeb, install, r
     // (the service runs on Node, not a shell: its fingerprint never asks for one)
     const plan = planUpdate({ to: u.to, changed, graph, shell: { running: r.fingerprint, root: r.fingerprint }, running: { server: { code: running, web } } })
     log(`store: ${u.to.slice(0, 7)} is current: server ${plan.server}${plan.why.server ? `; ${plan.why.server}` : ""}`)
+    if (plan.server === "adopt-web") {
+      try { await serveWeb(u.to, path.join(r.dir, "web", "dist")) } catch (e) { return { failed: `its web build couldn't be held: ${errText(e)}`, cause: e } }
+    }
     void store.gc().catch((e) => log(`store: gc failed: ${errText(e)}`))
     if (plan.server === "restart") return { restart: true, said: "restarting onto its root" }
-    if (plan.server === "adopt-web") { adoptWeb(path.join(r.dir, "web", "dist")); web = u.to; return { restart: false, said: "its pages take the new web app" } }
+    if (plan.server === "adopt-web") return { restart: false, said: "its pages take the new web app" }
     return { restart: false, said: "nothing the server runs changed" }
   }
   // (a root is made while agents browse: only its restart waits for them, the updater's quiet wait)

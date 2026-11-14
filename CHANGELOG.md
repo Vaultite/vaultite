@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Clipped X posts keep their lists**: a post's lines starting with "- ", "1. " or "> " come through as a list or
   quote, no longer as "\- Taking lessons".
+- **The app keeps loading after an update**: a server that took a web-only update no longer loses that web build
+  to the next update's cleanup, which left the phone and browsers on "File not found" until it restarted.
 - **Agents' pages keep off the keyboard**: a page out of sight (an agent's, a background tab) loading no longer takes
   the cursor from what you're typing in; agents' pages act as focused without it.
 - **Agents' snapshots no longer freeze the app**: an agent reading a long page (a snapshot, an act's changes) no longer stalls

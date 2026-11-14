@@ -50,6 +50,7 @@ const host = (root: string) => inStore({ checkout, store, root, branch: "main", 
   ci: async () => ({ ok: true, why: "CI passed" }), adoptWeb: (d) => adopted.push(d), log: (l) => logged.push(l), recipe, install: async (dir) => { fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true }) } })
 const current = () => JSON.parse(fs.readFileSync(path.join(store, "current.json"), "utf8")).commit
 const rootOf = (sha: string) => path.join(store, "roots", sha)
+const leased = (sha: string) => fs.existsSync(path.join(store, "leases", `${sha}.${process.pid}.json`))
 /** bin/vaultite-server as the service manager runs it: what its server said. */
 const trampoline = () => JSON.parse(execFileSync(process.execPath, [path.join(checkout, "bin", "vaultite-server")], { encoding: "utf8",
   env: { ...process.env, VAULTITE_CODE_STORE: store, VAULTITE_LOCAL: "" } }).trim().split("\n").at(-1)!)
@@ -68,17 +69,22 @@ await section("a commit the server runs: made into a root, then restarted onto",
 
 await section("a commit of the web app only: its web build taken, no restart", async () => {
   const before = restarts
+  const h = await host(rootOf(git(dev, "rev-parse", "HEAD")))
   const c3 = commit({ "web/src/a.ts": "2\n" }, "the web app changes")
-  const s = await checkForUpdate(await host(rootOf(git(dev, "rev-parse", "HEAD~1"))))
+  const s = await checkForUpdate(h)
   check("current, the new root's web/dist served, nothing restarted", s.state === "current" && current() === c3 && restarts === before && adopted.at(-1) === path.join(rootOf(c3), "web", "dist"), { s, adopted, logged })
+  check("the root it serves is leased, so gc keeps it once another is current", leased(c3), fs.readdirSync(path.join(store, "leases")))
+  const c4 = commit({ "web/src/a.ts": "3\n" }, "the web app changes again")
+  await checkForUpdate(h)
+  check("the next web build taken: its root leased, the one before let go", leased(c4) && !leased(c3), fs.readdirSync(path.join(store, "leases")))
 })
 
 await section("a root whose server keeps stopping as it starts: bad, the good one runs", async () => {
-  const c3 = current()
+  const c4 = current(), c2 = git(dev, "rev-parse", "HEAD~2")
   const said = [1, 2, 3].map(() => trampoline().server)
   const fourth = trampoline()
-  check("three tries of current, then it's bad and the good root runs", said.every((n) => n === 2) && fourth.server === 2 && fs.realpathSync(fourth.cwd) === fs.realpathSync(rootOf(git(dev, "rev-parse", "HEAD~1")))
-    && fs.existsSync(path.join(store, "bad", `${c3}.json`)), { said, fourth })
+  check("three tries of current, then it's bad and the good root runs", said.every((n) => n === 2) && fourth.server === 2 && fs.realpathSync(fourth.cwd) === fs.realpathSync(rootOf(c2))
+    && fs.existsSync(path.join(store, "bad", `${c4}.json`)), { said, fourth })
   fs.rmSync(path.join(store, "current.json")); fs.rmSync(path.join(store, "good.json"))
   check("no root to run: the checkout's own server", trampoline().server === 1)
 })
