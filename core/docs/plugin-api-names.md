@@ -107,7 +107,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `CanvasPeer`: Someone else on a canvas: their pointer (in its units), name and colour (a CSS colour), what they have selected.
 - `canvasShown(c)`
 - `capitalize(s)`
+- `Captioned({ picture, title, icon, about, width, height })`
 - `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
+- `CardPlace`
 - `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
 - `Cell`
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
@@ -131,6 +133,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `cleanTabLayout(w)`: A saved workspace, checked; one saved before tabs held panes (`{root, focus, zoom}`) is migrated.
 - `clearSelection()`
 - `clickOpening()`: How the click under way asks to open (core/links.ts sets it): ⌘ or a middle click, a new tab behind (`front`: ⌘⇧); `item`: on an in-app item (a row, a link), whatever its handler opens goes there.
+- `closeHoverCard()`
 - `closePane(id?, force?)`: Close a pane's place (the focused one): its pane's next tab shows (Pane.stack), else the pane closes, its tab keeping the others; its last pane closes the tab.
 - `closeTab(id, force?)`: Close a tab, every pane in it (`force`: without its views asking first, e.g.
 - `closeView(to)`: Close every pane showing a view (`terminal/abc`), as if the user did (its plugin hears it).
@@ -313,6 +316,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
+- `HoverCard({ shown, anchor, place, again, className, children, … })`
+- `HoverShown`
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams.
 - `IconAction({ action, className, children })`: An icon in a row that does something of its own when clicked (a tab's mark: mute it), without the row's click, drag or menu.
 - `iconAt(path)`: A vault file's icon as the tree draws it, by its path (a note, an image, a recording...).
@@ -484,7 +489,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PageHeader({ title, subtitle, section, tabs, children, className })`: A page's large title, on desktop right under its tab's bar (ViewBar), like a file's.
 - `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
 - `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as read with `editGrid`.
-- `PaletteFrame({ label, onClose, onKeyDown, children })`: The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held still under it; Escape or a click outside closes it, and the keyboard goes back.
+- `PaletteFrame({ label, onClose, onKeyDown, aside, children })`: The palette's overlay without its list (the Ask box's), the page held still under it: Escape or a click outside closes it, the keyboard goes back.
 - `Pane`: One view with its own history: what a tab shows, or one part of a split tab.
 - `paneById(id)`
 - `PaneControls()`: A pane's buttons at its view's top bar's end (ViewBar, the Browser's) while that bar is its title row (no tab bar nor titles: its strip folds away) and the tab on screen is split.
@@ -520,6 +525,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PhoneSync`
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji; `onClose` runs as it closes, picked or not.
+- `Picture({ width, height, className, children })`
 - `PIN_SEARCH`: A search pinned: "search:<query>".
 - `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>" or "view:<name>/<arg>" (view:web/<address>: a web page).
 - `pinInWorkspace(path, on, before, base)`: Pin a page in the current workspace (at the end, or before `before`) or unpin it there; one without a list of its own starts from `base` (the vault's).
@@ -527,6 +533,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pinnedFoldersOpen`: Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened.
 - `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`, else its arg): the pin's key ("view:web/https://example.com", "view:inbox", "view:terminal/resume-claude-<session>") and its name now, or null when it…
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
+- `placeBelow(anchor, w)`
+- `placeBesideColumn(columnOf)`
+- `PlaceCard`
 - `placeMenuOf(id)`: Right-click on one of a split's pane's own tabs (the Tabs panel's list under the split, a pane's strip): closing it or the pane's others, taking it out of the pane (a tab of its own, or a pane…
 - `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end; itself: where it is) or unpinned…
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
@@ -794,6 +803,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key, shrinks?, anyWidth?)`: holdHeight for a React element: put the ref on it.
 - `useHold(box)`: Whether the user is in the list, so nothing moves under them: the pointer over it, the keyboard in it, a menu opened from a row, a finger on it or its sidebar scrolling (a phone has no hover).
+- `useHoverCard(anchor, { off, part, pressable }?)`
 - `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
 - `useListsIn(ref, id)`: A split's lists, drawn: they grow out of its row when a click just listed them.
 - `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…

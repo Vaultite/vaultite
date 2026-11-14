@@ -278,6 +278,9 @@ export type ViewDef = {
   /** A small icon at its tab's end, a button of its own (a page playing sound: its speaker, a click mutes it), its
    *  `label` the tooltip; beside the tab's icon, not in its place, so the tab stays recognisable. null: none. */
   tabMark?: (arg: string, tab: string) => TabMark | null
+  /** Its tab's picture where tabs are drawn small (the tab switcher, a tab's hover card): a terminal's last lines, filling
+   *  its box (`absolute inset-0`), current while drawn, a few requests at most however many are. Unset or null: its icon. */
+  tabPicture?: (arg: string, tab: string) => ReactNode
   /** The tab's label. It may read live data the plugin keeps (a terminal's session name): call `viewsChanged()` (the
    *  plugin API) when that changes, and every tab is drawn again. */
   title: (arg: string) => string

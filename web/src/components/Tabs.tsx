@@ -33,6 +33,8 @@ import { useCommandKeys } from "@/core/commands"
 import { fileIcon } from "@/components/FileTree"
 import { copyText, copyToVaultItem, fileMenu, revealItem } from "@/components/FileActions"
 import { Badged, IconAction, type Dot } from "@/components/kit"
+import { TabCard } from "@/components/TabCard"
+import { useHoverCard } from "@/core/hovercard"
 import type { TabMark } from "@/core/define"
 import { cn } from "@/lib/utils"
 import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
@@ -585,6 +587,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   const away = dragging && !hole && (item?.tab === tab.id || picked)
   const tip = split ? ps.map((p) => info(p).label).join(" | ") : own.label
   const buttons = split || dragging ? [] : tabButtons(ps[0].to)
+  const hover = useHoverCard(el, { off: active || !!item })
   const click = (e: React.MouseEvent<HTMLElement>) => {
     if (e.altKey && !active && canTabIntoPane(tab.id, activePane().id, "center")) { e.preventDefault(); return replaceWithTab(tab.id) }
     if (selectClick(e, TABS, tab.id, active ? null : here().active)) return
@@ -593,7 +596,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   }
   return (
     <div ref={el} data-tab-id={tab.id} data-ui={`tab:${tab.id}`} data-spring-tab={tab.id} data-in-group={tab.group} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} data-split={split || undefined}
-      {...selectedAttr(picked)} role="presentation" onContextMenu={(e) => {
+      {...selectedAttr(picked)} {...hover.props} role="presentation" onContextMenu={(e) => {
         const half = closestOf<HTMLElement>(e.target, "[data-pane-half]")?.dataset.paneHalf
         menuFor(half && !picked ? () => cellMenu(half, menu) : rowMenu(TABS, tab.id, menu))(e)
       }}
@@ -642,6 +645,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
       )}
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
       {own.color && !split && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: own.color }} />}
+      {hover.shown && <TabCard shown={hover.shown} chip={el} tab={tab} info={info} />}
     </div>
   )
 }

@@ -217,6 +217,11 @@ export function readFile(path: string) {
   return early?.p ?? get<FileText>(`file?path=${enc(path)}`)
 }
 
+export function readAhead(path: string) {
+  prefetchFile(path)
+  return ahead.get(path)?.p ?? get<FileText>(`file?path=${enc(path)}`)
+}
+
 const ahead = new Map<string, { p: Promise<FileText>; at: number }>()
 const AHEAD_MS = 30_000
 onVaultChange((paths) => { for (const p of [...ahead.keys()]) if (touches(paths, p)) ahead.delete(p) })

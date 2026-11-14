@@ -7,6 +7,7 @@ import { useHeldFocus } from "@/core/focus"
 import { useNearEnd } from "@/core/near"
 import { dismissKeyboardOnDrag, usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
+import { usePalettePreview } from "@/components/PalettePreview"
 
 export type Pick = { mod: boolean; shift: boolean }
 export type RowAction = { label: string; icon: LucideIcon; on: boolean; run: () => void }
@@ -109,7 +110,7 @@ const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
 const COARSE = matchMedia("(pointer: coarse)").matches
 const actOf = <T,>(action: ((item: T) => RowAction | null) | undefined, item: T) => (action ? action(item) : null)
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, action, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look, complete, onKey: ownKey }: {
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, action, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, preview, look, complete, onKey: ownKey }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string, how?: { deleting: boolean }) => void
   complete?: string | null
@@ -120,6 +121,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   action?: (item: T) => RowAction | null
   onPick: (item: T | null, how: Pick) => void
   onSelect?: (item: T | null) => void
+  preview?: (item: T) => ReactNode | null
   onClose: () => void
   hints: [string, string][]
   heading?: string
@@ -152,6 +154,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const selected = items[sel] ?? null
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the selected row changes, by id
   useEffect(() => onSelect?.(selected), [selected?.id])
+  const aside = usePalettePreview(preview, selected, query)
   const [limit, setLimit] = useState(ROWS)
   const [limitFor, setLimitFor] = useState(query)
   if (limitFor !== query) { setLimitFor(query); setLimit(ROWS) }
@@ -186,7 +189,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   })
 
   return (
-    <PaletteFrame label={label} onClose={onClose} onKeyDown={onDialogKey}>
+    <PaletteFrame label={label} onClose={onClose} onKeyDown={onDialogKey} aside={aside}>
       <div className="flex items-center gap-2 border-b-[0.5px] border-border pr-3 pl-5">
         <input ref={input} value={query + suffix} onKeyDown={onKey} placeholder={placeholder}
           onChange={(e) => setQuery(e.target.value, { deleting: e.nativeEvent instanceof InputEvent && e.nativeEvent.inputType.startsWith("delete") })}
@@ -223,9 +226,9 @@ let frameClosed = -Infinity
 let current: { close: () => void } | null = null
 export const closePalette = () => current?.close()
 
-/** The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held
- *  still under it; Escape or a click outside closes it, and the keyboard goes back. Its children focus their field. */
-export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: string; onClose: () => void; onKeyDown?: (e: KeyboardEvent) => void; children: ReactNode }) {
+/** The palette's overlay without its list (the Ask box's), the page held still under it: Escape or a click outside
+ *  closes it, the keyboard goes back. Its children focus their field; `aside` is drawn beside it, going with it. */
+export function PaletteFrame({ label, onClose, onKeyDown, aside, children }: { label: string; onClose: () => void; onKeyDown?: (e: KeyboardEvent) => void; aside?: ReactNode; children: ReactNode }) {
   useHeldFocus()
   const [swapped] = useState(() => !!current || performance.now() - frameClosed < 50)
   const closes = useRef(onClose)
@@ -245,10 +248,6 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
       fadeAway([el], { tag: "palette", scale: 0.98, scaled: "[role=dialog]" })
     }
   }, [self])
-  // A modal <dialog> makes the rest of the page inert, so over one the palette opens a modal dialog of its own.
-  const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
-  const layer = useRef<HTMLDialogElement>(null)
-  useLayoutEffect(() => { if (over) layer.current?.showModal() }, [over])
   usePageLock()
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") { e.preventDefault(); onClose() }
@@ -259,18 +258,28 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}
         className={cn("absolute inset-0 cursor-default bg-black/30", !swapped && "animate-in fade-in duration-150")} />
-      <div role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKey}
-        style={{ maxHeight: "min(70dvh, 600px, calc(var(--vvh, 100dvh) - 1.5rem - env(safe-area-inset-top)))" }}
-        className={cn("relative flex w-full max-w-[680px] flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl", !swapped && "animate-in fade-in zoom-in-95 duration-150")}>
-        {children}
+      <div className="relative w-full max-w-[680px]">
+        <div role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKey}
+          style={{ maxHeight: "min(70dvh, 600px, calc(var(--vvh, 100dvh) - 1.5rem - env(safe-area-inset-top)))" }}
+          className={cn("relative flex w-full flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl", !swapped && "animate-in fade-in zoom-in-95 duration-150")}>
+          {children}
+        </div>
+        {aside}
       </div>
     </div>
   )
-  if (!over) return overlay
+  return <ModalWhenOverModal onClose={onClose}>{overlay}</ModalWhenOverModal>
+}
+
+function ModalWhenOverModal({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const [pageInert] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
+  const layer = useRef<HTMLDialogElement>(null)
+  useLayoutEffect(() => { if (pageInert) layer.current?.showModal() }, [pageInert])
+  if (!pageInert) return children
   return (
     <dialog ref={layer} data-palette-layer onCancel={(e) => { e.preventDefault(); onClose() }}
       className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-visible border-0 bg-transparent p-0 outline-none backdrop:bg-transparent">
-      {overlay}
+      {children}
     </dialog>
   )
 }

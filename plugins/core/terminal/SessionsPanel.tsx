@@ -3,12 +3,13 @@ import { Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-r
 import {
   capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, EarlierRow, foldsAway, HeadingButton, isViewOpen, LoadingSidebarRows, menuBelow, menuFor, notify,
   notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useEarlier, useGlide, useHold, useKeptCount,
-  useSteady, useTerminalAccount, useTick, useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type MenuItem, type SidebarCtx,
+  useHoverCard, useSteady, useTerminalAccount, useTick, useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import {
   agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, runOf, stateClass, stateTip, subscribeSessions, tintOf, type Session,
 } from "./sessions"
 import { useFoldAfter } from "./fold"
+import { ScreenCard } from "./Screen"
 
 export const useSessions = () => useSyncExternalStore(subscribeSessions, getSessions)
 const listed = (list: Session[] | null) => list?.filter((s) => !s.external || s.clients > 0) ?? null
@@ -23,8 +24,10 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   const tip = [labelOf(s, a) + (a ? stateTip(s) : ""),
     [account && `${account} account`, s.machineLabel && `on ${s.machineLabel}`, where && `in ${where}`, !s.clients && "detached"].filter(Boolean).join(", "),
     a && s.meter && capitalize(meterText(s))].filter(Boolean).join("\n")
+  const box = useRef<HTMLDivElement>(null)
+  const card = useHoverCard(box)
   return (
-    <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(dragged === to && "opacity-50")}>
+    <div ref={box} {...card.props} onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(dragged === to && "opacity-50")}>
     <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={dotOf(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
       active={tab === to} tip={tip} more data-session={s.id} data-glide={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}
       className={needs ? "font-semibold" : undefined}
@@ -37,6 +40,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{where}</span>}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
     </SidebarRow>
+    {card.shown && <ScreenCard shown={card.shown} row={box} id={s.id} title={labelOf(s, a)} about={[where && `In ${where}`, about(s, a, false, account)].filter(Boolean).join(" · ")} />}
     </div>
   )
 }

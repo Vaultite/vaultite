@@ -225,6 +225,13 @@ export { useQuerySuggest, useSuggest } from "@/components/Suggest"
 export { useNoPhoneTitle } from "@/components/FileTitle"
 export { switchPreview, type Preview, type PreviewOption } from "@/components/SettingPreview"
 export { Frame } from "@/components/ChoicePictures"
+/** Hover cards, one at a time app-wide (a setting's preview, a tab's): `useHoverCard(anchor)` gives the props to spread on
+ *  what's hovered and, while `shown`, its card is drawn, placed by `placeBesideColumn` (a sidebar's rows) or `placeBelow`. */
+export { closeHoverCard, placeBelow, placeBesideColumn, useHoverCard, type CardPlace, type HoverShown, type PlaceCard } from "@/core/hovercard"
+/** The card `useHoverCard` shows, and its usual face: a picture above its title and a line saying more. */
+export { Captioned, HoverCard } from "@/components/HoverCard"
+/** A picture in a hover card: its size, rounded, a hairline round it. */
+export { Picture } from "@/components/PreviewCard"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
 export { useSheetGuard } from "@/components/DetailSheet"
 // Something under way (a recording) that a reload into a new build or the app's restart waits for; what's due in a

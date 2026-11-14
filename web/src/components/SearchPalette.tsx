@@ -14,6 +14,7 @@ import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
 import { useStateFor } from "@/core/statefor"
 import { marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
+import { FilePreview } from "@/components/FilePreview"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 
 type Found = { path: string; title: string; context: string; mtime: number; archived?: boolean }
@@ -43,6 +44,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const [at] = useState(() => (launcher ? launcherAt() : undefined))
   useEffect(() => (launcher ? launcherClosed : undefined), [launcher])
   const { node, error } = useMemo(() => readQuery(q), [q])
+  const near = useMemo(() => (node ? highlighter(node) : null), [node])
   const plain = !node || isPlain(node)
   const opened = useRecentFiles()
   const { fileIcons, disabled } = usePrefs()
@@ -118,6 +120,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   return (
     <Palette label="Search" placeholder={lead ?? "Find or create a note…"} query={q} select={select} items={hits} onClose={onClose} look={fileIcons}
       onEnd={more ? () => setLimit((n) => n + PAGE) : undefined}
+      preview={(h) => (h.file ? <FilePreview store={store} path={h.file} near={h.marks.length ? null : near} /> : null)}
       onPick={(h, { mod, shift }) => ((shift && !(h && typedOwned(q, disabled))) || !h ? create(mod) : go(h, mod))}
       setQuery={(v, how) => { setQ(v); setAuto(!how?.deleting) }} complete={complete}
       onKey={(e) => {

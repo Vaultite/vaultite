@@ -734,7 +734,7 @@ dialog { --vau-panel-bottom: 0px; }
 body[data-resizing] [data-status-bar] { transition: none; }
 .vau-editor .cm-editor .cm-panels-bottom { padding-bottom: var(--vau-panel-bottom, 0px); }
 /* What a find lights where it can't mark the text (a drawn table, a page: core/findText.ts), as its matches in text. */
-::highlight(vau-find) { background-color: color-mix(in srgb, var(--yellow) 32%, transparent); }
+::highlight(vau-find), ::highlight(vau-preview) { background-color: color-mix(in srgb, var(--yellow) 32%, transparent); }
 ::highlight(vau-find-current) { background-color: color-mix(in srgb, var(--orange) 50%, transparent); }
 /* Desktop: 16px text, line height 1.5; phones a point bigger (iOS body size). Headings are sized
    relative to it (em), so they follow. */
@@ -1518,9 +1518,10 @@ html[data-demo-desk] {
 html[data-translucent][data-demo-desk=own] { background: var(--demo-desk); }
 html.dark[data-translucent][data-demo-desk=own] { background: linear-gradient(rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.45)), var(--demo-desk); }
 
-/* A setting's preview card (components/SettingPreview.tsx): fades and grows in from its row; warm, it's there at once. */
+/* A hover card (components/HoverCard.tsx: a setting's preview, a tab's; the palette's): fades and grows in from what it's for; warm,
+   it's there at once. */
 @keyframes preview-in { from { opacity: 0; scale: 0.96; } }
-[data-setting-preview][data-cold] .preview-card { animation: preview-in var(--motion) var(--ease-out); }
+[data-hover-card][data-cold] .preview-card, [data-palette-preview][data-cold] .preview-card { animation: preview-in var(--motion) var(--ease-out); }
 
 /* Dictation (core/dictation.ts, core/pill.ts): a pill of bars that move with the voice, by where the words go; a
    field's pending words beside them, as a field can't draw them. Over the palette (the Ask box), under menus. */

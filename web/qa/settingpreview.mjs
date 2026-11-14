@@ -13,7 +13,7 @@ const setLook = (patch) => api("PUT", "config/appearance", { ...saved, theme: "l
 
 const uis = new WeakMap(), idle = (page) => uis.get(page).idle()
 const nextFrame = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
-const previewDue = (page) => page.evaluate(() => vaultiteBusy().includes("setting preview"))
+const previewDue = (page) => page.evaluate(() => vaultiteBusy().includes("hover card"))
 const setLookSeen = (page, patch) => uis.get(page).sees(".vaultite/appearance.json", () => setLook(patch))
 
 async function open({ w = 1440, h = 900, dark = false, phone = false, reduced = false, hash = "settings" } = {}) {

@@ -20,6 +20,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A server no longer hangs on a slow machine**: a request to another machine that timed out could leave the server
   stuck in a loop, answering nothing while its memory grew (its fetch now speaks HTTP/1.1, not Node 26's HTTP/2). A
   service's server that stops answering for 30 seconds anyway is killed and restarted, not left hanging.
+- **Tabs and terminals show what's in them on hover**: resting the pointer on a tab in the tab bar shows a card with a
+  picture of it and where it is, and a terminal's tab or its row in the Terminals panel shows its last lines, in colour;
+  the tab switcher's terminal cards show them too.
+- **The note switcher previews the highlighted result**: on a wide enough computer window, ⌘O shows the note under the
+  arrow keys or the pointer beside the list, drawn as it reads (a dashboard as a dashboard, an image as itself); a note
+  found by its text shows the passage found, lit.
 - **The slash menu shows what each option makes**: every option has its icon, and the one highlighted (by the arrow
   keys or the pointer) shows a preview beside it, drawn from a sample: a real heading, table, callout or block.
 - **Cards as see-through as pages**: with translucent pages, a pane shown as a card lets the desktop through as much as

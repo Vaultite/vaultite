@@ -5,6 +5,7 @@ import { agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace,
 import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
+import { TerminalPicture } from "./Screen"
 import { useTerminalRuns } from "./runs"
 import { AskBox, openAsk } from "./AskBox"
 import { vtModule } from "./vt/wasm"
@@ -106,6 +107,7 @@ export default definePlugin({
       iconClass: (arg) => { const s = sessionById(arg); return s ? stateClass(s) : undefined },
       iconTint: (arg) => { const s = sessionById(arg); return s ? tintOf(s) : agentOfTerminal(arg)?.tint },
       iconBadge: (arg) => { const s = sessionById(arg); return !!s && dotOf(s) },
+      tabPicture: (arg) => (sessionById(arg || "main") ? <TerminalPicture id={arg || "main"} /> : null),
       opensBeside: (arg) => { const n = sessionById(arg)?.note; return n ? `file:${n}` : null },
       full: true,
       keepsTab: true,

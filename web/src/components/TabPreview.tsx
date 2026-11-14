@@ -5,6 +5,8 @@ import { kindOf } from "@/core/filekinds"
 import { fileOf, splitFm, stem, type FileText } from "@/core/files"
 import { vaultPath, type Pane } from "../../../core/layout.ts"
 import { tabMeta } from "@/core/phoneTabs"
+import { viewFor } from "@/core/plugins"
+import { usePrefs } from "@/core/prefs"
 import { useTabShot } from "@/core/tabShots"
 import { fileAt, pageView } from "@/core/pages"
 import { Markdown } from "@/components/Markdown"
@@ -156,6 +158,7 @@ function NewTabPreview({ store }: { store: Store }) {
 export function TabPreview({ store, pane: p, info }: { store: Store; pane: Pane; info: TabInfo }) {
   const to = p.to
   const shot = useTabShot(p.id, to)
+  const { disabled } = usePrefs()
   if (shot) return <img data-tab-picture src={shot} alt="" decoding="async" draggable={false} className="absolute inset-0 size-full object-cover object-top" />
   if (to === "new") return <NewTabPreview store={store} />
   const path = vaultPath(to)
@@ -167,5 +170,8 @@ export function TabPreview({ store, pane: p, info }: { store: Store; pane: Pane;
       return <img src={rawUrl(path, { v })} alt="" loading="lazy" decoding="async" draggable={false} className="absolute inset-0 size-full object-cover" />
     }
   }
-  return <IconPreview info={info} meta={to.startsWith("view:") ? info.label : tabMeta(to)} />
+  const view = to.startsWith("view:") ? viewFor(to, disabled) : null
+  const picture = view?.on ? view.def.tabPicture?.(view.arg, p.id) : null
+  if (picture) return picture
+  return <IconPreview info={info} meta={view ? info.label : tabMeta(to)} />
 }

@@ -37,7 +37,7 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
     }
     const busy = () => "resizing" in document.body.dataset || "dragging" in document.documentElement.dataset
     const show = (el: Element) => {
-      if (cur !== el || !el.isConnected || busy()) return
+      if (cur !== el || !el.isConnected || busy() || el.closest("[data-hover-open]")) return
       const whenCut = el.getAttribute("data-tip-cut")
       const text = whenCut && cut(el) ? whenCut : el.getAttribute("data-tip")
       if (!text) return

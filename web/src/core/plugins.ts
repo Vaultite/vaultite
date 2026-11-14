@@ -768,11 +768,11 @@ const safeViews = new WeakMap<ViewDef, ViewDef>()
 function safeView(name: string, def: ViewDef): ViewDef {
   let safe = safeViews.get(def)
   if (safe) return safe
-  const guard = <T,>(f: ((arg: string, tab?: string) => T) | undefined, or: T) => f && ((arg: string, tab?: string) => {
-    try { return f(arg, tab) } catch (e) { console.error(`view ${name}`, e); return or }
+  const guard = <A extends unknown[], T>(f: ((...a: A) => T) | undefined, or: T) => f && ((...a: A) => {
+    try { return f(...a) } catch (e) { console.error(`view ${name}`, e); return or }
   })
   safe = { ...def, title: guard(def.title, name)!, iconFor: guard(def.iconFor, def.icon), iconClass: guard(def.iconClass, undefined),
-    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), tabColor: guard(def.tabColor, undefined), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null), opensBeside: guard(def.opensBeside, null), onScreen: guard(def.onScreen, false), rename: guard(def.rename, null) }
+    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), tabColor: guard(def.tabColor, undefined), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null), opensBeside: guard(def.opensBeside, null), onScreen: guard(def.onScreen, false), rename: guard(def.rename, null), tabPicture: guard(def.tabPicture, null) }
   safeViews.set(def, safe)
   return safe
 }
