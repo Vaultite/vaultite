@@ -71,10 +71,12 @@ plugin.op({
   text: (r) => [timingsText(r.day, r.rows), jobTimingsText(r.jobs)].filter(Boolean).join("\n\n"),
 })
 
+const DID_WORD = new Map([["reply", "replied"], ["edit", "edited"], ["accept", "accepted"], ["reject", "turned down"], ["dismiss", "dismissed"]])
+const didWord = (e: Exchange) => (e.kind === "shown" ? "proof played" : DID_WORD.get(e.kind) ?? (e.voice ? "said" : "asked"))
 plugin.op({
   id: "companion.conversation",
   cli: "companion conversation",
-  summary: "The user's talk with the companion on a day: each ask (a Talk key's press, an @name), its answer and what it did, its timings and press; and what its services used.",
+  summary: "The user's talk with the companion on a day: each ask (a Talk key's press, an @name) or reply, and each edit or verdict on its note it answered on its own, its answer and what it did, its timings and press; and what its services used.",
   help: `What the Companion page and the Conversations panel's Talk show. Each exchange's press has its steps (mic,
 recognizer, the key's up and down, its end), as the menu-bar helper logged them on this machine.
 
@@ -85,9 +87,9 @@ recognizer, the key's up and down, its end), as the menu-bar helper logged them 
   run: async (p) => {
     const day = str(p.day) || localDate(Date.now())
     const presses = Presses.parse(await plugin.desktop("talk:presses", { day }).catch(() => []))
-    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses, ownName()), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
+    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses, ownName(), { reactions: true }), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
   },
-  text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.kind === "shown" ? "proof played" : e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
+  text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "exchange" : "exchanges"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${didWord(e)}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
     ...(r.spent.length ? [`Used: ${r.spent.map((x: Spent) => `${x.service} ${x.uses}${x.seconds ? `, ${Math.round(x.seconds)} s` : ""}${x.cost ? `, $${x.cost.toFixed(3)}` : ""}`).join("; ")}`] : [])].join("\n"),
 })
 /** What the user said to it aloud in the last `days` days (a Talk key's asks), newest first, with its answer: the

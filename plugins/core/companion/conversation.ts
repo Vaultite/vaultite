@@ -10,12 +10,15 @@ export type Exchange = {
   word?: number; total?: number
   press?: { id: string; steps: PressLine[]; cost?: number }
   shot?: string
+  edit?: { added: number; removed: number }
 }
 
 const DOES: Record<string, string> = { look: "pointed", draw: "drew", highlight: "highlighted", act: "acted", open: "opened", handoff: "handed off",
   edit: "wrote", comment: "commented", suggest: "suggested", propose: "proposed", follow: "followed", see: "looked at a pane", clear: "cleared" }
 const NOT_SHOWN = new Set(["next", "handed", "sent", "done", "again", "word", "say", "pass", "stopped", "result", "withdrawn", "talked"])
 const ASKS = new Set(["ask", "point", "reply"])
+const REACTS = new Set(["edit", "accept", "reject", "dismiss"])
+const ANSWERING_MS = 120_000
 const WHERE = new Set(["look", "draw"])
 const Shown = z.object({ title: z.unknown().optional(), job: z.unknown().optional() })
 const Talked = z.object({ heard: z.unknown().optional(), said: z.unknown().optional() })
@@ -24,20 +27,47 @@ const proofOf = (a: Act): Heard | null => { const x = parseJson(a.text ?? "", Sh
 
 const costOf = (steps: PressLine[]) => { const c = steps.reduce((s, x) => s + (typeof x.cost === "number" ? x.cost : 0), 0); return c > 0 ? c : undefined }
 
-export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], name: string): Exchange[] {
+function editOf(ms: Moment[]) {
+  const hunks = ms.flatMap((m) => m.hunks ?? []), added = hunks.flatMap((h) => h.added), removed = hunks.flatMap((h) => h.removed)
+  const changes = ms.flatMap((m) => m.changes ?? []), lines = (added.length ? added : removed.length ? removed : changes).map((l) => l.trim()).filter(Boolean)
+  return { text: lines.join("\n").slice(0, 600), edit: { added: added.length, removed: removed.length } }
+}
+
+type Reacted = Moment & { edit?: Exchange["edit"] }
+function reactions(ms: Moment[], asks: { t: number }[], acts: Act[], o: { reactions?: boolean } | undefined): Reacted[] {
+  if (!o?.reactions) return []
+  const answered = (from: number, to: number) => acts.some((a) => a.t >= from && a.t < to && (a.op === "done" || a.op === "next"))
+  const out: { m: Moment; burst: Moment[] }[] = []
+  for (const m of ms.filter((x) => REACTS.has(x.kind) && !x.scene).sort((a, b) => a.t - b.t)) {
+    const ask = asks.findLast((a) => a.t <= m.t), last = out.at(-1)
+    if (ask && m.t - ask.t < ANSWERING_MS && !answered(ask.t, m.t) && (!last || last.m.t < ask.t)) continue
+    if (last && m.kind === "edit" && last.m.kind === "edit" && last.m.path === m.path && m.t - last.m.t < ANSWERING_MS && !answered(last.m.t, m.t) && !asks.some((a) => a.t > last.m.t && a.t <= m.t)) { last.burst.push(m); continue }
+    out.push({ m, burst: [m] })
+  }
+  return out.map(({ m, burst }) => (m.kind === "edit" ? { ...m, ...editOf(burst) } : m))
+}
+
+const answeredOnly = (xs: Exchange[], asks: (Moment | Heard | Reacted)[]) => xs.flatMap((e, i) => {
+  const m = asks[i]
+  if (REACTS.has(e.kind) && !e.said.length && !e.did.some((d) => d !== "pointed")) return []
+  return "edit" in m && m.edit ? [{ ...e, edit: m.edit }] : [e]
+})
+
+export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], name: string, o?: { reactions?: boolean }): Exchange[] {
   const mine = (as: string) => as === name || as.startsWith(`${name} (`)
   const acts = allActs.filter((a) => mine(a.as))
   const talked = acts.filter((a) => a.op === "talked" && a.text).flatMap((a) => { const x = parseJson(a.text, Talked); return x ? [{ t: a.t, heard: String(x.heard ?? ""), said: String(x.said ?? "") }] : [] })
-  const asks: (Moment | Heard)[] = [
+  const asked: (Moment | Heard)[] = [
     ...ms.filter((m) => ASKS.has(m.kind) && !m.again && (!m.for || m.for === name)),
     ...talked.map((x) => ({ t: x.t, seq: -1, kind: "ask", text: x.heard, summoned: true as const, voice: true as const, talked: x.said })),
     ...acts.filter((a) => a.op === "shown").flatMap((a) => proofOf(a) ?? []),
   ].sort((a, b) => a.t - b.t)
+  const asks: (Moment | Heard | Reacted)[] = [...asked, ...reactions(ms, asked, acts, o)].sort((a, b) => a.t - b.t)
   const byPress = new Map<string, PressLine[]>()
   for (const l of presses) byPress.set(l.press, [...(byPress.get(l.press) ?? []), l])
   const sent = [...byPress.values()].flatMap((steps) => { const end = steps.find((s) => s.ev === "end" && s.outcome === "sent"); return end ? [{ end, steps }] : [] })
   const used = new Set<string>()
-  return asks.map((m, i) => {
+  return answeredOnly(asks.map((m, i) => {
     const until = asks[i + 1]?.t ?? Infinity, all = acts.filter((a) => a.t >= m.t && a.t < until)
     const cut = all.findLastIndex((a) => a.op === "withdrawn"), mine = cut >= 0 ? all.slice(cut + 1) : all
     const handed = all.find((a) => a.op === "handed" || a.op === "sent"), word = mine.find((a) => a.op === "word" || a.op === "say"), done = all.filter((a) => a.op === "done" || a.op === "next").at(-1)
@@ -54,7 +84,7 @@ export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], na
       ...(p ? { press: { id: p.end.press, steps: p.steps, ...(costOf(p.steps) ? { cost: costOf(p.steps) } : {}) } } : {}),
       ...(m.shot ? { shot: m.shot } : {}),
     }
-  })
+  }), asks)
 }
 
 const ago = (now: number, t: number) => { const m = Math.round((now - t) / 60_000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago` }

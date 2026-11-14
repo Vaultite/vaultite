@@ -14,7 +14,9 @@ function refresh() {
     polling = items.some((i) => !i.done && !i.error) && subs.size ? setTimeout(refresh, 1500) : null
   }, () => {})
 }
-export const useKept = () => useSyncExternalStore((f) => { subs.add(f); if (subs.size === 1) refresh(); return () => { subs.delete(f) } }, () => items)
+const subscribe = (f: () => void) => { subs.add(f); if (subs.size === 1) refresh(); return () => { subs.delete(f) } }
+const snapshot = () => items
+export const useKept = () => useSyncExternalStore(subscribe, snapshot)
 export const keptOf = (list: PhoneDownload[], path: string) => list.find((i) => i.path === path)
 
 export function keep(path: string) {

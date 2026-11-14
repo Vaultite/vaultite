@@ -118,3 +118,31 @@ export function keepTypingInSight() {
     removeEventListener("touchend", up, { capture: true })
   }
 }
+
+const typingNow = () => {
+  const at = document.activeElement
+  return at instanceof HTMLElement && at.matches("input, textarea, [contenteditable=true]") && !at.closest("[data-term]")
+}
+
+export function markKeyboard() {
+  const vv = visualViewport
+  if (!vv || !matchMedia("(pointer: coarse)").matches) return () => {}
+  const root = document.documentElement
+  let frame = 0, later = 0
+  const read = () => {
+    const up = typingNow() && keyboardUp()
+    root.toggleAttribute("data-keyboard", up)
+    const bar = document.querySelector("[data-key-bar]")?.getBoundingClientRect().height ?? 0
+    root.style.setProperty("--keyboard-cover", up ? `${Math.max(0, innerHeight - vv.offsetTop - vv.height) + bar}px` : "0px")
+  }
+  const soon = () => { cancelAnimationFrame(frame); clearTimeout(later); frame = requestAnimationFrame(read); later = window.setTimeout(read, 300) }
+  vv.addEventListener("resize", soon); vv.addEventListener("scroll", soon)
+  document.addEventListener("focusin", soon); document.addEventListener("focusout", soon)
+  read()
+  return () => {
+    cancelAnimationFrame(frame); clearTimeout(later)
+    vv.removeEventListener("resize", soon); vv.removeEventListener("scroll", soon)
+    document.removeEventListener("focusin", soon); document.removeEventListener("focusout", soon)
+    root.removeAttribute("data-keyboard"); root.style.removeProperty("--keyboard-cover")
+  }
+}

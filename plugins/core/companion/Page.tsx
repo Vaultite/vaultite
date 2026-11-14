@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
-import { AudioLines, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, Clock, CircleDot, CirclePause, CircleStop, Columns2, ExternalLink, Image, Mic, Rows2, SquareArrowOutUpRight } from "lucide-react"
+import { AudioLines, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, Clock, CircleDot, CirclePause, CircleStop, Columns2, CornerDownRight, ExternalLink, Image, Mic, Pencil, Rows2, SquareArrowOutUpRight, X } from "lucide-react"
 import { addDays, Button, cn, Empty, HeadingButton, fmtLongDay, fmtStamp, isDesktop, Loading, menuFor, type MenuItem, notifyError, op, openInSplit, openTab, Panel, today, useTick } from "@vaultite"
 import type { Exchange, PressLine, Spent } from "./conversation"
 import { getState, subscribe } from "./live"
@@ -79,11 +79,11 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
   if (compact) return <CompactTurn e={e} name={name} tint={tint} did={did} waiting={waiting} />
   const words = "text-[15px] leading-[20px]", meta = "text-[12px]"
   return (
-    <div className="flex flex-col gap-1.5" data-companion-turn>
+    <div className="flex flex-col gap-1.5" data-companion-turn data-kind={e.kind}>
       <div className="flex flex-col items-end gap-0.5">
-        <div data-companion-own className={cn("bg-foreground/[0.06] whitespace-pre-wrap select-text", words, "max-w-[85%] rounded-[14px] rounded-br-[4px] px-3 py-2")}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
+        <Trigger e={e} className={cn(words, "rounded-[14px] rounded-br-[4px] bg-foreground/[0.06] px-3 py-2")} />
         <div className={cn("flex max-w-full min-w-0 items-center gap-1 text-muted-foreground", meta)} data-tip={fmtStamp(e.t)}>
-          {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span>{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
+          <TriggerMeta e={e} />
         </div>
       </div>
       <div className="flex max-w-[85%] gap-2">
@@ -107,17 +107,56 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
   )
 }
 
+const asked = (e: Exchange) => e.text || (e.kind === "point" ? "Look at this" : "")
+type Reacted = { icon: typeof Pencil; word: string }
+const REACTION = new Map<string, Reacted>([
+  ["edit", { icon: Pencil, word: "You edited" }], ["accept", { icon: Check, word: "You accepted its note" }],
+  ["reject", { icon: X, word: "You turned down its note" }], ["dismiss", { icon: X, word: "You dismissed its note" }],
+])
+
+function Trigger({ e, compact, className }: { e: Exchange; compact?: boolean; className: string }) {
+  const r = REACTION.get(e.kind)
+  if (r) return <Reaction e={e} r={r} compact={compact} />
+  return <div data-companion-own className={cn("max-w-[85%] whitespace-pre-wrap select-text", className, !asked(e) && "text-muted-foreground")}>{asked(e) || "No words"}</div>
+}
+
+function TriggerMeta({ e, truncate }: { e: Exchange; truncate?: boolean }) {
+  const where = e.where && !REACTION.has(e.kind) ? ` · ${e.where}` : ""
+  return <>
+    {e.kind === "reply" && <CornerDownRight className="size-3 shrink-0" aria-label="Reply" />}
+    {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}
+    <span className={cn(truncate && "truncate")}>{e.kind === "reply" ? "Your reply · " : ""}{time(e.t)}{where}</span>
+  </>
+}
+
+function Reaction({ e, r, compact }: { e: Exchange; r: Reacted; compact?: boolean }) {
+  const Icon = r.icon
+  const note = e.where.replace(/, line \d+$/, "").split("/").pop()
+  const what = e.kind === "edit" ? `${r.word} ${note || "a note"}` : r.word
+  const counts = e.edit && (e.edit.added || e.edit.removed) ? [e.edit.added ? `+${e.edit.added}` : "", e.edit.removed ? `−${e.edit.removed}` : ""].filter(Boolean).join(" ") : ""
+  return (
+    <div data-companion-trigger={e.kind} className={cn("flex max-w-[85%] min-w-0 flex-col gap-1 rounded-[12px] border border-border px-3 py-2", compact ? "text-[12.5px]" : "text-[13px]")}>
+      <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+        <Icon className="size-3.5 shrink-0" strokeWidth={2.25} />
+        <span className="min-w-0 truncate">{what}</span>
+        {counts && <span className="shrink-0 tabular-nums">{counts}</span>}
+      </div>
+      {e.text && <div data-companion-own className={cn("line-clamp-4 border-l-2 border-border pl-2 whitespace-pre-wrap select-text", e.kind === "edit" && "font-mono text-[12px] leading-[17px]")}>{e.text}</div>}
+    </div>
+  )
+}
+
 const ASIDE = "pointer-events-none absolute top-full mt-[3px] flex max-w-full min-w-0 items-center gap-1 text-[11.5px] leading-[15px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100"
 
 function CompactTurn({ e, name, tint, did, waiting }: { e: Exchange; name: string; tint: string; did: string[]; waiting: boolean }) {
   const words = "text-[13px] leading-[19px]"
   const acts = did.length ? did.join(", ") : ""
   return (
-    <div className="group/turn flex flex-col gap-[22px]" data-companion-turn>
+    <div className="group/turn flex flex-col gap-[22px]" data-companion-turn data-kind={e.kind}>
       <div className="relative flex flex-col items-end">
-        <div data-companion-own className={cn("max-w-[85%] rounded-[16px] bg-foreground/[0.07] px-3 py-[7px] whitespace-pre-wrap select-text", words)}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
+        <Trigger e={e} compact className={cn(words, "rounded-[16px] bg-foreground/[0.07] px-3 py-[7px]")} />
         <div className={cn(ASIDE, "right-1")} data-tip={fmtStamp(e.t)} data-turn-meta>
-          {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span className="truncate">{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
+          <TriggerMeta e={e} truncate />
         </div>
       </div>
       <div className="relative flex max-w-[94%] gap-2">

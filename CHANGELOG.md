@@ -6,6 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The iPhone app's Downloads page**: its offline media cap is a real 2 GB again (it read as negative, so every sync
+  said the phone kept more than its cap). The page shows how much is kept against the cap by kind, lists each file
+  with a picture or its kind's icon, opens it on a tap, and removes it with a swipe.
+- **Typing on the iPhone**: while the keyboard is up, the bar at the bottom steps aside and toasts sit just above the
+  editing keys.
+- **The Companion page shows what each answer was to**: your edit, your reply or your verdict on its note sits above
+  what it said, beside your asks.
+- **Opening a video on the iPhone no longer makes the app spin**: its download button stopped asking the phone again
+  on every draw.
 - **Mac-only work runs on a Mac**: a job about something only the Mac has (the window's traffic lights, the menu bar,
   the notch) or about the iPhone app goes to a Mac, even when a Linux machine is idler, and its why there says so.
 - **A server no longer hangs on a slow machine**: a request to another machine that timed out could leave the server

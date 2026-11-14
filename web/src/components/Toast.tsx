@@ -26,7 +26,7 @@ if (typeof window !== "undefined") {
 const quiet = (el: HTMLElement | null) => { el?.setAttribute("aria-live", "off") }
 
 export function Toaster({ desktop }: { desktop: boolean }) {
-  const phone = { bottom: "calc(var(--phone-bar) + var(--mini-player) + var(--trial-bar) + 0.75rem)", left: 16, right: 16 }
+  const phone = { bottom: "var(--toast-floor)", left: 16, right: 16 }
   useEffect(toasterDrawn, []) // (after sonner's own: it listens from then)
   return (
     <Sonner position={desktop ? "bottom-right" : "bottom-center"} visibleToasts={3} gap={8} duration={4000}

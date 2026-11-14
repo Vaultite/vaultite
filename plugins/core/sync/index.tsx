@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import { CloudDownload, HardDriveDownload, Smartphone } from "lucide-react"
-import { Button, definePlugin, Empty, fileRowsChanged, get, notify, notifyError, op, openView, PageHeader, phoneLocal, phoneSyncModule, post,
-  Row, Section, Stat, Switch, type FileMark, type PhoneSync } from "@vaultite"
-import { CAP, BIG, fit, mediaKind, wanted, type DeviceRules, type Media, type MediaKind } from "./phone.ts"
+import { definePlugin, Empty, fileRowsChanged, get, notify, notifyError, op, openView, PageHeader, phoneLocal, phoneSyncModule, post,
+  Row, Switch, type FileMark, type PhoneSync } from "@vaultite"
+import { FileLine, Group, Storage } from "./DownloadsParts"
+import { folderOf, KINDS, nameOf, size } from "./downloads.ts"
+import { CAP, BIG, fit, mediaKind, wanted, type DeviceRules, type Media } from "./phone.ts"
 
 const DEVICE = "iphone"
 let M: Awaited<ReturnType<typeof phoneSyncModule>> | null = null
@@ -22,7 +24,7 @@ function heads(s: PhoneSync) {
     const h = s.replica.head(file)
     if (!h?.blob) continue
     if (h.path.endsWith(".md")) { const b = s.folder.read(h.path); if (b) notes.push({ path: h.path, at: h.at, text: dec.decode(b) }) }
-    else if (mediaKind(h.path) !== "other" && h.size >= 64 << 10) media.push({ path: h.path, size: h.size, at: h.at, blob: h.blob })
+    else if (mediaKind(h.path) !== "other" && h.size >= 64 * 1024) media.push({ path: h.path, size: h.size, at: h.at, blob: h.blob })
   }
   return { media, notes }
 }
@@ -97,9 +99,6 @@ function Background() {
   return null
 }
 
-const KINDS: [MediaKind, string][] = [["video", "Video"], ["audio", "Audio"], ["pdf", "PDF"], ["image", "Images"]]
-const size = (n: number) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : n >= 1 << 20 ? `${Math.round(n / (1 << 20))} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
-
 function Downloads() {
   const s = useSync()
   const [free, setFree] = useState<number | null>(null)
@@ -108,28 +107,30 @@ function Downloads() {
   if (!s) return <Empty>This phone doesn't keep a copy of this vault yet: device sync isn't on for it.</Empty>
   const rules = rulesOf(s), { media } = heads(s), on = media.filter((m) => here(s, m))
   const used = on.reduce((n, m) => n + m.size, 0)
+  const groups = KINDS.map((k) => ({ ...k, items: on.filter((m) => mediaKind(m.path) === k.kind).sort((a, b) => b.size - a.size) }))
   const keepAll = (all: boolean) => op("sync.keep", { all, device: DEVICE }).then(() => notify(all ? "Keeping all media on this phone" : "Keeping media by its rules again"), (e) => notifyError(e, "Couldn't change it"))
+  const coming = [...s.downloading]
   return (
-    <div className="mx-auto max-w-[640px] px-4 py-4">
+    <div className="mx-auto max-w-[640px] py-2" data-downloads>
       <PageHeader title="Downloads" subtitle={s.readOnly ? "A copy for testing: device sync is in shadow mode until the switch." : undefined} />
-      <div className="mb-5 grid grid-cols-3 gap-4">
-        <Stat label="On this phone" value={size(used)} />
-        <Stat label="Cap" value={size(rules.cap ?? CAP)} />
-        <Stat label="Free" value={free === null ? "…" : size(free)} />
-      </div>
-      <Row title="Keep all media offline" meta="Every file of the vault on this phone, the rules and the cap aside" right={<Switch on={!!rules.keepAll} onChange={keepAll} label="Keep all media offline" />} />
-      {[...s.downloading].length > 0 && <Section title="Downloading">{[...s.downloading].map((p) => <Row key={p} title={p.split("/").pop()} meta={p} lead={<CloudDownload className="size-4" />} />)}</Section>}
-      {KINDS.map(([k, name]) => {
-        const items = on.filter((m) => mediaKind(m.path) === k).sort((a, b) => b.size - a.size)
-        if (!items.length) return null
-        return (
-          <Section key={k} title={`${name} · ${size(items.reduce((n, m) => n + m.size, 0))}`}>
-            {items.map((m) => <Row key={m.path} title={m.path.split("/").pop()} meta={`${size(m.size)} · ${m.path}`}
-              right={<Button size="small" onClick={() => void letGo(s, m.path)}>Remove</Button>} />)}
-          </Section>
-        )
-      })}
-      {!on.length && <Empty>No media on this phone yet: notes are, in full.</Empty>}
+      <Storage used={used} cap={rules.cap ?? CAP} free={free} byKind={groups.map((g) => ({ ...g, bytes: g.items.reduce((n, m) => n + m.size, 0) }))} />
+      <section className="glass mb-6 rounded-card px-4">
+        <Row title="Keep all media offline" meta="Every file of the vault on this phone, the rules and the cap aside" right={<Switch on={!!rules.keepAll} onChange={keepAll} label="Keep all media offline" />} />
+      </section>
+      {coming.length > 0 && (
+        <Group title={`Downloading · ${coming.length}`}>
+          {coming.map((p) => <div key={p} className="flex min-h-14 items-center gap-3 py-2">
+            <span className="grid size-11 shrink-0 place-items-center rounded-[8px] bg-foreground/[0.06] text-muted-foreground"><CloudDownload className="size-5 animate-pulse" strokeWidth={2} /></span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-[15px] max-md:text-[17px]">{nameOf(p)}</span><span className="block truncate text-[13px] text-muted-foreground max-md:text-[15px]">{folderOf(p)}</span></span>
+          </div>)}
+        </Group>
+      )}
+      {groups.map((g) => g.items.length > 0 && (
+        <Group key={g.kind} title={`${g.name} · ${size(g.items.reduce((n, m) => n + m.size, 0))}`}>
+          {g.items.map((m) => <FileLine key={m.path} m={m} kind={g} remove={() => void letGo(s, m.path)} />)}
+        </Group>
+      ))}
+      {!on.length && !coming.length && <Empty>No media on this phone yet: notes are, in full.</Empty>}
     </div>
   )
 }

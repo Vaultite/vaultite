@@ -4,7 +4,7 @@ export type DeviceRules = { keep?: KeepRule[]; keepAll?: boolean; cap?: number; 
 export type Media = { path: string; size: number; at: number }
 export type Want = { path: string; size: number; why: "kept" | "all" | "pinned" | "recent" | "daily" | "audio" }
 
-export const CAP = 2 << 30, BIG = 50 << 20, RECENT_DAYS = 30
+export const CAP = 2 * 1024 ** 3, BIG = 50 * 1024 ** 2, RECENT_DAYS = 30
 const EXT: Record<string, MediaKind> = {}
 for (const e of "png jpg jpeg gif webp heic heif avif svg bmp tif tiff".split(" ")) EXT[e] = "image"
 for (const e of "mp4 mov m4v webm mkv avi".split(" ")) EXT[e] = "video"

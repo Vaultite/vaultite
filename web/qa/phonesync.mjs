@@ -1,6 +1,7 @@
 // The iPhone app's copy of the vault (device sync): the hub's page fills it in the phone's container (stood in for here,
-// in the page), an edit made there offline reaches the hub, media kept by a rule comes down, Downloads lists it.
+// in the page), an edit made there offline reaches the hub, media kept comes down, Downloads lists and opens it.
 //   node web/qa/phonesync.mjs        (its own throwaway hub server; needs npm run build)
+// Paths: plugins/core/sync/index.tsx, plugins/core/sync/phone.ts, plugins/core/player/phone.ts
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -39,7 +40,7 @@ const native = () => {
       files.set(key(o), { bytes, mtime: ++tick })
       return { ...stat(key(o)), sha256: sha }
     },
-    localInfo: () => ({ free: 50 << 30, wifi: true, vaults: [] }),
+    localInfo: () => ({ free: 50 * 1024 ** 3, wifi: true, vaults: [] }),
     setOffline: () => ({}), openOffline: () => ({}), localAnswer: () => ({}),
   }
   window.__phone = { files, write: (k, text) => files.set(k, { bytes: new TextEncoder().encode(text), mtime: ++tick }), text: (k) => files.has(k) ? new TextDecoder().decode(files.get(k).bytes) : null }
@@ -50,6 +51,7 @@ const native = () => {
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 await ctx.addInitScript(native)
 const page = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ })
+await page.addLocatorHandler(page.locator("dialog[open] button", { hasText: "Not now" }), (b) => b.click())
 await page.goto(base)
 const phone = (p) => page.evaluate(([v, p]) => window.__phone.text(`vault/${v}/${p}`), [id, p])
 check("the phone's copy fills from the hub's page", await waitFor(async () => (await phone("Notes/Idea.md")) === "# Idea\n\nfrom the hub\n", 30_000, 300))
@@ -57,7 +59,6 @@ check("the phone's copy fills from the hub's page", await waitFor(async () => (a
 put("Notes/Later.md", "made on the hub later\n")
 check("a note made on the hub comes to the copy", await waitFor(async () => (await phone("Notes/Later.md")) === "made on the hub later\n", 30_000, 300))
 
-// What the offline app writes is the copy's file: looked at on the next step, sent to the hub.
 await page.evaluate(([v]) => { window.__phone.write(`vault/${v}/Notes/Idea.md`, "# Idea\n\nfrom the hub\nwritten on the phone offline\n"); dispatchEvent(new Event("vaultite:back")) }, [id])
 check("an edit made on the phone reaches the hub", await waitFor(() => fs.readFileSync(path.join(vault, "Notes/Idea.md"), "utf8").includes("written on the phone offline"), 30_000, 300))
 
@@ -72,7 +73,21 @@ check("media a rule keeps comes down whole", await waitFor(async () => {
   return b && Buffer.from(b).equals(clip.subarray(0, 16))
 }, 40_000, 400))
 
+put("Talks/Interview with Alice Park.m4a", crypto.randomBytes(900 << 10).toString("binary"))
+put("Papers/Lighthouse plan.pdf", crypto.randomBytes(300 << 10).toString("binary"))
+await op("sync.keep", { path: "Papers" })
+check("audio comes down on its own, and a PDF a rule keeps", await waitFor(() => page.evaluate(([v]) => {
+  dispatchEvent(new Event("vaultite:back"))
+  return ["Talks/Interview with Alice Park.m4a", "Papers/Lighthouse plan.pdf"].every((p) => window.__phone.files.has(`vault/${v}/${p}`))
+}, [id]), 40_000, 400))
 await page.goto(`${base}/#view/phone-downloads`)
 const listed = await waitFor(async () => (await page.locator("text=clip.mp4").count()) > 0, 15_000, 300)
 check("Downloads lists it with its kind", listed && (await page.locator("text=/Video ·/").count()) > 0)
+check("Downloads shows the default 2 GB cap, and no toast says the phone keeps more than it", (await page.locator("[data-downloads-storage]").innerText()).includes("of 2.0 GB cap") &&
+  (await page.locator("text=/more than its storage cap/").count()) === 0)
+await page.locator("[data-downloads]").hover()
+await page.locator("dialog[open]").waitFor({ state: "detached" })
+if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "downloads.png") })
+await page.locator("[data-download='Clips/clip.mp4']").click()
+check("tapping a download opens it", await waitFor(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes("Clips/clip.mp4"), 10_000, 200))
 await done()

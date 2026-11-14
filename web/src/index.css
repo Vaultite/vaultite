@@ -309,6 +309,12 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 /* A bundle being tried (components/BundleTrial.tsx): its bar's height and a gap, which toasts sit above. */
 :root[data-trying] { --trial-bar: 44px; }
 @media (max-width: 767px) { :root[data-trying] { --trial-bar: 62px; } }
+/* The on-screen keyboard up (core/sight.ts: markKeyboard): the bar steps down out of the way, and toasts sit above the keys over
+   the keyboard instead of over the bar. */
+:root { --toast-floor: calc(var(--phone-bar) + var(--mini-player) + var(--trial-bar) + 0.75rem); --keyboard-cover: 0px; }
+:root[data-keyboard] { --toast-floor: calc(var(--keyboard-cover) + 0.5rem); }
+:root[data-keyboard] [data-phone-bar] { transform: translateY(100%); opacity: 0; pointer-events: none; }
+[data-phone-bar] { transition: transform 160ms ease, opacity 160ms ease; }
 .pb-safe { padding-bottom: calc(var(--phone-bar) + var(--mini-player) + var(--trial-bar) + 1.5rem); }
 @media (min-width: 768px) { .pb-safe { padding-bottom: calc(3rem + var(--mini-player) + var(--trial-bar)); } }
 /* Phones: the screen between the header (3.5rem) and the bar, for what fills it (a canvas, a terminal). */
