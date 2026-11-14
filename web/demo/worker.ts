@@ -7,7 +7,8 @@ import { NEEDS_APP } from "./node/stub.ts"
 import { fitForDemo, isObj, machineOff, OFF, panelsOff, SHOWN, type PluginsJson } from "./machine.ts"
 import { fromGitHub } from "./github.ts"
 import { SITES } from "./sites.ts"
-import { RESEARCH_FILES } from "./researchfiles.ts"
+import { makeResearchVault, RESEARCH_STAMP } from "./researchfiles.ts"
+import { RESEARCH } from "./research.ts"
 import { jsonOf, open, type App } from "../../core/app.ts"
 import { Live } from "../../core/live.ts"
 import { contentType, HTTPError, matchSocket, Text } from "../../core/plugins.ts"
@@ -17,7 +18,7 @@ import { localToday, makeSandbox, MARKER, sampleStamp } from "../../core/sandbox
 import "virtual:demo-plugins" // (the plugins' backends, once the core they import is loaded)
 import type { IncomingMessage } from "node:http"
 
-const VAULT = "/Sandbox"
+let VAULT = "/Sandbox"
 
 function machineOffFile(file: string) {
   fs.writeFileSync(file, JSON.stringify(machineOff(JSON.parse(fs.readFileSync(file, "utf8") as string)), null, 2) + "\n")
@@ -38,11 +39,6 @@ for (const site of SITES) {
   const file = `/app/bundles/browser/${site.note}`
   fs.mkdirSync(file.slice(0, file.lastIndexOf("/")), { recursive: true })
   fs.writeFileSync(file, site.body)
-}
-for (const [rel, text] of RESEARCH_FILES) {
-  const file = `/app/bundles/research/${rel}`
-  fs.mkdirSync(file.slice(0, file.lastIndexOf("/")), { recursive: true })
-  fs.writeFileSync(file, text)
 }
 
 // ---------- the vault, kept in IndexedDB ----------
@@ -97,7 +93,9 @@ function save(): Promise<unknown> {
 /** The vault as this browser left it, or the sandbox made new: on a first visit, after a reset, when the sample
  *  changed, or a day later if nothing was edited (its dates follow today). */
 async function restore() {
-  const today = localToday(), sample = sampleStamp()
+  const research = (await space) === RESEARCH
+  if (research) VAULT = "/Research"
+  const today = localToday(), sample = research ? RESEARCH_STAMP : sampleStamp()
   const was = await tx<Meta>(["meta"], (t) => t.objectStore("meta").get("vault"))
   if (was && was.sample === sample && (was.edited || was.day === today)) {
     const [keys, values] = await Promise.all([tx<IDBValidKey[]>(["files"], (t) => t.objectStore("files").getAllKeys()),
@@ -111,7 +109,7 @@ async function restore() {
     })
     meta = was
   } else {
-    makeSandbox(VAULT, today)
+    if (research) makeResearchVault(VAULT); else makeSandbox(VAULT, today)
     machineOffFile(`${VAULT}/.vaultite/plugins.json`)
     await tx(["files"], (t) => t.objectStore("files").clear())
     meta = { day: today, sample, edited: false }
@@ -219,11 +217,7 @@ async function demoRoute(parts: string[], req: IncomingMessage) {
   const b = (out.body as { bundle: Record<string, unknown> }).bundle
   const name = (id: string) => String(app.plugins.find((p) => p.id === id)?.manifest.name ?? id)
   const was = leftOut.get(parts[1])
-  const wants = (id: string) => {
-    const p = app.plugins.find((x) => x.id === id)
-    if (!p || !was) return false
-    return p.manifest.offByDefault ? !!was.plugins.enabled?.includes(id) : !!was.plugins.disabled && !was.plugins.disabled.includes(id)
-  }
+  const wants = (id: string) => !!was?.plugins.enabled?.includes(id)
   return {
     id: b.id, name: b.name, description: b.description, author: b.author, icon: b.icon, tint: b.tint, from: b.from, theme: b.theme, scheme: b.scheme,
     on: ((b.on as string[] | null) ?? []).map(name), pinned: ((b.pinned as string[] | null) ?? []).map((p) => p.split("/").pop()!.replace(/\.md$/, "")),

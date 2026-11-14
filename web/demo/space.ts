@@ -1,12 +1,11 @@
-// Which demo this page is: a bundle shared as a link (?bundle=gh:..., vaultite.com/b/...) gets a space of its own (its
-// vault, the app's localStorage and sessionStorage, its drafts), so no bundle's page shows what another's left; the rest
-// (vaultite.com's home, /demo) share the main one. boot.ts's first import: in place before any of the app reads them.
+import { spaceOf } from "./research.ts"
 
-/** "" for the main demo, else the bundle's address (lowercase: GitHub's names aren't case-sensitive). */
-export const SPACE = (() => {
-  const b = new URLSearchParams(location.search).get("bundle")
-  return b?.startsWith("gh:") ? b.toLowerCase() : ""
-})()
+// Which demo this page is: a bundle shared as a link (?bundle=gh:..., vaultite.com/b/...) gets a space of its own (its
+// vault, the app's localStorage and sessionStorage, its drafts), so no bundle's page shows what another's left, and so does
+// Research (a researcher's vault); the rest (vaultite.com's home, /demo) share the main one. boot.ts's first import: in place before any of the app reads them.
+
+/** "" for the main demo, else the bundle's (research.ts). */
+export const SPACE = spaceOf(new URLSearchParams(location.search).get("bundle"))
 const PREFIX = `vaultite-demo:${SPACE}|`
 
 /** What the page keeps under `real`'s keys, as its own: each key prefixed with the space. */

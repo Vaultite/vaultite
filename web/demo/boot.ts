@@ -4,7 +4,7 @@ import { forgetLocal, SPACE } from "./space.ts"
 import { SHOWN } from "./machine.ts"
 import { NEEDS_APP } from "./node/stub.ts"
 import { SITES } from "./sites.ts"
-import { PAPER, RESEARCH } from "./research.ts"
+import { PAPER, RESEARCH, spaceOf } from "./research.ts"
 import { frameSites } from "../../plugins/core/web-viewer/framed.ts"
 import neodisk from "./sites/neodisk.png?inline"
 import olimpicos from "./sites/olimpicos.png?inline"
@@ -197,6 +197,14 @@ const showing: { asked: string | null; name: string } = { asked: new URLSearchPa
 /** The look and the answer about AI the page around the demo said last (?theme= and ?ai=, then its messages). */
 const site: { theme?: string; ai?: string } = {}
 
+function reopen(asked: string | null) {
+  const q = new URLSearchParams(location.search)
+  if (asked) q.set("bundle", asked); else q.delete("bundle")
+  for (const [k, v] of Object.entries(site)) q.set(k, v)
+  const query = q.toString()
+  location.replace(location.pathname + (query ? `?${query}` : ""))
+}
+
 async function reset() {
   const { confirmDialog } = await import("@/components/ConfirmDialog")
   const body = `Your edits are deleted and the sample vault comes back${showing.name ? `, with ${showing.name} on` : ""}.`
@@ -205,11 +213,7 @@ async function reset() {
   await new Promise((ok) => { ch.port1.onmessage = ok; server.postMessage({ type: "reset" }, [ch.port2]) })
   forgetLocal()
   // (the same bundle, applied again on the fresh vault, in the page's look as it is now; on its first page)
-  const q = new URLSearchParams(location.search)
-  if (showing.asked) q.set("bundle", showing.asked); else q.delete("bundle")
-  for (const [k, v] of Object.entries(site)) q.set(k, v)
-  const query = q.toString()
-  location.replace(location.pathname + (query ? `?${query}` : ""))
+  reopen(showing.asked)
 }
 
 /** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id>, or gh:<owner>/<name> for one shared from
@@ -270,6 +274,7 @@ async function bundles() {
   addEventListener("message", async (e) => {
     if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:apply" || typeof e.data.bundle !== "string") return
     const was = on
+    if (spaceOf(e.data.bundle) !== SPACE) return void reopen(e.data.bundle)
     try { await openBundle(e.data.bundle, true) } catch (err) { fail(e.data.bundle, String((err as Error)?.message ?? err)) } finally { post({ type: "vaultite-demo:bundle", bundle: on }) }
     if (on !== was && (on === BROWSER || was === BROWSER)) void liveSites(on === BROWSER, true)
     if (on !== was && on === RESEARCH) void openPaper()

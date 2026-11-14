@@ -23,6 +23,10 @@ The web demo (`npm run build:demo`): the whole app in a browser, no server, on t
 - Each bundle's page (`?bundle=gh:...`) is a space of its own (`space.ts`): its vault in IndexedDB, the app's
   localStorage and sessionStorage keys, its drafts. So no page shows what another bundle left (Glass is a look no layout
   undoes), and Reset starts that bundle again. vaultite.com's home page and `/demo` share the main one.
+- Research is a space of its own too, on a researcher's made-up vault (`research.ts`, `researchfiles.ts`: the files in
+  `research/`, real works cited) instead of the sample, its paper open first; picking it, or another layout from it,
+  reloads the page into the other space. Its bundle brings no example files: in a real vault, or the sample, it adds only
+  its guide.
 - The Browser bundle's tabs show a few sites live (`sites.ts`: framed by web-viewer's FramedPage.tsx), pinned and opened
   as it's turned on, each with a note about it. A site added must allow framing, run no trackers and load nothing from
   elsewhere: visitors' browsers reach it, and vaultite.com/privacy says who sees them.
