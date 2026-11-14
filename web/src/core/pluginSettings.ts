@@ -127,7 +127,7 @@ export function revealRow(selector: string, within: ParentNode = document) {
   let tries = 0
   const go = () => {
     const el = within.querySelector<HTMLElement>(selector)
-    if (!el) { if (++tries < 20) setTimeout(go, 50); return }
+    if (!el) { if (++tries < 60) setTimeout(go, 50); return }
     el.scrollIntoView({ block: "center", behavior: glide() })
     el.classList.remove("reveal-flash"); void el.offsetWidth; el.classList.add("reveal-flash")
   }

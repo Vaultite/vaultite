@@ -17,7 +17,8 @@ import { pageOps } from "./coreops/pages.ts"
 import { paletteOps } from "./coreops/palette.ts"
 import { panelOps } from "./coreops/panels.ts"
 import { pluginList, pluginOps } from "./coreops/plugins.ts"
-import { Commands, Picked, Ran } from "./coreops/common.ts"
+import { Commands, noWindow, Picked, Ran } from "./coreops/common.ts"
+import { settingShowOp } from "./coreops/settingshow.ts"
 import { settingsOps } from "./coreops/settings.ts"
 import { keptOps } from "./coreops/kept.ts"
 import { typeOps } from "./coreops/types.ts"
@@ -31,7 +32,7 @@ import { isOutside } from "./fileprops.ts"
 
 export function coreOps(app: App): Op[] {
   return [...contextOps(app), ...fileOps(app), ...anchorOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...paletteOps(app), ...keptOps(app), ...itemOps(app),
-    ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...updateOps(), ...opsOps(app)]
+    ...docsOps(app), ...uiOps(app), settingShowOp(), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...updateOps(), ...opsOps(app)]
 }
 
 function opsOps(app: App): Op[] {
@@ -90,10 +91,6 @@ or one of the app's (vault, app, vault-plugins, from-other-apps, api: every oper
 }
 
 function uiOps(app: App): Op[] {
-  const noWindow = (e: unknown) => {
-    if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
-    throw e
-  }
   return [defineOp({
     id: "ui.windows",
     summary: "Which app windows are open on this server, and the workspace they show.",

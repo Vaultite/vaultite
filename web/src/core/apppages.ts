@@ -6,6 +6,8 @@ import { openDetail } from "@/core/nav"
 import { desktop } from "@/core/desktop"
 import { revealRow, settingsLit } from "@/core/pluginSettings"
 import { cell } from "@/core/signal"
+import { answerUi } from "@/core/askers"
+import { getStore, onStore, type Store } from "@/core/data"
 
 const SETUP_TABS = ["plugins", "get"] as const
 export type SetupTab = (typeof SETUP_TABS)[number]
@@ -64,6 +66,13 @@ export function openSettings(section: string, selector?: string) {
   if (selector) revealRow(selector)
 }
 
-/** Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older
- *  build). The terminal's way there when macOS keeps an agent from the vault. */
 export const openPermissions = desktop?.permission ? () => openSettings("permissions") : null
+
+const storeSoon = () => getStore() ?? new Promise<Store | null>((done) => {
+  const off = onStore(() => { if (getStore()) { clearTimeout(t); off(); done(getStore()) } })
+  const t = setTimeout(() => { off(); done(null) }, 10_000)
+})
+answerUi("setting", async (m) => {
+  const store = await storeSoon()
+  return store && !share ? (await import("@/core/settingsfind")).showSetting(store, String(m.text ?? "")) : { found: false }
+})

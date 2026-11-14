@@ -30,7 +30,7 @@ export type SwitchDef = {
   reset?: { shown: () => boolean; run: () => void }
 }
 
-const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", files: "Files", sidebars: "Sidebars", ai: "AI", terminal: "Terminal", plugins: "Plugins", about: "About" }
+export const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", files: "Files", sidebars: "Sidebars", ai: "AI", terminal: "Terminal", plugins: "Plugins", about: "About" }
 
 type Flag = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs]
 const pref = (k: Flag) => ({ get: () => getPrefs()[k], set: (on: boolean) => setPrefs({ [k]: on }) })

@@ -467,7 +467,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
 - `openNewTab({ group, at }?)`: A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`.
 - `openOutside(path)`: Open a file outside the vault by its absolute path (a notice's Open): the desktop app lets this window have it, as a file dropped on it, or opens the vault it's in; a browser can't, nor a computer…
-- `openPermissions`: Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older build).
+- `openPermissions`
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).

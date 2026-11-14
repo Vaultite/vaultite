@@ -14,7 +14,7 @@ const log = logger("live")
 
 const QUIET = 20, GAP = 100, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** Seconds each ask may wait for its window's answer. */
-const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
+const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30], ["setting", 30]])
 const isAsk = (action: string) => ASKS.has(action) || /^[a-z0-9-]+:[a-z0-9-]+$/.test(action)
 type Answer = { ran?: boolean; result?: unknown; error?: unknown; notices?: unknown[] }
 

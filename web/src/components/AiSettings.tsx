@@ -2,17 +2,18 @@ import { Fragment, useRef, type ReactNode } from "react"
 import type { Store } from "@/core/data"
 import { hasCompanion, setCompanion, useAi, useCodingAgents, useCompanionAgent, type CodingAgent } from "@/core/ai"
 import { openDetail } from "@/core/nav"
-import { isEnabled, pluginById, PLUGINS, setSwitch, switchedOn, useAgents, usePluginsVersion, type Agent } from "@/core/plugins"
+import { pluginById, setSwitch, switchedOn, useAgents, usePluginsVersion, type Agent } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { coreSwitch } from "@/core/switches"
 import { openMenu } from "@/components/ContextMenu"
 import { Group, LoadingRows, Section, SettingRow, Switch } from "@/components/kit"
+import { Field } from "@/components/PluginSettings"
+import { openPluginSettings, pluginSettings } from "@/core/pluginSettings"
+import { aiParts, COMPANION_HERE } from "@/core/settingsfind"
+import { openSettings } from "@/core/apppages"
+import { isDesktop } from "@/core/platform"
+import { notifyError } from "@/core/notify"
 import { SwitchRow } from "@/components/SwitchRow"
-
-export function aiParts(disabled: string[]) {
-  return PLUGINS.filter((p) => p.settingsPages && isEnabled(p.id, disabled)).flatMap((p) =>
-    Object.entries(p.settingsPages!).filter(([, d]) => d.in === "ai").map(([k, d]) => ({ ...d, id: `${p.id}:${k}` })))
-}
 
 const Sub = ({ children }: { children: string }) => (
   <p className="mb-1.5 text-[13px] leading-[18px] text-muted-foreground md:px-1 md:text-[12px] md:leading-[16px]">{children}</p>
@@ -56,6 +57,7 @@ function CodingAgents() {
             : found.length ? found.map((a) => <AgentRow key={a.id} a={a} on={!!pluginById(a.id) && switchedOn(pluginById(a.id)!, prefs)} />)
             : <p className="py-3 text-[15px] text-muted-foreground md:text-[13px]" data-ai-none>No coding agent on this computer.</p>}
           {list && <CompanionRow running={running} />}
+          {list && <CompanionModel />}
         </Group>
         {!!others.length && (
           <p className="mt-1.5 text-[13px] leading-[18px] text-muted-foreground md:px-1 md:text-[12px] md:leading-[16px]" data-ai-others>
@@ -89,4 +91,17 @@ function CompanionRow({ running }: { running: Agent[] }) {
   return running.length > 1
     ? <div ref={ref}><SettingRow label="Companion" value={mine?.label ?? current} onClick={choose} data-ai-companion={current} /></div>
     : <SettingRow label="Companion" value={mine?.label ?? current} data-ai-companion={current} />
+}
+
+function CompanionModel() {
+  const p = pluginById("companion"), settings = pluginSettings("companion"), data = settings.use(), save = settings.set
+  if (!p || !hasCompanion()) return null
+  const here = COMPANION_HERE.filter((k) => p.settingsDecls?.[k])
+  return (
+    <>
+      {here.map((k) => <Field key={k} k={k} d={{ ...p.settingsDecls[k], description: p.settingsDecls[k].description.split(": ")[0] }} value={data[k]}
+        set={(v) => void save({ [k]: v ?? null }).catch((e) => notifyError(e, "Couldn't save it"))} />)}
+      <SettingRow label="All companion settings" onClick={() => (isDesktop() ? openSettings("plugin:companion") : openPluginSettings("companion"))} data-ai-companion-settings="" />
+    </>
+  )
 }

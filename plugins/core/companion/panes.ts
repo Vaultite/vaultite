@@ -1,7 +1,7 @@
 import { Eye } from "lucide-react"
 import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panesOf, revealUi, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
-import { checkDom, domTree, domView, resolveDom, uiElement } from "./uidom"
-import { actionable, parseCondition, stateWords, stepEffect, type State, type Target } from "../../../core/desktop/uimodel"
+import { checkDom, domThings, domTree, domView, nameOf, resolveDom, uiElement } from "./uidom"
+import { actionable, parseCondition, stateWords, stepEffect, type State, type Target, type Thing } from "../../../core/desktop/uimodel"
 import { shownText } from "./linked"
 import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
@@ -23,7 +23,7 @@ const settle = () => new Promise((done) => setTimeout(done, 400))
 const WANTS: Record<string, [keyof State, boolean]> = { expand: ["expanded", true], collapse: ["expanded", false], check: ["checked", true], uncheck: ["checked", false], select: ["selected", true] }
 let before: string | undefined
 const notices = (from: number) => noticesSince(from).map((n) => ({ text: n.text, kind: n.kind }))
-const holderOf = (e: Element | null) => e?.closest<HTMLElement>("[data-ui^='panel:']") ?? null
+const holderOf = (e: Element | null) => e?.closest<HTMLElement>("[data-ui^='panel:'], dialog[open]:not([data-menu-layer]):not([data-palette-layer]), [data-pane-frame]") ?? null
 
 export async function clickUi(m: Record<string, unknown>) {
   const id = String(m.ui ?? ""), find = String(m.find ?? "").trim(), role = String(m.role ?? "").trim(), how = String(m.how ?? "click"), from = Date.now()
@@ -52,7 +52,7 @@ export async function clickUi(m: Record<string, unknown>) {
     const holder = holderOf(r.e)
     return { found: true, already: true, ok: true, label: was.label, role: was.role, saw: `${JSON.stringify(was.label)} is already ${stateWords({ [want[0]]: want[1] })}`, ...(holder ? { shows: uiText(holder) } : {}), notices: [] }
   }
-  const el = r.e as HTMLElement
+  const el = r.e as HTMLElement, inside = holderOf(el)
   el.scrollIntoView({ block: "nearest" })
   const b = el.getBoundingClientRect(), at = { bubbles: true, cancelable: true, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, button: 0 }
   for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup"]) el.dispatchEvent(t.startsWith("pointer") ? new PointerEvent(t, { ...at, pointerId: 1, isPrimary: true, pointerType: "mouse" }) : new MouseEvent(t, at))
@@ -61,10 +61,42 @@ export async function clickUi(m: Record<string, unknown>) {
   await settle()
   const now = el.isConnected ? domTree().thing(el) : resolveDom(target, fold, root.isConnected ? root : document.body)?.thing ?? null
   const effect = stepEffect(fold ?? (how === "select" ? "select" : "click"), was, now, domView().snapshot() !== before)
-  const holder = holderOf(el.isConnected ? el : null) ?? (id ? uiElement(id) : null)
-  return { found: true, ok: effect.ok, saw: effect.saw, label: was.label, role: was.role, ...(holder ? { shows: uiText(holder) } : {}), notices: notices(from) }
+  const holder = holderAfter(el, id, inside)
+  return { found: true, ok: effect.ok, saw: effect.saw, label: was.label, role: was.role, shows: holder ? appText(holder, 80) : undefined, notices: notices(from) }
+}
+const shows = (e: Element | null): e is HTMLElement => e instanceof HTMLElement && e.getClientRects().length > 0
+const sheetOpen = () => [...document.querySelectorAll<HTMLElement>("dialog[open]:not([data-menu-layer]):not([data-palette-layer])")].filter(shows).at(-1) ?? null
+function paneBody(id: string) {
+  const own = document.querySelector(`[data-pane-frame="${CSS.escape(id)}"]`) ?? document.querySelector(`[data-pane-body="${CSS.escape(id)}"]`)
+  if (shows(own)) return own
+  return [...document.querySelectorAll<HTMLElement>(`[data-ui="pane:${CSS.escape(id)}"]`)].filter(shows).sort((a, b) => b.innerText.length - a.innerText.length)[0] ?? null
+}
+const CONTROLS = new Set(["switch", "checkbox", "radio", "textbox", "searchbox", "combobox", "slider", "spinbutton", "tab", "option"])
+export function appText(el: HTMLElement, most = 200) {
+  const picks = (t: Thing) => ["radio", "option", "tab"].includes(t.role)
+  const states = domThings(el, 600).filter((t) => CONTROLS.has(t.role) && (picks(t) ? t.state.checked === true || t.state.selected === true : t.state.checked !== undefined || !!t.state.value))
+    .map((t) => `- ${t.role} ${JSON.stringify(t.label)}: ${picks(t) ? "chosen" : stateWords({ ...t.state, focused: false, selected: false })}`)
+  return `${uiText(el, most)}${states.length ? `\n\nIts controls:\n${states.slice(0, 80).join("\n")}` : ""}`
+}
+const titleOf = (el: HTMLElement) => nameOf(el) || el.querySelector("h1, h2")?.textContent?.trim() || ""
+
+const holderAfter = (el: HTMLElement, id: string, inside: HTMLElement | null) =>
+  holderOf(el.isConnected ? el : null) ?? (id ? uiElement(id) : null) ?? (inside?.isConnected ? inside : null) ?? sheetOpen()
+const sheetRead = (sheet: HTMLElement) => ({ found: true, sheet: true, label: titleOf(sheet), text: appText(sheet) })
+function readFront() {
+  const sheet = sheetOpen()
+  if (sheet) return sheetRead(sheet)
+  const shown = shownTab(getTabLayout()), p = shown && focusedPane(shown)
+  return { found: false, pane: p ? { id: p.id, to: p.to, title: tabLabel(p, getStore()).label } : undefined }
+}
+function readPane(id: string) {
+  const el = paneBody(id), sheet = sheetOpen()
+  if (!el) return sheet ? sheetRead(sheet) : { found: false }
+  return { found: true, label: titleOf(el), text: appText(el), over: sheet ? titleOf(sheet) || "a sheet" : undefined }
 }
 export function readUi(m: Record<string, unknown>) {
+  if (m.front) return readFront()
+  if (m.pane) return readPane(String(m.pane))
   const el = uiElement(String(m.ui ?? ""))
   if (!el) return { found: false }
   const r = resolveDom({ ui: String(m.ui) })

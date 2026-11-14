@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion finds its way around Settings**: asked to take you to a setting, it opens Settings at that row in one
+  step, flashed (`vau settings show summoned_model`); it now reads Settings and other app pages, switches and all, and
+  the companion's model for summoned asks sits under its row in Settings, AI.
 - **A phone's terminal holds still**: the keyboard coming and going no longer resizes the shell (Claude Code redrew its
   whole screen each time); the grid slides up to keep the cursor in sight. Back from the background, the terminal stays
   on the lines you were reading, with no blank flash while it reconnects.

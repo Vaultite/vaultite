@@ -1,7 +1,7 @@
 // What the core's operations share: the user's window, the plugins that are on, and how lists read as text.
 import { z } from "zod"
 import type { App } from "../app.ts"
-import type { OpCtx } from "../ops.ts"
+import { OpError, type OpCtx } from "../ops.ts"
 import { enabled, type Plugin } from "../plugins.ts"
 
 /** Rows as lines, or what to say when there are none. */
@@ -12,6 +12,10 @@ const Shown = z.object({ windows: z.number().catch(0), workspace: z.int().nullab
 
 /** What the user's window answers (core/live.ts passes it on): a command's run, its commands, a pick. */
 export const Ran = z.object({ ran: z.boolean().optional(), notices: z.array(z.object({ text: z.string(), kind: z.string().optional() })).optional() }).loose().nullish()
+export const noWindow = (e: unknown) => {
+  if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
+  throw e
+}
 export const Commands = z.array(z.object({ id: z.string(), name: z.string(), keys: z.array(z.string()).optional(), available: z.boolean().nullable().optional() }).loose())
 export const Picked = z.object({ index: z.number().catch(-1), typed: z.string().nullable().catch(null) }).nullable().catch(null)
 

@@ -9,7 +9,7 @@ import { str } from "./settings.ts"
 import { moments, did, key, agentOf, writingAt } from "./state.ts"
 import { takeover } from "./windows.ts"
 import { nearBy } from "./screensocket.ts"
-import { paneById, privatePane, paneFocus, pageFor, resolve } from "./windowpanes.ts"
+import { paneById, panesFrom, privatePane, paneFocus, pageFor, resolve } from "./windowpanes.ts"
 import { cut, vaultText } from "./edits.ts"
 import { messageOf } from "./errors.ts"
 import { AS, PANE, UI, EL, PLACE, target, who } from "./args.ts"
@@ -17,7 +17,23 @@ import { awayIn } from "./momentstext.ts"
 import { askOf } from "./wiring.ts"
 
 export const SNAPSHOT = 12_000
-const UiRead = z.object({ found: z.boolean(), label: z.string().optional(), folded: z.boolean().optional(), text: z.string().optional() })
+const UiRead = z.object({ found: z.boolean(), label: z.string().optional(), folded: z.boolean().optional(), text: z.string().optional(), sheet: z.boolean().optional(), over: z.string().optional(), pane: z.unknown().optional() })
+const readWindow = async (ctx: OpCtx, m: { front: true } | { pane: string }) => UiRead.safeParse(await ctx.ui({ action: "companion:read", ...m }).catch(() => null)).data
+type Read = NonNullable<Awaited<ReturnType<typeof readWindow>>>
+const sheetSeen = (r: Read) => ({ sheet: true, title: r.label || "a sheet", kind: "sheet", text: cut(r.text ?? "", SNAPSHOT) })
+async function frontPane(ctx: OpCtx, pane: string) {
+  const front = pane ? null : await readWindow(ctx, { front: true })
+  if (front?.found) return { sheet: sheetSeen(front) }
+  const shown = front?.pane ? panesFrom([front.pane])[0] : undefined
+  const id = pane || shown?.id || paneFocus()?.id
+  return { id, pn: shown && shown.id === id ? { ...paneById(id), ...shown } : paneById(id) }
+}
+async function viewSeen(ctx: OpCtx, pn: { id: string; title: string }) {
+  const r = await readWindow(ctx, { pane: pn.id })
+  if (r?.sheet) return sheetSeen(r)
+  const over = r?.over ? `(${r.over} is open over it: see without --pane reads that)\n` : ""
+  return { pane: pn.id, title: r?.label || pn.title, kind: "view", text: r?.found ? `${over}${cut(r.text ?? "", SNAPSHOT)}` : "(not drawn on the user's screen now: act --ui tab:<id> shows it)" }
+}
 const Snapshot = z.object({ url: z.string(), title: z.string(), snapshot: z.string() })
 const Acted = z.record(z.string(), z.unknown()).and(z.object({ url: z.string(), title: z.string(), navigated: z.boolean(),
   opened: z.array(z.object({ tab: z.number(), url: z.string(), title: z.string() })).optional(), diff: z.object({ page: z.boolean(), lines: z.array(z.string()), more: z.number() }).optional() }))
@@ -29,10 +45,11 @@ const UiChecked = z.looseObject({ ok: z.boolean().catch(false), saw: z.string() 
 plugin.op({
   id: "companion.see",
   cli: "companion see",
-  summary: "What a pane of the user's window shows now (a terminal's screen, a web page as its accessibility tree with refs to point at and act on, a note's text), or a part of the app's own UI (a sidebar panel's rows).",
+  summary: "What a pane of the user's window shows now (a terminal's screen, a web page as its accessibility tree with refs to point at and act on, a note's text, a view's words and controls: Settings, a plugin's page), the sheet open over it, or a part of the app's own UI (a sidebar panel's rows).",
   help: `For an ask or a point about a pane (the look: a snapshot only then, not to keep an eye on it: that's follow). A
-private page or note is never shown.
+private page or note is never shown. With no pane, a sheet open over their window (a plugin's settings) is what's read.
 
+  vau companion see
   vau companion see --pane t5x1
   vau companion see --ui panel:files:files`,
   kind: "read",
@@ -45,18 +62,20 @@ private page or note is never shown.
       if (!r?.found) throw new OpError(`${ui} isn't on the user's screen (act --ui shows a place)`, 404)
       return { ui, title: r.label || ui, kind: "ui", text: r.folded ? "(folded: only its heading shows; act expand --ui opens it)" : r.text ?? "" }
     }
-    const id = str(p.pane) || paneFocus()?.id, pn = paneById(id)
+    const at = await frontPane(ctx, str(p.pane))
+    if (at.sheet) return at.sheet
+    const { id, pn } = at
     if (!pn) throw new OpError(id ? `no pane ${id} in the user's window (vau tabs lists them)` : "give `pane`: the user isn't in one", 404)
     if (privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
     const x = paneSource(pn.to)
     if (x.kind === "terminal") return { pane: pn.id, title: pn.title, kind: "terminal", text: await plugin.ask<string>("terminal:screen", "", x.terminal, 80) }
     if (x.kind === "note") return { pane: pn.id, title: pn.title, kind: "note", path: x.path, text: cut(vaultText(x.path!) ?? "", SNAPSHOT) }
-    if (x.kind !== "site") return { pane: pn.id, title: pn.title, kind: "view", text: "" }
+    if (x.kind !== "site") return viewSeen(ctx, pn)
     const t = await pageFor(pn.id, "read", who(p))
     const r = Snapshot.parse(await plugin.desktop("agent:snapshot", t.tab).catch((e) => { throw new OpError(messageOf(e), 409) }))
     return { pane: pn.id, title: r.title || pn.title, kind: "site", url: r.url, access: t.access, text: cut(r.snapshot, SNAPSHOT) }
   },
-  text: (r) => `"${r.title}" (${"ui" in r ? r.ui : `pane ${r.pane}`}${"url" in r && r.url ? `, ${r.url}` : ""}${"access" in r && r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
+  text: (r) => `"${r.title}" (${"ui" in r ? r.ui : "sheet" in r ? "the sheet open over their window" : `pane ${r.pane}`}${"url" in r && r.url ? `, ${r.url}` : ""}${"access" in r && r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
 })
 
 function actText(r: Acted, action: string) {
