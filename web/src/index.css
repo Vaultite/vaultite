@@ -1392,9 +1392,28 @@ html[data-electron][data-platform=darwin][data-left-rail][data-pane-cards]:not([
 html[data-electron][data-platform=darwin][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-corner] > [data-title-row] {
   padding-left: calc(88px + var(--spacing) * 10);
 }
-html[data-translucent][data-pane-cards] [data-pane-area] { background: var(--chrome-sidebar); }
+/* Translucent, the gaps' tint is under none of the cards (over it, a translucent page lets less through than without
+   cards): each tiled pane's cell (in its plate) tints the gaps before it, and after it at the area's far edges, around
+   its rounded corners. The cells clip square, on whole pixels, so they meet without a seam. Panes moving, the area. */
+[data-pane-cell] { display: none; }
+html[data-translucent][data-pane-cards] [data-pane-area] { background: none; }
+html[data-translucent][data-pane-cards] [data-pane-cell] {
+  --cell-r: 0px; --cell-b: 0px;
+  display: block; position: absolute; z-index: -1; visibility: visible; overflow: clip;
+  inset: calc(-1 * var(--pane-gap)) calc(-1 * var(--cell-r)) calc(-1 * var(--cell-b)) calc(-1 * var(--pane-gap));
+  &[data-pane-cell~=right] { --cell-r: var(--pane-gap); }
+  &[data-pane-cell~=bottom] { --cell-b: var(--pane-gap); }
+  &::before {
+    content: ""; position: absolute; inset: var(--pane-gap) var(--cell-r) var(--cell-b) var(--pane-gap); border-radius: var(--radius-card);
+    box-shadow: 0 0 0 calc(var(--pane-gap) * 2 + var(--radius-card)) var(--chrome-sidebar);
+  }
+}
+html[data-translucent][data-pane-cards] [data-pane-area]:has(> [data-moving]) { background: var(--chrome-sidebar); }
+html[data-translucent][data-pane-cards] :is([data-pane-area]:has(> [data-moving]), [data-bars-hidden] [data-pane-area]:not([data-split])) [data-pane-cell] { display: none; }
 html[data-translucent][data-pane-cards] [data-pane-area] > section[data-pane-frame]:not([data-floating]) { background: none; }
 html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-bar] { background: var(--chrome); }
+/* (a split's bare strip, no title in it, is the page's top edge) */
+html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-bar][data-bare] { background: var(--page-glass, var(--background)); }
 html[data-translucent][data-pane-cards] [data-top] > [data-tab-bar],
 html[data-translucent][data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { background: var(--chrome-sidebar); }
 

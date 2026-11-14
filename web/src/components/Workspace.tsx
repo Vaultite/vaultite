@@ -81,6 +81,8 @@ const along = (at: number) => `calc(${at} * (100% - ${G}) + ${G})`
 const span = (n: number) => `calc(${n} * (100% - ${G}) - ${G})`
 const tile = (r: Rect) => ({ left: along(r.x), top: along(r.y), width: span(r.w), height: span(r.h) })
 
+const cellEdges = (r: Rect) => [r.x + r.w > 1 - 1e-6 && "right", r.y + r.h > 1 - 1e-6 && "bottom"].filter(Boolean).join(" ")
+
 const TABS_KEPT = 5
 
 // A pane coming or going never reorders the others: a moved iframe reloads.
@@ -137,7 +139,9 @@ export function Workspace(props: Props) {
           return (
             <Fragment key={id}>
               <div aria-hidden data-plate={id} style={{ ...at, zIndex: z }}
-                className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-card shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
+                className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-card shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")}>
+                {!float && !zoomed && <div data-pane-cell={cellEdges(rect)} />}
+              </div>
               <Frame pane={p} tab={t} {...props} info={info} on={{ at, z, rect, float, zoomed, focused, under, top, lifted: lifted === id, bar: bars, only, box }} />
               {!float && !under && rect.y < 1e-6 && <div data-pane-gap={id} onContextMenu={menuFor(() => barMenuOf(id))}
                 style={{ left: at.left, width: at.width, top: 0, height: G, zIndex: z }} className="absolute" />}

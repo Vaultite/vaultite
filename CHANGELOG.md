@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Cards as see-through as pages**: with translucent pages, a pane shown as a card lets the desktop through as much as
+  one without cards; the tint between the cards no longer sits under them too.
 - **A site style's font keeps its own width**: a page whose style puts it in the vault's font no longer squeezes it with
   the site's width settings (YouTube's titles, in its new narrow font).
 - **The web demo keeps file history**: an edit there keeps the note's earlier text, and search reads long notes whole.
