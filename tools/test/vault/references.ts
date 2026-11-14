@@ -1,4 +1,7 @@
+import crypto from "node:crypto"
+import fs from "node:fs"
 import http from "node:http"
+import path from "node:path"
 import { z } from "zod"
 import { citationsIn } from "../../../plugins/core/references/cite.ts"
 import type { VaultTest } from "./harness.ts"
@@ -188,6 +191,14 @@ async function zoteroWeb({ check, op }: Ctx) {
   process.env.VAULTITE_ZOTERO_API = "http://127.0.0.1:9"
 }
 
+function citeprocAsTaken({ check }: Ctx) {
+  const D = path.join(import.meta.dirname, "../../../plugins/core/references/citeproc")
+  const lib = fs.readFileSync(path.join(D, "citeproc.mjs"), "utf8")
+  const taken = crypto.createHash("sha256").update(lib.split("\n").filter((l) => !l.includes("// vaultite: ")).join("\n")).digest("hex")
+  check("references: citeproc is the upstream build PROVENANCE.md names, but for the line marked as ours",
+    all(fs.readFileSync(path.join(D, "PROVENANCE.md"), "utf8").includes(taken), lib.split("// vaultite: ").length - 1 === 1), taken)
+}
+
 export default async ($: VaultTest) => {
   const ctx: Ctx = {
     ...$,
@@ -195,6 +206,7 @@ export default async ($: VaultTest) => {
     render: async (rel) => String((await $.api("GET", `render?path=${rel}`))[1]),
   }
   citations(ctx)
+  citeprocAsTaken(ctx)
   await agentsRead(ctx)
   await placedReferences(ctx)
   await agentOps(ctx)

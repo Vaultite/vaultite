@@ -18,9 +18,10 @@ This product includes third-party software and assets:
   electron/browser/kdbx/ is it, changed (PROVENANCE.md there), and tools/fixtures/kdbx/ its test files.
 - SheetJS Community Edition 0.20.3 (https://sheetjs.com), Apache License 2.0, Copyright (C) 2012-present SheetJS LLC:
   plugins/core/spreadsheets/xlsx/ is its release build, with the patches its PROVENANCE.md lists (LICENSE there).
-- citeproc-js (https://github.com/Juris-M/citeproc-js), the npm package `citeproc`, used unchanged as a dependency
-  under the Common Public Attribution License 1.0 (one of its two licences; the other is the AGPL 3.0), Copyright (c)
-  2009-2019 Frank Bennett: it formats citations and references (plugins/core/references).
+- citeproc-js (https://github.com/Juris-M/citeproc-js), under the Common Public Attribution License 1.0 (one of its
+  two licences; the other is the AGPL 3.0), Copyright (c) 2009-2019 Frank Bennett: it formats citations and
+  references. plugins/core/references/citeproc/ is its build from an upstream commit, with the one line its
+  PROVENANCE.md names (LICENSE and CPAL there).
 - Citation Style Language styles and locale (https://citationstyles.org): plugins/core/references/styles/ holds APA,
   Chicago author-date, MLA, Harvard (Cite them right), IEEE and NLM/Vancouver from github.com/citation-style-language/styles
   and locales-en-US.xml from github.com/citation-style-language/locales, each under the Creative Commons

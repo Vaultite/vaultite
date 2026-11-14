@@ -1,4 +1,4 @@
-import type { Engine } from "citeproc"
+import type { Engine } from "./citeproc/citeproc.mjs"
 import type { Citation } from "./cite.ts"
 import { authorsShort, type CslItem } from "./csl.ts"
 
@@ -14,7 +14,7 @@ export type Formatted = {
 
 type Loaded = { Engine: typeof Engine }
 let loading: Promise<Loaded> | null = null
-const load = () => (loading ??= import("citeproc").then((m) => m.default))
+const load = () => (loading ??= import("./citeproc/citeproc.mjs").then((m) => m.default))
 
 const engines = new Map<string, { engine: Engine; items: Map<string, CslItem> }>()
 

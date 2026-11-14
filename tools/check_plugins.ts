@@ -316,7 +316,7 @@ for (const [f, text] of Object.entries(generate())) {
 }
 fs.rmSync(SCRATCH, { recursive: true, force: true })
 
-const VENDORED = new Set(["plugins/core/spreadsheets/xlsx/xlsx.mjs"].map((f) => path.join(ROOT, f)))
+const VENDORED = new Set(["plugins/core/spreadsheets/xlsx/xlsx.mjs", "plugins/core/references/citeproc/citeproc.mjs"].map((f) => path.join(ROOT, f)))
 const sources = ["core", "web/src", "plugins", "electron", "bin", "tools/test", "tools/evals", "tools/perf"].flatMap((d) => walk(path.join(ROOT, d)))
   .concat(path.join(ROOT, "server.ts"), fs.readdirSync(path.join(ROOT, "tools")).map((n) => path.join(ROOT, "tools", n))).filter((f) => !VENDORED.has(f))
 
