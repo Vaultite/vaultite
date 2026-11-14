@@ -67,6 +67,15 @@ try {
   const moving = (fs, from, to) => fs.filter((f) => Math.abs(f.x - from) > 0.5 && Math.abs(f.x - to) > 0.5)
   const near = (a, b) => !!a && !!b && Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1
   const toggle = () => win.click("[data-sidebar-toggle='']")
+  const LIGHTS_SPAN = HALF === 7 ? 2 * 23 + 14 : 2 * 20 + 14
+  const buttonsUnderLights = (at) => win.evaluate(({ at, span, high }) => {
+    const items = [...document.querySelectorAll("aside[data-side=left] [data-titlebar] :is(button, a, input, [role=button]), [data-sidebar-toggle='']")]
+    return items.flatMap((e) => {
+      const r = e.getBoundingClientRect()
+      const hit = r.width > 0 && r.height > 0 && r.left < at.x + span && r.right > at.x && r.top < at.y + high && r.bottom > at.y
+      return hit ? [`${e.tagName} ${e.getAttribute("aria-label") ?? e.textContent?.trim().slice(0, 20)} at ${Math.round(r.left)},${Math.round(r.top)}`] : []
+    })
+  }, { at, span: LIGHTS_SPAN, high: HALF * 2 })
   await wait(1000)
 
   // 1. Pinned: on its top row, shown (a resize sends the page's place again).
@@ -74,6 +83,7 @@ try {
   await wait(600)
   const pinned = state(await calls())
   check("pinned: shown on the sidebar's top row", pinned.shown !== false && (pinned.at === undefined || near(pinned.at, await want())), { pinned, want: await want() })
+  check("pinned: no button of its top row under the lights", (await buttonsUnderLights(pinned.at ?? await want())).length === 0, await buttonsUnderLights(pinned.at ?? await want()))
   await shot("1-pinned")
 
   // 2. Hidden (no rails): gone, at once.
@@ -145,6 +155,7 @@ try {
   const unlit = pins.filter((f) => !f.ghost && gone && f.t > gone.t + 20 && (!shownAgain || f.t < shownAgain.t))
   check("pinning it while slid in: never a frame without lights (the stand-ins while it settles)", moving(pins, floatAt, 0).length > 2 && unlit.length === 0, { unlit, gone, shownAgain })
   check("pinned again: shown on its top row", back.shown === true && near(back.at, await want()), { back, want: await want() })
+  check("pinned again: no button of its top row under the lights", (await buttonsUnderLights(back.at ?? await want())).length === 0, await buttonsUnderLights(back.at ?? await want()))
   await shot("6-pinned-again")
 } finally {
   await app.close()

@@ -1172,7 +1172,7 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
    row, beside the sidebar's top row; it makes room for what sits in the corners itself (usePaneTopBar). */
 [data-top] > [data-bare][data-merged] { height: 0; overflow: hidden; }
 /* The desktop app (Electron: the preload sets data-electron on <html>; a browser never matches these). On a Mac
-   (data-lights) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
+   (data-lights, core/desktop.ts) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
    empty space of the top tab bars drag the window, the sidebar toggle moves right of the lights, and with the sidebar
    folded to its rail the top-left pane's tab bar makes room for both. Elsewhere the window keeps its own title bar.
    The web demo playing a Mac window (data-lights=drawn) lays out the same, with lights it draws (core/desktop.ts). */

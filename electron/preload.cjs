@@ -8,7 +8,6 @@ const mark = () => {
   if (!html) return
   html.setAttribute("data-electron", "")
   html.setAttribute("data-platform", process.platform)
-  if (MAC) html.setAttribute("data-lights", "native")
 }
 mark()
 addEventListener("DOMContentLoaded", mark)

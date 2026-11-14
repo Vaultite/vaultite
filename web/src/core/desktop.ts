@@ -348,6 +348,7 @@ export const captureWindow = (): Promise<{ png: string; width: number; height: n
 
 const lightsDrawnByPage = document.documentElement.dataset.lights === "drawn"
 export const hasLights = lightsDrawnByPage || (isMac && !!desktop?.lights)
+if (hasLights && !lightsDrawnByPage) document.documentElement.dataset.lights = "native"
 let frame: LightsFrame | null = null
 export const lightsFrame = () => frame
 export const showLights = (at: Lights | null): Promise<void> => lightsDrawnByPage ? drawLights(at)
