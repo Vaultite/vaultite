@@ -29,6 +29,13 @@ export default async ($: VaultTest) => {
     check("clipper: a page without its post can't say (X's script shell)", has("<html><body><p>JavaScript is not available.</p></body></html>") === null &&
       (await readPage(withVid, "https://lighthouse.example.com/post")).video === null)
 
+    const listed = (await readPage(page(post("alice_park", "111", "Lighthouse wants:\n\n- Water at dawn\n- Sun\n1. Moss\n> said nobody\nsnake_case")), "https://x.com/alice_park/status/111")).markdown
+    check("clipper: a post's list and quote lines aren't escaped", ["- Water at dawn", "- Sun", "1. Moss", "> said nobody", "snake_case"].every((l) => listed.split("\n").includes(l)) && !listed.includes("\\"), listed)
+    const { unescapeTurndownLists } = await import("../../../plugins/core/clipper/escapes.ts")
+    check("clipper: a reply's quoted list too, but not code or text that isn't a list",
+      unescapeTurndownLists("> \\- Ferns\n> > \\* Moss\n\\> quoted\n2024\\. a year\n\\-5 degrees\n\\---\n```\n\\- kept\n```\n`a\\_b` c\\_d \\_e") ===
+        "> - Ferns\n> > * Moss\n> quoted\n2024\\. a year\n\\-5 degrees\n\\---\n```\n\\- kept\n```\n`a\\_b` c_d \\_e")
+
     const clipText = "---\ntype: note\nsource: https://x.com/alicepark/status/111\nupdated: '2026-11-01 10:00:00'\n---\n\nLighthouse in nine minutes.\n\n## Replies\n\nGreat one\n"
     const videoBody = "![[Alice Park - Lighthouse in nine minutes.mp4]]\n\nAlice Park, 2026-11-03, 9 minutes.\n\nLighthouse in nine minutes.\n\n## Transcript\n\n**0:00** Hello there"
     const merged = withVideo(clipText, videoBody, "2026-11-04 12:00:00")

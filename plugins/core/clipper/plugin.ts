@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fetchPublic, HTTPError, OpError, pageText, Plugin, publicUrl, reply, vaultPath } from "../../../core/plugins.ts"
 import { FM, frontmatter, type Item, nowStamp, readText, safeName, setPropertyText, str, writeAtomic } from "../../../core/vault.ts"
+import { unescapeTurndownLists } from "./escapes.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -21,7 +22,7 @@ export async function readPage(html: string, url: string, fetchMore = false): Pr
   const video = post ? videoOnPage(document, post.id) : null
   const r = await Defuddle(document, url, { markdown: true, useAsync: fetchMore })
   return {
-    title: str(r.title).trim(), markdown: str(r.content).trim(), author: str(r.author).trim(), published: str(r.published).trim(),
+    title: str(r.title).trim(), markdown: unescapeTurndownLists(str(r.content).trim()), author: str(r.author).trim(), published: str(r.published).trim(),
     description: str(r.description).replace(/\s+/g, " ").trim(), site: str(r.site).trim(), words: Number(r.wordCount) || 0, video,
   }
 }
