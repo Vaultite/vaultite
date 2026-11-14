@@ -45,8 +45,8 @@ export function usePalettePreview<T extends { id: string }>(preview: ((item: T) 
   }, [room, selected?.id, query]) // eslint-disable-line react-hooks/exhaustive-deps -- follows the selected row by id
   if (!room || !shown) return null
   return (
-    <div data-palette-preview data-cold={shown.cold || undefined} inert className="pointer-events-none absolute top-0 left-full"
-      style={{ width: PREVIEW_WIDTH, marginLeft: GAP }}>
+    <div data-palette-preview data-cold={shown.cold || undefined} inert className="pointer-events-none absolute top-0"
+      style={{ left: "100%", width: PREVIEW_WIDTH, marginLeft: GAP }}>
       {shown.node}
     </div>
   )

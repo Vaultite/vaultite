@@ -107,7 +107,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `CanvasPeer`: Someone else on a canvas: their pointer (in its units), name and colour (a CSS colour), what they have selected.
 - `canvasShown(c)`
 - `capitalize(s)`
-- `Captioned({ picture, title, icon, about, width, height })`
+- `Captioned(p)`
 - `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
 - `CardPlace`
 - `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
@@ -316,7 +316,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
-- `HoverCard({ shown, anchor, place, again, className, children, … })`
+- `HoverCard(p)`
 - `HoverShown`
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams.
 - `IconAction({ action, className, children })`: An icon in a row that does something of its own when clicked (a tab's mark: mute it), without the row's click, drag or menu.

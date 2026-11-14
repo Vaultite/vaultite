@@ -85,7 +85,7 @@ function useLit(el: HTMLElement | null, text: string, near: Near | null) {
 function Card({ fades = false, children }: { fades?: boolean; children: ReactNode }) {
   return (
     <PreviewCard className="flex flex-col" style={{ width: PREVIEW_WIDTH, height: HEIGHT, padding: INSET, background: "var(--card)" }}>
-      <Picture width={PICTURE} height="auto" className={cn("min-h-0 flex-1 bg-background", fades && "[mask-image:linear-gradient(to_bottom,black_80%,transparent)]")}>{children}</Picture>
+      <Picture width={PICTURE} height="auto" className={cn("min-h-0 flex-1 bg-background", fades && "[mask-image:linear-gradient(to_bottom,black_70%,transparent)]")}>{children}</Picture>
     </PreviewCard>
   )
 }
