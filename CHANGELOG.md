@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Cloud jobs**: a job in a cloud session stays working while its session sits idle before its first step, and reads
+  done only once the session answers; one that rests 20 minutes with no answer fails, saying so. A redesign of
+  Vaultite's look runs on one of your Macs rather than in the cloud.
 - **The iPhone app's Downloads page**: its offline media cap is a real 2 GB again (it read as negative, so every sync
   said the phone kept more than its cap). The page shows how much is kept against the cap by kind, lists each file
   with a picture or its kind's icon, opens it on a tap, and removes it with a swipe.

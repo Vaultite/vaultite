@@ -5,7 +5,7 @@ import { logger, type OpCtx, OpError, type Plugin, type Who, whoOf } from "../..
 import { cardOf, commitsIn, turnWord, fixTask, landedSaid, mergedCommit, mergedSaid, type Handoff, type Job, type JobCard, jobsLine, jobTimings, lastOf, linkOf, linksIn, live, type Marks, messageOf, nowOf,
   type Queued, toldBy, type Result, resumeOf, str, type Waits, type Where } from "./jobs.ts"
 import { JobLogRow } from "./rows.ts"
-import { type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, waitsLive } from "./joblife.ts"
+import { answered, type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, waitsLive } from "./joblife.ts"
 import { diffSince, marksOf, onMainSince } from "./jobgit.ts"
 import { handoffOps } from "./jobhandoff.ts"
 import { jobMachines } from "./jobmachines.ts"
@@ -223,14 +223,23 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const s = await seenOf(j, true).catch(() => null)
     if (!s) return false
     const t = s.turn
-    // (Claude Code rests a moment before its first step)
-    if (j.state === "starting" && !(t?.final && t.at >= j.turn - 1000)) return false
     const r = resultOf(j, s), now = Date.now()
+    // (Claude Code rests a moment before its first step; a cloud session's list says idle then too, and between steps)
+    if (unfinished(j, t)) return quiet(j, s, now)
     heard(j, s)
     const ev = restEvent({ background: t?.background, landed: landed(j, r.text) || shipped(j, s, r.text), changes: r.changes, lands: j.where.lands, text: r.text, at: t?.at || j.turn, now })
     if (ev === "working") j.now = nowOf(j, s)
     else j.result = r.result
     return over(j, turnOver(j, clockOf(j), ev, j.where.live ? mergedCommit(r.text) : "", now), now)
+  }
+  const unfinished = (j: Job, t: Seen["turn"]) => (j.where.cloud ? !answered(t, j.turn) : j.state === "starting" && !(t?.final && t.at >= j.turn - 1000))
+  function quiet(j: Job, s: Seen, now: number) {
+    if (!j.where.cloud) return false
+    heard(j, s)
+    clockOf(j).goingOn = now
+    if (now - (clockOf(j).rest ?? now) < pace.cloudQuiet) return false
+    j.now = `Its cloud session rested ${Math.round(pace.cloudQuiet / 60_000)} min with no answer: open it to see why`
+    return move(j, "error", now)
   }
   function over(j: Job, x: ReturnType<typeof turnOver>, t: number) {
     clocks.set(j.id, x.clock)

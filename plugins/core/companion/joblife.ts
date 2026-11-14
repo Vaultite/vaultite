@@ -119,8 +119,12 @@ export type Pace = {
   prune: number
   grace: number
   flush: number
+  cloudQuiet: number
 }
-export const PACE: Pace = { tick: 3000, hold: 1500, read: 15_000, ship: 5 * 60_000, live: 20_000, learn: 30_000, prune: 3600_000, grace: 120_000, flush: 5 }
+export const PACE: Pace = { tick: 3000, hold: 1500, read: 15_000, ship: 5 * 60_000, live: 20_000, learn: 30_000, prune: 3600_000, grace: 120_000, flush: 5, cloudQuiet: 20 * 60_000 }
+
+export const answered = (t: { final: boolean; at: number; text: string; files: string[] } | null | undefined, since: number) =>
+  !!t?.final && t.at >= since - 1000 && !!(t.text.trim() || t.files.length)
 
 export type Clock = { rest?: number; goingOn?: number; read?: number; ship?: number; live?: number; learn?: number; prune?: number; opened?: number }
 
@@ -145,7 +149,7 @@ export function read(j: Pick<Job, "state" | "going" | "exited" | "session" | "at
     else if (c.rest === undefined) { clock.rest = now; next.push({ do: "again", ms: o.pace.hold + 100 }) }
     else if (now - c.rest >= o.pace.hold && ago(c.goingOn, now) >= o.pace.read && !waitsLive(g)) next.push({ do: "finish" })
   }
-  const stops = (ev: JobEvent) => { delete clock.rest; return ev }
+  const stops = (ev: JobEvent) => { delete clock.rest; delete clock.goingOn; return ev }
   let ev: JobEvent | null = null
   if (!w.running) { delete clock.rest; if (!j.exited) next.push({ do: "end" }) }
   else if (w.state === "working") ev = working()

@@ -16,6 +16,7 @@ const LISTED = z.object({ status: said, message: said, sessions: z.array(z.objec
 const OUTPUT = z.object({ output: z.string().optional() }).catch({})
 const TRANSCRIPT = z.object({ status: said, entries: z.array(z.unknown()).nullish().catch(undefined), next_cursor: said }).catch({})
 
+const LISTED_LATE = 3 * 60_000
 export type CloudSeen = { status: string; title: string; updated: number; branch?: string }
 export type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; background?: number; asks?: { question: string; choices: string[] }[] }
 
@@ -36,7 +37,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     return ""
   }
 
-  const queue = new Map<string, Promise<unknown>>()
+  const queue = new Map<string, Promise<unknown>>(), started = new Map<string, number>()
   async function start(account: string, s: { repo: string; branch: string; base: string; from: string; prompt: string }) {
     const why = unready(account)
     if (why) throw new OpError(`can't start a cloud session: ${why}`, 409)
@@ -56,7 +57,10 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
       await git(dir, ["update-ref", `refs/remotes/origin/${s.branch}`, s.base])
       await git(dir, ["read-tree", "-mu", "HEAD"])
       await o.trust(a, fs.realpathSync(dir))
-      return await cloudStart(plugin, o.bin()!, o.envOf(a).CLAUDE_CONFIG_DIR, dir, s.prompt)
+      const got = await cloudStart(plugin, o.bin()!, o.envOf(a).CLAUDE_CONFIG_DIR, dir, s.prompt)
+      for (const [id, at] of started) if (Date.now() - at > LISTED_LATE) started.delete(id)
+      started.set(got.session, Date.now())
+      return got
     })
     queue.set(dir, run)
     return await run
@@ -89,13 +93,15 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     const why = unready(account)
     if (why) throw new OpError(why, 409)
     const r = readerOf(accountOf(account))
-    if (!listed || listed.account !== account || Date.now() - listed.at > 4000) {
+    const missing = () => ids.some((id) => !listed!.got[id])
+    if (!listed || listed.account !== account || Date.now() - listed.at > 4000 || (missing() && Date.now() - listed.at > 500)) {
       const got = LISTED.parse(await r.ask({ subtype: "list_cloud_sessions" }))
       if (got?.status !== "ok") throw new OpError(got?.message ?? "Claude Code didn't list its cloud sessions", 502)
       listed = { at: Date.now(), account, got: Object.fromEntries((got.sessions ?? []).map((s) => [s.id, { status: s.status ?? "idle", title: s.title ?? "", updated: Date.parse(s.updated_at ?? "") || 0,
         ...(s.branch && BRANCH.test(s.branch) ? { branch: s.branch } : {}) }])) }
     }
-    const sessions: Record<string, CloudSeen | null> = Object.fromEntries(ids.map((id) => [id, listed!.got[id] ?? null]))
+    const sessions: Record<string, CloudSeen | null> = Object.fromEntries(ids.map((id) => [id, listed!.got[id]
+      ?? (Date.now() - (started.get(id) ?? 0) < LISTED_LATE ? { status: "pending", title: "", updated: started.get(id)! } : null)]))
     const out: Record<string, CloudTurn | null> = {}
     for (const id of turns.filter((x) => SESSION.test(x))) out[id] = await turnOf(r, id).catch(() => null)
     return { sessions, turns: out }

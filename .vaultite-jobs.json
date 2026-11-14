@@ -1,6 +1,7 @@
 {
   "cloud": true,
   "needs": [
+    { "when": "\\b(redesign\\w*|restyl\\w*|mock-?ups?|layouts?|new look|looks? (better|nicer|cleaner)|visual\\w*)\\b", "needs": ["desktop"] },
     { "when": "\\b(swift|electron|desktop app|the helper|menu ?bar|notch|island|overlay|talk key|dictation|app:dev)\\b", "needs": ["macos", "desktop"] }
   ]
 }

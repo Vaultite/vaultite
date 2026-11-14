@@ -1492,6 +1492,7 @@ setTimeout(draw, 300)
       return { sessions: Object.fromEntries(ids.map((id) => [id, { status: cloud.status, title: "Footer", updated: Date.now() }])), turns: Object.fromEntries(turns.map((id) => [id, cloud.turn])) }
     }
     const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
+    const neverDone = (r: Any) => !r.log.some((x: Any) => x.to === "done")
     Wh.checkoutsIn(roots)
     try {
       await api("PATCH", "config/plugin/companion", { jobs_cloud: "personal", jobs_machine: "cloud", jobs_land: true })
@@ -1510,6 +1511,15 @@ setTimeout(draw, 300)
         /Fix the footer[^]*no vau[^]*git push origin HEAD:main/.test(s0.prompt) && !/worktree add/.test(s0.prompt), [st, b, s0])
       const working = await waitFor(async () => { const r = await job(b.id); return r.state === "working" && r }, 10000, 200)
       check("cloud: its session running, the job is working, read in its account", !!working && cloud.reads.every((a: string) => a === "personal"), working)
+      cloud.status = "idle"
+      cloud.turn = { prompt: "Fix the footer", text: "", at: Date.now(), final: false, files: [] }
+      await new Promise((r) => setTimeout(r, 4000))
+      const early = await job(b.id)
+      cloud.turn = { prompt: "Fix the footer", text: "", at: Date.now(), final: true, files: [] }
+      await new Promise((r) => setTimeout(r, 4000))
+      const empty = await job(b.id)
+      check("cloud: its session at rest with no answer yet, the job stays working, never done", [early, empty].every((r) => r.state === "working" && neverDone(r)), [early, empty])
+      cloud.status = "running"
       cloud.status = "requires_action"
       cloud.turn = { prompt: "Fix the footer", text: "", at: Date.now(), final: false, files: [], asks: [{ question: "Which colour?", choices: ["Blue", "Red"] }] }
       const asks = await waitFor(async () => { const r = await job(b.id); return r.state === "needs you" && r }, 10000, 200)
@@ -1536,6 +1546,14 @@ setTimeout(draw, 300)
       const n = cloud.told.length
       ;[st] = await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent))
       check("cloud: stopped while it works, its session is told to stop", st === 200 && cloud.told.length === n + 1 && /^Stop here/.test(cloud.told.at(-1).text), cloud.told.slice(n))
+      const Wk = await import("../../../plugins/core/companion/workers.ts"), L = await import("../../../plugins/core/companion/joblife.ts")
+      Wk.paced({ cloudQuiet: 3000 })
+      cloud.status = "idle"; cloud.turn = null
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header", repo: "cloudy", say: "On it." }, agent))
+      const quiet = await waitFor(async () => { const r = await job(b.id); return r.state === "failed" && r }, 20000, 300)
+      Wk.paced({ cloudQuiet: L.PACE.cloudQuiet })
+      check("cloud: a session resting on with no answer fails its job, saying why, never done", [quiet].every((r) => !!r && /no answer: open it/.test(r.now) && neverDone(r)), quiet)
+      await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
       await api("PATCH", "config/plugin/companion", { jobs_cloud: "nobody" })
       const [sn, bn] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header", repo: "cloudy", machine: "cloud", say: "On it." }, agent))
       check("cloud: asked for while it can't start sessions, refused saying why", sn === 409 && /can't run in the cloud: the cloud can't start sessions: no Claude Code account 'nobody'/.test(bn.error), [sn, bn])
