@@ -105,8 +105,10 @@ async function visit(name, browser) {
 
   await page.goto("about:blank")
   await page.goto(`${base}?bundle=research`)
-  is("?bundle=research opens its paper, its citations in APA and its references beside it", !(await drawn()) && decodeURIComponent(page.url()).includes("Papers/Paper machines/Draft.md") &&
-    await until(async () => (await page.locator(".cm-citation").count()) > 3 && (await page.locator("[data-references-panel] [data-reference]").count()) > 10, 30000) &&
+  await drawn()
+  is("?bundle=research opens its paper, its citations in APA and its references beside it",
+    await until(async () => decodeURIComponent(page.url()).includes("Papers/Paper machines/Draft.md") && (await page.locator(".cm-citation").count()) > 3 &&
+      (await page.locator("[data-references-panel] [data-reference]").count()) > 10, 30000) &&
     /\(Bush, 1945\)/.test(await page.locator(".cm-citation").first().innerText()), page.url())
 
   const DAYS = path.join(ROOT, "tools/fixtures/bundles/days")

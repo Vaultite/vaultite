@@ -276,7 +276,7 @@ async function bundles() {
   })
 
   async function openPaper() {
-    await appUp()
+    for (let i = 0; i < 3 && !document.querySelector("#root [data-pane]"); i++) await appUp()
     const { openTab } = await import("@/core/workspace")
     openTab(`file:${PAPER}`)
   }
