@@ -346,11 +346,29 @@ export const raiseWindow = desktop?.raiseWindow ? (popout: string | null, focus 
 export const captureWindow = (): Promise<{ png: string; width: number; height: number } | null> =>
   desktop?.capture ? desktop.capture().catch(() => null) : Promise.resolve(null)
 
-export const hasLights = isMac && !!desktop?.lights
+const lightsDrawnByPage = document.documentElement.dataset.lights === "drawn"
+export const hasLights = lightsDrawnByPage || (isMac && !!desktop?.lights)
 let frame: LightsFrame | null = null
 export const lightsFrame = () => frame
-export const showLights = (at: Lights | null): Promise<void> => isMac && desktop?.lights
-  ? desktop.lights(at).then((f) => { if (f && typeof f === "object" && f.zoom > 0) frame = f }, () => {}) : Promise.resolve()
+export const showLights = (at: Lights | null): Promise<void> => lightsDrawnByPage ? drawLights(at)
+  : isMac && desktop?.lights ? desktop.lights(at).then((f) => { if (f && typeof f === "object" && f.zoom > 0) frame = f }, () => {}) : Promise.resolve()
+const MACOS_26_LIGHTS: LightsFrame = { zoom: 1, inset: 16, width: 14, height: 14, size: 14, pitch: 23 }
+function drawLights(at: Lights | null) {
+  frame = MACOS_26_LIGHTS
+  let el = document.querySelector<HTMLElement>("body > [data-lights-drawn]")
+  if (!el) {
+    el = document.createElement("span")
+    el.dataset.lightsDrawn = ""
+    el.setAttribute("aria-hidden", "true")
+    el.append(...[0, 1, 2].map(() => document.createElement("i")))
+    el.style.setProperty("--light-size", `${MACOS_26_LIGHTS.size}px`)
+    el.style.setProperty("--light-pitch", `${MACOS_26_LIGHTS.pitch}px`)
+    document.body.append(el)
+  }
+  el.toggleAttribute("data-shown", !!at)
+  if (at) { el.style.left = `${MACOS_26_LIGHTS.inset + at.x}px`; el.style.top = `${at.mid - MACOS_26_LIGHTS.height / 2}px` }
+  return Promise.resolve()
+}
 
 export const bareWindow = (on: boolean) => { void desktop?.bare?.(on).catch(() => false) }
 

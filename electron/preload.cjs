@@ -5,7 +5,10 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron")
 const MAC = process.platform === "darwin", WIN = process.platform === "win32"
 const mark = () => {
   const html = document.documentElement
-  if (html) { html.setAttribute("data-electron", ""); html.setAttribute("data-platform", process.platform) }
+  if (!html) return
+  html.setAttribute("data-electron", "")
+  html.setAttribute("data-platform", process.platform)
+  if (MAC) html.setAttribute("data-lights", "native")
 }
 mark()
 addEventListener("DOMContentLoaded", mark)

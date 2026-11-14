@@ -1172,9 +1172,10 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
    row, beside the sidebar's top row; it makes room for what sits in the corners itself (usePaneTopBar). */
 [data-top] > [data-bare][data-merged] { height: 0; overflow: hidden; }
 /* The desktop app (Electron: the preload sets data-electron on <html>; a browser never matches these). On a Mac
-   (data-platform=darwin) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
+   (data-lights) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
    empty space of the top tab bars drag the window, the sidebar toggle moves right of the lights, and with the sidebar
-   folded to its rail the top-left pane's tab bar makes room for both. Elsewhere the window keeps its own title bar. */
+   folded to its rail the top-left pane's tab bar makes room for both. Elsewhere the window keeps its own title bar.
+   The web demo playing a Mac window (data-lights=drawn) lays out the same, with lights it draws (core/desktop.ts). */
 /* Only the tabs row itself drags (not the bar's padding, where the sidebar toggle sits when folded: a drag region
    drawn after the toggle would swallow its clicks). */
 html[data-electron] [data-titlebar], html[data-electron] [data-top] > [data-title-row] > div:first-child { -webkit-app-region: drag; }
@@ -1197,39 +1198,40 @@ html[data-electron] :is(body > :not(#root), .fixed.inset-0, [role=menu], [role=d
 /* The header's items start right of the lights and the toggle (at 88px, 7 spacing units wide). The lights don't follow
    density, so these start at 88px; what follows them is in spacing units, like the rest of the sidebar (RAIL in
    Sidebar.tsx): in compact 112px, and with the rail (11 units) the first tab 12px after the toggle. */
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-titlebar] { padding-left: calc(88px + var(--spacing) * 6); }
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-sidebar-toggle=""] { left: 88px; }
-html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen]) [data-corner] > [data-title-row] { padding-left: calc(88px - var(--spacing)); }
-html[data-electron][data-platform=darwin]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
+html[data-lights]:not([data-fullscreen]) [data-titlebar] { padding-left: calc(88px + var(--spacing) * 6); }
+html[data-lights]:not([data-fullscreen]) [data-sidebar-toggle=""] { left: 88px; }
+html[data-lights][data-left-rail]:not([data-fullscreen]) [data-corner] > [data-title-row] { padding-left: calc(88px - var(--spacing)); }
+html[data-lights]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
 /* A pop-out window (no sidebars): its top-left tab bar makes room for the lights. */
-html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [data-title-row] { padding-left: calc(88px - var(--spacing)); }
+html[data-lights][data-popout]:not([data-fullscreen]) [data-corner] > [data-title-row] { padding-left: calc(88px - var(--spacing)); }
 /* Stand-ins for the traffic lights while the sidebar slides (core/peek.ts places and shows them): the Mac's colours as
    macOS 26 draws them (Display P3), and out of focus its grey, which lightens what's under it (darkens, in light mode). */
-[data-lights-ghost] { position: absolute; display: flex; gap: calc(var(--light-pitch) - var(--light-size)); pointer-events: none; }
-[data-lights-ghost]:not([data-shown]), html[data-fullscreen] [data-lights-ghost] { visibility: hidden; }
-[data-lights-ghost] > i { width: var(--light-size); height: var(--light-size); border-radius: 50%; background: var(--light);
+[data-lights-ghost], [data-lights-drawn] { position: absolute; display: flex; gap: calc(var(--light-pitch) - var(--light-size)); pointer-events: none; }
+[data-lights-drawn] { position: fixed; z-index: 2147483000; }
+:is([data-lights-ghost], [data-lights-drawn]):not([data-shown]), html[data-fullscreen] :is([data-lights-ghost], [data-lights-drawn]) { visibility: hidden; }
+:is([data-lights-ghost], [data-lights-drawn]) > i { width: var(--light-size); height: var(--light-size); border-radius: 50%; background: var(--light);
   box-shadow: inset 0 0 0 0.5px var(--light-rim); }
-[data-lights-ghost] > i:nth-child(1) { --light: color(display-p3 0.925 0.404 0.396); --light-rim: color(display-p3 0.867 0.184 0.169); }
-[data-lights-ghost] > i:nth-child(2) { --light: color(display-p3 0.949 0.792 0.267); --light-rim: color(display-p3 0.898 0.69 0.004); }
-[data-lights-ghost] > i:nth-child(3) { --light: color(display-p3 0.396 0.769 0.4); --light-rim: color(display-p3 0.169 0.663 0.18); }
+:is([data-lights-ghost], [data-lights-drawn]) > i:nth-child(1) { --light: color(display-p3 0.925 0.404 0.396); --light-rim: color(display-p3 0.867 0.184 0.169); }
+:is([data-lights-ghost], [data-lights-drawn]) > i:nth-child(2) { --light: color(display-p3 0.949 0.792 0.267); --light-rim: color(display-p3 0.898 0.69 0.004); }
+:is([data-lights-ghost], [data-lights-drawn]) > i:nth-child(3) { --light: color(display-p3 0.396 0.769 0.4); --light-rim: color(display-p3 0.169 0.663 0.18); }
 html[data-window-inactive] [data-lights-ghost] > i { --light: rgb(35 35 35); --light-rim: rgb(45 45 45); mix-blend-mode: plus-lighter; }
 @media (prefers-color-scheme: light) { html[data-window-inactive] [data-lights-ghost] > i { mix-blend-mode: difference; } }
 /* In step with the panes sliding (core/panemotion.ts, on the spring), so the first tab never passes
    under the lights while the sidebar opens or folds. */
-html[data-electron] [data-corner] > [data-title-row] { transition: padding-left var(--motion-spring) var(--spring); }
+html:is([data-electron], [data-lights]) [data-corner] > [data-title-row] { transition: padding-left var(--motion-spring) var(--spring); }
 /* Folded to its rail, the lights are wider than it: the rail's top row looks like the tab bar beside it (one title bar),
    and its edge starts under that row instead of running between the lights. */
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { border-right-width: 0; }
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before {
+html[data-lights]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { border-right-width: 0; }
+html[data-lights]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before {
   content: ""; position: absolute; inset: 0 0 auto 0; height: calc(var(--spacing) * 10); background: var(--background);
   border-bottom: 0.5px solid var(--border);
 }
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::after {
+html[data-lights]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::after {
   content: ""; position: absolute; top: calc(var(--spacing) * 10); bottom: 0; right: 0; width: 0.5px; background: var(--border);
 }
 /* That row's line would sit right on the rail's first icon, whichever it is (Workspaces' switcher, Search, Pinned...):
    the icons start as far below it as the line between the rail's groups is from its icons. */
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] [data-rail] { padding-top: 6px; }
+html[data-lights]:not([data-fullscreen]) aside[data-side=left][data-collapsed] [data-rail] { padding-top: 6px; }
 html[data-electron] .vault-manager-drag { -webkit-app-region: drag; }
 /* On Windows (data-platform=win32) the title bar is hidden too and its controls sit over the window's top-right corner,
    --window-controls wide (electron/preload.cjs): the right sidebar's toggle moves left of them, and the top-right pane's
@@ -1377,25 +1379,25 @@ section[data-moving="up"] { z-index: 4; }
 :root[data-pane-cards][data-bars-hidden] [data-pane-area]:not([data-split]) > :is(section[data-pane-frame]:not([data-floating]), [data-plate]) { border-radius: 0; box-shadow: none; }
 /* The sidebars run into the gaps: no line between them. */
 :root[data-pane-cards] aside[data-side]:not([data-peek]) { border-color: transparent; }
-html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before,
-html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::after { content: none; }
-html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) aside[data-side=left][data-collapsed] [data-rail] { padding-top: 0; }
+html[data-lights][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before,
+html[data-lights][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::after { content: none; }
+html[data-lights][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) aside[data-side=left][data-collapsed] [data-rail] { padding-top: 0; }
 /* With no tab bar the cards' title rows start a gap down: the sidebars' top rows, their toggles (and the lights in
    the left one) are centred on the same line. */
 :root[data-pane-cards]:not([data-top-tabs]) aside[data-side]:not([data-peek]) [data-titlebar] { margin-top: var(--pane-gap); }
 :root[data-pane-cards]:not([data-top-tabs]) [data-sidebar-toggle] { translate: 0 var(--pane-gap); }
 /* Except where the Mac's lights sit in the pinned left sidebar: a gap down, they sat low in the window's corner. Its
    top row, the lights and the toggle stay at the window's top. */
-html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) aside[data-side=left]:not([data-peek], [data-collapsed]) [data-titlebar] { margin-top: 0; }
-html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-sidebar-toggle=""][aria-expanded=true] { translate: none; }
+html[data-lights][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) aside[data-side=left]:not([data-peek], [data-collapsed]) [data-titlebar] { margin-top: 0; }
+html[data-lights][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-sidebar-toggle=""][aria-expanded=true] { translate: none; }
 /* With no right sidebar and no tab bar, its toggle sits in the top-right card's bar: as far in as the card is. */
 :root[data-pane-cards]:not([data-right-sidebar]):not([data-top-tabs]) [data-sidebar-toggle=right] { translate: calc(var(--pane-gap) * -0.5) var(--pane-gap); }
 /* Beside a Mac's rail (narrower than the lights) with no tab bar, the lights sit in the top-left card's title row
    (core/peek.ts), as far from its corner as from the window's; the toggle and the row's items follow them as there. */
-html[data-electron][data-platform=darwin][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-sidebar-toggle=""] {
+html[data-lights][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-sidebar-toggle=""] {
   left: calc(var(--spacing) * 11 + var(--pane-gap) + 88px);
 }
-html[data-electron][data-platform=darwin][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-corner] > [data-title-row] {
+html[data-lights][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-corner] > [data-title-row] {
   padding-left: calc(88px + var(--spacing) * 10);
 }
 /* Translucent, the gaps' tint is under none of the cards (over it, a translucent page lets less through than without
@@ -1421,7 +1423,7 @@ html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-ba
 /* (a split's bare strip, no title in it, is the page's top edge) */
 html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-bar][data-bare] { background: var(--page-glass, var(--background)); }
 html[data-translucent][data-pane-cards] [data-top] > [data-tab-bar],
-html[data-translucent][data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { background: var(--chrome-sidebar); }
+html[data-translucent][data-lights][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { background: var(--chrome-sidebar); }
 
 /* The bars above files fading (appearance `fileBarFade`, core/barfade.ts): slower than they come back. Typing in a
    file, or always, back while the pointer is at one (or the keyboard in it); leaving it, a moment's grace first. */
@@ -1460,10 +1462,10 @@ html[data-translucent] [data-pane-body] { background: var(--background); }
 html[data-translucent] aside[data-side] { background: var(--chrome-sidebar); }
 html[data-translucent] [data-top] > [data-title-row] { background: var(--chrome); }
 /* The rail's top row is the tab bar's, one title bar (above): its colour, over nothing else. */
-html[data-translucent][data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] {
+html[data-translucent][data-lights]:not([data-fullscreen]) aside[data-side=left][data-collapsed] {
   background: linear-gradient(var(--chrome), var(--chrome)) top / 100% calc(var(--spacing) * 10) no-repeat, var(--chrome-sidebar);
 }
-html[data-translucent][data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before { background: none; }
+html[data-translucent][data-lights]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before { background: none; }
 /* Over the page rather than the desktop (a hidden sidebar slid in, the status bar, a heading its panel scrolls under):
    glass, blurring what's under it. Menus nearly solid, to read. */
 html[data-translucent] :is(aside[data-peek], [data-status-bar]) {

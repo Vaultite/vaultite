@@ -71,7 +71,7 @@ function overCorners(): DOMRect[] {
 }
 
 const lightsOverPanes = (d: DOMStringMap) =>
-  "electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || ("popout" in d && !("barsHidden" in d)))
+  "lights" in d && !("fullscreen" in d) && ("leftRail" in d || ("popout" in d && !("barsHidden" in d)))
 
 export function lightsCard(): { x: number; y: number } | null {
   const d = document.documentElement.dataset, area = document.querySelector("[data-pane-area]")

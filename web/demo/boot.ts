@@ -14,8 +14,15 @@ frameSites(SITES.map(({ url, title }) => ({ url, title, icon: ICONS[url] ?? "" }
 
 // A translucent window's desktop (core/appearance.ts stands in for the app's): the demo's own wallpaper, or, with
 // ?desk=page (vaultite.com's bundle pages), the page's around it, which hears when the window is see-through (and dark).
-const root = document.documentElement
-root.dataset.demoDesk = new URLSearchParams(location.search).get("desk") === "page" && parent !== window ? "page" : "own"
+const root = document.documentElement, asks = new URLSearchParams(location.search)
+root.dataset.demoDesk = asks.get("desk") === "page" && parent !== window ? "page" : "own"
+if (asks.get("window") === "mac") {
+  root.dataset.lights = "drawn"
+  const full = () => root.toggleAttribute("data-fullscreen", innerWidth >= screen.width && innerHeight >= screen.height)
+  full()
+  addEventListener("resize", full)
+  if (parent !== window) parent.postMessage({ type: "vaultite-demo:window", mac: true }, location.origin)
+}
 if (parent !== window) {
   let was = ""
   const tell = () => {
