@@ -3,6 +3,7 @@ import { type Citation, citationsIn } from "./cite.ts"
 import { formatAll, type Formatted, type Style } from "./format.ts"
 import { itemsFor, type Library, lookup, unite } from "./library.ts"
 import { CslFields } from "./parse/normalize.ts"
+import { type RefsPlace, refsPlace } from "./place.ts"
 import { localeXml, resolveStyle, type StyleFiles } from "./styles.ts"
 import { bibliographyFiles, fileEntries, type FileState, noteEntries, ownBibliographies, type VaultFiles } from "./vaultsources.ts"
 import type { StyleInfo } from "./wire.ts"
@@ -30,7 +31,7 @@ export type Host = VaultFiles & StyleFiles & {
   zotero: Zotero
 }
 
-export type NoteFormat = Formatted & { style: StyleInfo; cites: Citation[] }
+export type NoteFormat = Formatted & { style: StyleInfo; cites: Citation[]; place: RefsPlace }
 
 export const realCites = (cites: Citation[], lib: Library) => cites.filter((c) => !c.inText || c.items.every((i) => lookup(lib, i.key)))
 
@@ -81,6 +82,6 @@ export class References {
     const cites = realCites(citationsIn(body), lib)
     const { style, problem, own } = this.styleFor(path, override)
     const f = await this.format(style, this.langFor(path), lib, cites)
-    return { ...f, style: { id: style.id, title: style.title, problem, own }, cites }
+    return { ...f, style: { id: style.id, title: style.title, problem, own }, cites, place: refsPlace(body) }
   }
 }

@@ -47,7 +47,7 @@ export function noteAnswer(lib: Library, f: NoteFormat): NoteAnswer {
     return e ? [{ ...rowOf(lib, e), html: x.html, links: linksOf(e) }] : []
   })
   const citations = f.cites.map((c, i) => ({ from: c.from, to: c.to, source: c.source, html: f.citations[i] ?? "", keys: c.items.map((it) => it.key) }))
-  return { style: f.style, entries, missing: f.missing, hanging: f.hanging, numbered: f.numbered, citations }
+  return { style: f.style, entries, missing: f.missing, hanging: f.hanging, numbered: f.numbered, citations, place: f.place }
 }
 
 export async function formatSources(refs: References, path: string, sources: string[]) {
@@ -56,7 +56,7 @@ export async function formatSources(refs: References, path: string, sources: str
   const cites = parsed.flatMap((c) => (c ? [c] : []))
   const { style, problem, own } = refs.styleFor(path)
   const f = await refs.format(style, refs.langFor(path), lib, cites)
-  const answer = noteAnswer(lib, { ...f, style: { id: style.id, title: style.title, problem, own }, cites })
+  const answer = noteAnswer(lib, { ...f, style: { id: style.id, title: style.title, problem, own }, cites, place: "end" })
   let n = 0
   const html = parsed.map((c) => (c ? answer.citations[n++]?.html ?? "" : ""))
   return { ...answer, sources: html }

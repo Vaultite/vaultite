@@ -2,7 +2,7 @@
 // the research example and applies Research: throwaway server only.  node web/qa/references.mjs <base url> <vault path> [out dir]
 import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { qa, until } from "./lib/qa.mjs"
+import { command, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = "/tmp/references-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -70,7 +70,13 @@ check("the panel names the style in use", await until(async () => (await panel.l
 await open(page, PAPER)
 check("a paper's own style (csl:) is kept", await until(async () => /\(Bush, 1945\)/.test(await chips.first().innerText().catch(() => "")), 10_000))
 await patch("config/plugin/references", { style: null, inDocument: true })
-check("References in document lists them under the paper", await until(() => page.locator("[data-bibliography] .vau-ref-text").count(), 10_000))
+check("References in document lists them under the paper's own References heading, with none of its own", await until(() => page.locator("[data-bibliography] .vau-ref-text").count(), 10_000) &&
+  !(await page.locator("[data-bibliography] h2").count()))
+await page.evaluate(() => { window.print = () => { window.qaPrinted = document.getElementById("vau-print")?.innerText ?? "" } })
+await command(page, "Print note")
+const printed = await until(() => page.evaluate(() => window.qaPrinted), 15_000)
+check("a printed paper has its citations in its style and its references under its own heading, once", /\(Bush, 1945\)/.test(printed ?? "") &&
+  (printed?.match(/^References$/gm) ?? []).length === 1 && /Ahrens, S\. \(2017\)/.test(printed ?? ""), (printed ?? "").slice(-400))
 await patch("config/plugin/references", { inDocument: null })
 
 const dark = watch(await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: "dark" }))

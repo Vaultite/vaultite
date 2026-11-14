@@ -1,8 +1,7 @@
 import { citationsIn } from "./cite.ts"
 import { markdownOf } from "./format.ts"
+import { REFS_DIV, refsPlace } from "./place.ts"
 import { realCites, type References } from "./refs.ts"
-
-const REFS_DIV = /^:::\s*\{#refs[^}]*\}\s*\n(?:[^\n]*\n)*?:::\s*$/m
 
 export async function pageText(refs: References, path: string, text: string): Promise<string | null> {
   const all = citationsIn(text)
@@ -22,6 +21,8 @@ export async function pageText(refs: References, path: string, text: string): Pr
   const list = f.entries.map((e) => (f.numbered ? markdownOf(e.html) : `- ${markdownOf(e.html)}`)).join(f.numbered ? "\n\n" : "\n")
   const said = [problem && `_(${problem})_`, f.missing.length ? `_(not in the library: ${f.missing.map((k) => `@${k}`).join(", ")})_` : ""].filter(Boolean).join("\n\n")
   const refsText = [list, said].filter(Boolean).join("\n\n")
-  if (REFS_DIV.test(out)) return out.replace(REFS_DIV, refsText)
+  const place = refsPlace(out)
+  if (place === "div") return out.replace(REFS_DIV, refsText)
+  if (place === "heading") return `${out.replace(/\s+$/, "")}\n\n${refsText}\n`
   return `${out.replace(/\s+$/, "")}\n\n## References\n\n_(${style.title})_\n\n${refsText}\n`
 }

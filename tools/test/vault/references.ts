@@ -72,6 +72,16 @@ async function agentsRead({ check, write, vault, render }: Ctx) {
     all(out.includes("First [1], then [2]"), /\[1\] T\. S\. Kuhn/.test(out), out.includes("@nobody")), out)
 }
 
+async function placedReferences({ check, write, vault, render }: Ctx) {
+  write("Papers/Ends.md", "Memory machines [@bush1945].\n\n# References\n")
+  write("Papers/Div.md", "Paradigms [@kuhn1962].\n\n::: {#refs}\n:::\n\n## Appendix\n\nMore.\n")
+  await vault.sync()
+  const ends = await render("Papers/Ends.md"), div = await render("Papers/Div.md")
+  check("references: a note ending with its own References heading gets the list under it, no second heading",
+    all((ends.match(/References/g) ?? []).length === 1, /# References\n\n- Bush, V\. \(1945\)/.test(ends)), ends)
+  check("references: Pandoc's ::: {#refs} is where the list goes", all(/\n- Kuhn, T\. S\. \(1962\)[\s\S]*## Appendix/.test(div), !div.includes("{#refs}"), !div.includes("## References")), div)
+}
+
 async function agentOps({ check, op }: Ctx) {
   const found = await op("references.search", { query: "kuhn revolutions" }, Results)
   check("references: search finds by author and title words", found.results[0]?.key === "kuhn1962", found)
@@ -186,10 +196,11 @@ export default async ($: VaultTest) => {
   }
   citations(ctx)
   await agentsRead(ctx)
+  await placedReferences(ctx)
   await agentOps(ctx)
   await ownBibliography(ctx)
   const note = await zoteroLocal(ctx)
   const added = await byIdentifier(ctx)
   await zoteroWeb(ctx)
-  for (const f of ["Library.bib", "Papers/Draft.md", "Papers/Thesis/refs.json", "Papers/Thesis/Chapter.md", note, added]) await $.api("DELETE", "file", { path: f })
+  for (const f of ["Library.bib", "Papers/Draft.md", "Papers/Ends.md", "Papers/Div.md", "Papers/Thesis/refs.json", "Papers/Thesis/Chapter.md", note, added]) await $.api("DELETE", "file", { path: f })
 }

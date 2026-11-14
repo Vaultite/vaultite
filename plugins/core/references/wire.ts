@@ -10,6 +10,7 @@ export type NoteAnswer = {
   hanging: boolean
   numbered: boolean
   citations: { from: number; to: number; source: string; html: string; keys: string[] }[]
+  place: "div" | "heading" | "end"
 }
 export type CiteAnswer = NoteAnswer & { sources: string[] }
 export type SearchAnswer = { results: Row[] }
