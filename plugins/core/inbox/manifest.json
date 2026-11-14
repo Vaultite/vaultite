@@ -3,6 +3,7 @@
   "icon": "inbox",
   "category": "agents",
   "alwaysOn": true,
+  "settingsAdvanced": true,
   "exports": ["Questions"],
   "name": "Inbox",
   "description": "What your agents need you to decide, in one place: each question an agent asks is its own item, its options as buttons and the default it takes if you don't answer; the ones it waits on first, with toasts, a badge, the Mac's and the phone's notifications, and the ones where it went with the default already quietly, with Accept all defaults. A coding agent's session that needs you (an approval, an answer to read) is a thread there too. Reports are records, listed in the morning brief, not in the inbox; progress shows on the agent's own row. And results to review (research, a clipped page) as files in Inbox/ to settle (into Inbox/.archive/), file away, or snooze till later.",

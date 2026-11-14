@@ -217,7 +217,7 @@ export { Button, buttonClass, HeadingButton } from "@/components/Button"
 export { Banner } from "@/components/Banner"
 // A cursor's conversation: its last words and what the user asked, above a box to ask more (the window's and the screen's).
 export { Chat, type ChatItem } from "@/components/Chat"
-export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, OnThisMac, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
+export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, GroupNote, KV, List, Loading, LoadingRows, OnThisMac, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
 // A place in the app's chrome a view draws into (a portal's host: #phone-actions, #phone-subtitle), once it's there.
 export { usePortalHost } from "@/components/kit"
 export { useQuerySuggest, useSuggest } from "@/components/Suggest"

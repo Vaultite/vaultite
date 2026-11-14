@@ -471,6 +471,10 @@ export const Group = ({ children }: { children: ReactNode }) => (
   <div data-setting-group className="rounded-[10px] bg-foreground/[0.04] px-3"><List>{children}</List></div>
 )
 
+export function GroupNote({ children, above, className, ...rest }: { children: ReactNode; above?: boolean; className?: string } & Record<`data-${string}`, string | boolean | undefined>) {
+  return <p {...rest} className={cn("px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]", above ? "pb-1.5" : "pt-1.5", className)}>{children}</p>
+}
+
 /** A label and its value, in a Group. */
 export function KV({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (

@@ -54,7 +54,7 @@ export function PluginSettings({ store, plugin, embedded = false }: { store: Sto
           <Switch on={false} onChange={() => setSwitch(plugin, true)} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
         </div>
       )}
-      <div className="space-y-5">
+      <div className="space-y-5" data-settings-body>
         {panel && plugin.settingsPanelFirst && panel}
         {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!panel && !embedded} offers={plugin.settingChoices} />}
         {panel && !plugin.settingsPanelFirst && panel}

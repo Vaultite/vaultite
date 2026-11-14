@@ -308,6 +308,7 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   if (m.group !== undefined && (m.alwaysOn === true || !groupOf(m.group))) {
     out.push(`${label}/manifest.json: group is for plugins with a switch, one of ${GROUPS.map((g) => g.id).join(", ")} (core/categories.ts)`)
   }
+  if (m.settingsAdvanced !== undefined && (m.alwaysOn !== true || m.settingsAdvanced !== true)) out.push(`${label}/manifest.json: settingsAdvanced is for the app's alwaysOn plugins, and only true`)
   const sw = m.switchIn as { section?: unknown; label?: unknown } | undefined
   if (sw !== undefined && (vault || m.alwaysOn === true || m.group !== undefined || !SWITCH_SECTIONS.some((x) => x === sw?.section) || typeof sw?.label !== "string" || !sw.label)) {
     out.push(`${label}/manifest.json: switchIn is {"section": ${SWITCH_SECTIONS.map((x) => `"${x}"`).join(" or ")}, "label": "..."}, for the app's plugins with a switch and no group`)

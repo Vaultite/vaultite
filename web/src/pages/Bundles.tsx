@@ -81,37 +81,44 @@ const drawableOf = (e: Listed): Drawable => ({ id: e.address, source: "vault", t
 
 function ListedCard({ e }: { e: Listed }) {
   const theirs = !official(e.repo)
+  const have = !!e.imported && e.current
   return (
     <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow className={cn(CARD, "relative")}>
-      <span className="block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border"><LayoutDrawing b={drawableOf(e)} className="block size-full" /></span>
-      {e.imported && (
-        <span className={cn("absolute top-2 right-2 rounded-[6px] bg-background/85 px-1.5 text-[11px] leading-[20px] font-medium shadow-[0_0_0_0.5px_var(--border)] backdrop-blur",
-          e.current ? "text-muted-foreground" : "text-primary")} {...(e.current ? { "data-listed-imported": true } : { "data-listed-update": true })}>
-          {e.current ? "Imported" : "Update available"}
-        </span>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3.5 py-3">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-[15px] leading-[20px] font-semibold">{e.name}</span>
-          {e.kind && <span className="shrink-0 text-[13px] text-muted-foreground md:text-[12px]" data-listed-kind={e.kind}>{KIND[e.kind]}</span>}
-        </div>
-        {(e.runsCode || theirs || e.stars > 0) && (
+      <span className={cn("block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border", have && "opacity-60")}><LayoutDrawing b={drawableOf(e)} className="block size-full" /></span>
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3.5 py-2.5">
+        <div className={cn("flex min-w-0 flex-1 flex-col", have && "opacity-60")}>
+          <span className="min-w-0 truncate text-[15px] leading-[20px] font-semibold">{e.name}</span>
           <div className="flex min-w-0 items-center gap-1.5 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
-            {e.runsCode && (
-              <span className="flex min-w-0 items-center gap-1 text-ink-(--orange)" data-bundle-runs-code
-                data-tip={e.installs.length ? `Installs ${AND.format(e.installs.map((x) => x.name))}` : undefined}>
-                <ShieldAlert className="size-3.5 shrink-0" strokeWidth={2.25} />
-                <span className="truncate">{e.installs.length ? `Installs ${plural(e.installs.length, "plugin")}` : "Runs code"}</span>
-              </span>
-            )}
-            {theirs && <><Sep show={e.runsCode} /><span className="min-w-0 truncate" data-listed-author>by {e.author}</span></>}
-            {e.stars > 0 && <><Sep show={e.runsCode || theirs} /><Star className="size-3 shrink-0" strokeWidth={2.25} /><span className="tabular-nums" aria-label={`${e.stars} stars`}>{e.stars}</span></>}
+            {e.kind && <span className="shrink-0" data-listed-kind={e.kind}>{KIND[e.kind]}</span>}
+            {theirs && <><Sep show={!!e.kind} /><span className="min-w-0 truncate" data-listed-author>by {e.author}</span></>}
+            {e.stars > 0 && <><Sep show={!!e.kind || theirs} /><Star className="size-3 shrink-0" strokeWidth={2.25} /><span className="tabular-nums" aria-label={`${e.stars} stars`}>{e.stars}</span></>}
           </div>
-        )}
+        </div>
+        <CardAction e={e} />
       </div>
     </button>
   )
 }
+
+function CardAction({ e }: { e: Listed }) {
+  const brings = e.installs.length ? plural(e.installs.length, "plugin") : e.runsCode ? "Runs code" : null
+  const label = !e.imported ? "Get" : e.current ? null : "Update"
+  return (
+    <span className="flex shrink-0 flex-col items-end gap-0.5">
+      {label ? <span className={cn("rounded-full px-3 text-[13px] leading-[26px] font-semibold", label === "Get" ? "bg-primary/15 text-primary" : "bg-primary text-primary-foreground")}
+        {...(label === "Update" ? { "data-listed-update": true } : {})}>{label}</span>
+        : <span className="flex items-center gap-1 text-[13px] leading-[26px] text-muted-foreground md:text-[12px]" data-listed-imported><Check className="size-3.5" strokeWidth={2.5} />Imported</span>}
+      {brings && (
+        <span className="flex items-center gap-1 text-[11px] leading-[14px] text-ink-(--orange)" data-bundle-runs-code
+          data-tip={e.installs.length ? `Installs ${AND.format(e.installs.map((x) => x.name))}` : "It runs code on the machine that serves this app"}>
+          <ShieldAlert className="size-3 shrink-0" strokeWidth={2.25} />{brings}
+        </span>
+      )}
+    </span>
+  )
+}
+
+const haveLast = (list: Listed[]) => [...list].sort((a, b) => Number(!!a.imported && a.current) - Number(!!b.imported && b.current))
 
 const Sep = ({ show }: { show: boolean }) => (show ? <span aria-hidden>·</span> : null)
 
@@ -141,7 +148,7 @@ export function StoreBundles({ query: q }: { query: string }) {
         : failed || (dir && !dir.available)
         ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared layouts can't be reached right now.</p>
         : dir && !list.length ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared layouts or packs match." : "No layouts or packs are shared yet."}</p>
-        : <div className={GRID} data-keylist data-bundles-listed>{list.map((e) => <ListedCard key={e.address} e={e} />)}</div>}
+        : <div className={GRID} data-keylist data-bundles-listed>{haveLast(list).map((e) => <ListedCard key={e.address} e={e} />)}</div>}
       {over && (
         <div className="pointer-events-none absolute -inset-2 grid place-items-center rounded-[14px] border-2 border-dashed border-primary/60 bg-background/85 text-[15px] font-medium" data-bundles-drop>
           Drop to import the bundle

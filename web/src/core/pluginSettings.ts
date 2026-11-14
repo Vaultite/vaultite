@@ -151,3 +151,12 @@ export function settingsLit(section: string) {
   return of.switchIn?.section ?? settingsHome(of) ?? "plugins"
 }
 export const settingsApart = (p: Plugin) => Object.keys(p.settingsDecls ?? {}).length > 10
+export const settingsFolded = (p: Plugin) => !!p.settingsAdvanced || settingsApart(p)
+export const advancedOpen = cell<ReadonlySet<string>>(new Set())
+export function setAdvanced(section: string, open: boolean) {
+  const now = advancedOpen.get()
+  if (now.has(section) === open) return
+  const next = new Set(now)
+  if (open) next.add(section); else next.delete(section)
+  advancedOpen.set(next)
+}

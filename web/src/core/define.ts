@@ -69,6 +69,8 @@ export type Manifest = {
   /** Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim
    *  keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only). */
   switchIn?: { section: string; label: string }
+  /** Its settings, in its Settings section (`alwaysOn`), fold under that page's Advanced: what few people change. */
+  settingsAdvanced?: boolean
   /** Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in
    *  plugins standing in for the same one are alternatives: turning one on turns the other off. */
   replaces?: Record<string, string[]>

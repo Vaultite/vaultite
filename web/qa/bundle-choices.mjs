@@ -215,8 +215,8 @@ const { ctx, page } = await open(1600, 900)
   check("Get: the directory's bundles, by stars", listed.join() === "qa/desk,boblee/fleet/bundles/lamps", listed)
   check("and its plugins under them, one search for both", await page.locator("[data-setup=get] [data-plugin-browse]").count() === 1 && await page.locator("[data-setup=get] [data-plugins-search]").count() === 1 &&
     await page.locator("[data-setup=get] [data-bundles-import]").count() === 1)
-  check("each with its kind by its name, its author (not Vaultite's) under it, one that runs code saying so", /Look\s+by Alice Park/.test(await browse.locator('[data-listed="qa/desk"]').innerText()) &&
-    /Installs|Runs code/.test(await browse.locator('[data-listed="boblee/fleet/bundles/lamps"] [data-bundle-runs-code]').innerText()), await browse.locator('[data-listed="qa/desk"]').innerText())
+  check("each with its kind and its author (not Vaultite's) under its name, one that runs code saying so", /Look\s*·\s*by Alice Park/.test(await browse.locator('[data-listed="qa/desk"]').innerText()) &&
+    /\d+ plugins?|Runs code/.test(await browse.locator('[data-listed="boblee/fleet/bundles/lamps"] [data-bundle-runs-code]').innerText()), await browse.locator('[data-listed="qa/desk"]').innerText())
   const art = await browse.locator("[data-listed]").evaluateAll((els) => els.map((e) => ({ img: e.querySelectorAll("img").length, svg: e.querySelector("[data-layout-drawing]"),
     scheme: e.querySelector("[data-layout-drawing]")?.getAttribute("data-scheme"), glass: !!e.querySelector("[data-layout-drawing] rect[fill^='url(']"),
     w: e.querySelector("[data-layout-drawing]")?.getBoundingClientRect().width ?? 0 })).map(({ svg, ...x }) => ({ ...x, drawn: !!svg })))

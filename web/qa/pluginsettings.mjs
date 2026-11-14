@@ -8,6 +8,8 @@ import { setAsideWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 /** One of the app's own plugins' settings, a part of the Settings section `section` (Files: Search field's). */
 async function part(page, section, id) {
   await page.locator(`[data-settings-nav="${section}"]`).click()
+  const closed = page.locator(`[data-settings-section="${section}"] [data-settings-advanced="closed"]`)
+  if (await closed.count() && !(await page.locator(`[data-settings-section="${section}"] [data-settings-member="${id}"]`).count())) await closed.locator("[data-settings-advanced-row]").click()
   return page.locator(`[data-settings-section="${section}"] [data-settings-member="${id}"] [data-plugin-settings-sheet="${id}"]`)
 }
 
@@ -94,8 +96,12 @@ try {
     const tall = await page.evaluate(() => document.querySelector("[data-settings] [data-rail-pane]").scrollHeight)
     await page.locator('[data-settings-nav="files"]').click()
     const members = async (sec) => page.locator(`[data-settings-section="${sec}"] [data-settings-member]`).evaluateAll((els) => els.map((e) => e.dataset.settingsMember))
+    const folded = await members("files")
+    check("Files: what few change folds under Advanced", folded.includes("files") && !folded.includes("history") &&
+      (await page.locator('[data-settings-section="files"] [data-settings-advanced="closed"]').count()) === 1, folded)
+    await page.locator('[data-settings-section="files"] [data-settings-advanced-row]').click()
     const files = await members("files")
-    check("Files: the app's own plugins of its kind that have settings, each a part", ["files", "search", "pages", "recent", "history"].every((id) => files.includes(id)), files)
+    check("Files: the app's own plugins of its kind that have settings, each a part, Advanced open", ["files", "search", "pages", "recent", "history"].every((id) => files.includes(id)), files)
     check("...not one with nothing to set", !files.includes("outline"))
     check("...nor one that can be switched (a gear away on Plugins)", !["web-viewer", "logs", "workspaces"].some((id) => files.includes(id)))
     check("...a long form a row to its sheet (Graph view)", (await page.locator('[data-settings-section="files"] button[data-settings-member="graph"]').count()) === 1)

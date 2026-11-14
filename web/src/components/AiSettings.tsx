@@ -1,23 +1,20 @@
-import { Fragment, useRef, type ReactNode } from "react"
+import { Fragment, useRef, useState, type ReactNode } from "react"
 import type { Store } from "@/core/data"
 import { hasCompanion, setCompanion, useAi, useCodingAgents, useCompanionAgent, type CodingAgent } from "@/core/ai"
 import { openDetail } from "@/core/nav"
 import { pluginById, setSwitch, switchedOn, useAgents, usePluginsVersion, type Agent } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { coreSwitch } from "@/core/switches"
-import { openMenu } from "@/components/ContextMenu"
-import { Group, LoadingRows, Section, SettingRow, Switch } from "@/components/kit"
-import { Field } from "@/components/PluginSettings"
-import { openPluginSettings, pluginSettings } from "@/core/pluginSettings"
-import { aiParts, COMPANION_HERE } from "@/core/settingsfind"
+import { openMenu, useMenuShowing, type MenuItem } from "@/components/ContextMenu"
+import { Group, GroupNote, LoadingRows, Section, SettingRow, Switch } from "@/components/kit"
+import { openPluginSettings, pluginSettings, settingDefault, valueLabel } from "@/core/pluginSettings"
+import { aiParts } from "@/core/settingsfind"
 import { openSettings } from "@/core/apppages"
 import { isDesktop } from "@/core/platform"
 import { notifyError } from "@/core/notify"
 import { SwitchRow } from "@/components/SwitchRow"
-
-const Sub = ({ children }: { children: string }) => (
-  <p className="mb-1.5 text-[13px] leading-[18px] text-muted-foreground md:px-1 md:text-[12px] md:leading-[16px]">{children}</p>
-)
+import { capitalize } from "@/lib/utils"
+import type { SettingDecl } from "../../../core/blocks.ts"
 
 export function AiPanel({ store }: { store: Store }) {
   const on = useAi(), { disabled } = usePrefs()
@@ -29,7 +26,7 @@ export function AiPanel({ store }: { store: Store }) {
       {on && aiParts(disabled).map((d) => (
         <section key={d.id} aria-label={d.label} data-ai-part={d.id}>
           <Section title={d.label}>
-            {d.sub && <Sub>{d.sub}</Sub>}
+            {d.sub && <GroupNote above>{d.sub}</GroupNote>}
             {d.render({ store })}
           </Section>
         </section>
@@ -59,9 +56,9 @@ function CodingAgents() {
           {list && <CompanionModel />}
         </Group>
         {!!others.length && (
-          <p className="mt-1.5 text-[13px] leading-[18px] text-muted-foreground md:px-1 md:text-[12px] md:leading-[16px]" data-ai-others>
+          <GroupNote data-ai-others>
             Also works with {spoken(others.map((a) => <a key={a.id} href={a.site} target="_blank" rel="noreferrer" className="underline decoration-foreground/25 underline-offset-2 hover:text-foreground">{a.name}</a>))}.
-          </p>
+          </GroupNote>
         )}
       </Section>
     </section>
@@ -92,14 +89,46 @@ function CompanionRow({ running }: { running: Agent[] }) {
     : <SettingRow label="Companion" value={mine?.label ?? current} data-ai-companion={current} />
 }
 
+type TalkKey = { summoned_model?: string; summoned_effort?: string }
+const OWN_SESSION = "companion"
+const named = (d: SettingDecl | undefined, v: string) => (d ? valueLabel(d, v).split(": ") : [v])
+
 function CompanionModel() {
-  const p = pluginById("companion"), settings = pluginSettings("companion"), data = settings.use(), save = settings.set
+  const p = pluginById("companion"), settings = pluginSettings<TalkKey>("companion"), data = settings.use()
+  const ref = useRef<HTMLDivElement>(null)
+  const showing = useMenuShowing(), [mine, setMine] = useState(false)
+  if (mine && !showing) setMine(false)
   if (!p || !hasCompanion()) return null
-  const here = COMPANION_HERE.filter((k) => p.settingsDecls?.[k])
+  const m = p.settingsDecls.summoned_model, e = p.settingsDecls.summoned_effort
+  if (!m) return null
+  const dflt = (k: keyof TalkKey, d: SettingDecl | undefined) => (d ? String(settingDefault("companion", k, d)) : "")
+  const now = (t: TalkKey) => ({ model: t.summoned_model ?? dflt("summoned_model", m), effort: t.summoned_effort ?? dflt("summoned_effort", e) })
+  const save = (k: keyof TalkKey, d: SettingDecl, v: string) =>
+    void settings.set({ [k]: v === dflt(k, d) ? null : v }).catch((err) => notifyError(err, "Couldn't save it"))
+  const items = (): MenuItem[] => {
+    const { model, effort } = now(settings.get())
+    return [
+      ...(m.values ?? []).map(String).map((v): MenuItem => {
+        const [label, hint] = named(m, v)
+        return { label, hint: hint && capitalize(hint), checked: v === model, run: () => save("summoned_model", m, v) }
+      }),
+      ...(e && model !== OWN_SESSION ? [{ label: "Effort", caption: true, sep: true, run: () => {} }, { label: "Effort", run: () => {}, segments: {
+        value: effort, pick: (v: string) => save("summoned_effort", e, v),
+        options: (e.values ?? []).map(String).map((v) => { const [label, note] = named(e, v); return { value: v, label, note: note && capitalize(note) } }),
+      } }] : []),
+    ]
+  }
+  const choose = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (!r) return
+    openMenu({ x: r.right - 260, y: r.bottom - 4, flip: r.top + 4 }, items(), false, items)
+    setMine(true)
+  }
+  const { model, effort } = now(data)
+  const shown = model === OWN_SESSION ? named(m, model)[0] : `${named(m, model)[0]} · ${named(e, effort)[0]} effort`
   return (
     <>
-      {here.map((k) => <Field key={k} k={k} d={{ ...p.settingsDecls[k], description: p.settingsDecls[k].description.split(": ")[0] }} value={data[k]}
-        set={(v) => void save({ [k]: v ?? null }).catch((e) => notifyError(e, "Couldn't save it"))} />)}
+      <div ref={ref}><SettingRow label="Talk key model" value={shown} onClick={choose} aria-haspopup="menu" aria-expanded={mine && showing} data-ai-model="" /></div>
       <SettingRow label="All companion settings" onClick={() => (isDesktop() ? openSettings("plugin:companion") : openPluginSettings("companion"))} data-ai-companion-settings="" />
     </>
   )

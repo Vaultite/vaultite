@@ -4,7 +4,7 @@ import { isDesktop } from "@/core/platform"
 import { openSettings, openSetup } from "@/core/apppages"
 import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, pluginById, type Plugin } from "@/core/plugins"
-import { hasSettings, openPluginSettings, settingsApart, settingsHome, settingsTitle } from "@/core/pluginSettings"
+import { hasSettings, openPluginSettings, setAdvanced, settingsApart, settingsFolded, settingsHome, settingsTitle } from "@/core/pluginSettings"
 import { getPrefs } from "@/core/prefs"
 import { textSizeKinds } from "@/core/textsize"
 import { allSwitches, placeOf, SECTIONS, type SwitchDef } from "@/core/switches"
@@ -25,7 +25,9 @@ const pageLabels = (disabled: string[]) => PLUGINS.filter((p) => p.settingsPages
 
 export function placeOfPlugin(id: string): { section: string } | { sheet: string } {
   const p = pluginById(id), home = p && settingsHome(p)
-  return home && !settingsApart(p) ? { section: home } : { sheet: id }
+  if (!home || settingsApart(p)) return { sheet: id }
+  if (settingsFolded(p)) setAdvanced(home, true)
+  return { section: home }
 }
 
 export type Found = { id: string; label: string; sub?: string; where: string; words: string; run: () => void; switch?: SwitchDef }
@@ -88,7 +90,7 @@ export function findable(store: Store, disabled: string[], show: Show): Found[] 
     return [
       { id: `plugin:${p.id}`, label: settingsTitle(p.name), where: homeName(p), words: "", run: () => show(`plugin:${p.id}`) },
       ...own.map((e, i): Found => ({ id: `plugin:${p.id}:${e.key ?? i}`, label: e.label, sub: e.description ? capitalize(e.description) : "",
-        ...(inAi(p.id, e.key) ? { where: "AI", words: e.key!, run: () => show("ai", `[data-ai-agents] [data-setting="${CSS.escape(e.key!)}"]`) }
+        ...(inAi(p.id, e.key) ? { where: "AI", words: e.key!, run: () => show("ai", "[data-ai-agents] [data-ai-model]") }
           : { where, words: e.key ?? "", run: () => show(`plugin:${p.id}`, e.key ? `${sheet} [data-setting="${CSS.escape(e.key)}"]` : undefined) }),
         switch: isEnabled(p.id, disabled) ? switchOf(p.id, e.key) : undefined })),
     ]

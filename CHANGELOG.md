@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings, simpler**: each page shows what most people set and folds the rest under Advanced (AI's agent files,
+  inbox and MCP; Files' history, links and tabs), which search still opens. AI's Talk key model and its effort are one
+  menu, as Claude's model picker is. Share & sync is redrawn: Vaultite Cloud's sign-in a row with its button, notes
+  lined up with their titles. Get plugins dims what you have and lists it last, and a pack's card says Get with the
+  plugins it brings where a plugin's Install is.
 - **Cloud jobs**: a job in a cloud session stays working while its session sits idle before its first step, and reads
   done only once the session answers; one that rests 20 minutes with no answer fails, saying so. A redesign of
   Vaultite's look runs on one of your Macs rather than in the cloud.

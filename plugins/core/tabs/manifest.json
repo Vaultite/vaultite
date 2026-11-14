@@ -3,6 +3,7 @@
   "icon": "layers-2",
   "category": "navigation",
   "alwaysOn": true,
+  "settingsAdvanced": true,
   "exports": ["devices", "types"],
   "settings": {
     "archive_after": { "type": "enum", "values": ["never", "12h", "24h", "7d", "30d"], "labels": { "never": "Never", "12h": "After 12 hours", "24h": "After 24 hours", "7d": "After 7 days", "30d": "After 30 days" }, "default": "never", "label": "Archive tabs", "description": "unpinned tabs you haven't looked at for this long close into Archived tabs, to reopen or find in the quick switcher; never the ones on screen, nor what closing would lose (a terminal, unsaved edits)" },

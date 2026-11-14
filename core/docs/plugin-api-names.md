@@ -290,6 +290,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `GroupLabel({ g, n, target, className })`: A tab group's name in a solid chip of its colour (the tab bar's, the Tabs panel's), its text white or dark by it; no name, a small square.
 - `groupMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
 - `groupName(g)`: What a tab group is called: its name, or its colour's ("Blue group").
+- `GroupNote({ children, above, className, … })`
 - `groupsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging): its line runs by it.
 - `guestEdits()`: Whether the guest may change notes (else the app is read-only for them).
 - `haptic(weight?)`

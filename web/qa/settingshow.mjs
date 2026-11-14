@@ -24,13 +24,13 @@ try {
   const { ctx, page } = await open(1280, 800)
   const r = await op("settings.show", { setting: "summoned_model" })
   check("settings.show summoned_model: found, in AI", r.found && r.where === "AI", r)
-  check("...the AI section, its row flashed beside the Companion row", !!(await flashed(page, '[data-ai-agents] [data-setting="summoned_model"]')))
+  check("...the AI section, its row flashed beside the Companion row", !!(await flashed(page, '[data-ai-agents] [data-ai-model]')))
   check("...under the Companion row and its agent", !!(await page.locator("[data-ai-companion]").count()))
   check("...with All companion settings after it", !!(await page.locator("[data-ai-companion-settings]").count()))
   await page.screenshot({ path: `${OUT}settingshow-ai.png` })
 
   const seen = await op("companion.see", {})
-  check("companion.see reads Settings: its words", /Model for summoned asks/.test(seen.text ?? "") && /Coding agents/.test(seen.text ?? ""), seen.text?.slice(0, 300))
+  check("companion.see reads Settings: its words", /Talk key model/.test(seen.text ?? "") && /Coding agents/.test(seen.text ?? ""), seen.text?.slice(0, 300))
   check("...and its controls' states", /switch "Use AI": on/.test(seen.text ?? ""), seen.text?.slice(-400))
 
   for (const [said, where] of [["dark mode", "Appearance"], ["Model for summoned asks", "AI"], ["companion.voice", "Companion"], ["density", "Appearance"]]) {
@@ -41,11 +41,12 @@ try {
   check("a name nothing matches: an error", !!none.error, none)
 
   await op("settings.show", { setting: "summoned_model" })
-  await flashed(page, '[data-ai-agents] [data-setting="summoned_model"]')
-  const a = await op("companion.act", { action: "click", find: "Model for summoned asks" })
-  check("act opens the row: its choices read back", /Haiku/.test(a.text ?? a.shows ?? JSON.stringify(a)), a)
+  await flashed(page, '[data-ai-agents] [data-ai-model]')
+  const a = await op("companion.act", { action: "click", find: "Talk key model" })
+  check("act opens the row's menu: its models and effort", a.ok && (await page.locator("[role=menu] [role=menuitemradio]", { hasText: "Haiku" }).count()) === 1 &&
+    (await page.locator("[role=menu] [role=radiogroup]").count()) === 1, a)
   const b = await op("companion.act", { action: "click", find: "Haiku" })
-  check("act picks Haiku: what Settings shows comes back", /Coding agents/.test(JSON.stringify(b)), b)
+  check("act picks Haiku: the row says it", b.ok && /Haiku/.test(await page.locator("[data-ai-model]").innerText()), b)
   check("...and it's saved", await until(async () => (await api("GET", "config/plugin/companion"))?.summoned_model === "haiku", 4000))
   await ctx.close()
 

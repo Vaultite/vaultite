@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronRight, Download, ExternalLink, MoreHorizontal, Puzzle, RefreshCw, type LucideIcon } from "lucide-react"
+import { Check, ChevronRight, Download, ExternalLink, MoreHorizontal, Puzzle, RefreshCw, type LucideIcon } from "lucide-react"
 import { dateText, fmtAgo, numberText, reload } from "@/core/data"
 import { op } from "@/core/http"
 import { openWebLink } from "@/core/links"
@@ -78,9 +78,9 @@ function openEntry(e: Entry) {
   openDetail(e.installed !== null && pluginById(e.id) ? `plugin/${e.id}` : `plugin-get/${e.id}`)
 }
 
-function Tappable({ id, name, open, children }: { id: string; name: string; open: () => void; children: ReactNode }) {
+function Tappable({ id, name, open, have, children }: { id: string; name: string; open: () => void; have?: boolean; children: ReactNode }) {
   return (
-    <div className="group/prow relative isolate flex items-start gap-3 py-2.5" data-browse-row={id}>
+    <div className={cn("group/prow relative isolate flex items-start gap-3 py-2.5", have && "[&>:not(button):not([data-browse-have])]:opacity-55")} data-browse-row={id} data-browse-have-row={have || undefined}>
       <button type="button" onClick={open} aria-label={`${name}: details`} data-browse-open={id}
         className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
       {children}
@@ -100,6 +100,13 @@ function TitleLine({ name, mark, children }: { name: string; mark?: ReactNode; c
   )
 }
 
+const Have = () => (
+  <span className="pointer-events-none mt-0.5 flex h-8 min-w-20 shrink-0 items-center justify-center gap-1 text-[13px] text-muted-foreground max-md:h-9 max-md:text-[15px]" data-browse-installed data-browse-have>
+    <Check className="size-3.5" strokeWidth={2.5} />Installed
+  </span>
+)
+const haveLast = <T,>(list: T[], have: (e: T) => boolean) => [...list].sort((a, b) => Number(have(a)) - Number(have(b)))
+
 const Description = ({ text }: { text?: string }) =>
   text ? <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-2 md:truncate md:text-[13px] md:leading-[18px]">{text}</p> : null
 
@@ -109,8 +116,9 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
   const says = ours ? [] : disclosed(e.disclosures)
   const button = e.blocked ? null : e.update ? "Update" : e.installed !== null ? null : "Install"
   const Icon = pluginIcon(e.icon) ?? Puzzle
+  const have = e.installed !== null && !e.update
   return (
-    <Tappable id={e.id} name={e.name} open={() => openEntry(e)}>
+    <Tappable id={e.id} name={e.name} open={() => openEntry(e)} have={have}>
       <span className="pointer-events-none mt-0.5 grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" style={{ color: e.tint && `var(--${e.tint})` }} data-browse-icon>
         <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
       </span>
@@ -119,7 +127,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
           {!ours && e.author && <span>{e.author}</span>}
           <span>{e.version}</span>
           {updated && <span className="pointer-events-auto" data-tip={dateText(new Date(updated), { day: "numeric", month: "long", year: "numeric" })}>updated {fmtAgo(updated)}</span>}
-          {e.installed !== null && <span className="text-foreground/80" data-browse-installed>{e.update ? `${e.installed} installed` : "Installed"}</span>}
+          {e.update && <span className="text-foreground/80">{e.installed} installed</span>}
         </TitleLine>
         <Description text={e.description} />
         {says.length > 0 && (
@@ -136,6 +144,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
           {busy ? (button === "Install" ? "Installing…" : "Updating…") : button}
         </button>
       )}
+      {have && <Have />}
     </Tappable>
   )
 }
@@ -170,7 +179,7 @@ function HostRow({ host, e, busy, install, use, show, more }: { host: string; e:
     openDetail(e.installed && e.plugin && pluginById(e.plugin) ? `plugin/${e.plugin}` : `plugin-get/${encodeURIComponent(key)}`)
   }
   return (
-    <Tappable id={e.id} name={e.name} open={open}>
+    <Tappable id={e.id} name={e.name} open={open} have={!!e.installed}>
       <div className="pointer-events-none min-w-0 flex-1">
         <TitleLine name={e.name}>
           {e.author && <span>{e.author}</span>}
@@ -178,11 +187,10 @@ function HostRow({ host, e, busy, install, use, show, more }: { host: string; e:
           {e.badges?.map((b) => <span key={b.text} className={cn("pointer-events-auto", b.tone && TONES[b.tone])} data-tip={b.tip} data-browse-badge>{b.text}</span>)}
           {e.standIn && (e.standIn.on ? <span className="text-foreground/80" data-browse-stand-in>Vaultite's {e.standIn.name} is on</span>
             : <span className="pointer-events-auto" data-tip="A plugin of Vaultite's does its job, and agents can read what it draws" data-browse-stand-in>Vaultite has {e.standIn.name}</span>)}
-          {e.installed && <span className="text-foreground/80" data-browse-installed>Installed</span>}
         </TitleLine>
         <Description text={e.description} />
       </div>
-      {e.installed ? e.plugin && <Button className="mt-0.5 min-w-20 px-3" onClick={() => show(e.plugin!)}>Show</Button>
+      {e.installed ? <Have />
         : alt?.on ? <Button className="mt-0.5 min-w-20 px-3" onClick={() => show(alt.id)} data-browse-action="show-stand-in">Show</Button>
         : alt ? (
           <Button look="primary" className="mt-0.5 min-w-20 px-3" disabled={busy} onClick={() => use(e)} data-browse-action="use-stand-in">{busy ? "Turning on…" : "Use Vaultite's"}</Button>
@@ -238,7 +246,7 @@ function HostBrowse({ host, src, query, filters, showInstalled, onListed }: { ho
     setBusy(null)
   }
   useEffect(() => { onListed(found?.available ? found.entries.map((e) => ({ installed: !!e.installed })) : null) }, [found, onListed])
-  const entries = found?.entries.filter((e) => passesGet({ installed: !!e.installed }, filters)) ?? []
+  const entries = haveLast(found?.entries.filter((e) => passesGet({ installed: !!e.installed }, filters)) ?? [], (e) => !!e.installed)
   const more = entries.some((e) => !e.installed && e.standIn)
   const rows = useKeptCount(`plugins:browse:${src.title}`, found ? entries.length : undefined)
   return (
@@ -339,7 +347,7 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
     if (l && !compact && !query.trim()) noteCategories(l)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- noted only when a new list comes
   }, [found, onListed])
-  const shown = found?.plugins.filter((e) => passesGet({ installed: e.installed !== null, category: e.category }, filters)) ?? []
+  const shown = haveLast(found?.plugins.filter((e) => passesGet({ installed: e.installed !== null, category: e.category }, filters)) ?? [], (e) => e.installed !== null && !e.update)
   const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? shown.length : undefined)
 
   const act = async (e: Entry) => {

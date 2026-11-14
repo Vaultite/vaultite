@@ -3,6 +3,7 @@
   "icon": "search",
   "category": "navigation",
   "alwaysOn": true,
+  "settingsAdvanced": true,
   "name": "Search field",
   "description": "The search field at the top of the sidebar, the search tab, and ```query fences: a search in a note, its results drawn there and kept up to date, as Obsidian embeds them. Off, the quick switcher still opens with ⌘O.",
   "replaces": { "obsidian": ["omnisearch"] },

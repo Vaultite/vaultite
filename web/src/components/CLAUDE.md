@@ -1,7 +1,9 @@
 # Notes for `web/src/components/`
 
 - Settings: the Settings page holds only the app's own; a plugin's options are its settings sheet
-  (`PluginSettings.tsx`), which Settings' search also finds. Choices in a sheet unfold in place, no menus.
+  (`PluginSettings.tsx`), which Settings' search also finds. Choices in a sheet unfold in place, no menus (one menu only
+  for a choice made of two, as a model and its effort). A page shows what most people set; what few change folds under
+  its Advanced (manifest `settingsAdvanced`). A line about a Group is a `GroupNote`, in line with the titles.
 - A part that fails, fails alone: every tab, panel, header item and sheet draws in a `Guard` (`Guard.tsx`); smaller
   parts use `Catch`.
 - Files a plugin draws (`FormatView.tsx`): the text is the only state, `onChange(text)` goes through autosave.

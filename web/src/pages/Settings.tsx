@@ -1,12 +1,12 @@
 import { useContext, useMemo, useState, useEffect, type ReactNode } from "react"
-import { Bot, ChevronLeft, FolderOpen, Info, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
+import { Bot, ChevronDown, ChevronLeft, ChevronRight, FolderOpen, Info, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { openSetup, settingsSection, settingsSectionOpen, showSettingsSection } from "@/core/apppages"
 import { usePane } from "@/core/pane"
 import { openDetail } from "@/core/nav"
 import { isEnabled, offWithAi, PLUGINS, pluginById, switchedOn, tileTint, type Plugin } from "@/core/plugins"
-import { openPluginSettings, revealRow, settingsApart, settingsHome, settingsLit, withSettings } from "@/core/pluginSettings"
+import { advancedOpen, openPluginSettings, revealRow, setAdvanced, settingsApart, settingsFolded, settingsHome, settingsLit, withSettings } from "@/core/pluginSettings"
 import { PluginPreview } from "@/components/PluginPreview"
 import { OpenPlugin } from "@/pages/Plugins"
 import { PluginsPane } from "@/pages/Setup"
@@ -14,6 +14,7 @@ import { setPrefs, usePrefs, type Prefs } from "@/core/prefs"
 import { useSwitches } from "@/core/switches"
 import { PLUGIN_UPDATE_POLICIES } from "@/core/choices"
 import { cn } from "@/lib/utils"
+import { fewOf } from "@/core/bundlenames"
 import { HotkeysSheet } from "@/pages/Hotkeys"
 import { DenseRows, Group, IconTile, Logo, Panel, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
@@ -108,7 +109,7 @@ const CORE: Sec[] = [
   headed("terminal", "Terminal", SquareTerminal, "var(--gray)", () => null, "Its shell, its cursor and who may open one"),
   ...(desktopApp?.permission ? [headed("permissions", "Permissions", ShieldCheck, "var(--blue)", () => <PermissionsPanel />, "What macOS lets Vaultite do on this Mac")] : []),
   headed("about", "About", Info, "var(--gray)", () => <About />, "Version, updates and errors"),
-  headed("ai", "AI", Bot, "var(--purple)", (store) => <AiPanel store={store} />, "Agents, the apps you connect and what they read"),
+  headed("ai", "AI", Bot, "var(--purple)", (store) => <AiPanel store={store} />, "Agents and the AI apps you connect"),
   { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--blue)", render: (store) => <PluginsPane store={store} tab="plugins" pick={pickSetup} top={<PluginUpdates />} /> },
   { id: "get", label: "Get plugins", icon: StoreIcon, tint: "var(--blue)", render: (store) => <PluginsPane store={store} tab="get" pick={pickSetup} /> },
 ]
@@ -124,26 +125,45 @@ function membersOf(store: Store, disabled: string[], section: string) {
 
 function Members({ store, section }: { store: Store; section: string }) {
   const { disabled } = usePrefs()
-  const open = useContext(OpenPlugin)
   const list = membersOf(store, disabled, section)
   if (!list.length) return null
-  const drawn = list.filter((p) => !settingsApart(p)), apart = list.filter(settingsApart)
+  const shown = list.filter((p) => !settingsFolded(p)), folded = list.filter(settingsFolded)
   return (
     <div className="mt-6 flex flex-col gap-6" data-settings-members={section}>
-      {drawn.map((p) => (
-        <section key={p.id} aria-label={p.name} data-settings-member={p.id}>
-          <Section title={drawn.length === 1 && p.name === CORE.find((s) => s.id === section)?.label ? null : p.name}>
-            <Catch fallback={() => <p className="text-[13px] text-muted-foreground">Its settings couldn't be drawn.</p>}>
-              <PluginSettings store={store} plugin={p} embedded />
-            </Catch>
-          </Section>
-        </section>
-      ))}
-      {!!apart.length && (
+      {shown.map((p) => <Member key={p.id} store={store} plugin={p} title={shown.length === 1 && p.name === CORE.find((s) => s.id === section)?.label ? null : p.name} />)}
+      {!!folded.length && <Advanced store={store} section={section} list={folded} />}
+    </div>
+  )
+}
+
+function Member({ store, plugin: p, title }: { store: Store; plugin: Plugin; title: string | null }) {
+  return (
+    <section aria-label={p.name} data-settings-member={p.id} className="has-[[data-settings-body]:empty]:hidden">
+      <Section title={title}>
+        <Catch fallback={() => <p className="text-[13px] text-muted-foreground">Its settings couldn't be drawn.</p>}>
+          <PluginSettings store={store} plugin={p} embedded />
+        </Catch>
+      </Section>
+    </section>
+  )
+}
+
+function Advanced({ store, section, list }: { store: Store; section: string; list: Plugin[] }) {
+  const open = advancedOpen.use((s) => s.has(section))
+  const openPlugin = useContext(OpenPlugin)
+  const drawn = list.filter((p) => !settingsApart(p)), apart = list.filter(settingsApart)
+  return (
+    <div className="flex flex-col gap-6" data-settings-advanced={open ? "open" : "closed"}>
+      <Group>
+        <SettingRow label="Advanced" sub={open ? undefined : fewOf(list.map((p) => p.name))} onClick={() => setAdvanced(section, !open)}
+          chevron={open ? ChevronDown : ChevronRight} aria-expanded={open} data-settings-advanced-row="" />
+      </Group>
+      {open && drawn.map((p) => <Member key={p.id} store={store} plugin={p} title={p.name} />)}
+      {open && !!apart.length && (
         <Section title="More">
           <Group>
             {apart.map((p) => (
-              <SettingRow key={p.id} data-settings-member={p.id} onClick={() => open(p.id)} sub={`${Object.keys(p.settingsDecls ?? {}).length} settings`}
+              <SettingRow key={p.id} data-settings-member={p.id} onClick={() => openPlugin(p.id)} sub={`${Object.keys(p.settingsDecls ?? {}).length} settings`}
                 label={<span className="flex items-center gap-2"><IconTile icon={p.icon} tint={tileTint(p.id)} className="size-5 rounded-[5px]" iconClassName="size-3" />{p.name}</span>} />
             ))}
           </Group>

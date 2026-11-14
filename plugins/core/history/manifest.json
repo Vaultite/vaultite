@@ -3,6 +3,7 @@
   "icon": "rotate-ccw-clock",
   "category": "system",
   "alwaysOn": true,
+  "settingsAdvanced": true,
   "name": "File history",
   "description": "Keeps earlier versions of your text files on this machine, every few minutes while they change, so a bad edit can be undone. Open a file's version history from its menu.",
   "settings": {

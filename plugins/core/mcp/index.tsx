@@ -34,7 +34,7 @@ export default definePlugin({
   },
   settingsPages: {
     apps: { label: "Connect an AI app", icon: Bot, in: "ai", render: () => <AiApps bare /> },
-    remote: { label: "Share & sync", icon: Globe, sub: "Optional: open your vault remotely from your phone or AI apps, and share folders", render: () => <RemoteAccess /> },
+    remote: { label: "Share & sync", icon: Globe, sub: "Reach your vault from anywhere, and share folders", render: () => <RemoteAccess /> },
   },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },
   views: { connections: { icon: Plug, title: () => "Connections", render: () => <ConnectionsView /> } },

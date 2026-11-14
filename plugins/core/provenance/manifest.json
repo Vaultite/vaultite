@@ -3,6 +3,7 @@
   "icon": "user-check",
   "category": "agents",
   "alwaysOn": true,
+  "settingsAdvanced": true,
   "ai": true,
   "exports": ["gutter"],
   "name": "Provenance",

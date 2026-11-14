@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
-import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, OnThisMac, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useAi, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
+import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, GroupNote, iconNamed, Loading, LoadingRows, notify, notifyError, OnThisMac, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useAi, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
 
 type Access = "read" | "write"
 type Connection = { id: string; name: string; created: string; used: string | null; access: Access; actor: string }
@@ -63,7 +63,7 @@ const CLOUD_STATE: Record<Cloud["state"], string> = {
   offline: "Offline, trying again", replaced: "In use on another machine",
 }
 
-function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => void; intro: string }) {
+function useCloudSignIn(cloud: Cloud, onDone: () => void) {
   const [busy, setBusy] = useState(false)
   const [entering, setEntering] = useState(false)
   const [code, setCode] = useState("")
@@ -72,32 +72,53 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
     try { await op<Cloud>("mcp.cloud-sign-in", { code }); setEntering(false); setCode(""); onDone() } catch (e) { notifyError(e) } finally { setBusy(false) }
   }
   const openConnect = () => openWebLink(cloud.connectUrl)
+  return { busy, entering, code, setCode, redeem, openConnect, start: () => { openConnect(); setEntering(true) }, cancel: () => { setEntering(false); setCode("") } }
+}
+type SignIn = ReturnType<typeof useCloudSignIn>
+const ENTER_CODE = "Sign in on the page that opened and type the code it shows. Never use a code someone sent you: it would connect this machine to their account."
+
+function CodeForm({ s }: { s: SignIn }) {
   return (
     <>
-      <p className="pb-2 text-[15px] leading-[20px] text-muted-foreground">
-        {entering ? "Sign in on the page that opened and type the code it shows. Never use a code someone sent you: it would connect this machine to their account." : intro}
-      </p>
-      {cloud.message && !entering && <p className="pb-2 text-[15px] leading-[20px]">{cloud.message}</p>}
-      {entering ? (
-        <>
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code.trim() && !busy) void redeem() }}>
-            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code from cloud.vaultite.com" aria-label="Code from Vaultite Cloud"
-              autoCapitalize="characters" autoComplete="off" spellCheck={false} autoFocus className={field} data-cloud-code />
-            <Button look="primary" className="h-9 px-4 md:h-9 md:text-[15px]" type="submit" disabled={!code.trim() || busy} data-cloud-redeem>Connect</Button>
-          </form>
-          <div className="flex gap-2 pt-1">
-            <Button look="quiet" className="h-9 px-2 text-primary md:h-9 md:text-[15px]" onClick={openConnect}>Open the page again</Button>
-            <Button look="quiet" className="h-9 px-2 md:h-9 md:text-[15px]" onClick={() => { setEntering(false); setCode("") }}>Cancel</Button>
-          </div>
-        </>
-      ) : (
-        <Button look="primary" className="h-9 px-4 md:h-9 md:text-[15px]" onClick={() => { openConnect(); setEntering(true) }} data-cloud-sign-in>Sign in</Button>
-      )}
+      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (s.code.trim() && !s.busy) void s.redeem() }}>
+        <input value={s.code} onChange={(e) => s.setCode(e.target.value.toUpperCase())} placeholder="Code from cloud.vaultite.com" aria-label="Code from Vaultite Cloud"
+          autoCapitalize="characters" autoComplete="off" spellCheck={false} autoFocus className={field} data-cloud-code />
+        <Button look="primary" className="h-9 px-4 md:h-9 md:text-[15px]" type="submit" disabled={!s.code.trim() || s.busy} data-cloud-redeem>Connect</Button>
+      </form>
+      <div className="flex gap-2 pt-1">
+        <Button look="quiet" className="h-9 px-2 text-primary md:h-9 md:text-[15px]" onClick={s.openConnect}>Open the page again</Button>
+        <Button look="quiet" className="h-9 px-2 md:h-9 md:text-[15px]" onClick={s.cancel}>Cancel</Button>
+      </div>
     </>
   )
 }
 
-const CLOUD_INTRO = "Off until you sign in. It gives your vault an address on vaultite.app, so your phone and AI apps on the web can reach it while this machine is on. Your files stay on this machine. Leave it off and Vaultite stays on your own network: everything else works the same."
+function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => void; intro: string }) {
+  const s = useCloudSignIn(cloud, onDone)
+  return (
+    <>
+      <p className="pb-2 text-[15px] leading-[20px] text-muted-foreground">{s.entering ? ENTER_CODE : intro}</p>
+      {cloud.message && !s.entering && <p className="pb-2 text-[15px] leading-[20px]">{cloud.message}</p>}
+      {s.entering ? <CodeForm s={s} />
+        : <Button look="primary" className="h-9 px-4 md:h-9 md:text-[15px]" onClick={s.start} data-cloud-sign-in>Sign in</Button>}
+    </>
+  )
+}
+
+function CloudOff({ cloud, onDone }: { cloud: Cloud; onDone: () => void }) {
+  const s = useCloudSignIn(cloud, onDone)
+  return (
+    <>
+      <Group>
+        <SettingRow label="Off" sub={s.entering ? ENTER_CODE : cloud.message || "Reach this vault from your phone and AI apps on the web"} data-cloud-state="off">
+          {!s.entering && <Button look="primary" onClick={s.start} data-cloud-sign-in>Sign in</Button>}
+        </SettingRow>
+        {s.entering && <div className="pb-3"><CodeForm s={s} /></div>}
+      </Group>
+      <GroupNote>Free. It gives your vault an address on vaultite.app while this machine is on; your files stay here. Off, Vaultite stays on your own network and everything else works the same.</GroupNote>
+    </>
+  )
+}
 
 function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
   const { cloud } = data
@@ -112,7 +133,7 @@ function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
   }
   return (
     <Section title="Vaultite Cloud">
-      {cloud.state === "off" ? <CloudSignIn cloud={cloud} onDone={onDone} intro={CLOUD_INTRO} /> : (
+      {cloud.state === "off" ? <CloudOff cloud={cloud} onDone={onDone} /> : (
         <Group>
           <SettingRow label={CLOUD_STATE[cloud.state]} sub={cloud.state === "connected" ? `Signed in as ${cloud.handle}` : cloud.message || `Signed in as ${cloud.handle}`} data-cloud-state={cloud.state}>
             {cloud.state === "replaced" && <button type="button" disabled={!!busy} aria-busy={busy === "mcp.cloud-sign-in" || undefined} onClick={() => void run("mcp.cloud-sign-in")} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-primary hover:bg-foreground/[0.05] disabled:cursor-default" data-cloud-take-over>
@@ -121,9 +142,10 @@ function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
               {busy === "mcp.cloud-sign-out" ? <span className="shimmer">Signing out…</span> : "Sign out"}</button>
           </SettingRow>
           {cloud.url && <SettingRow label="MCP address" sub={<code className="break-all text-[12px]">{cloud.url}</code>} chevron={Copy} onClick={() => void copyAddress(cloud.url!)} data-cloud-url />}
+          {data.url && <SettingRow label="Your tunnel's address" sub={<code className="break-all text-[12px]">{data.url}</code>} chevron={Copy} onClick={() => void copyAddress(data.url!)} />}
         </Group>
       )}
-      {data.url && <Group><SettingRow label="Your tunnel's address" sub={<code className="break-all text-[12px]">{data.url}</code>} chevron={Copy} onClick={() => void copyAddress(data.url!)} /></Group>}
+      {cloud.state === "off" && data.url && <div className="pt-3"><Group><SettingRow label="Your tunnel's address" sub={<code className="break-all text-[12px]">{data.url}</code>} chevron={Copy} onClick={() => void copyAddress(data.url!)} /></Group></div>}
     </Section>
   )
 }
@@ -133,15 +155,13 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
   const turn = (on: boolean) => choose(on, () => post("mcp/connect", { ownerTools: on }).then(onDone), "Couldn't change it")
   return (
     <Section title="Open from anywhere">
-      <p className="pb-2 text-[15px] leading-[20px]" data-connect-app>
-        Your phone and any browser can now reach this Mac's Vaultite at this address while the Mac is on. Sign in there with your Vaultite account.
-      </p>
       <Group>
         <SettingRow label="Address" sub={<code className="break-all text-[12px]">{app}</code>} chevron={ExternalLink} onClick={() => openWebLink(app)} data-connect-url />
         <SettingRow label="Terminals and coding agents">
           <Switch on={tools} onChange={turn} label="Terminals and coding agents over this address" />
         </SettingRow>
       </Group>
+      <GroupNote data-connect-app>Your phone and any browser reach this Mac's Vaultite here while the Mac is on: sign in with your Vaultite account.</GroupNote>
     </Section>
   )
 }
@@ -153,14 +173,12 @@ function ThroughCloud({ cloud }: { cloud: Cloud }) {
   try { account = new URL(cloud.connectUrl).origin } catch {}
   return (
     <Section title="Vaultite Cloud">
-      <p className="pb-2 text-[15px] leading-[20px]" data-through-cloud>
-        You're using this Mac through Vaultite Cloud, at {hostOf(cloud.app) || hostOf(cloud.url) || "your address"}.
-      </p>
+      <GroupNote above data-through-cloud>You're using this Mac through Vaultite Cloud, at {hostOf(cloud.app) || hostOf(cloud.url) || "your address"}.</GroupNote>
       <Group>
         {account && <SettingRow label="Vaultite account" sub="Devices, plan and sign out" chevron={ExternalLink} onClick={() => openWebLink(account)} data-cloud-account />}
         {cloud.url && <SettingRow label="MCP address" sub={<code className="break-all text-[12px]">{cloud.url}</code>} chevron={Copy} onClick={() => void copyAddress(cloud.url!)} data-cloud-url />}
       </Group>
-      <OnThisMac className="pt-1.5">Signing this Mac in or out of Vaultite Cloud, terminals and coding agents over this address, and your own tunnel are set on this Mac.</OnThisMac>
+      <OnThisMac className="px-1 pt-1.5">Signing this Mac in or out of Vaultite Cloud, terminals and coding agents over this address, and your own tunnel are set on this Mac.</OnThisMac>
     </Section>
   )
 }
@@ -432,11 +450,12 @@ export function RemoteAccess() {
           <CloudSection data={data} onDone={reload} />
         </>
       )}
-      <Section title="Shared folders">
+      <Section title="Sharing">
         <Group>
-          <SettingRow label="Shared folders" sub={data.cloud.guests ? `The people you share folders with open them at ${data.cloud.guests}` : "Optional: who you share folders with, and where they open them"}
+          <SettingRow label="Shared folders" sub={data.cloud.guests ? `Opened at ${data.cloud.guests}` : "Who you share folders with"}
             onClick={() => openView("shared", { newTab: true })} data-remote-shared />
         </Group>
+        <GroupNote>To share a folder, choose Share… in its menu.</GroupNote>
       </Section>
     </div>
   )
