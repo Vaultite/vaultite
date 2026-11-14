@@ -7,6 +7,7 @@ import type { JobCore, JobDeps } from "./workers.ts"
 
 const ANSWERING_MS = 10 * 60_000
 
+const withPage = (d: JobDeps, m: Moment | undefined) => { const url = m?.pane && !m.url ? d.pageOf?.(m.pane) : ""; return m && url ? { ...m, url } : m }
 export function handoffOps(plugin: Plugin, d: JobDeps, core: JobCore, machines: Machines) {
   const { jobOf, unsure, keep, land, steer, retitle, begin } = core, { away } = machines, { holding, heldTold, release } = toldTogether(d)
   plugin.op({
@@ -65,7 +66,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
     run: async (p, ctx) => {
       const name = d.who(p), task = str(p.task).trim()
       if (!task) throw new OpError("task: what to do")
-      const own = d.own(name, ctx), latest = own ? d.askOf(name) : undefined, ask = latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined
+      const own = d.own(name, ctx), latest = own ? d.askOf(name) : undefined, ask = withPage(d, latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined)
       const by = tellerOf(ctx, own ? name : "")
       if (!own) return await handoff(p, ctx, task, ask, by, async () => {})
       holding(name, ctx, ask?.t ?? Date.now())

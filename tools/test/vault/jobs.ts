@@ -428,6 +428,10 @@ export default async ($: VaultTest) => {
       pageWins(page, "harbor", "try a serif font in the Harbor hero") && pageWins(page, "lighthouse/harbor", "make the harbor headline bigger") &&
       !pageWins(page, "harbor", "do it in the harbor repo instead") && !pageWins(page, "lighthouse/harbor", "port this to lighthouse/harbor") && !pageWins(page, "harbor-site", "x") &&
       !pageWins({ ...page, from: "vault" }, "harbor", "x") && namesRepo("in the repository harbor", "harbor") && !namesRepo("the harbor-site repo", "harbor"))
+    const { siteOf } = await import("../../../plugins/core/companion/jobplace.ts")
+    check("handoff: a site is a repo's project's own when its host holds the repo's name", siteOf(new URL("https://harbor.example/"), "lighthouse/harbor") &&
+      siteOf(new URL("https://docs.harbor.example/"), "harbor") && siteOf(new URL("https://harbor-notes.example/"), "harbornotes") && !siteOf(new URL("https://harbors.example/"), "harbor") &&
+      !siteOf(new URL("https://news.example.org/"), "harbor"))
     site.gg("worktree", "remove", "--force", path.join(roots[0], "harbor-site-j1"))
     for (const d of ["harbor", "harbor-site", "harbor-api", "beacon-docs", "beacon-a", "beacon-b"]) fs.rmSync(path.join(roots[0], d), { recursive: true, force: true })
     W.checkoutsIn()
@@ -653,6 +657,33 @@ export default async ($: VaultTest) => {
           const errand = await runs({ text: "file these under Errands", ui: "panel:inbox", title: "Inbox" }, { about: "work" })
           const note = await runs({ text: "tidy this list", path: "Notes/Plan.md", line: 3 })
           check("handoff: an errand over a panel (about work), and a note's own words, stay in the vault", errand.cwd === VAULT && note.cwd === VAULT, [errand, note])
+          await (async function webViewerSites() {
+            const { windows } = await import("../../../plugins/core/companion/state.ts")
+            const mk = (name: string, slug: string, file: string, text: string) => {
+              const dir = path.join(roots[0], name), g = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd: dir, stdio: "pipe", env: gitEnv() })
+              fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, file), text)
+              g("init", "-q"); g("remote", "add", "origin", `git@github.com:${slug}.git`); g("add", "."); g("commit", "-qm", "first")
+              return fs.realpathSync(dir)
+            }
+            const harbor = mk("harbor", "lighthouse/harbor", "README.md", "app\n"), site = mk("harbor-site", "lighthouse/harbor-site", "wrangler.toml", 'routes = [{ pattern = "harbor.example", custom_domain = true }]\n')
+            const win = socket()
+            windows.set(win, { open: [], shown: [], focus: null, at: Date.now(), panes: [{ id: "psite", to: "view:web/https://harbor.example/", title: "Harbor - Private notes for you" },
+              { id: "pnews", to: "view:web/https://news.example.org/today", title: "Today's news" }] })
+            W.checkoutsIn(roots)
+            try {
+              const footer = { text: "take the tagline off the footer and redeploy", pane: "psite", title: "Harbor - Private notes for you", under: "Harbor\nDownload" }
+              const over = await runs(footer, { repo: "harbor" })
+              check("handoff: over the web viewer's page, the repo deploying its address wins over one the handoff named from its title", over.cwd === site && /harbor\.example is deployed from .*harbor-site.*\(not harbor, which the handoff named/.test(over.why), over)
+              const other = await runs({ text: "keep the gist of this in my notes", pane: "pnews", title: "Today's news" }, { repo: "harbor" })
+              check("handoff: another site no checkout deploys, nor named like the repo, keeps the repo the handoff named", other.cwd === harbor, other)
+              fs.rmSync(path.join(roots[0], "harbor-site"), { recursive: true, force: true }); W.checkoutsIn(roots)
+              const gone = await runs(footer, { repo: "harbor" })
+              check("handoff: a site of that name no machine has the checkout of refuses, saying so, never running in the repo of its name", gone.st === 404 && gone.cwd === "" &&
+                /no machine has a checkout that deploys harbor\.example .*harbor is another repo/.test(gone.why), gone)
+              const said = await runs({ ...footer, text: "do it in the harbor repo instead" }, { repo: "harbor" })
+              check("handoff: their words naming the repo keep it, over the site", said.cwd === harbor, said)
+            } finally { windows.delete(win); for (const d of ["harbor", "harbor-site"]) fs.rmSync(path.join(roots[0], d), { recursive: true, force: true }) }
+          })()
           W.checkoutsIn([path.join(tmp, "nothing")])
           const none = await runs({ text: "the agents list jumps", ui: "panel:agents", title: "Agents" })
           check("handoff: over the app's panel with no checkout of Vaultite anywhere (not a developer's), the vault as before, saying so",

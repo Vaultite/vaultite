@@ -233,9 +233,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Jobs no longer wait on "Trust this folder?" in your own repos**: a job you or the companion hand off in a checkout
   already on that machine is trusted in its Claude Code account before it starts; a folder that isn't a checkout, or a
   handoff from a script or another agent, still asks.
-- **Jobs over a live site run in the repo that deploys it**: work asked over a page like your website goes to the
-  checkout whose deploy config names its address (its wrangler route or CNAME), not a repo guessed from the page's
-  title; when no checkout or two of them deploy it, the job's "why there" says so.
+- **Jobs over a live site run in the repo that deploys it**: work asked over a page like your website, in another
+  browser or the app's own web viewer, goes to the checkout whose deploy config names its address (its wrangler route
+  or CNAME), on a machine that has it, never a repo of the site's name guessed from the page's title; when no machine
+  has that checkout, the companion is told so instead of starting it in the wrong repo.
 - **Jobs about Vaultite itself run in Vaultite's repo**: work asked about the app's own look or behaviour (a sidebar
   panel, a menu, a pane's bar, the web viewer's own bar, the companion) goes to your checkout of Vaultite, whatever page
   or note the pane shows, not the vault; your notes and errands still run in the vault.

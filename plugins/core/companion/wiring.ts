@@ -25,7 +25,8 @@ import { keepSaid } from "./comments.ts"
 import { screens, screenDrawing, tours, type ScreenRectLike, displaysOf, screenFind } from "./windows.ts"
 import { stopFlips, ownTour, screenOf } from "./tourscreen.ts"
 import { lastScreen, toScreens, nearBy } from "./screensocket.ts"
-import { paneById } from "./windowpanes.ts"
+import { paneById, privatePane } from "./windowpanes.ts"
+import { paneSource } from "../../../core/desktop/places.ts"
 import { answersOf } from "./edits.ts"
 import { AS_TOOL, itsOwn, liveCtx } from "./chat.ts"
 import { lane } from "./lane.ts"
@@ -41,6 +42,7 @@ export const jobs = jobOps(plugin, {
   moved: (j, from) => void (talks.moved(j, from) || liveEditing.moved(j, from) || (readyNow(j, from) && j.terminal ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
   warm: (j) => liveEditing.warm(j) || talks.talking(j),
   paneTo: (id) => paneById(id)?.to ?? "",
+  pageOf: (id) => { const p = paneById(id), x = p && paneSource(p.to); return p && x?.kind === "site" && !privatePane(p) ? x.url ?? "" : "" },
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 captureOps(plugin, jobs)

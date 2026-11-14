@@ -26,6 +26,30 @@ export function appAsk(o: Over, about: string) {
   const ui = about === "work" ? "" : appUiOf(o)
   return ui ? `asked over ${ui}` : ""
 }
+export function siteOf(site: URL, repo: string) {
+  const name = repo.trim().replace(/\/+$/, "").replace(/\.git$/, "").split(/[/:]/).pop()!.toLowerCase()
+  return name.length > 2 && site.hostname.toLowerCase().split(".").some((l) => l === name || l.replace(/-/g, "") === name.replace(/-/g, ""))
+}
+type Base = { words: string; agent: Pick<Needs, "agent" | "account"> }
+const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...rulesNeed(far.rules ?? [], base.words)] })
+type Asker = { ranking: Machines["ranking"]; atMachine: ReturnType<typeof workerLinks>["atMachine"] }
+async function siteElsewhere(site: URL, base: Base, { ranking, atMachine }: Asker) {
+  for (const { t, why } of (await ranking({ has: [], ...base.agent })).ranked.filter((x) => !x.t.self && !x.t.cloud)) {
+    const far = await atMachine(t.id, "companion.where", { url: site.href }, 6).then((r) => Placed.parse(r)).catch(() => null)
+    if (!far || far.from !== "site" || !far.repo || far.refused || ruled(t, far, base)) continue
+    return { machine: t.id, label: t.label, cwd: far.cwd, repo: far.repo, why: `${far.why}, on ${t.label}${why ? ` (${why})` : ""}`, from: far.from, base: far.base, live: !!far.live }
+  }
+  return null
+}
+type Routed = Omit<Where, "agent" | "account" | "harness" | "model" | "effort"> & { from?: Found["from"] }
+async function siteOrNamed(o: { site?: URL; said: string; repo: string; page: Found; base: Base } & Asker, named: () => Promise<Routed>): Promise<Routed> {
+  const here = o.page.why.replace(/: the vault.*$/, ""), site = namesRepo(o.said, o.repo) ? undefined : o.site
+  const far = site ? await siteElsewhere(site, o.base, o) : null
+  if (far) return far
+  if (site && siteOf(site, o.repo)) throw new OpError(`no machine has a checkout that deploys ${site.host} (${here}), and ${o.repo} is another repo: name the site's own repo (repo: its owner/name on GitHub), or its folder (cwd) if ${o.repo} does deploy it`, 404)
+  const r = await named()
+  return { ...r, why: `${r.why}, as the handoff named (${here})` }
+}
 export const pageWins = (page: { cwd: string; repo: string; from?: Found["from"] }, repo: string, text: string) =>
   !!page.from && page.from !== "vault" && !sameRepo(page, repo) && !namesRepo(text, repo)
 
@@ -87,10 +111,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
       const page = await routed(m, { ...p, repo: "" }).catch(() => null)
       if (page && pageWins(page, repo, m?.text ?? ""))
         return { ...page, why: `${page.why} (not ${repo}, which the handoff named: their words don't)` }
-      if (page?.from === "vault") {
-        const r = await routed(m, { ...p, page: true })
-        return { ...r, why: `${r.why}, as the handoff named (${page.why.replace(/: the vault.*$/, "")})` }
-      }
+      if (page?.from === "vault") return await siteOrNamed({ site: sitesIn(o)[0], said: str(m?.text), repo, page, base: baseOf(m, p), ranking, atMachine }, () => routed(m, { ...p, page: true }))
     }
     if (!asked) {
       const hosts = Object.fromEntries((await machines()).filter((x) => !x.self && x.online).map((x) => [x.id, hostOf(x.url)]).filter(([, h]) => h))
@@ -121,12 +142,10 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
       ...(there.cloud ? { cloud: true } : {}),
       ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}), ...(there.from ? { from: there.from } : {}) }
   }
-  type Base = { words: string; agent: Pick<Needs, "agent" | "account"> }
   const baseOf = (m: JobAsk | undefined, p: Handoff): Base => {
     const account = str(p.account).trim().toLowerCase()
     return { words: [str(p.task), m?.text ?? ""].join("\n"), agent: { agent: str(p.agent) || "claude", ...(account && account !== "default" ? { account } : {}) } }
   }
-  const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...rulesNeed(far.rules ?? [], base.words)] })
   async function inCloud(here: Placed, why: string, left: string | null = null): Promise<{ there: Placed; moved?: string } | string> {
     if (!(await githubOf(here.cwd))) return "its repo isn't on GitHub, so the cloud can't have it"
     const missing = left ?? await unpushed(here.cwd)

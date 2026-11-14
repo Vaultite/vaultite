@@ -31,6 +31,7 @@ export type JobDeps = {
   warm?: (j: Job) => boolean
   onScreen?: (link: string) => boolean
   paneTo?: (id: string) => string
+  pageOf?: (id: string) => string
   as: object
 }
 export type Seen = { running: boolean; state?: string; kind?: string; msg?: string; title?: string; typed?: number; asks?: string[]; waits?: Omit<Waits, "at">
