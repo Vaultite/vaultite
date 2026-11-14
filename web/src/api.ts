@@ -177,7 +177,7 @@ export { linksIn, type LinkSpan } from "../../core/links.ts"
 export { linkItems, openLinkMenu, type LinkEdit } from "@/components/LinkMenu"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
 export { editAt, openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
-export { currentEditor, editorAt, editorOf, keysInEditor, selectAllIn, selectedText, type OpenEditor } from "@/core/editors"
+export { currentEditor, editorAt, editorOf, keysInEditor, registerEditor, selectAllIn, selectedText, type OpenEditor } from "@/core/editors"
 export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 /** Layouts a base's views can have besides the app's own (a plugin's), each drawing a view's rows itself. */
 export { baseLayoutOf, baseLayouts, registerBaseLayout, useBaseLayouts, type BaseLayout, type BaseLayoutCtx, type BaseLayoutDrawn, type BaseRows } from "@/core/baselayouts"
