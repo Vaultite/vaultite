@@ -42,6 +42,10 @@
   `oldServers`. termd's code changing without the protocol: the running one keeps its old code until it has no
   terminals, so keep changes to it compatible.
 - One terminal has one size, the last device's; a view used again that doesn't match sends its own.
+- A phone's keyboard never resizes the grid (`held.ts`): each size is a redraw of a program's whole screen (Claude
+  Code's flickered), so the grid keeps its height and slides up to keep its cursor and last lines above the keys. A
+  reattach (an iPhone's app back from the background) keeps the old frame up until its replay is drawn
+  (`Term.holdFrame`), then scrolls back to the line the reader was on (`keepPlace` in live.ts).
 - A terminal's state (the list's `state`, the service "inbox:state", the event `terminal.state`, `terminal.wait`, for
   plugins the service "terminal:wait") is one value, `state.ts`' Term: every source is an event into its `step`, each
   transition a line in the server's log, and everything reads only its output (no source read again elsewhere). It

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A phone's terminal holds still**: the keyboard coming and going no longer resizes the shell (Claude Code redrew its
+  whole screen each time); the grid slides up to keep the cursor in sight. Back from the background, the terminal stays
+  on the lines you were reading, with no blank flash while it reconnects.
 - **Clipped X posts keep their lists**: a post's lines starting with "- ", "1. " or "> " come through as a list or
   quote, no longer as "\- Taking lessons".
 - **The app keeps loading after an update**: a server that took a web-only update no longer loses that web build

@@ -13,7 +13,6 @@ export type { FindSpec } from "./search.ts"
 
 export type Theme = {
   foreground: number; background: number; cursor: number; cursorAccent: number
-  /** The 16 named colours (black, red... bright white). */
   ansi: number[]
   selection: { color: number; alpha: number }; selectionInactive: { color: number; alpha: number }
   scrollbar: number
@@ -58,6 +57,7 @@ export class Term {
   private stale = true
   private allRows = true
   private holdSince = 0
+  private heldUntil = 0
   private blinkOn = true
   private blinkTimer = 0
   private lastOffset = -1
@@ -227,6 +227,10 @@ export class Term {
     this.requestRender()
   }
 
+  holdFrame() {
+    this.heldUntil = performance.now() + 1000
+    return () => { if (!this.heldUntil) return; this.heldUntil = 0; this.renderNow() }
+  }
   requestRender(force = false) {
     if (force) this.stale = true
     if (this.frame || this.disposed) return
@@ -256,6 +260,7 @@ export class Term {
   private render() {
     if (this.disposed || !this.r || !this.element?.isConnected) return
     if (!this.stale) return
+    if (this.heldUntil) { if (performance.now() < this.heldUntil) { this.requestRender(); return } this.heldUntil = 0 }
     this.unseen = false
     if (!this.sync()) return
     this.stale = false
@@ -317,11 +322,9 @@ export class Term {
   input(data: string) { this.toBottom(); this.emit(data) }
   paste(text: string) { this.toBottom(); this.emit(this.s.paste(text.replace(/\r?\n/g, "\r"))) }
   attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { this.keyHook = fn }
-  /** Pastes bracketed (mode 2004). */
   get bracketedPaste() { return this.s.mode(2004) }
   cursor() { if (this.stale) this.sync(); const c = this.s.cursorState(); return c ? { x: c.x, y: c.y } : null }
   rowText(y: number, upTo: number) { const l = this.s.line(y, "VIEWPORT"); if (!l) return ""; let i = 0; while (i < l.at.length && l.at[i] < upTo) i++; return l.text.slice(0, i) }
-  /** Cursor keys in application mode (DECCKM). */
   get applicationCursor() { return this.s.mode(1) }
   focus() { this.textarea?.focus({ preventScroll: true }) }
   blur() { this.textarea?.blur() }

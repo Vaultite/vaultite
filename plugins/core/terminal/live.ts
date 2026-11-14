@@ -62,6 +62,18 @@ export function release(l: Live) {
   for (const old of parked.values()) if (parked.size > PARKED) letGo(old)
 }
 
+function keepPlace(t: Term) {
+  let back: { show: () => void; y: number } | null = null
+  return {
+    hold: () => { const v = t.viewport; back = { show: t.holdFrame(), y: v.y < v.base ? v.y : -1 } },
+    settle: () => {
+      if (!back) return
+      if (back.y >= 0) t.scrollToRow(back.y)
+      back.show(); back = null
+    },
+  }
+}
+
 function create(id: string): Live {
   const asked = askedAt(id), opening = span("terminal.open", { agent: agentOfTerminal(id)?.name ?? "shell", how: asked === undefined ? "shown" : "asked" }, asked)
   if (asked !== undefined) opening.mark("tab")
@@ -122,6 +134,7 @@ function create(id: string): Live {
   let shell = { cols: 0, rows: 0 }
 
   let shown = false
+  const place = keepPlace(t)
   const firstOutput = () => { if (shown) return; shown = true; opening.mark("first output"); opening.end() }
 
   const connect = () => {
@@ -143,7 +156,7 @@ function create(id: string): Live {
         const bytes = new Uint8Array(e.data), done = parsed(bytes.length)
         if (!replayNext) return t.write(bytes, shown ? done : () => { firstOutput(); done() })
         replayNext = false; replaying = true
-        return t.write(bytes, () => { if (ws === sock) replaying = false; firstOutput(); done() })
+        return t.write(bytes, () => { if (ws === sock) replaying = false; place.settle(); firstOutput(); done() })
       }
       let msg: { t?: string; fresh?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; backend?: string; cols?: number; rows?: number; ended?: boolean; lost?: boolean
         scrollback?: number }
@@ -151,7 +164,6 @@ function create(id: string): Live {
       if (msg.t === "size") {
         shell = { cols: msg.cols ?? 0, rows: msg.rows ?? 0 }
       } else if (msg.t === "uploaded" && msg.path) {
-        // Claude Code attaches an image whose path is pasted.
         t.paste(`${msg.path} `)
       } else if (msg.t === "attached") {
         opening.mark("attached")
@@ -159,9 +171,11 @@ function create(id: string): Live {
         tries = 0
         attachOnly = true
         if (msg.scrollback && msg.scrollback !== t.o.scrollback) t.setScrollback(msg.scrollback)
+        if (shown && !msg.fresh) place.hold()
         t.reset()
         replaying = false
         replayNext = !msg.fresh
+        if (!replayNext) place.settle()
         setStatus({ kind: "live" })
       } else if (msg.t === "blocked") {
         setStatus({ kind: "live", blocked: true })
@@ -185,7 +199,7 @@ function create(id: string): Live {
     }
     sock.onclose = (e) => {
       if (ws !== sock || gone) return
-      ws = null
+      ws = null; place.settle()
       if (refused || e.code === CLOSE.refused) { if (!refused) { setStatus({ kind: "refused", reason: "" }); over() } return }
       if (sessionGone || e.code === CLOSE.gone) { if (!sessionGone) { setStatus({ kind: "ended" }); over() } return }
       if (exited || e.code === CLOSE.exited) { if (!exited) { setStatus({ kind: "exited", code: -1, signal: 0 }); over() } return }
@@ -257,7 +271,8 @@ function create(id: string): Live {
   box.addEventListener("keydown", flushCopy, true)
   box.addEventListener("pointerdown", claimIfTaken, true)
   box.addEventListener("keydown", claimIfTaken, true)
-  const onShown = () => { if (document.visibilityState === "visible") claim() }
+  const retryNow = () => { if (!ws && l.status.kind === "connecting") { clearTimeout(timer); connect() } }
+  const onShown = () => { if (document.visibilityState === "visible") { retryNow(); claim() } }
   window.addEventListener("focus", onShown)
   document.addEventListener("visibilitychange", onShown)
 

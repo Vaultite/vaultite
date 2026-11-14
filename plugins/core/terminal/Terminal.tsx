@@ -3,56 +3,15 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, TextSe
 import { cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, keysText, onResized, openMenu, openPermissions, resizing, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, floatingSpot, MAX } from "@plugins/find/tools"
 import { copy, pasteClipboard } from "./clipboard"
+import { dictationInput } from "./dictation"
 import { acquire, release, touchScreen, type Live, type Status } from "./live"
 import { register, touch } from "./sessions"
+import { useHeldGrid } from "./held"
 import { fontSize } from "./theme"
 import { setModule, type Term } from "./vt/term"
 import { vtModule } from "./vt/wasm"
 
 setModule(await vtModule())
-
-function dictationInput(t: Term) {
-  let words = "", shown: HTMLElement | null = null, follow: { dispose: () => void } | null = null
-  const text = document.createElement("span")
-  const cell = () => {
-    const screen = t.screenEl, cur = t.cursor()
-    if (!screen || !t.cols || !cur) return null
-    return { screen, x: cur.x, row: cur.y, w: screen.clientWidth / t.cols, h: screen.clientHeight / t.rows }
-  }
-  const draw = () => {
-    const c = words ? cell() : null
-    if (!c) { shown?.remove(); return }
-    if (!shown) {
-      shown = document.createElement("div")
-      shown.dataset.termPending = ""
-      shown.setAttribute("aria-hidden", "true")
-      Object.assign(shown.style, { position: "absolute", left: "0", right: "0", zIndex: "8", pointerEvents: "none", whiteSpace: "pre-wrap",
-        wordBreak: "break-all", color: "var(--muted-foreground)" })
-      shown.append(text)
-    }
-    if (shown.parentElement !== c.screen) c.screen.append(shown)
-    Object.assign(shown.style, { top: `${c.row * c.h}px`, textIndent: `${c.x * c.w}px`, lineHeight: `${c.h}px`, fontFamily: t.o.fontFamily,
-      fontSize: `${t.o.fontSize}px` })
-    text.style.background = t.o.theme.clear ? "" : `#${t.o.theme.background.toString(16).padStart(6, "0")}`
-    text.textContent = words
-  }
-  return {
-    send: (data: string) => t.input(data),
-    bracketed: () => t.bracketedPaste,
-    caret: () => {
-      const c = cell()
-      if (!c) return null
-      const r = c.screen.getBoundingClientRect(), w = r.width / t.cols, h = r.height / t.rows
-      return { rect: new DOMRect(r.left + c.x * w, r.top + c.row * h, 0, h), before: t.rowText(c.row, c.x) }
-    },
-    pending: (text: string) => {
-      words = text
-      if (words && !follow) follow = t.onRender(draw)
-      if (!words) { follow?.dispose(); follow = null }
-      draw()
-    },
-  }
-}
 
 const arrow = (t: Term, k: string) => (t.applicationCursor ? `\x1bO${k}` : `\x1b[${k}`)
 const KEYS: { label: ReactNode; name: string; send: (t: Term) => string }[] = [
@@ -226,6 +185,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   // Safari scrolls the page to show what has the focus: when the keyboard goes, the page goes back.
   const full = phone && typing && !!area
   useLayoutEffect(() => (full ? () => scrollTo(0, pageAt.current) : undefined), [full])
+  const held = useHeldGrid(host, live, phone, full, area)
 
   const view = useRef<HTMLDivElement>(null)
   const [finding, setFinding] = useState(0)
@@ -249,9 +209,9 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
           {openPermissions && <button type="button" onClick={openPermissions} className="shrink-0 cursor-pointer rounded-[6px] bg-primary px-2.5 py-1 text-[13px] font-medium text-primary-foreground hover:opacity-90">Permissions</button>}
         </div>
       )}
-      <div className="relative isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
+      <div className={cn("relative isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1", held > 0 && "overflow-hidden")}>
         {/* iOS zooms the page in on a focused field under 16px. */}
-        <div ref={host} data-terminal={id} className={cn("h-full w-full overflow-hidden", touchUi && "select-none [-webkit-touch-callout:none] [&_[data-term-input]]:!text-[16px]")} />
+        <div ref={host} data-terminal={id} data-terminal-held={held > 0 || undefined} style={held ? { height: held } : undefined} className={cn("w-full overflow-hidden", !held && "h-full", touchUi && "select-none [-webkit-touch-callout:none] [&_[data-term-input]]:!text-[16px]")} />
         {finding > 0 && live.current && <FindBar l={live.current} ask={finding} close={closeFind} />}
         {up && (
           <button type="button" aria-label="Scroll to the end" data-tip="Scroll to the end" data-terminal-end
