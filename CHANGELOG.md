@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
+- Appearance: Snappy animations now reach nearly everything that moves (hovers, toasts, menus, folds, the tab list),
+  not a quarter of it; the phone bar's menu fades out as other menus do; and a few labels read at 4.5:1 in every scheme.
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its
   buttons; and typing it did in another app is checked by what the field holds, so a box that stayed empty is said so.
 - Inbox: answering a question no longer closes other open ones as "settled" when nothing settled them (they showed
