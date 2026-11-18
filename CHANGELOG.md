@@ -27,6 +27,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Search: accents don't matter, as in Obsidian: "cafe" finds "café" and "café" finds "cafe"; ø, ł and ß match o, l and ss.
   The quick switcher and the search tab's names ignore accents too.
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: TBD).
+- Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: the first time 4.5 s to 3.0 s; after, 1.7 s to 1.4 s).
 - Pictures of a page (vau html picture): on Windows they use the installed Chrome or Edge, so they work on Windows on Arm,
   and a page that fails to open says so instead of "nothing on the page matches".
 - Companion and agents: they attach a file from the vault to a web page (a screenshot to a Reddit reply), through

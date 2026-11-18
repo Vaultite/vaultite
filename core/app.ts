@@ -907,7 +907,7 @@ export async function open(vaultPath: string, { start = true, timing, watch }: {
     app.vault.startTexts = null
     kept?.done()
     timing?.mark("vault read")
-    if (fresh) await setUpNew(app.host()).catch((e) => log.error("setting up the new vault failed", e))
+    if (fresh) await app.hold(() => setUpNew(app.host()), { trusting: true }).catch((e) => log.error("setting up the new vault failed", e))
     app.moving = migrateMoved({ vault: app.vault, has: (id) => app.app.some((p) => p.id === id),
       install: (source) => installFrom(app, source, null, { moved: true }) }).catch((e) => log.error("installing the plugins that moved out of the app failed", e))
   }
