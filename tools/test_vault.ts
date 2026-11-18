@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { absorb, check, exit, lastTimes, report, section, summary, tempDir } from "./test/lib.ts"
 import { AREAS } from "./test/vault/index.ts"
+import { available } from "./verify_room.ts"
 
 const argv = process.argv.slice(2)
 const flag = (f: string) => { const i = argv.indexOf(f); return i >= 0 && !!argv.splice(i, 1) }
@@ -33,7 +34,9 @@ argv.forEach(add)
 const areas = argv.length ? AREAS.filter((a) => want.has(a.name)) : AREAS
 
 // (a process each few areas, its own app's start being a second or two)
-const jobs = asked || Math.min(4, os.availableParallelism(), Math.ceil(areas.length / 8))
+const cores = os.availableParallelism(), shardsOnMacOS3Cores = 4, shardBytes = 2 ** 29
+const byCores = cores >= 4 ? cores * 2 : shardsOnMacOS3Cores
+const jobs = asked || Math.max(1, Math.min(8, byCores, Math.floor((available() ?? os.freemem()) / shardBytes), Math.ceil(areas.length / 8)))
 const t0 = Date.now()
 if (jobs > 1 && areas.length > 1) await exit(await shards())
 const { vaultHarness } = await import("./test/vault/harness.ts")
