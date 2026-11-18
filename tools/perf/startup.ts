@@ -1,12 +1,11 @@
 // What a launch loads before drawing, against startup.json: the desktop main process's imports, web/dist's eager files.
-// node tools/perf/startup.ts [--ratchet] [--main]   (--ratchet: limits lowered to now plus headroom; --main: no build)
+// node tools/perf/startup.ts [--ratchet] [--main]   (--ratchet: limits lowered to now; --main: no build)
 import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import fs from "node:fs"
 import path from "node:path"
 
 const ROOT = path.join(import.meta.dirname, "..", "..")
 const LIMITS = path.join(import.meta.dirname, "startup.json")
-const HEADROOM = 1.1
 const NEVER_IN_MAIN = ["core/vault.ts", "core/plugins.ts", "core/app.ts"]
 
 function graph(entry: string) {
@@ -42,7 +41,7 @@ if (web && fs.existsSync(path.join(DIST, "index.html"))) {
 
 const limits: Record<string, number> = fs.existsSync(LIMITS) ? JSON.parse(fs.readFileSync(LIMITS, "utf8")) : {}
 if (process.argv.includes("--ratchet")) {
-  for (const [k, v] of Object.entries(now)) limits[k] = Math.min(limits[k] ?? Infinity, Math.ceil(v * HEADROOM))
+  for (const [k, v] of Object.entries(now)) limits[k] = Math.min(limits[k] ?? Infinity, v)
   fs.writeFileSync(LIMITS, JSON.stringify(limits, null, 2) + "\n")
 }
 let failed = 0
