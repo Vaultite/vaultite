@@ -177,6 +177,16 @@ const metrics = (a: App) => a.main(({ app, BaseWindow, webContents }) => {
   }
   return out
 }) as Promise<Metrics>
+const pageMetrics = (a: App) => a.main(({ app, BaseWindow, WebContentsView, webContents }, site) => {
+  const views = BaseWindow.getAllWindows().flatMap((w) => w.contentView.children).filter((v) => v instanceof WebContentsView)
+  const byPid = new Map(app.getAppMetrics().map((m) => [m.pid, m]))
+  return Object.fromEntries(webContents.getAllWebContents().filter((w) => w.getURL().startsWith(site)).map((w) => {
+    const m = byPid.get(w.getOSProcessId()), u = new URL(w.getURL())
+    return [u.pathname + u.search, { cpu: 1000 * (m?.cpu.cumulativeCPUUsage ?? 0), shown: !!views.find((v) => v.webContents === w)?.getVisible() }]
+  }))
+}, SITE)
+const topPages = (a: Record<string, { cpu: number }>, b: Record<string, { cpu: number; shown: boolean }>) => Object.entries(b)
+  .map(([u, x]) => `${u}${x.shown ? " (shown)" : ""}: ${Math.round(x.cpu - (a[u]?.cpu ?? 0))}`).sort((x, y) => Number(y.split(": ").at(-1)) - Number(x.split(": ").at(-1))).slice(0, 6)
 const cpuDelta = (a: Metrics, b: Metrics) => Object.fromEntries(Object.keys(b).map((k) => [k, Math.round(b[k].cpu - (a[k]?.cpu ?? 0))]))
 const pct = (xs: number[], p: number) => { const s = [...xs].filter(Number.isFinite).sort((a, b) => a - b); return s.length ? +s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(1) : NaN }
 const med = (xs: number[]) => pct(xs, 0.5)
@@ -354,7 +364,7 @@ async function measure(a: App) {
     await openTab(a, `${SITE}/clock`)
     await openTab(a, `${SITE}/heavy?2`)
     await wait(5000)
-    if (want("idle")) { const m0 = await metrics(a); await wait(60000); const m1 = await metrics(a); say("idle60s", cpuDelta(m0, m1)) }
+    if (want("idle")) await idle(a)
     if (want("memory")) {
       const m = await metrics(a)
       say("memory", { pagesMB: Math.round(m.pages?.mem ?? 0), pageProcesses: m.pages?.n, perPageMB: Math.round((m.pages?.mem ?? 0) / Math.max(1, m.pages?.n ?? 1)),
@@ -373,6 +383,14 @@ async function measure(a: App) {
     }
     say("real", real)
   }
+}
+
+async function idle(a: App) {
+  const m0 = await metrics(a), p0 = await pageMetrics(a)
+  await wait(60000)
+  const m1 = await metrics(a), p1 = await pageMetrics(a)
+  say("idle60s", cpuDelta(m0, m1))
+  say("idle60sTop", topPages(p0, p1))
 }
 
 async function restore() {
