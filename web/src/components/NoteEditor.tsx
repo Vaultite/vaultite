@@ -105,7 +105,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
   return (
     <div className={cn("note-editor", className)}>
       <Suspense fallback={<Arriving className="min-h-6" />}>
-        <Editor doc={doc} frontmatter={whole} editable={editable} config={config} {...wiring} onAttach={editable ? attach : undefined} placeholderText={editable ? placeholder ?? "Start writing" : ""}
+        <Editor waiting={<Arriving className="min-h-6" />} doc={doc} frontmatter={whole} editable={editable} config={config} {...wiring} onAttach={editable ? attach : undefined} placeholderText={editable ? placeholder ?? "Start writing" : ""}
           onEscape={onEscape} onBlur={blur} floatingTooltips
           onReady={(a) => { onReady(a); if (autoFocus && editable) a.focus("end") }} onChange={onChange} />
       </Suspense>

@@ -1,5 +1,4 @@
-import { lazy } from "react"
+import { apart } from "@/core/apart"
 
-let editorChunk: Promise<typeof import("@/editor/Editor")> | null = null
-export const preloadEditor = () => (editorChunk ??= import("@/editor/Editor"))
-export const Editor = lazy(preloadEditor)
+export const Editor = apart(() => import("@/editor/Editor").then((m) => m.default))
+export const preloadEditor = Editor.preload

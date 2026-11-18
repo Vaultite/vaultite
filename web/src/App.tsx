@@ -294,7 +294,7 @@ export default function App() {
   const isNewTab = tab === "new"
   const desktop = useDesktop()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once the store arrives, not on each store change
-  useEffect(() => { if (store) whenIdle(() => { void preloadEditor(); preloadSoon() }) }, [!!store])
+  useEffect(() => { if (store) whenIdle(() => { preloadEditor(); preloadSoon() }) }, [!!store])
   useEffect(() => { if (safeMode) notify("Vault plugins are off for now", { id: "safe-mode", duration: Infinity, action: { label: "Turn back on", run: turnPluginsBackOn } }) }, [])
   useEffect(() => { if (store) whenIdle(loadActions) }, [!!store, disabled, enabled])
   const workspacesOn = useWorkspacesOn()

@@ -10,12 +10,13 @@ import "./core/windowfocus"
 import App from "./App.tsx"
 import { startStore } from "./core/data"
 import { startDesktop } from "./core/desktopapp"
-import { prefetchShown, watchOpeningSoon } from "./core/files"
+import { isMd, prefetchShown, watchOpeningSoon } from "./core/files"
+import { preloadEditor } from "./editor/lazy"
 import { noteAppError, recoverFromStaleBuild, startAppErrors } from "./core/errors"
 
 document.body.dataset.arriving = ""
 startStore()
-prefetchShown()
+if (prefetchShown().some(isMd)) preloadEditor()
 watchOpeningSoon()
 startDesktop()
 

@@ -304,7 +304,9 @@ export function prefetchShown() {
   const { tab, detail } = route()
   const shown = [targetOf(tab), detail.startsWith("file/") ? targetOf(detail) : ""]
   if (isDesktop()) for (const p of panes()) shown.push(p.to)
-  for (const to of new Set(shown)) { const p = tabPath(to); if (p) prefetchFile(p) }
+  const paths = [...new Set(shown)].flatMap((to) => tabPath(to) ?? [])
+  for (const p of paths) prefetchFile(p)
+  return paths
 }
 
 export async function createFile(folder: string, name = "Untitled", text = "") {

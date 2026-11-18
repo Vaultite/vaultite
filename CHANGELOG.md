@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
+- A note open when Vaultite starts shows sooner: its editor's code comes with the vault, and the note draws the moment
+  it's in (0.46 s instead of 0.74 s on a computer, 1.5 s instead of 1.6 s on a slow phone).
 - Vaultite opens without waiting for a vault plugin whose code is slow to come (a busy machine building it): after
   1.5 s at most it draws, and that plugin's tabs and blocks fill in when its code arrives.
 - A window left open in view moves to a new build of Vaultite by itself once you leave it alone for 10 minutes with
