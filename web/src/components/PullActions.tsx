@@ -4,7 +4,7 @@ import { Command as CommandIcon } from "lucide-react"
 import { available, runCommandById, useCommandList, type Command } from "@/core/commands"
 import { fingerHolding } from "@/core/drag"
 import { haptic } from "@/core/haptics"
-import { moves } from "@/core/animation"
+import { moves, paced } from "@/core/animation"
 import { commandIcon } from "@/core/pages"
 import { usePrefs, type Prefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
@@ -121,8 +121,8 @@ export function PullActions() {
   useLayoutEffect(() => {
     const el = box.current
     if (!gone || !el) return
-    const fold = el.animate([{ height: el.style.height, opacity: 1 }, { height: "0px", opacity: 0 }], { duration: 280, easing: EASE, fill: "forwards" })
-    if (gone === "ran") disc.current?.animate([{ scale: 1, opacity: 1 }, { scale: 1.8, opacity: 0 }], { duration: 280, easing: "cubic-bezier(.3, 0, .2, 1)", fill: "forwards" })
+    const fold = el.animate([{ height: el.style.height, opacity: 1 }, { height: "0px", opacity: 0 }], { duration: paced(280), easing: EASE, fill: "forwards" })
+    if (gone === "ran") disc.current?.animate([{ scale: 1, opacity: 1 }, { scale: 1.8, opacity: 0 }], { duration: paced(280), easing: "cubic-bezier(.3, 0, .2, 1)", fill: "forwards" })
     fold.onfinish = () => setPull((p) => (p?.gone ? null : p))
     return () => { fold.onfinish = null; for (const a of el.getAnimations({ subtree: true })) a.cancel() }
   }, [gone])

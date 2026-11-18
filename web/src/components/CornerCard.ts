@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
-import { moves } from "@/core/animation"
+import { moves, paced } from "@/core/animation"
 import { cell } from "@/core/signal"
 
 export type Corner = "tl" | "tr" | "bl" | "br"
@@ -19,7 +19,7 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
   const settle = (el: HTMLElement, at: { x: number; y: number }) => {
     const r = el.getBoundingClientRect()
     if (!moves()) return
-    el.animate([{ transform: `translate(${at.x - r.left}px, ${at.y - r.top}px)` }, { transform: "none" }], { duration: 320, easing: "cubic-bezier(0.2, 0.9, 0.25, 1.05)" })
+    el.animate([{ transform: `translate(${at.x - r.left}px, ${at.y - r.top}px)` }, { transform: "none" }], { duration: paced(320), easing: "cubic-bezier(0.2, 0.9, 0.25, 1.05)" })
   }
   useLayoutEffect(() => {
     if (!from.current || !card.current) return

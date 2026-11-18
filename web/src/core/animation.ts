@@ -19,6 +19,11 @@ export const PACES = {
   snappy: { fast: [90, OUT], base: [150, OUT], spring: [200, OUT] },
 } as const
 
+export function paced(ms: number) {
+  if (!moves()) return 0
+  return getPrefs().animation === "snappy" ? Math.round((ms * PACES.snappy.base[0]) / PACES.natural.base[0]) : ms
+}
+
 export function timing(pace: Pace = "base"): { duration: number; easing: string } {
   if (!moves()) return { duration: 0, easing: "linear" }
   const [duration, easing] = PACES[getPrefs().animation === "snappy" ? "snappy" : "natural"][pace]
@@ -112,5 +117,5 @@ export function dropLeaving(tag: string, doc: Document = document) {
 export function refuse(el: Element | null | undefined) {
   if (!el || !moves()) return
   el.animate([{ translate: "0" }, { translate: "-7px" }, { translate: "6px" }, { translate: "-4px" }, { translate: "3px" }, { translate: "-1px" }, { translate: "0" }],
-    { duration: 380, easing: "ease-in-out", composite: "add" })
+    { duration: paced(380), easing: "ease-in-out", composite: "add" })
 }

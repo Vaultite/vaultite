@@ -29,7 +29,7 @@ import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
 import { spring, unmark, useLingeringSheet } from "@/core/motion"
 import { fling, glide, shownAt, stopFor, within } from "@/core/pager"
-import { moves } from "@/core/animation"
+import { moves, paced } from "@/core/animation"
 import { cn, plural } from "@/lib/utils"
 import { hasWords } from "@/core/fuzzy"
 import { Drawn, Guard } from "@/components/Guard"
@@ -159,8 +159,8 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu, pane, 
       const w = c.offsetWidth, to = (dir ?? 0) * w * 1.3
       const flight = dir
         ? g.animate([{ transform: `translateX(${dx}px)`, opacity: fadeAt(dx, w) }, { transform: `translateX(${to}px)`, opacity: 0 }],
-          { duration: Math.min(260, Math.max(140, (2 * Math.abs(to - dx)) / Math.max(0.8, Math.abs(v)))), easing: "cubic-bezier(.25, .5, .5, 1)", fill: "forwards" })
-        : g.animate([{ transform: "none", opacity: 1 }, { transform: "scale(0.84)", opacity: 0 }], { duration: 180, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" })
+          { duration: paced(Math.min(260, Math.max(140, (2 * Math.abs(to - dx)) / Math.max(0.8, Math.abs(v))))), easing: "cubic-bezier(.25, .5, .5, 1)", fill: "forwards" })
+        : g.animate([{ transform: "none", opacity: 1 }, { transform: "scale(0.84)", opacity: 0 }], { duration: paced(180), easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" })
       void flight.finished.finally(() => g.remove())
     }
     if (c) { c.style.transition = "none"; c.style.opacity = "0" }
