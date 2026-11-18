@@ -1204,8 +1204,15 @@ export class Vault {
     for (const d of this.plainDirs) if (rel.startsWith(d + "/")) return null
     const typed = this.typed(fm)
     if (typed) return typed
-    const untyped = typeof fm.type !== "string" || !fm.type.trim()
-    return this.kinds.find((k) => k.owns(rel) || (untyped && !!k.spec.owns?.(rel))) ?? null
+    const untyped = typeof fm.type !== "string" || !fm.type.trim(), owner = (this.owners ?? this.filesOwned()).get(rel.toLowerCase())
+    return this.kinds.find((k) => k === owner || (untyped && !!k.spec.owns?.(rel))) ?? null
+  }
+
+  private owners: Map<string, Kind> | null = null
+  private filesOwned() {
+    const owners = new Map<string, Kind>()
+    for (const k of this.kinds) { const f = k.file?.toLowerCase(); if (f && !owners.has(f)) owners.set(f, k) }
+    return owners
   }
 
   private typed(fm: Item): Kind | null {
@@ -1354,7 +1361,7 @@ export class Vault {
     } catch (e) {
       this.stale = true
       throw e
-    }
+    } finally { this.owners = null }
   }
 
   private async look({ ahead, before }: { ahead: boolean; before?: Looked | null }): Promise<Looked> {
@@ -1384,6 +1391,7 @@ export class Vault {
       const plain = this.plain().map((d) => d.replace(/^\/+|\/+$/g, "")).filter(Boolean)
       if (plain.join("\n") !== this.plainDirs.join("\n")) this.plainDirs = plain
     } catch (e) { log.error("couldn't ask which folders hold patterns", e) }
+    this.owners = this.filesOwned()
     const kinds = `${this.kindsVersion}:${this.settingsVersion}:${this.plainDirs.join("\n")}`, recheck = kinds !== this.kindsSeen
     this.kindsSeen = kinds
     let changed = [...found].filter(([r, st]) => {
