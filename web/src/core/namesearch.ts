@@ -7,6 +7,7 @@ export type Hit = SearchDoc & {
   metaMarks?: number[]
 }
 type Doc = SearchDoc
+type Found = { d: Doc; inTitle: boolean; marks: number[]; score: number; last: number }
 
 function shown(d: Doc, words: string[], inTitle: boolean) {
   const inMeta = wordRanges(d.meta, words)
@@ -26,18 +27,17 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
   const q = query.trim()
   if (!q) return []
   const words = q.toLowerCase().split(/\s+/)
-  const out: Hit[] = []
+  const out: Found[] = []
   for (const d of docs) {
     const m = fuzzy(q, d.title)
-    if (m) { out.push({ ...d, ...shown(d, words, true), marks: m.marks, score: m.score + (d.weight ?? 0) }); continue }
+    const last = Number(!!d.archived) + Number(!!d.excluded)
+    if (m) { out.push({ d, inTitle: true, marks: m.marks, score: m.score + (d.weight ?? 0), last }); continue }
     const name = d.file?.split("/").pop()
     const n = name && name !== d.title && name.startsWith(d.title) ? fuzzy(q, name) : null
-    if (n) { out.push({ ...d, ...shown(d, words, true), marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0) }); continue }
+    if (n) { out.push({ d, inTitle: true, marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0), last }); continue }
     const hay = hayOf(d)
-    if (words.every((w) => hay.includes(w))) {
-      out.push({ ...d, ...shown(d, words, false), marks: marksOf(wordRanges(d.title, words)), score: 10 + (d.weight ?? 0) / 2 })
-    }
+    if (words.every((w) => hay.includes(w))) out.push({ d, inTitle: false, marks: marksOf(wordRanges(d.title, words)), score: 10 + (d.weight ?? 0) / 2, last })
   }
-  const last = (h: Hit) => Number(!!h.archived) + Number(!!h.excluded)
-  return out.sort((a, b) => last(a) - last(b) || b.score - a.score || b.recent - a.recent).slice(0, limit)
+  return out.sort((a, b) => a.last - b.last || b.score - a.score || b.d.recent - a.d.recent).slice(0, limit)
+    .map(({ d, inTitle, marks, score }): Hit => ({ ...d, ...shown(d, words, inTitle), marks, score }))
 }

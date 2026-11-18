@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
+- Quick switcher: finding notes by name as you type takes about a third of the time it did (over 1,500 notes, 10 ms
+  instead of 31 ms for seven keys).
 - Errors: a part drawn on its own (a note's embed, a table or callout in the editor, a map's pin) logs what failed and
   where, instead of React's bare "Minified React error #520".
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its

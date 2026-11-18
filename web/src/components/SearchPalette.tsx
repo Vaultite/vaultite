@@ -66,7 +66,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const opened = useRecentFiles()
   const { fileIcons, disabled } = usePrefs()
   const [limit, setLimit] = useStateFor([q], () => PAGE)
-  const named = useMemo(() => (!q.trim() ? suggestions(docs, opened) : plain && !error ? search(docs, q, Infinity) : []), [docs, q, plain, error, opened])
+  const named = useMemo(() => (!q.trim() ? suggestions(docs, opened) : plain && !error ? search(docs, q, limit + 1) : []), [docs, q, plain, error, opened, limit])
   const local = q.trim() ? named.slice(0, limit) : named
   const short = !node || (plain && q.trim().length < 2)
   const [text, setText] = useStateFor<InFiles>([short], () => ({ hits: [], files: 0, for: "", failed: null }))

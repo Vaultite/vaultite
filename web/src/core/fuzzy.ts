@@ -20,30 +20,43 @@ export function stem(w: string): string {
   return s
 }
 
-type At = { at: number; w: string }
-function wordsIn(s: string, ls: string): At[] {
-  const out: At[] = []
+type At = { at: number; w: string; stem: string }
+type Name = { ls: string; ws: At[] }
+function nameOf(s: string): Name {
+  const ls = s.toLowerCase(), ws: At[] = []
   for (let i = 0; i < s.length; i++) {
     if (SEPARATORS.has(s[i]) || !boundary(s, i)) continue
     let j = i + 1
     while (j < s.length && !SEPARATORS.has(s[j]) && !boundary(s, j)) j++
-    out.push({ at: i, w: ls.slice(i, j) })
+    const w = ls.slice(i, j)
+    ws.push({ at: i, w, stem: stem(w) })
   }
-  return out
+  return { ls, ws }
+}
+const KEEP_NAMES = 20_000, KEEP_UNDER = 256
+const names = new Map<string, Name>()
+function named(s: string): Name {
+  if (s.length > KEEP_UNDER) return nameOf(s)
+  let n = names.get(s)
+  if (!n) {
+    if (names.size >= KEEP_NAMES) names.clear()
+    names.set(s, n = nameOf(s))
+  }
+  return n
 }
 
 type Word = { tier: number; score: number; marks: number[]; whole?: number }
-const run = (at: number, n: number) => Array.from({ length: n }, (_, k) => at + k)
+const run = (at: number, n: number) => { const out: number[] = []; for (let k = 0; k < n; k++) out.push(at + k); return out }
 const common = (a: string, b: string) => { let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n++; return n }
 
-function word(w: string, ws: At[], ls: string, s: string): Word | null {
-  const sw = stem(w)
+type Typed = { w: string; sw: string }
+function word({ w, sw }: Typed, ws: At[], ls: string, s: string): Word | null {
   let best: Word | null = null
   const take = (m: Word) => { if (!best || m.tier > best.tier || (m.tier === best.tier && m.score > best.score)) best = m }
   ws.forEach((x, k) => {
     const lead = x.at === 0 ? 0.15 : 0
     if (x.w === w) take({ tier: TIER.WORD, score: 390 + lead, marks: run(x.at, w.length), whole: k })
-    else if (stem(x.w) === sw) take({ tier: TIER.WORD, score: 380 + lead, marks: run(x.at, Math.max(common(x.w, w), 1)), whole: k })
+    else if (x.stem === sw) take({ tier: TIER.WORD, score: 380 + lead, marks: run(x.at, Math.max(common(x.w, w), 1)), whole: k })
     else if (x.w.startsWith(w)) take({ tier: TIER.START, score: 250 + 40 * w.length / x.w.length + lead, marks: run(x.at, w.length) })
     else if (sw.length >= 3 && x.w.startsWith(sw)) take({ tier: TIER.START, score: 230 + 40 * sw.length / x.w.length + lead, marks: run(x.at, sw.length) })
   })
@@ -63,13 +76,13 @@ function word(w: string, ws: At[], ls: string, s: string): Word | null {
   return { tier: TIER.LETTERS, score: Math.max(0, Math.min(99, 50 + score)), marks }
 }
 
-let lastQ = "", lastWords: string[] = []
-const wordsOf = (q: string) => q === lastQ ? lastWords : (lastQ = q, lastWords = q.toLowerCase().split(/\s+/).filter(Boolean))
+let lastQ = "", lastWords: Typed[] = []
+const wordsOf = (q: string) => q === lastQ ? lastWords : (lastQ = q, lastWords = q.toLowerCase().split(/\s+/).filter(Boolean).map((w) => ({ w, sw: stem(w) })))
 
 export function fuzzy(q: string, s: string): Match | null {
   const words = wordsOf(q)
   if (!words.length) return { score: 0, marks: [], tier: TIER.NAME }
-  const ls = s.toLowerCase(), ws = wordsIn(s, ls)
+  const { ls, ws } = named(s)
   let sum = 0, tier: number = TIER.WORD, inOrder = true, last = -1
   const marks = new Set<number>(), whole = new Set<number>()
   for (const w of words) {
@@ -83,9 +96,9 @@ export function fuzzy(q: string, s: string): Match | null {
     for (const i of m.marks) marks.add(i)
   }
   if (tier === TIER.WORD && whole.size === ws.length) tier = TIER.NAME
-  const phrase = words.length > 1 ? ls.indexOf(words.join(" ")) : -1
+  const typed = words.length > 1 ? words.map((x) => x.w).join(" ") : "", phrase = typed ? ls.indexOf(typed) : -1
   const score = tier * TIER_WORTH + sum + (words.length > 1 && inOrder ? IN_ORDER : 0) + (phrase >= 0 ? PHRASE : 0) - s.length * 0.1
-  if (phrase >= 0) return { score, tier, marks: run(phrase, words.join(" ").length) }
+  if (phrase >= 0) return { score, tier, marks: run(phrase, typed.length) }
   return { score, tier, marks: [...marks].sort((a, b) => a - b) }
 }
 
