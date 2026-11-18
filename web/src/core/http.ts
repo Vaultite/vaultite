@@ -17,7 +17,11 @@ if (typeof addEventListener === "function") addEventListener("pagehide", () => {
 const READ_WAIT = 60_000
 const early = window.__vauEarly ?? {}
 const takeEarly = (path: string) => { const p = early[path]; delete early[path]; return p?.then((r) => (r.ok ? r : null), () => null) }
-export async function send<T>(method: string, path: string, body?: unknown, cache?: RequestCache): Promise<T> {
+function readSignal(signal?: AbortSignal) {
+  const wait = AbortSignal.timeout?.(READ_WAIT)
+  return signal && wait ? AbortSignal.any?.([signal, wait]) ?? signal : signal ?? wait
+}
+export async function send<T>(method: string, path: string, body?: unknown, cache?: RequestCache, signal?: AbortSignal): Promise<T> {
   const text = body ? JSON.stringify(body) : undefined
   const write = method === "GET" ? null : untilUnreachable()
   let r: Response, j: T
@@ -25,7 +29,7 @@ export async function send<T>(method: string, path: string, body?: unknown, cach
     const got = method === "GET" && !cache ? await takeEarly(path) : null
     r = got ?? await fetch(`api/${path}`, {
       method, cache, keepalive: unloading && method !== "GET" && (text?.length ?? 0) < 60_000,
-      headers: headers(body), body: text, signal: write?.signal ?? AbortSignal.timeout?.(READ_WAIT),
+      headers: headers(body), body: text, signal: write?.signal ?? readSignal(signal),
     })
     j = r.ok ? await r.json() : await r.json().catch(() => ({}))
   } catch (e) {
@@ -46,7 +50,7 @@ export function upload(path: string, file: Blob): Promise<{ path: string }> {
     return j
   })())
 }
-export const get = <T,>(path: string) => api<T>("GET", path)
+export const get = <T,>(path: string, signal?: AbortSignal) => send<T>("GET", path, undefined, undefined, signal)
 export const put = <T,>(path: string, body: unknown) => api<T>("PUT", path, body)
 export const post = <T,>(path: string, body: unknown) => api<T>("POST", path, body)
 export const patch = <T,>(path: string, body: unknown) => api<T>("PATCH", path, body)

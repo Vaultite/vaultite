@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { Search as SearchIcon, SquareArrowOutUpRight } from "lucide-react"
 import { type Store } from "@/core/data"
 import { get } from "@/core/http"
@@ -26,17 +26,19 @@ export function QueryResults({ store, text }: { store: Store; text: string }) {
   const [failed, setFailed] = useStateFor([q], () => "")
   const [shut, setShut] = useStateFor<Set<string>>([q], () => new Set())
   const [whole, setWhole] = useStateFor<Record<string, Match[]>>([q], () => ({}))
+  const typing = useRef(false)
   useEffect(() => {
     if (!node) return
-    let on = true
+    const stop = new AbortController(), on = () => !stop.signal.aborted
     const off = trackSoon("a query block's search", () => true)
     const t = setTimeout(() => {
       off()
       const p = new URLSearchParams({ q, lines: String(FENCE_LINES), total: "1", limit: String(FENCE_FILES) })
-      get<Found>(`search?${p}`).then((f) => { if (on) { setFound(f); setFailed("") } },
-        (e) => { if (on) { setFound({ results: [], files: 0, lines: 0 }); setFailed(errorText(e)) } })
-    }, 200)
-    return () => { on = false; off(); clearTimeout(t) }
+      get<Found>(`search?${p}`, stop.signal).then((f) => { if (on()) { setFound(f); setFailed("") } },
+        (e) => { if (on()) { setFound({ results: [], files: 0, lines: 0 }); setFailed(errorText(e)) } })
+    }, typing.current ? 200 : 0)
+    typing.current = true
+    return () => { stop.abort(); off(); clearTimeout(t) }
   }, [q, node, store, setFound, setFailed])
   const showWhole = (path: string) => {
     get<Found["results"]>(`search?${new URLSearchParams({ q, path, lines: "100000" })}`)

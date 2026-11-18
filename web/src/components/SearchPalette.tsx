@@ -4,7 +4,6 @@ import { getStore, type Store } from "@/core/data"
 import { get } from "@/core/http"
 import { useOnReconnect } from "@/core/connection"
 import { errorText } from "@/core/notify"
-import { trackSoon } from "@/core/unsaved"
 import { cleanName, createNamed, folderOf, openFile, openNew, openView, stem } from "@/core/files"
 import { currentFile, newTabsAt } from "@/core/workspace"
 import { launcherAt, launcherClosed } from "@/core/launcher"
@@ -75,15 +74,11 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   useEffect(() => {
     const query = q.trim()
     if (!node || short) return
-    let on = true
-    const off = trackSoon("the switcher's search", () => true)
-    const t = setTimeout(() => {
-      off()
-      get<{ results: Found[]; files: number }>(`search?q=${encodeURIComponent(query)}&limit=${limit}&total=1`)
-        .then((f) => on && setText({ hits: f.results.map((r) => foundHit(r, node)), files: f.files, for: asked, failed: null }))
-        .catch((e) => on && setText({ hits: [], files: 0, for: asked, failed: e || new Error("Couldn't search") }))
-    }, limit > PAGE ? 0 : 150)
-    return () => { on = false; off(); clearTimeout(t) }
+    const stop = new AbortController(), on = () => !stop.signal.aborted
+    get<{ results: Found[]; files: number }>(`search?q=${encodeURIComponent(query)}&limit=${limit}&total=files`, stop.signal)
+      .then((f) => on() && setText({ hits: f.results.map((r) => foundHit(r, node)), files: f.files, for: asked, failed: null }))
+      .catch((e) => on() && setText({ hits: [], files: 0, for: asked, failed: e || new Error("Couldn't search") }))
+    return () => stop.abort()
   }, [q, node, plain, limit, short, setText, asked])
   const out = !short && !!node && text.for !== asked, failed = !short && !!node && !out ? text.failed : null
   useOnReconnect(retry, !!failed)

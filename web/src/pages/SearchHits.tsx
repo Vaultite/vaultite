@@ -2,7 +2,7 @@ import { Fragment, type MouseEvent } from "react"
 import { ChevronRight } from "lucide-react"
 import { type Store } from "@/core/data"
 import { startDrag } from "@/core/drag"
-import { folderOf, openFile, stem } from "@/core/files"
+import { fileOf, folderOf, openFile, stem } from "@/core/files"
 import { snippet } from "@/core/plaintext"
 import { isDesktop } from "@/core/platform"
 import { editAt } from "@/core/anchors"
@@ -15,7 +15,7 @@ import { excerpt, marksOf } from "../../../core/searchquery.ts"
 
 export type Match = { line: number; text: string; ctx?: true }
 export type Result = { path: string; title: string; context: string; mtime: number; matches?: Match[]; count?: number }
-export type Found = { results: Result[]; files: number; lines: number }
+export type Found = { results: Result[]; files: number; lines?: number }
 type Marks = (s: string) => [number, number][]
 
 const atLine = (kind: string) => kind === "markdown" || kind === "code" || kind === "json"
@@ -51,7 +51,7 @@ function FileRow({ r, store, lines, shut, onToggle, nameMarks, pane }: {
   r: Result; store: Store; lines: boolean; shut: boolean; onToggle: () => void; nameMarks: Marks; pane?: string
 }) {
   const { disabled, fileIcons } = usePrefs()
-  const f = store.files.files.find((x) => x.path === r.path)
+  const f = fileOf(store, r.path)
   const { icon: Icon, tint } = fileIcon(r.path, f?.type ?? null, disabled, f)
   const where = folderOf(r.path), title = stem(r.path)
   return (

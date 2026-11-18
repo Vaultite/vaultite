@@ -32,7 +32,7 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
     const m = fuzzy(q, d.title)
     const last = Number(!!d.archived) + Number(!!d.excluded)
     if (m) { out.push({ d, inTitle: true, marks: m.marks, score: m.score + (d.weight ?? 0), last }); continue }
-    const name = d.file?.split("/").pop()
+    const name = d.file?.slice(d.file.lastIndexOf("/") + 1)
     const n = name && name !== d.title && name.startsWith(d.title) ? fuzzy(q, name) : null
     if (n) { out.push({ d, inTitle: true, marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0), last }); continue }
     const hay = hayOf(d)

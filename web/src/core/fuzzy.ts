@@ -33,7 +33,7 @@ function nameOf(s: string): Name {
   }
   return { ls, ws }
 }
-const KEEP_NAMES = 20_000, KEEP_UNDER = 256
+const KEEP_NAMES = 100_000, KEEP_UNDER = 256
 const names = new Map<string, Name>()
 function named(s: string): Name {
   if (s.length > KEEP_UNDER) return nameOf(s)
@@ -49,7 +49,7 @@ type Word = { tier: number; score: number; marks: number[]; whole?: number }
 const run = (at: number, n: number) => { const out: number[] = []; for (let k = 0; k < n; k++) out.push(at + k); return out }
 const common = (a: string, b: string) => { let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n++; return n }
 
-type Typed = { w: string; sw: string }
+type Typed = { w: string; sw: string; lead: string }
 function word({ w, sw }: Typed, ws: At[], ls: string, s: string): Word | null {
   let best: Word | null = null
   const take = (m: Word) => { if (!best || m.tier > best.tier || (m.tier === best.tier && m.score > best.score)) best = m }
@@ -77,12 +77,26 @@ function word({ w, sw }: Typed, ws: At[], ls: string, s: string): Word | null {
 }
 
 let lastQ = "", lastWords: Typed[] = []
-const wordsOf = (q: string) => q === lastQ ? lastWords : (lastQ = q, lastWords = q.toLowerCase().split(/\s+/).filter(Boolean).map((w) => ({ w, sw: stem(w) })))
+const wordsOf = (q: string) => q === lastQ ? lastWords : (lastQ = q, lastWords = q.toLowerCase().split(/\s+/).filter(Boolean).map((w) => { const sw = stem(w); return { w, sw, lead: sw.replace(/y$/, "") } }))
+
+const lows = new Map<string, string>()
+function lower(s: string) {
+  if (s.length > KEEP_UNDER) return s.toLowerCase()
+  let l = lows.get(s)
+  if (l === undefined) { if (lows.size >= KEEP_NAMES) lows.clear(); lows.set(s, l = s.toLowerCase()) }
+  return l
+}
+function inOrderIn(w: string, ls: string) {
+  for (let i = 0, at = 0; i < w.length; i++, at++) { at = ls.indexOf(w[i], at); if (at < 0) return false }
+  return true
+}
+const NONE: Name = { ls: "", ws: [] }
+const namedIfMay = (words: Typed[], s: string) => { const ls = lower(s); return words.every((x) => inOrderIn(x.w, ls) || ls.includes(x.lead)) ? named(s) : NONE }
 
 export function fuzzy(q: string, s: string): Match | null {
   const words = wordsOf(q)
   if (!words.length) return { score: 0, marks: [], tier: TIER.NAME }
-  const { ls, ws } = named(s)
+  const { ls, ws } = namedIfMay(words, s)
   let sum = 0, tier: number = TIER.WORD, inOrder = true, last = -1
   const marks = new Set<number>(), whole = new Set<number>()
   for (const w of words) {

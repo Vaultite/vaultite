@@ -278,7 +278,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `formatSize(n)`: "24 KB"
 - `Frame({ mode, className, children })`: A picture's box, in the colour scheme in use (`mode`: light or dark, else the app's).
 - `freeName(t, folder, base, ext?)`: A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 1"...: Obsidian's rule).
-- `get(path)`
+- `get(path, signal?)`
 - `getDefaultPlace()`
 - `getStore()`: The store as it is now (for code outside React).
 - `getTabLayout()`
