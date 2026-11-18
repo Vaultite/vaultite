@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { mock } from "node:test"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -95,6 +96,21 @@ export default async ($: VaultTest) => {
     const answered = walks
     await wait(() => walks === 1)
     check("live: past that, the app's read is answered at once and a walk follows it", answered === 0 && walks === 1, [answered, walks])
+    write(".vaultite/live-hand.json", '{"n":1}\n')
+    await vault.synced()
+    check("live: a settings file written by hand is read at the next walk", vault.config("live-hand").n === 1, vault.config("live-hand"))
+    await vault.synced()
+    const reads = mock.method(fs, "readFileSync")
+    vault.config("live-hand")
+    reads.mock.restore()
+    check("live: a walk that finds the settings as they were keeps what it read of them", reads.mock.callCount() === 0, reads.mock.callCount())
+    write(".vaultite/live-hand.json", '{"n":2, "more": true}\n')
+    await vault.synced()
+    check("live: and one changed by hand is read again", vault.config("live-hand").n === 2, vault.config("live-hand"))
+    vault.removeConfig("live-hand")
+    await new Promise((r) => setTimeout(r, 400))
+    await vault.synced()
+    await vault.synced()
     if (process.platform === "linux") {
       // Linux's watcher hears each change as it's made: an agent's read waits for what it heard, not for a walk.
       await vault.synced()

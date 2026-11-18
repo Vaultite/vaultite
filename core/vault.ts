@@ -1312,12 +1312,13 @@ export class Vault {
   }
 
   private async walk(): Promise<boolean> {
-    this.settings.clear()
+    const settingsWere = this.settingsVersion
+    const found = await this.scan()
+    if (this.settingsVersion !== settingsWere || !this.walked) this.settings.clear()
     try {
       const plain = this.plain().map((d) => d.replace(/^\/+|\/+$/g, "")).filter(Boolean)
       if (plain.join("\n") !== this.plainDirs.join("\n")) this.plainDirs = plain
     } catch (e) { log.error("couldn't ask which folders hold patterns", e) }
-    const found = await this.scan()
     const kinds = `${this.kindsVersion}:${this.settingsVersion}:${this.plainDirs.join("\n")}`, recheck = kinds !== this.kindsSeen
     this.kindsSeen = kinds
     let changed = [...found].filter(([r, st]) => {
