@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: iCloud is asked for the files it evicted a few at a time, and a file that stays away less and less often (in
+  an hour: 60 asks each, now 6).
 - Server: while iCloud has files to bring down (Optimize Mac Storage), the app's requests no longer each walk the whole
   vault (78 ms each, now 3).
 - Server: a file iCloud hasn't brought down no longer fails requests and the scheduler's runs ("Unknown system error

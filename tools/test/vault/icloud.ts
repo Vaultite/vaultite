@@ -131,6 +131,28 @@ export default async ($: VaultTest) => {
     }
   }
   {
+    const { iCloud, fetchFromICloud } = await import("../../../core/vault.ts")
+    const was = { ...iCloud }, running: string[] = [], ends: (() => void)[] = []
+    let most = 0
+    const asked: string[] = []
+    Object.assign(iCloud, { on: true, download: (p: string, done: (e: Error | null) => void) => {
+      asked.push(path.basename(p)); running.push(p); most = Math.max(most, running.length)
+      ends.push(() => { running.splice(running.indexOf(p), 1); done(null) })
+    } })
+    const deadlock = { errno: -11 }
+    try {
+      for (let i = 0; i < 10; i++) fetchFromICloud(path.join(VAULT, `Away/F${i}.md`), deadlock)
+      fetchFromICloud(path.join(VAULT, "Away/Wanted.md"), deadlock, { asked: true })
+      check("iCloud: at most a few asks at once", running.length === 4 && asked.length === 4, asked)
+      ends.shift()!()
+      check("iCloud: one a request waits for is asked next", asked[4] === "Wanted.md", asked)
+      while (ends.length) ends.shift()!()
+      check("iCloud: the rest are asked as the first end", asked.length === 11 && most === 4, [asked.length, most])
+      fetchFromICloud(path.join(VAULT, "Away/F0.md"), deadlock)
+      check("iCloud: a file asked for a moment ago isn't asked again", asked.length === 11, asked.length)
+    } finally { Object.assign(iCloud, was); while (ends.length) ends.shift()!() }
+  }
+  {
     const vps = $.app.vaultPlugins, sync = vps.sync
     vps.sync = () => Promise.reject(Object.assign(new Error("Unknown system error -11: Unknown system error -11, read"), { errno: -11, syscall: "read" }))
     try {
