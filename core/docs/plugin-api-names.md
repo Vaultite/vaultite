@@ -191,7 +191,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `DiffLine`: Kept, only in the second text (add), only in the first (del), or `n` unchanged lines folded away (gap).
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
 - `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.
-- `dismissNotice(id)`: Close a toast before its time.
+- `dismissNotice(id)`
 - `dockAtEnd(key, side)`: Put panels at a sidebar's end, unfolded, the sidebar open: every move but a drop does, so where they went is in sight.
 - `DockedFile({ store, path, panel })`
 - `DockedViewToggle({ store, path, panel })`
@@ -851,6 +851,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
+- `usePluginsVersion()`
 - `usePortalHost(id)`: The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the same frame (a view transition's picture takes it at once); one more render if it…
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
 - `useQuerySuggest(value, set, own?)`: A search query's field (core/searchquery.ts): its operators, then the vault's tags, types and folders.

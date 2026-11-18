@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react"
-import { blockFor, blockOptions, BlockView, cn, EmbedView, fenceLayout, Markdown, blockHeightKey, keepAnchored, offText, openDetail, segments, textKey, useHeldHeight, type PageCtx } from "@vaultite"
+import { blockFor, blockOptions, BlockView, cn, EmbedView, fenceLayout, Markdown, blockHeightKey, keepAnchored, offText, openDetail, segments, textKey, useHeldHeight, usePluginsVersion, type PageCtx } from "@vaultite"
 
 type Cell = ({ md: string } | { embed: string; height?: number } | { wide: boolean; blocks: { name: string; text: string; nth: number }[] }) & { line: number }
 
 const isNote = (target: string) => { const name = target.split(/[#|]/)[0]; return !/\.[a-z0-9]+$/i.test(name) || /\.md$/i.test(name) }
 
-function cellsOf(body: string, disabled: string[]): Cell[] {
+function cellsOf(body: string, disabled: string[], _pluginsVersion = 0): Cell[] {
   return layout(body).flatMap((c): Cell[] => {
     if ("md" in c || "embed" in c) return [c]
     const blocks = c.blocks.filter((b) => blockFor(b.name, disabled, blockOptions(b.text)).render)
@@ -15,10 +15,8 @@ function cellsOf(body: string, disabled: string[]): Cell[] {
 
 const half = (c: Cell | undefined) => !!c && "blocks" in c && !c.wide
 
-export const narrow = (body: string, disabled: string[]) => {
-  const cells = cellsOf(body, disabled)
-  return cells.every((c, i) => "md" in c || ("embed" in c ? isNote(c.embed) : half(c) && !half(cells[i + 1])))
-}
+const narrowCells = (cells: Cell[]) => cells.every((c, i) => "md" in c || ("embed" in c ? isNote(c.embed) : half(c) && !half(cells[i + 1])))
+export const narrow = (body: string, disabled: string[]) => narrowCells(cellsOf(body, disabled))
 
 function layout(body: string): Cell[] {
   const cells: Cell[] = []
@@ -44,9 +42,10 @@ function allOff(body: string, cells: Cell[], disabled: string[]) {
 
 export function Dashboard({ ctx }: { ctx: PageCtx }) {
   const { body, disabled } = ctx
-  const cells = useMemo(() => cellsOf(body, disabled), [body, disabled])
+  const plugins = usePluginsVersion()
+  const cells = useMemo(() => cellsOf(body, disabled, plugins), [body, disabled, plugins])
   const off = useMemo(() => allOff(body, cells, disabled), [body, cells, disabled])
-  const one = useMemo(() => narrow(body, disabled), [body, disabled])
+  const one = useMemo(() => narrowCells(cells), [cells])
   const keys = useMemo(() => {
     const seen = new Map<string, number>()
     return cells.map((c) => {
