@@ -58,14 +58,14 @@ the window shows (and the hidden ones), which plugins are on or off, the appeara
         "",
         ...r.extra.flatMap((t) => [t, ""]),
         ...(r.sidebars ? [`Panels (${r.sidebars.workspace}'s${r.sidebars.own ? "" : ": the default"}):`] : []),
-        showPanels(r.panels),
+        showPanels(r.panels).replace(/^Hidden: (?!none$).*$/m, `Hidden: ${r.panels.filter((p) => !p.side).length} more (vau panels names them)`),
         "",
         `Plugins: ${r.plugins.length - off.length} on; off: ${off.map((p) => p.id + (p.tier === "vault" ? " (vault)" : "")).join(", ") || "none"}`,
         `Appearance: ${Object.entries(r.appearance).map(([k, x]) => `${k}=${JSON.stringify(x)}`).join(" ") || "defaults"}`,
         `Hotkeys changed: ${Object.entries(r.hotkeys).map(([k, x]) => `${k}=${strings(x).join("/") || "none"}`).join(" ") || "none"}`,
         ...(r.untyped.length ? [`Without a type (plain notes until they have one; vau type): ${r.untyped.map((g) => `${g.folder}/ ${g.files} (${g.type}?)`).join(", ")}`] : []),
         "",
-        "Next: vau today, vau render <file>, vau open <file>, vau docs, vau --help",
+        "Next: vau tabs (what the user has open), vau render <file>, vau open <file>, vau docs, vau --help",
       ].join("\n")
     },
   })]
