@@ -11,7 +11,7 @@ export default async ($: VaultTest) => {
   {
     const { addUnder } = await import("../../../plugins/core/people/ops.ts")
     const { handle, handleBody, PROTOCOL_VERSIONS, clientOf } = await import("../../../plugins/core/mcp/protocol.ts")
-    const { toolsOf, toolOf, RESERVED } = await import("../../../plugins/core/mcp/catalog.ts")
+    const { toolsOf, toolOf, RESERVED, schemaFor, withoutExamples } = await import("../../../plugins/core/mcp/catalog.ts")
     const { service } = await import("../../../core/plugins.ts")
     const { eventsOf } = await import("../../../core/events.ts")
     // What plugin.ts gives a tool: ops and the API in-process, as the client.
@@ -58,8 +58,11 @@ export default async ($: VaultTest) => {
     const mcpOps = app.catalog().filter((e) => e.mcp)
     check("mcp: every op marked mcp is a tool, named by it, with its parameters as its schema", mcpOps.length >= 3 && mcpOps.every((e) => {
       const t = listed.find((x) => x.name === e.mcp)
-      return t && same(t.inputSchema, e.params) && t.description.startsWith(e.summary)
+      return t && same(t.inputSchema, schemaFor(e.params)) && t.description.startsWith(e.summary)
     }) && names.includes("docs") && names.includes("open") && names.includes("events_wait"), names)
+    check("mcp: a tool's description has no command-line examples, its schema none of vau's own keywords", listed.every((t) => !/^ {2,}vau /m.test(t.description) && !/"(env|stdin|commas|outside|finds)":/.test(JSON.stringify(t.inputSchema))), names)
+    check("mcp: examples out, with what continues them; the prose around them stays", withoutExamples("Does it.\n\n  vau x a \\\n  --b c\n  vau x d\n                 what d does\n\nAfter.\n  - a list item") === "Does it.\n\nAfter.\n  - a list item")
+    check("mcp: the title in a tool's annotations only for a client older than 2025-06-18", !("title" in listed[0].annotations), listed[0].annotations)
     check("mcp: the tools from before the operations are ops now, once each; ops and call last", ["search", "read", "render", "list", "query", "write_note", "write_log", "add_timeline", "remember", "clip", "inbox_add"].every((n) => names.includes(n))
       && new Set(names).size === names.length && same(names.slice(-2), ["ops", "call"]), names)
     check("mcp: every tool has a schema, a description and its hints", listed.every((t) => t.inputSchema.type === "object" && t.description.length > 40 && typeof t.annotations.readOnlyHint === "boolean"), listed.filter((t) => t.description.length <= 40).map((t) => t.name))

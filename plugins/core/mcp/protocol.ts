@@ -47,7 +47,7 @@ const Args = z.record(z.string(), z.unknown())
 export const Pictured = z.object({ text: z.unknown(), image: z.object({ data: z.string(), mimeType: z.string() }).nullish().catch(null) }).nullable().catch(null)
 export type Answer = { jsonrpc: "2.0"; id: string | number | null; result?: unknown; error?: { code: number; message: string; data?: unknown } }
 
-export type Session = { client: Client | null; ui?: boolean }
+export type Session = { client: Client | null; ui?: boolean; version?: string }
 
 export type Server = {
   version: string
@@ -62,8 +62,9 @@ export type Server = {
 
 const fail = (id: Message["id"], code: number, message: string): Answer => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } })
 
-export const declared = (t: Tool) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema,
-  annotations: { title: t.title, ...t.annotations }, ...(t.meta ? { _meta: t.meta } : {}) })
+/** Before 2025-06-18 a tool's title was only in its annotations: a client that old gets it there too. */
+export const declared = (t: Tool, version = PROTOCOL_VERSIONS[0]) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema,
+  annotations: version < "2025-06-18" ? { title: t.title, ...t.annotations } : t.annotations, ...(t.meta ? { _meta: t.meta } : {}) })
 
 export async function handle(msg: unknown, session: Session, server: Server): Promise<Answer | null> {
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return fail(null, -32600, "Invalid Request: a JSON-RPC message is an object")
@@ -77,9 +78,9 @@ export async function handle(msg: unknown, session: Session, server: Server): Pr
     case "initialize": {
       const asked = String(m.params?.protocolVersion ?? "")
       session.client = clientOf(m.params?.clientInfo?.name)
-      session.ui = takesUi(m.params?.capabilities)
+      Object.assign(session, { ui: takesUi(m.params?.capabilities), version: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0] })
       return ok({
-        protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0],
+        protocolVersion: session.version,
         capabilities: { tools: { listChanged: false }, resources: { listChanged: false }, extensions: { [UI_EXTENSION]: { mimeTypes: [UI_MIME] } } },
         serverInfo: { name: "vaultite", title: "Vaultite", version: server.version, ...server.identity },
         instructions: await server.instructions(),
@@ -88,7 +89,7 @@ export async function handle(msg: unknown, session: Session, server: Server): Pr
     case "ping":
       return ok({})
     case "tools/list":
-      return ok({ tools: (await toolsWithApps(server)).map(declared) })
+      return ok({ tools: (await toolsWithApps(server)).map((t) => declared(t, session.version)) })
     case "tools/call": {
       const name = String(m.params?.name ?? "")
       const tools = await toolsWithApps(server)

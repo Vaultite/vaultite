@@ -14,6 +14,27 @@ export function titleOf(e: OpEntry) {
 const hints = (kind: OpEntry["kind"]): Record<string, boolean> =>
   kind === "read" ? { readOnlyHint: true, destructiveHint: false } : { readOnlyHint: false, destructiveHint: kind === "destructive" }
 
+export function withoutExamples(help: string) {
+  const out: string[] = []
+  let depth = -1
+  for (const line of help.split("\n")) {
+    const indent = /^ */.exec(line)![0].length
+    if (depth >= 0 && line.trim() && indent > depth) continue
+    depth = indent >= 2 && /(^|[\s|(])vau\s/.test(line) ? indent : -1
+    if (depth < 0) out.push(line)
+    else if (line.trimEnd().endsWith("\\")) depth -= 1
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+}
+
+export function schemaFor(s: Schema): Schema {
+  const { env: _e, stdin: _s, commas: _c, outside: _o, finds: _f, ...out } = s
+  if (s.items) out.items = schemaFor(s.items)
+  if (s.properties) out.properties = Object.fromEntries(Object.entries(s.properties).map(([k, v]) => [k, schemaFor(v)]))
+  if (s.additionalProperties && s.additionalProperties !== true) out.additionalProperties = schemaFor(s.additionalProperties)
+  return out
+}
+
 /** `format: "file"` parameters are ones ChatGPT fills with a file from the chat. */
 export function toolOf(e: OpEntry): Tool {
   const files = Object.entries(e.params.properties ?? {}).filter(([, s]) => s.format === "file").map(([k]) => k)
@@ -21,8 +42,8 @@ export function toolOf(e: OpEntry): Tool {
     ...(files.length ? { meta: { "openai/fileParams": files } } : {}),
     name: e.mcp!,
     title: titleOf(e),
-    description: [e.summary, e.help?.trim()].filter(Boolean).join("\n\n"),
-    inputSchema: e.params,
+    description: [e.summary, withoutExamples(e.help ?? "")].filter(Boolean).join("\n\n"),
+    inputSchema: schemaFor(e.params),
     annotations: hints(e.kind),
     run: (args, ctx) => ctx.op(e.id, args),
   }
