@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: a file iCloud hasn't brought down no longer fails requests and the scheduler's runs ("Unknown system error
+  -11"): what reads it waits for it, the rest goes on.
 - Server: an upload (a voice note from the watch, a photo) no longer holds every save until its bytes arrive.
 - Server: a walk of the vault looks at the disk before it holds the vault, so a save no longer waits behind one on a slow
   disk (2.4 s, now none).

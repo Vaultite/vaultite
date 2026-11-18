@@ -130,6 +130,15 @@ export default async ($: VaultTest) => {
       fs.rmSync(file, { force: true })
     }
   }
+  {
+    const vps = $.app.vaultPlugins, sync = vps.sync
+    vps.sync = () => Promise.reject(Object.assign(new Error("Unknown system error -11: Unknown system error -11, read"), { errno: -11, syscall: "read" }))
+    try {
+      const synced = await $.app.syncPlugins().catch(() => "threw")
+      const [st] = await api("GET", "files")
+      check("a plugin's file iCloud hasn't brought down fails no request, nor loading the plugins", synced === false && st === 200, [synced, st])
+    } finally { vps.sync = sync }
+  }
   // A dashboard in /api/render: its title, then its text (no line of its own under the title).
   write("Dashboards/Sub.md", "---\ntype: dashboard\nicon: sun\n---\n\nText.\n")
   const [, sub] = await api("GET", "render?path=Dashboards/Sub.md")

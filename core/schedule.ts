@@ -113,7 +113,7 @@ export class Scheduler {
 
   start() {
     if (this.timer || this.first) return
-    const tick = () => void this.tick(Date.now(), JOBS_APART).catch((e) => log.error("its tick failed", e))
+    const tick = () => void this.tick(Date.now(), JOBS_APART).catch((e) => logFailure(log, "its tick failed", e))
     this.first = setTimeout(() => {
       this.first = null
       tick()
