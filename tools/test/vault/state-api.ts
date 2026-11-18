@@ -94,6 +94,18 @@ export default async ($: VaultTest) => {
     const answer = await app.run("GET", ["state", "manifest"], {}, {})
     check("state manifest: a small state comes whole, as since=0's", same(JSON.parse(String((answer.body as { text: string }).text)).state, await full()))
     check("state chunk: one it doesn't have is a 404", (await app.run("GET", ["state", "chunk", "nope"], {}, {})).status === 404)
+    const body = "A line of a long note, long enough to make the state big. ".repeat(80)
+    for (let i = 0; i < 300; i++) write(`Big state/Note ${i}.md`, `---\ntype: note\n---\n\n${body}${i}\n`)
+    await vault.synced()
+    const { Text } = await import("../../../core/plugins.ts")
+    const text = async (parts: string[], query: Record<string, string> = {}) => { const b = (await app.run("GET", parts, query, {})).body; return b instanceof Text ? String(b.text) : "" }
+    const after = JSON.parse(await text(["state"], { since: "other.1" }))
+    const chunk = async (c: string) => JSON.parse(await text(["state", "chunk", c]))
+    const chunks = new Map(await Promise.all(SC.chunksOf(after.tree ?? { a: [] }).map(async (c) => [c, await chunk(c)] as const)))
+    check("state since: a big state it doesn't have (a server restarted) comes as chunks, which the page has kept", "tree" in after && !("state" in after) &&
+      same(SC.assemble(after.tree, (c) => chunks.get(c)), await full()), Object.keys(after))
+    check("state since 0: a big state still comes whole", "state" in JSON.parse(await text(["state"], { since: "0" })))
+    fs.rmSync(path.join(VAULT, "Big state"), { recursive: true })
   }
 
   // Reads arriving together share one sync (Vault.synced, what server.ts does for a GET), which still reads a file

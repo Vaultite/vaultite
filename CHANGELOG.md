@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Open apps (a phone above all) no longer download all of a big vault's data again after the server restarts for an
+  update: they get only the parts that changed, which is often none (159 KB down to 2 KB on a 2,700-note vault).
 - iPhone notifications and widget updates keep one connection to Apple open and try once more on a new one when it
   doesn't answer, instead of opening one per notification and failing with "timed out".
 - Updates: a page open from before an update still opens views and sheets it hadn't loaded yet (they failed with

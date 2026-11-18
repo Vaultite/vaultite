@@ -325,7 +325,7 @@ export class App {
     return out
   }
 
-  async stateSince(since: string, http?: IncomingMessage) {
+  async stateSince(since: string, http?: IncomingMessage): Promise<Text> {
     const mark = this.liveMark?.()
     const now = this.snap(await this.state())
     const v = JSON.stringify(now.v)
@@ -335,14 +335,15 @@ export class App {
       let patch = now.patches.get(since)
       if (patch === undefined) now.patches.set(since, patch = SP.patchOf(this.snaps.find((s) => s.v === since)!.piece, now.piece) ?? "null")
       out = `{"v":${v},"since":${JSON.stringify(since)},"patch":${patch}}`
+    } else if (since !== "0" && SC.sizeOf(now.piece) >= SC.WHOLE_UNDER) return this.stateManifest(http)
     // (kept as UTF-8 bytes: half a string's size when a character outside Latin-1 makes it two bytes a character)
-    } else out = now.whole ??= Buffer.from(`{"v":${v},"state":${SP.jsonOf(now.piece)}}`)
+    else out = now.whole ??= Buffer.from(`{"v":${v},"state":${SP.jsonOf(now.piece)}}`)
     const extra = [mark ? `"live":${JSON.stringify(mark)}` : "", http && CONNECT_HEADER in http.headers ? `"here":"connect"` : ""].filter(Boolean)
     if (extra.length) out = Buffer.concat([Buffer.from(`{${extra.join(",")},`), (typeof out === "string" ? Buffer.from(out) : out).subarray(1)])
     return new Text(out, "application/json")
   }
 
-  async stateManifest(http?: IncomingMessage) {
+  async stateManifest(http?: IncomingMessage): Promise<Text> {
     const mark = this.liveMark?.()
     const now = this.snap(await this.state())
     if (SC.sizeOf(now.piece) < SC.WHOLE_UNDER) return this.stateSince("0", http)

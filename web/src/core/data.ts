@@ -312,14 +312,18 @@ function stateOf(a: Answer): State | null {
   try { return a.patch ? applyPatch(server.state, a.patch) as State : server.state } catch (e) { console.error(e); return null }
 }
 
+async function assembled(m: Manifest | Answer): Promise<Answer> {
+  if (!("tree" in m)) return m
+  const names = [...new Set(chunksOf(m.tree))]
+  const values = new Map(await Promise.all(names.map(async (c) => [c, await get<unknown>(`state/chunk/${c}`)] as const)))
+  return { v: m.v, state: assemble(m.tree, (c) => values.get(c)) as State, live: m.live, here: m.here }
+}
+
 async function fromChunks(): Promise<Answer | null> {
   try {
     const m = await get<Manifest | Answer>("state/manifest")
-    if (!("tree" in m)) return m
     await window.__vauEarlyChunks
-    const names = [...new Set(chunksOf(m.tree))]
-    const values = new Map(await Promise.all(names.map(async (c) => [c, await get<unknown>(`state/chunk/${c}`)] as const)))
-    return { v: m.v, state: assemble(m.tree, (c) => values.get(c)) as State, live: m.live, here: m.here }
+    return await assembled(m)
   } catch (e) {
     console.warn("the state's chunks", e)
     return null
@@ -337,7 +341,7 @@ function load(): Promise<void> {
       await settled()
       const gen = editCount()
       try {
-        const answer = (server ? null : await fromChunks()) ?? await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
+        const answer = (server ? null : await fromChunks()) ?? await assembled(await get<Manifest | Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`))
         loading?.mark("state")
         startLive(isObj(answer.live) ? answer.live : undefined)
         setHere(answer.here === "connect" ? "connect" : "mac")
