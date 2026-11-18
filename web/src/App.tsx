@@ -64,14 +64,10 @@ import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
 import { currentLayout, openImport, previousSetup, restoreSetup } from "@/core/bundles"
 import { startWelcome } from "@/core/welcome"
-import { saveAsNew } from "@/components/LayoutPicker"
 import { APP_PAGES, appPageOf, isSetupTab, openAppPage, openSettings, openSetup, pageShownAt, useSettingsOwner, type AppPage } from "@/core/apppages"
-import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
 import { pickIcon, useIconAsk } from "@/core/iconask"
-import { SearchPalette } from "@/components/SearchPalette"
-import { TabSearch } from "@/components/TabSearch"
 import { openNewTab } from "@/core/launcher"
 import { Workspace } from "@/components/Workspace"
 import { Resizer } from "@/components/Resizer"
@@ -86,13 +82,11 @@ import { coarse } from "@/core/haptics"
 import { PhoneHeader } from "@/components/PhoneHeader"
 import { drawerOut, openDrawer } from "@/core/drawer"
 import { Tooltips } from "@/components/Tooltip"
-import { Toaster } from "@/components/Toast"
 import { BundleTrial } from "@/components/BundleTrial"
 import { SelectionBar } from "@/components/SelectionBar"
 import { VaultManager, webVaults } from "@/components/VaultManager"
 import { ContextMenus } from "@/components/ContextMenu"
 import { ConfirmDialogs } from "@/components/ConfirmDialog"
-import { WelcomeCards } from "@/components/Welcome"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space, whenIdle } from "@/lib/utils"
 import { byTab } from "@/core/focus"
@@ -102,6 +96,14 @@ import { chooseScheme, schemeName } from "@/components/SchemeChooser"
 import { chooseFont, fontSetting } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
+const Toaster = lazy(() => import("@/components/Toast"))
+const WelcomeCards = lazy(() => import("@/components/Welcome").then((m) => ({ default: m.WelcomeCards })))
+// What a key opens, kept off the launch and loaded once the vault is drawn (preloadPalettes)
+const searchPalette = () => import("@/components/SearchPalette"), commandPalette = () => import("@/components/CommandPalette"), tabSearch = () => import("@/components/TabSearch")
+const SearchPalette = lazy(() => searchPalette().then((m) => ({ default: m.SearchPalette })))
+const CommandPalette = lazy(() => commandPalette().then((m) => ({ default: m.CommandPalette })))
+const TabSearch = lazy(() => tabSearch().then((m) => ({ default: m.TabSearch })))
+const preloadPalettes = () => { for (const load of [searchPalette, commandPalette, tabSearch]) load().catch(() => { /* loads again when opened */ }) }
 const PhoneDrawers = lazy(() => import("@/components/PhoneDrawer").then((m) => ({ default: m.PhoneDrawers })))
 const Setup = lazy(() => import("@/pages/Setup").then((m) => ({ default: m.Setup })))
 const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
@@ -267,11 +269,11 @@ const closePalette = () => paletteOpen.set(null)
 const Palettes = memo(function Palettes({ store }: { store: Store | null }) {
   const palette = paletteOpen.use()
   return (
-    <>
+    <Suspense>
       {(palette === "search" || palette === "launcher") && store && <SearchPalette key={palette} store={store} launcher={palette === "launcher"} onClose={closePalette} />}
       {palette === "commands" && <CommandPalette onClose={closePalette} />}
       {palette === "tabs" && store && <TabSearch store={store} onClose={closePalette} />}
-    </>
+    </Suspense>
   )
 })
 
@@ -288,7 +290,7 @@ export default function App() {
   const isNewTab = tab === "new"
   const desktop = useDesktop()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once the store arrives, not on each store change
-  useEffect(() => { if (store) whenIdle(preloadEditor) }, [!!store])
+  useEffect(() => { if (store) whenIdle(() => { void preloadEditor(); preloadPalettes() }) }, [!!store])
   useEffect(() => { if (safeMode) notify("Vault plugins are off for now", { id: "safe-mode", duration: Infinity, action: { label: "Turn back on", run: turnPluginsBackOn } }) }, [])
   useEffect(() => { if (store) whenIdle(loadActions) }, [!!store, disabled, enabled])
   const workspacesOn = useWorkspacesOn()
@@ -450,7 +452,7 @@ export default function App() {
     ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
     { id: "page:get", name: "Get plugins and layouts", words: "setup store directory install bundles packs", run: () => openSetup("get"), icon: StoreIcon },
     { id: "layouts:choose", name: "Choose a layout…", words: "bundle setup zen research browser standard", run: () => openSettings("appearance"), icon: LayoutTemplate },
-    { id: "layouts:save", name: "Save layout as new…", words: "bundle setup", run: () => saveAsNew(currentLayout()), icon: CopyPlus },
+    { id: "layouts:save", name: "Save layout as new…", words: "bundle setup", run: () => import("@/components/LayoutPicker").then((m) => m.saveAsNew(currentLayout())), icon: CopyPlus },
     { id: "bundles:import", name: "Import a bundle…", words: "layout pack", run: () => openDetail("bundle-import"), icon: Import },
     { id: "bundles:restore", name: "Restore previous layout", words: "bundle setup undo", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
     { id: "theme:light", name: "Use light theme", unlisted: true, when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },
@@ -645,10 +647,10 @@ export default function App() {
       {desktop && <Tooltips />}
       {!desktop && <SelectionBar />}
       <ContextMenus />
-      <WelcomeCards />
+      <Suspense><WelcomeCards /></Suspense>
       <ConfirmDialogs />
       <BundleTrial store={store} />
-      <Toaster desktop={desktop} />
+      <Suspense><Toaster desktop={desktop} /></Suspense>
       {typedYet && <Suspense><KeyboardKeys /></Suspense>}
 
       {running}

@@ -1,4 +1,4 @@
-import { toast } from "sonner"
+import type { toast as sonnerToast } from "sonner"
 import { plainError, plainText, sentence } from "../../../core/plainerror.ts"
 import { isObj } from "../../../core/values.ts"
 import { announce } from "@/core/announce"
@@ -31,10 +31,10 @@ const KEPT_MS = 120_000
 export const noticesSince = (t: number) => shown.filter((n) => n.at >= t)
 
 // What's told before the toaster is drawn waits for it: sonner would drop it.
-let drawn = false
+let toast: typeof sonnerToast | null = null
 const early: (() => void)[] = []
-export function toasterDrawn() {
-  drawn = true
+export function toasterDrawn(sonner: typeof sonnerToast) {
+  toast = sonner
   for (const show of early.splice(0)) show()
 }
 
@@ -55,15 +55,14 @@ export function notify(text: string, opts: NotifyOptions = {}) {
     },
   }
   announce(action ? `${short(text)}. ${action.label}: ${keyHint(TOAST_KEYS)}` : short(text), { assertive: kind === "error" })
-  const show = () => kind === "error" ? toast.error(short(text), data) : toast(short(text), data)
-  if (drawn) return show()
+  const show = (t: typeof sonnerToast) => kind === "error" ? t.error(short(text), data) : t(short(text), data)
+  if (toast) return show(toast)
   data.id ??= `early-${now}-${early.length}`
-  early.push(show)
+  early.push(() => toast && show(toast))
   return data.id
 }
 
-/** Close a toast before its time. */
-export const dismissNotice = (id: string | number) => { toast.dismiss(id) }
+export const dismissNotice = (id: string | number) => { toast?.dismiss(id) }
 
 function said(e: unknown) {
   const p = plainError(e)

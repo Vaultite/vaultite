@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 import { CircleAlert } from "lucide-react"
-import { Toaster as Sonner } from "sonner"
+import { Toaster as Sonner, toast } from "sonner"
 import { byTab } from "@/core/focus"
 import { toasterDrawn } from "@/core/notify"
 
@@ -25,9 +25,9 @@ if (typeof window !== "undefined") {
 // twice. React sets the attribute once, so it stays off.
 const quiet = (el: HTMLElement | null) => { el?.setAttribute("aria-live", "off") }
 
-export function Toaster({ desktop }: { desktop: boolean }) {
+export default function Toaster({ desktop }: { desktop: boolean }) {
   const phone = { bottom: "var(--toast-floor)", left: 16, right: 16 }
-  useEffect(toasterDrawn, []) // (after sonner's own: it listens from then)
+  useEffect(() => toasterDrawn(toast), []) // (after sonner's own: it listens from then)
   return (
     <Sonner position={desktop ? "bottom-right" : "bottom-center"} visibleToasts={3} gap={8} duration={4000}
       offset={desktop ? { bottom: "calc(40px + env(safe-area-inset-bottom) + var(--corner-cards) + var(--trial-bar))", right: "calc(16px + env(safe-area-inset-right))" } : phone} mobileOffset={phone} className="vau-toaster"
