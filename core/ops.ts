@@ -353,6 +353,12 @@ function paramLine(k: string, s: Schema, required: boolean, positional: boolean)
   return `- \`${k}\` (${bits}): ${s.description ?? ""}${def}`
 }
 
+/** A summary cut for a list: no asides in parentheses, its first sentence, at most a line. */
+export function brief(summary: string, most = 72) {
+  const plain = summary.replace(/ \((?:[^()]|\([^()]*\))*\)/g, "").split(/(?<=\w)\. /)[0].replace(/\.$/, "")
+  return plain.length <= most ? plain : `${plain.slice(0, most - 1).replace(/\s+\S*$/, "").replace(/[,:;]$/, "")}…`
+}
+
 export const jsonBlock = (r: unknown) => "```json\n" + JSON.stringify(r, null, 2) + "\n```"
 
 export function opDoc(e: OpEntry, heading = "###"): string {

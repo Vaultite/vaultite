@@ -4,7 +4,7 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { z } from "zod"
 import { catalogOf, type OpEntry } from "./contracts/ops.ts"
-import { camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
+import { brief, camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
 import { distance } from "./spelling.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { gitEnv } from "./gitenv.ts"
@@ -527,12 +527,6 @@ function leadingWords(argv: string[]) {
     out.push(x)
   }
   return out
-}
-
-/** A summary cut for the overview: no asides in parentheses, its first sentence, at most a line. */
-export function brief(summary: string, most = 72) {
-  const plain = summary.replace(/ \((?:[^()]|\([^()]*\))*\)/g, "").split(/(?<=\w)\. /)[0].replace(/\.$/, "")
-  return plain.length <= most ? plain : `${plain.slice(0, most - 1).replace(/\s+\S*$/, "").replace(/[,:;]$/, "")}…`
 }
 
 function usage(cmds: Command[], ops: OpEntry[] | null = null) {

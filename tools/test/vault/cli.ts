@@ -46,7 +46,7 @@ export default async ($: VaultTest) => {
   cr = await vau("--help")
   check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
   {
-    const { brief } = await import("../../../core/cli.ts")
+    const { brief } = await import("../../../core/ops.ts")
     check("vau: a summary in brief drops its asides and what comes after its first sentence", brief("Archive a file (or a folder). Links follow.") === "Archive a file"
       && brief("Where am I: server, vault, client, workspace, pinned pages, sidebar panels, plugins, appearance. Run this first.") === "Where am I: server, vault, client, workspace, pinned pages, sidebar…")
   }
