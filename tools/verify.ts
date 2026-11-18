@@ -78,11 +78,13 @@ if (stages.some((st, i) => st.name !== "build" && before[i] === null)) stages.fo
 const logFile = path.join(git("rev-parse", "--absolute-git-dir")[0] ?? ROOT, "verify.log")
 const logFd = dry ? null : fs.openSync(logFile, "w")
 const say = (s: string) => { process.stdout.write(`${s}\n`); if (logFd !== null) fs.writeSync(logFd, `${s}\n`) }
-const run = (cmd: string[], env: Record<string, string> = {}) => new Promise<number>((resolve) => {
-  const child = spawn(cmd[0], cmd.slice(1), { cwd: ROOT, stdio: ["inherit", "pipe", "pipe"], env: { ...process.env, ...env } })
-  const tee = (to: NodeJS.WriteStream) => (d: Buffer) => { to.write(d); fs.writeSync(logFd!, d) }
+const run = (cmd: string[], env: Record<string, string> = {}, live = true) => new Promise<number>((resolve) => {
+  const child = spawn(cmd[0], cmd.slice(1), { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } })
+  const held: Buffer[] = []
+  const tee = (to: NodeJS.WriteStream) => (d: Buffer) => { if (!live) return void held.push(d); to.write(d); fs.writeSync(logFd!, d) }
   child.stdout!.on("data", tee(process.stdout)); child.stderr!.on("data", tee(process.stderr))
-  child.on("error", () => resolve(127)); child.on("close", (code, signal) => resolve(code ?? (signal ? 1 : 0)))
+  const end = (code: number) => { if (held.length) { const all = Buffer.concat(held); process.stdout.write(all); fs.writeSync(logFd!, all) } resolve(code) }
+  child.on("error", () => end(127)); child.on("close", (code, signal) => end(code ?? (signal ? 1 : 0)))
 })
 const ago = (at: number) => { const m = Math.round((Date.now() - at) / 60_000); return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago` }
 
@@ -90,46 +92,58 @@ const risks = changeRisk(ROOT, base)
 say(`${changed.length} files changed since ${base}`)
 if (unrun.length) say(`${unrun.length} QA files changed only in comments: not run for them`)
 if (risks.length) say(`OS-sensitive: ${describe(risks)}`)
-const rows: { name: string; why: string; s: string; ok: boolean | null; cmd: string[] }[] = []
+type Row = { name: string; why: string; s: string; ok: boolean | null; cmd: string[] }
+const rows: (Row | undefined)[] = []
 const t0 = Date.now(), also = argv.includes("--surfaces") ? ["surfaces"] : []
 let trying = false, noRoom = ""
+const skipped = (st: Stage, why: string): Row => ({ name: st.name, why, s: "-", ok: null, cmd: st.cmd })
+async function runStage(st: Stage, live: boolean): Promise<Row> {
+  if (live) say(`\n== ${st.name}: ${st.cmd.join(" ")}`)
+  const left = String(Math.max(120, Math.round(WAIT_SECONDS - (Date.now() - t0) / 1000)))
+  const t = Date.now()
+  const code = await run(st.cmd, st.name === "qa" ? { VAULTITE_QA_BUDGET: left } : {}, live), ok = code === 0, s = (Date.now() - t) / 1000
+  if (!live) say(`== ${st.name} (${ok ? "ok" : `exit ${code}`}, ${s.toFixed(1)} s): ${st.cmd.join(" ")}`)
+  const outOfTime = st.name === "qa" && code === 3
+  if (outOfTime) noRoom = "QA ran out of time (above)"
+  if (ok && state && filesState(ROOT) === state) kept.pass(state, st.cmd, s)
+  return { name: st.name, why: outOfTime ? "not done: out of time (above)" : st.why, s: s.toFixed(1), ok: outOfTime ? null : ok, cmd: st.cmd }
+}
+const tests: number[] = []
 for (const [i, st] of stages.entries()) {
-  const at = before[i], gated = rows.some((r) => GATES.has(r.name) && r.ok === false)
-  if (at !== null) rows.push({ name: st.name, why: `passed on these files ${ago(at)}: ${st.why}`, s: "-", ok: true, cmd: st.cmd })
-  else if (dry) rows.push({ name: st.name, why: st.why, s: "-", ok: null, cmd: st.cmd })
-  else if (gated && !GATES.has(st.name)) rows.push({ name: st.name, why: "not run: build or check fails (above)", s: "-", ok: null, cmd: st.cmd })
-  else if (noRoom) rows.push({ name: st.name, why: "not run: no room (above)", s: "-", ok: null, cmd: st.cmd })
-  else {
-    const got = GATES.has(st.name) ? { release: () => {} } : await room(`verify: ${st.name}`, { log: say })
-    if (got.busy !== undefined) {
-      noRoom = got.busy
-      rows.push({ name: st.name, why: `not run: ${got.busy}`, s: "-", ok: null, cmd: st.cmd })
-      continue
-    }
-    say(`\n== ${st.name}: ${st.cmd.join(" ")}`)
-    const left = String(Math.max(120, Math.round(WAIT_SECONDS - (Date.now() - t0) / 1000)))
-    const t = Date.now(), code = await run(st.cmd, st.name === "qa" ? { VAULTITE_QA_BUDGET: left } : {}), ok = code === 0, s = (Date.now() - t) / 1000
-    got.release()
-    if (st.name === "qa" && code === 3) noRoom = "QA ran out of time (above)"
-    rows.push({ name: st.name, why: code === 3 && st.name === "qa" ? "not done: out of time (above)" : st.why, s: s.toFixed(1), ok: st.name === "qa" && code === 3 ? null : ok, cmd: st.cmd })
-    if (ok && state && filesState(ROOT) === state) kept.pass(state, st.cmd, s)
-  }
+  const at = before[i]
+  if (at !== null) rows[i] = { name: st.name, why: `passed on these files ${ago(at)}: ${st.why}`, s: "-", ok: true, cmd: st.cmd }
+  else if (dry) rows[i] = skipped(st, st.why)
+  else if (!GATES.has(st.name)) tests.push(i)
+  else rows[i] = await runStage(st, true)
   if (tryIt && !dry && st.name === "check") {
     say("\n== try: tools/try.ts (HEAD on Linux, macOS and Windows: idle Machines first, else GitHub's runners)")
-    trying = rows.every((x) => x.ok) ? await startTry(ROOT, { also, precheck: () => null, machines: (oses, log) => findMachines(ROOT, oses, log) }) : (say("try: NOT STARTED: build or check fails here"), false)
+    trying = rows.every((x) => !x || x.ok) ? await startTry(ROOT, { also, precheck: () => null, machines: (oses, log) => findMachines(ROOT, oses, log) }) : (say("try: NOT STARTED: build or check fails here"), false)
   }
 }
+if (rows.some((r) => r && GATES.has(r.name) && r.ok === false)) for (const i of tests) rows[i] = skipped(stages[i], "not run: build or check fails (above)")
+else if (tests.length) {
+  const got = await room(`verify: ${tests.map((i) => stages[i].name).join(", ")}`, { log: say })
+  if (got.busy !== undefined) {
+    noRoom = got.busy
+    for (const i of tests) rows[i] = skipped(stages[i], `not run: ${got.busy}`)
+  } else {
+    say(`\n== at once: ${tests.map((i) => stages[i].name).join(", ")} (each one's output as it ends)`)
+    await Promise.all(tests.map(async (i) => { rows[i] = await runStage(stages[i], tests.length === 1) }))
+    got.release()
+  }
+}
+const table = rows.filter((r) => r !== undefined)
 let waited: Waited | null = null
 if (trying) {
   // (verify as a whole stays within a wait's bound: a sub-agent's command gets 10 minutes)
   say("\n== try: waiting for it (node tools/try.ts --wait)")
   const t = Date.now()
   waited = await waitTry(ROOT, { seconds: Math.max(30, WAIT_SECONDS - (Date.now() - t0) / 1000) })
-  rows.push({ name: "try", why: "Linux, macOS and Windows", s: ((Date.now() - t) / 1000).toFixed(1), ok: waited.status === "passed" ? true : waited.status === "running" ? null : false, cmd: [] })
-} else if (tryIt && !dry) rows.push({ name: "try", why: "not started (above)", s: "-", ok: false, cmd: [] })
+  table.push({ name: "try", why: "Linux, macOS and Windows", s: ((Date.now() - t) / 1000).toFixed(1), ok: waited.status === "passed" ? true : waited.status === "running" ? null : false, cmd: [] })
+} else if (tryIt && !dry) table.push({ name: "try", why: "not started (above)", s: "-", ok: false, cmd: [] })
 say("\nstage        time    result  what")
-for (const r of rows) say(`${r.name.padEnd(12)} ${r.s.padStart(6)}s  ${r.ok === null ? "-     " : r.ok ? "ok    " : "FAIL  "}  ${r.why.slice(0, 90)}`)
-const failed = rows.filter((r) => r.ok === false)
+for (const r of table) say(`${r.name.padEnd(12)} ${r.s.padStart(6)}s  ${r.ok === null ? "-     " : r.ok ? "ok    " : "FAIL  "}  ${r.why.slice(0, 90)}`)
+const failed = table.filter((r) => r.ok === false)
 if (risks.length && !tryIt) say("\nOS-sensitive (above): before it lands, try HEAD on Linux, macOS and Windows: npm run verify -- --try (pre-push asks)")
 // (while fixing, the failed stage alone is the quick loop; verify again at the end runs only what hasn't passed on the files)
 if (failed.some((r) => r.cmd.length)) say(`\nwhile fixing, rerun just what failed: ${failed.filter((r) => r.cmd.length).map((r) => r.cmd.join(" ")).join("; ")}`)
