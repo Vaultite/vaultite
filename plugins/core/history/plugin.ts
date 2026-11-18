@@ -13,6 +13,7 @@ const log = logger("history")
 const HOUR = 3600_000
 /** A file left alone this long before its next change: what it said then is a version, whatever the interval. */
 const PAUSE = 60_000
+const LIST_OVER = 100
 
 type Stat = { mtime: number; size: number; ns?: string }
 const META = z.object({ mtime: z.number(), size: z.number(), ns: z.string().optional(), path: z.string(), hash: z.string(), last: z.number(), gone: z.boolean().optional() })
@@ -55,8 +56,10 @@ function readMeta(dir: string): Meta | null {
 }
 const writeMeta = (s: State, m: Meta) => writeAtomic(path.join(dirOf(s, m.path), "meta.json"), JSON.stringify(m))
 
-function current(s: State, rel: string): Meta | undefined {
-  const m = readMeta(dirOf(s, rel))
+const keptDirs = (s: State, unsure: number) => (unsure > LIST_OVER ? new Set(fs.readdirSync(s.root)) : undefined)
+
+function current(s: State, rel: string, kept?: Set<string>): Meta | undefined {
+  const dir = dirOf(s, rel), m = !kept || kept.has(path.basename(dir)) ? readMeta(dir) : null
   if (m && !m.gone && m.path === rel) s.heads.set(rel, m)
   else s.heads.delete(rel)
   return s.heads.get(rel)
@@ -190,9 +193,10 @@ export async function follow(vault: Vault) {
   const { out: now, gone } = candidates(s, vault)
   const added: string[] = [], changed: string[] = []
   const differs = (m: Meta, st: Stat) => m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)
+  const kept = keptDirs(s, [...now].filter(([rel, st]) => { const m = s.heads.get(rel); return !m || differs(m, st) }).length)
   for (const [rel, st] of now) {
     let m = s.heads.get(rel)
-    if (!m || differs(m, st)) m = current(s, rel)
+    if (!m || differs(m, st)) m = current(s, rel, kept)
     if (!m) { if (s.skip.get(rel) !== `${st.mtime}:${st.size}`) added.push(rel) }
     else if (differs(m, st)) changed.push(rel)
   }
