@@ -12,6 +12,7 @@ import { BLOCKED, SPARE, type Session, TERMINAL_ID, TMP, WIN, clamp, plugin, sam
 import { type From, type Home, LOCAL, PATH, agentOf, backendForNew, backendOf, context, dropped, fallback, hooksFile, keeper, oscMark, ours, ownedBy, stateFile, tell, termEnv, upload } from "./backends.ts"
 import { agentReady, agentRun, apply, held, metas, oldMetaFiles, oscSaid, sighted, terms, told, vaultDir } from "./terms.ts"
 import { listChanged } from "./list.ts"
+import { blockedIds, letGoUnwatched } from "./unwatched.ts"
 import { exitHeard, lastInput, pageInput } from "./routes.ts"
 
 const log = logger("terminal")
@@ -116,14 +117,14 @@ export async function start(id: string, cols: number, rows: number, from = LOCAL
   const link = await backend.attach(id, cols, rows)
   timing.mark("attach")
   const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), pending: new Set(),
-    opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "", owed: new Map(), acks: new Set(), held: false }
+    opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "", owed: new Map(), acks: new Set(), held: false, blocked: blockedIds.has(id) }
   link.onData((data) => {
     // (a burst comes as many messages in one read: the microtask runs once that read's are all in)
     if (!s.queued) queueMicrotask(() => flush(s))
     s.queued += data
   })
   link.onExit(async (exit) => {
-    clearTimeout(s.stall)
+    clearTimeout(s.stall); clearTimeout(s.unwatched)
     flush(s)
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
@@ -147,6 +148,7 @@ export async function start(id: string, cols: number, rows: number, from = LOCAL
     }
   })
   sessions.set(id, s)
+  letGoUnwatched(s)
   reopened(id)
   const hooks = hooksFile(id)
   if (hooks.text) apply(id, { type: "hooks", ...hooks })
@@ -188,7 +190,7 @@ function exited(id: string, exit: { code: number; signal: number; lost?: boolean
   const p = apply(id, { type: "exit", code: exit.code, signal: exit.signal, lost: !!exit.lost })?.phase
   if (p?.state !== "ended") return
   for (const f of [stateFile(id), oscMark(id), ...Object.values(oldMetaFiles(id))]) try { fs.rmSync(f, { force: true }) } catch {}
-  metas.delete(id); held.delete(id)
+  metas.delete(id); held.delete(id); blockedIds.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
   tell("terminal.ended", { id, code: p.code, signal: p.signal, ...(p.lost ? { lost: true } : {}), ...(p.by && !p.by.keep ? { onPurpose: true } : {}) })
@@ -234,7 +236,7 @@ export function resize(s: Session, cols: number, rows: number, cell?: Cell) {
 }
 
 export function attach(s: Session, ws: WebSocket, fresh: boolean) {
-  flush(s)
+  flush(s); clearTimeout(s.unwatched)
   s.clients.add(ws)
   listChanged()
   ws.send(JSON.stringify({ t: "attached", fresh, scrollback: scrollback(), ...(fresh ? { started: s.opened } : {}) }))
@@ -287,6 +289,7 @@ export function attach(s: Session, ws: WebSocket, fresh: boolean) {
     s.pending.delete(ws)
     s.owed.delete(ws)
     if (s.acks.delete(ws)) pace(s)
+    letGoUnwatched(s)
     listChanged()
   })
 }

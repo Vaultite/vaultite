@@ -3,9 +3,11 @@ import { Vt } from "../vt/vt.ts"
 import { htmlWithPictures } from "./capture.ts"
 import { withPictures } from "./kitty.ts"
 import type { CaptureFormat } from "./protocol.ts"
+import { unfinishedAt } from "./unfinished.ts"
 
-type In = { n: number; op: "write"; d: string } | { n: number; op: "resize"; cols: number; rows: number; cw: number; ch: number }
-  | { n: number; op: "capture"; format: CaptureFormat; lines: number | null } | { n: number; op: "snapshot" } | { n: number; op: "text"; lines: number }
+export type ScreenRequest = { op: "write"; d: string } | { op: "resize"; cols: number; rows: number; cw: number; ch: number }
+  | { op: "capture"; format: CaptureFormat; lines: number | null } | { op: "snapshot" } | { op: "text"; lines: number }
+type In = ScreenRequest & { n: number }
 
 type Modes = { app: boolean; paste: boolean }
 const { module, cols, rows, scrollback, modes: was } = workerData as { module: WebAssembly.Module; cols: number; rows: number; scrollback: number; modes?: Modes }
@@ -18,35 +20,43 @@ const make = (c: number, r: number, sb: number) => {
   return v
 }
 let t = make(cols, rows, scrollback)
+let unfinished = ""
 
-function answer(m: In): unknown {
+function answer(m: In) {
   switch (m.op) {
-    case "write":
-      try { t.write(m.d) } catch (e) {
-        const was = t
-        t = make(was.cols, was.rows, was.scrollback)
-        return { failed: String((e as Error)?.message ?? e) }
-      }
+    case "write": {
+      const d = unfinished + m.d, at = unfinishedAt(d)
+      unfinished = d.slice(at)
+      t.write(d.slice(0, at))
       return undefined
+    }
     case "resize": t.resize(m.cols, m.rows, m.cw, m.ch); return undefined
     case "capture": {
       const above = Math.min(t.length, m.lines === null ? t.length : Math.max(0, m.lines - t.rows))
       const head = { cols: t.cols, rows: t.rows, cursor: t.cursor, alternate: t.alternate, input: t.inputLine() }
-      if (m.format === "vt") return { ...head, text: t.serialize(above) }
+      if (m.format === "vt") return { ...head, text: t.serialize(above) + unfinished }
       if (m.format === "html") return { ...head, text: htmlWithPictures(t, above) }
       return { ...head, text: t.text(m.lines) }
     }
-    case "snapshot": return withPictures(t)
+    case "snapshot": return withPictures(t) + unfinished
     case "text": return t.text(m.lines)
   }
 }
 
 parentPort!.on("message", (m: In) => {
-  let out: unknown, error: string | undefined
-  try { out = answer(m) } catch (e) { error = String((e as Error)?.message ?? e) }
+  let out: unknown, error: string | undefined, broke: string | undefined
+  try { out = answer(m) } catch (e) {
+    const text = e instanceof Error ? e.message : String(e)
+    if (m.op === "write" || e instanceof WebAssembly.RuntimeError) {
+      broke = `${m.op === "write" ? "on its output" : `on a ${m.op}`} (${text})`
+      t = make(t.cols, t.rows, t.scrollback)
+      unfinished = ""
+    }
+    if (m.op !== "write") error = text
+  }
   modes = { app: t.mode(1), paste: t.mode(2004) }
   const said = { n: m.n, ...modes, ...(out !== undefined ? { out } : {}), ...(error ? { error } : {}),
-    ...(title !== undefined ? { title } : {}), ...(reply ? { reply } : {}) }
+    ...(title !== undefined ? { title } : {}), ...(reply ? { reply } : {}), broke }
   title = undefined; reply = ""
   parentPort!.postMessage(said)
 })

@@ -319,13 +319,21 @@ export class Vt {
     // (not the cursor's blinking, mode 12: the page's setting has it)
     const vt = this.format("VT", from, { unwrap: true, trim: true, extras }).replace(/\x1b\[\?12[hl]/g, "")
     if (!this.alternate) return vt
-    const copy = this.copy()
+    // (its text is drawn from the top-left: once the alternate screen is up)
+    const alt = vt.replace(/\x1b\[\?(?:1049|1047|47)h/, "$&\x1b[H")
+    return this.primaryUnder(above, extras & ~MODES) + (alt === vt ? `\x1b[?1049h\x1b[H${vt}` : alt)
+  }
+  /** The primary screen under the alternate one, from a copy; none when the copy can't be made (its parser inside a
+   *  sequence: the alternate screen alone beats a blank one). */
+  private primaryUnder(above: number, extras: number) {
+    let copy: Vt
+    try { copy = this.copy() } catch (e) {
+      if (e instanceof WebAssembly.RuntimeError) throw e
+      return ""
+    }
     try {
       copy.write("\x1b[?1049l")
-      const primary = copy.format("VT", Math.max(0, copy.length - copy.rows - above), { unwrap: true, trim: true, extras: extras & ~MODES })
-      // (its text is drawn from the top-left: once the alternate screen is up)
-      const alt = vt.replace(/\x1b\[\?(?:1049|1047|47)h/, "$&\x1b[H")
-      return primary + (alt === vt ? `\x1b[?1049h\x1b[H${vt}` : alt)
+      return copy.format("VT", Math.max(0, copy.length - copy.rows - above), { unwrap: true, trim: true, extras })
     } finally { copy.dispose() }
   }
   html(above = this.scrollback) {

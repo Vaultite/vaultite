@@ -8,6 +8,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Companion: filling in posts, messages or forms for you to review and send happens in your browser in front of you,
   never as a background job; and a question you ask it always gets words, even when it also acts.
+- Terminal: a full-screen program's terminal (vim, htop, less) no longer opens blank now and then: its picture failed
+  whenever its output had stopped in the middle of an escape sequence. Open terminals move to a terminal server with the fix.
+- Terminal: after an update, open terminals move to the new terminal server up to 4 times sooner (four at a time, not one
+  by one), so they're frozen for less of it.
+- Terminal: a big picture (a PNG shown with kitty's protocol) no longer freezes every other terminal while it's decoded:
+  it's decoded on a thread of its own, and only its own terminal's output waits for it.
+- Terminal: terminals you aren't looking at cost the terminal server about half the CPU they did while their programs
+  draw (a spinner, an agent at work): their screens take output in batches, and still answer a program's questions at once.
+- Terminal: an agent's terminal no page shows (started in the background, or its tab closed) no longer costs the server:
+  its output stops coming there 30 s after the last page leaves, and a page opening it again gets its screen as before.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
 - Quick switcher: finding notes by name as you type takes about a third of the time it did (over 1,500 notes, 10 ms

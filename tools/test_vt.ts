@@ -10,12 +10,15 @@ import zlib from "node:zlib"
 import { newVt } from "../plugins/core/terminal/vt/load.ts"
 import { KITTY_STORAGE, LAYOUT, wasiImports } from "../plugins/core/terminal/vt/vt.ts"
 import { Screen } from "../plugins/core/terminal/vt/screen.ts"
-import { keptScale, KittyFeed, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
+import { keptScale, KittyFeed, pictureOf, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
+import { decodeElsewhere } from "../plugins/core/terminal/termd/pictures.ts"
 import { htmlWithPictures } from "../plugins/core/terminal/termd/capture.ts"
 import { decodePng } from "../plugins/core/terminal/termd/png.ts"
+import { Screen as TermdScreen, WRITE_EVERY } from "../plugins/core/terminal/termd/screen.ts"
+import { HELD_MAX, unfinishedAt } from "../plugins/core/terminal/termd/unfinished.ts"
 import { about, minisignOk } from "./ghostty_update.ts"
 import { inkFrames, seq, streaming } from "./perf/vtcorpus.ts"
-import { check, section, summary } from "./test/lib.ts"
+import { check, section, summary, waitFor } from "./test/lib.ts"
 
 const t0 = Date.now()
 const GRAPHEMES_AFTER_PICTURE_IN_A_WORKER = `
@@ -213,6 +216,37 @@ await section("pictures replayed in xterm.js", async () => {
   v.write("x\x1b[?1049l")
   check("its own screen under it is kept", v.text(null) === "one\ntwo\n$ vim", v.text(null))
   v.dispose()
+
+  const cut = ["\x1b", "\x1b[", "\x1b[3", "\x1b]0;ti", "\x1bP", "\x1b_Ga=T", "\x1b(", "\x1b]0;ti\x1b"]
+  const whole = ["", "x", "\x1b[1m", "\x1b]0;t\x07", "\x1b]0;t\x1b\\", "\x1b(B", "\x1b7", "\x1b[?25h"]
+  const at = (tail: string) => unfinishedAt(`ab\x1b[1mc${tail}`)
+  check("an output's unfinished sequence is found where it starts", cut.every((t) => at(t) === 7) && whole.every((t) => at(t) === 7 + t.length),
+    [...cut, ...whole].map((t) => [t, at(t)]))
+  check("… not one longer than it holds back", unfinishedAt(`\x1b]0;${"x".repeat(HELD_MAX)}`) === HELD_MAX + 4)
+  const mid = newVt({ cols: 40, rows: 8, scrollback: 100 })
+  mid.write(`${data}\x1b[`)
+  let midPic = ""
+  try { midPic = mid.serialize() } catch (e) { midPic = String(e) }
+  check("the alternate screen up and its output inside a sequence: its picture has the alternate screen still", midPic.includes("in the editor"), midPic)
+  mid.dispose()
+  const sc = new TermdScreen({ cols: 40, rows: 8, scrollback: 100 })
+  sc.write(`${data}\x1b[1`)
+  const snap = await sc.snapshot().catch((e: Error) => e.message)
+  sc.write("mbold\x1b[0m")
+  const after = await xtermText(`${snap}mbold\x1b[0m`, 40, 8), afterDirect = await xtermText(`${data}\x1b[1mbold\x1b[0m`, 40, 8)
+  check("termd's screen holds an unfinished sequence back: a snapshot then the rest draws what the output did", after.alt && after.text === afterDirect.text,
+    [snap, after, afterDirect])
+  sc.dispose()
+  let answered = "", answeredAt = 0
+  const asked = new TermdScreen({ cols: 40, rows: 8, scrollback: 100, onReply: (d) => { answered += d; answeredAt ||= performance.now() } })
+  for (let i = 0; i < 5; i++) asked.write(`\r\x1b[2K\x1b[38;5;208mx\x1b[0m waiting ${i}`)
+  const askedAt = performance.now()
+  asked.write("\x1b[c")
+  await waitFor(() => answered || null, 2000, 5)
+  const spun = await asked.capture("text", null)
+  check("termd's screen takes output in batches, but a question to the terminal is answered at once, after what came before",
+    answered === "\x1b[?1;2c" && answeredAt - askedAt < WRITE_EVERY && spun.text === "x waiting 4", [answered, answeredAt - askedAt, spun.text])
+  asked.dispose()
 })
 
 await section("sizes", async () => {
@@ -369,6 +403,24 @@ await section("kitty graphics", async () => {
     same = out === plain
   }
   check("termd's feed passes on what it doesn't rewrite, as it came, in any pieces", same)
+  const pngSeq = `\x1b_Ga=T,q=2,f=100,i=12;${png.toString("base64")}\x1b\\`, around = `before ${pngSeq} after \x1b[1mbold`
+  let ordered = ""
+  const later = new KittyFeed({ emit: (d) => { ordered += d }, remote: () => false,
+    work: (job) => new Promise((ok) => setTimeout(() => ok(pictureOf(job).out), 20)) })
+  for (let i = 0; i < around.length; i += 9) later.feed(around.slice(i, i + 9))
+  check("… a picture decoded elsewhere: what came after it waits for it", ordered === "before ", ordered)
+  await new Promise((r) => setTimeout(r, 60))
+  check("… then all of it comes in order", /^before \x1b_Ga=T,q=2,f=24,i=12,s=8,v=6,o=z,t=d;[^\x1b]+\x1b\\ after \x1b\[1mbold$/.test(ordered), ordered)
+  const huge = tinyPng(2400, 1600), bigSeq = `\x1b_Ga=T,q=2,f=100,i=13;${huge.toString("base64")}\x1b\\`
+  let bigOut = "", lag = 0, last = performance.now()
+  const ticker = setInterval(() => { const now = performance.now(); lag = Math.max(lag, now - last); last = now }, 5)
+  const decoded = new Promise<void>((ok) => {
+    new KittyFeed({ emit: (d) => { bigOut += d; if (d.endsWith("end")) ok() }, remote: () => false, work: decodeElsewhere(() => {}) }).feed(`${bigSeq}end`)
+  })
+  await decoded
+  clearInterval(ticker)
+  check("termd decodes a big PNG in a thread of its own: its loop goes on meanwhile", /^\x1b_Ga=T,q=2,f=\d+,i=13,s=2400,v=1600,o=z,t=d,m=1;/.test(bigOut) && lag < 100,
+    { lag, head: bigOut.slice(0, 60) })
   const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "vt-kitty-")), file = path.join(dir, "tty-graphics-protocol-1.png")
   fs.writeFileSync(file, png)
   const viaFile = (name: string, t: string, remote = false) => {
