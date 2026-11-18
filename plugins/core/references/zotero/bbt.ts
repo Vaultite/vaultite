@@ -3,7 +3,6 @@ import { z } from "zod"
 const Answer = z.looseObject({ result: z.json().optional(), error: z.looseObject({ message: z.string().optional() }).optional() })
 const Ready = z.looseObject({ betterbibtex: z.string(), zotero: z.string() })
 const Keys = z.record(z.string(), z.string().nullable())
-const Notes = z.record(z.string(), z.array(z.looseObject({ note: z.string() })))
 
 async function rpc(base: string, method: string, params: z.infer<typeof Answer>["result"][], timeout = 8000) {
   const r = await fetch(`${base}/better-bibtex/json-rpc`, {
@@ -31,11 +30,6 @@ export async function bbtCitekeys(base: string, itemKeys: string[]): Promise<Map
     for (const [k, v] of Object.entries(r.data)) if (v) out.set(k.replace(/^\d+:/, ""), v)
   }
   return out
-}
-
-export async function bbtNotes(base: string, citekey: string): Promise<string[]> {
-  const r = Notes.safeParse(await rpc(base, "item.notes", [[citekey]]))
-  return r.success ? (r.data[citekey] ?? []).map((n) => n.note) : []
 }
 
 export async function cayw(base: string): Promise<string> {

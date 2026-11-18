@@ -1,4 +1,3 @@
-import { useMemo } from "react"
 import { agentsOn, canRunAgents, cell, onReconnect, clickOpening, del, detailPath, focusedPane, getTabLayout, haptic, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openDetail, openFile, openOutside, openView, openWebLink, parseTerminal, post, type Agent, type TabLayout, openAgentSession } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
@@ -231,15 +230,3 @@ export function focusedTarget(layout: TabLayout = getTabLayout()): string {
   return t ? focusedPane(t).to : ""
 }
 
-export function useProgress(): Map<string, string> {
-  const { events } = useEvents()
-  return useMemo(() => {
-    const m = new Map<string, string>()
-    for (const e of events) {
-      if (e.kind !== "session" || e.state === "done" || !e.progress) continue
-      if (e.terminal) m.set(e.terminal, e.progress)
-      if (e.session) m.set(e.session, e.progress)
-    }
-    return m
-  }, [events])
-}

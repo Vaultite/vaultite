@@ -108,7 +108,6 @@ export const optionsText = (r: Asked, sep = " · ") => listOf(r.options).map((o,
   return `${o}${o === r.default ? " (default)" : ""}${does ? `: ${does}` : ""}`
 }).join(sep)
 export const isDecision = (r: Asked) => !!r.question
-export const standingOf = (r: Asked) => (r.answer ? `You chose ${r.answer}` : r.closed ? "Closed" : r.blocking ? "Waits on you" : `Went with ${r.default}`)
 
 const Verdicts = z.array(z.looseObject({ n: z.number(), settled: z.boolean(), why: z.string().optional() }))
 export function settledOf(reply: string, count: number): { n: number; why: string }[] {

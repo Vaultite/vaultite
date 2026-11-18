@@ -124,4 +124,3 @@ export function citationsIn(text: string): Citation[] {
   return out
 }
 
-export const citedKeys = (cites: Citation[]) => [...new Set(cites.flatMap((c) => c.items.map((i) => i.key)))]

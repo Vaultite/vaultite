@@ -21,7 +21,6 @@ const PARSERS: [RegExp, (text: string) => ParseResult][] = [
 ]
 const AUTO = /\.(bib|bibtex|ris)$|\.csl\.(json|ya?ml)$|(^|\/)[^/]*(librar|bibliograph|references|zotero)[^/]*\.(json|ya?ml)$/i
 
-export const isBibliography = (rel: string) => PARSERS.some(([re]) => re.test(rel))
 export const foundOnItsOwn = (rel: string) => AUTO.test(rel)
 
 const parsed = new Map<string, { stamp: string; result: ParseResult }>()
