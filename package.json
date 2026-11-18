@@ -13,7 +13,7 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || exit 0",
     "dev": "vite",
-    "start": "node server.ts",
+    "start": "node --max-semi-space-size=8 server.ts",
     "build": "node tools/build.ts",
     "build:demo": "vite build -c vite.demo.config.ts",
     "test": "node tools/test.ts",

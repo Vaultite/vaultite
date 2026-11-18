@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Vaultite Main: the first launch after an update, and its servers' restart onto it, find the new code already compiled
   (its server's start took twice as long: 0.3 s of imports instead of 0.14 s); and its compile cache no longer grows by
   about 11 MB with every update.
+- Desktop app: a vault's server holds about 50 MB less memory once it has read a big vault (15,000 notes: 285 to 234
+  MB): it no longer keeps the room it used while reading.
 - The note a window opens on draws sooner: its text is read from the vault once at launch, not a second time, and code
   the app loads while idle (palettes, the agents' chat and terminal) waits until the first screen has drawn.
 - Desktop app: a vault's window opens showing its last screen at once, as you left it, and fades to the live app as soon

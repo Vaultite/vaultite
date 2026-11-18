@@ -12,6 +12,7 @@ import type { Serving } from "../core/serving.ts"
 import { talkCall } from "./talklog.ts"
 import { codeRoot, commitAt, compileCache, hold } from "./storehost.ts"
 import { DESKTOP_PROTOCOL, LISTENING } from "../core/desktopapp.ts"
+import { SERVER_V8_FLAGS } from "../core/serverflags.ts"
 import { appUpdates, lookNow, mainBehind } from "./updates.ts"
 import { mainLog } from "./mainlog.ts"
 import { heardHello } from "./serverhello.ts"
@@ -106,7 +107,7 @@ export function startServer(v: Known, port: number, own = false): Promise<ChildP
   const root = own ? ROOT : codeRoot()
   const leaks = heldPastExec()
   const child = fork(path.join(root, "server.ts"), [], {
-    cwd: root, stdio: ["ignore", fd, fd, "ipc"], detached: !WIN,
+    cwd: root, stdio: ["ignore", fd, fd, "ipc"], detached: !WIN, execArgv: [...process.execArgv, ...SERVER_V8_FLAGS],
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port), [INHERITED]: leaks || undefined,
