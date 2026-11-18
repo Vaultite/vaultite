@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError } from "../core/plainerror.ts"
 import { inVault } from "../core/opening.ts"
+import { plainArgs } from "./argv.ts"
 import { ROOT, WIN } from "./mainbase.ts"
 import { find, known, real, vaultOf } from "./vaultlist.ts"
 import type { Win } from "./servers.ts"
@@ -118,10 +119,7 @@ export async function pickOutside(w: Win | null) {
 // Linux's Open with passes file:// URLs (the desktop file's %U), Windows' a path; a Mac sends open-file instead.
 export function argFiles(argv: string[], cwd: string) {
   const out: string[] = []
-  for (let i = app.isPackaged ? 1 : 2; i < argv.length; i++) {
-    const a = argv[i]
-    if (a === "--vault") { i++; continue }
-    if (a.startsWith("-") || /^vaultite:/i.test(a)) continue
+  for (const a of plainArgs(argv, app.isPackaged)) {
     let p = a
     if (p.startsWith("file://")) try { p = fileURLToPath(p) } catch { continue }
     p = path.resolve(cwd, p)

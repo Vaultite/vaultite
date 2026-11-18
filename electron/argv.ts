@@ -10,6 +10,16 @@ export function vaultArg(argv: string[], cwd = process.cwd()): string | null {
   return i > 0 && argv[i + 1] ? path.resolve(cwd, argv[i + 1]) : null
 }
 
+export function plainArgs(argv: string[], packaged: boolean): string[] {
+  const out: string[] = []
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === "--vault" || a === "-r" || a === "--require") i++
+    else if (!a.startsWith("-") && !/^vaultite:/i.test(a)) out.push(a)
+  }
+  return packaged ? out : out.slice(1)
+}
+
 /** Electron's relaunch options keeping this launch's command line, its vault joined to `--vault=`. */
 export function relaunchOptions(argv = process.argv): { args: string[] } {
   const args: string[] = []
