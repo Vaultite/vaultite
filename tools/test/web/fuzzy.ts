@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { check } from "../lib.ts"
 import { web } from "./lib.ts"
 
@@ -62,3 +63,13 @@ check("palette: between equal matches what one goes to or does comes before a se
 check("palette: a better match still wins over the kind ('terminal cursor': the setting)", names("terminal cursor").startsWith("Terminal cursor"), names("terminal cursor"))
 check("palette: found by its other words, by their stems too, after every match by name", names("files") === "Show file explorer"
   && rankCommands(pal, "files")[0].marks.join() === "5,6,7,8" && names("tre exp") === "Show file explorer", [names("files"), names("tre exp")])
+// What every query gives every name (score, tier, marks), digested: a change to how fuzzy works keeps this or says why.
+const NAMES = [...cmds, ...stems.map((x) => x.split(":")[0]), "FileTree.tsx", "Reset settings", "Daily notes", "Open daily note", "Close other tabs",
+  "Lighthouse launch plan", "Alice Park", "2026-10-29", "Studies of the keeper", "Notebook", "N o t e", "Projects/Lighthouse/Launch plan.canvas",
+  "readingList_2026", "Open the daily note for today and more", "The keeper's log: north sea", "tabs and tags", "Running notes (entries)"]
+const QUERIES = ["", ...[..."open gr"].map((_, i, cs) => cs.slice(0, i + 1).join("")), "graph settings", "settings graph", "set", "files", "studies", "studi", "notes",
+  "daily note", "tsx", "ogv", "lh lp", "keeper log", "entries", "2026 10", "zz", "tabs", "tab", "Run", "N", "note 0", "alice p", "pl", "plan.can"]
+const digest = createHash("sha256").update(JSON.stringify(QUERIES.map((q) => NAMES.map((s) => fuzzy(q, s))))).digest("hex").slice(0, 16)
+check("fuzzy: every query against every name gives what it gave (scores, tiers, marks)", digest === "683efa6727af8ca2", digest)
+check("fuzzy: asked again, the same answer (nothing kept between calls changes it)",
+  QUERIES.every((q) => NAMES.every((s) => JSON.stringify(fuzzy(q, s)) === JSON.stringify(fuzzy(q, s)))))
