@@ -31,6 +31,12 @@ export default async ($: VaultTest) => {
   check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)
   cr = await vau("errors", "3f9a")
   check("vau: a word too many names the command under it that takes one", cr.code === 2 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
+  cr = await vau("errors", "shwo")
+  check("vau: a misspelt command under one is named", cr.code === 2 && cr.err.endsWith("Did you mean vau errors show?"), cr.err)
+  cr = await vau("errors", "list")
+  check("vau: `<group> list` runs the list its word alone runs", cr.code === 0 && cr.out === (await vau("errors")).out, cr)
+  cr = await vau("errors", "--help")
+  check("vau: a group's --help ends with the commands under it, one short line each", cr.code === 0 && /\nAlso:\n {2}vau errors show +\S/.test(cr.out) && cr.out.split("\n").filter((l) => l.startsWith("  vau errors ")).every((l) => l.length <= 96), cr.out)
   cr = await vau("--help")
   check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
   {

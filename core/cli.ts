@@ -755,19 +755,28 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     const near = nearby(which, [...all.map((x) => x.name), ...(every ?? []).flatMap((e) => [e.id, said(e)[0] ?? ""]).filter(Boolean)])
     return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
   }
-  if (help || a.flags.help) return { code: 0, out: opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`), err: "" }
+  if (help || a.flags.help) {
+    const under = op.cli && !op.cli.includes(" ") ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli} `)) : []
+    const subs = under.length ? `\n\nAlso:\n${under.map((x) => `  vau ${x.cli!.padEnd(24)} ${brief(x.summary, 60)}`).join("\n")}` : ""
+    return { code: 0, out: opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`) + subs, err: "" }
+  }
   const home = flag(a, "url") ?? opts.url ? null : homeEnv(c.env, op)
   if (home) c = new Ctx({ ...opts, api: undefined, env: home })
   c.command = op.cli ?? op.id
   const rest = [...argv]
   for (const w of [...(help ? ["help"] : []), ...(op.id === which ? [which] : said(op))]) rest.splice(rest.indexOf(w), 1)
+  // (\`vau terminal list\`: what agents type for a list op its group's word alone runs)
+  if (op.id.endsWith(".list") && !op.args.length && op.cli === which && ["list", "ls"].includes(named[1] ?? "")) rest.splice(rest.indexOf(named[1]), 1)
   try {
     const { out, code } = await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths })
     return { code, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
   } catch (e) {
     if (!(e instanceof CliError)) throw e
-    const under = e.message.startsWith("too many arguments") ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `) && x.args.length) : []
-    const hint = under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${rest.find((w) => !w.startsWith("-")) ?? ""}`.trim()).join(" or ")}?` : ""
+    const extra = e.message.startsWith("too many arguments") ? rest.find((w) => !w.startsWith("-")) ?? "" : ""
+    const subs = extra ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `)) : []
+    const near = nearby(extra, subs.map((x) => said(x)[1])), under = subs.filter((x) => x.args.length)
+    const hint = near.length ? ` Did you mean ${near.slice(0, 3).map((n) => `vau ${op.cli} ${n}`).join(" or ")}?`
+      : under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${extra}`).join(" or ")}?` : ""
     return { code: e.usage ? 2 : 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}${hint}` }
   }
 }
