@@ -1,5 +1,5 @@
 import type { Any, VaultTest } from "./harness.ts"
-import { highlighter, parse } from "../../../core/searchquery.ts"
+import { highlighter, lineFinder, parse } from "../../../core/searchquery.ts"
 
 const marked = (q: string, t: string, matchCase = false) => highlighter(parse(q, { matchCase }))(t).map(([a, b]) => t.slice(a, b)).join("|")
 const MARKED: [q: string, text: string, marked: string, matchCase?: boolean][] = [
@@ -9,11 +9,17 @@ const MARKED: [q: string, text: string, marked: string, matchCase?: boolean][] =
 
 async function folding({ api, check }: VaultTest, paths: (q: string) => Promise<string>) {
   for (const [q, text, want, matchCase] of MARKED) check(`searchquery: accents folded, the text's own letters marked: ${q}${matchCase ? " (match case)" : ""}`, marked(q, text, matchCase) === want, marked(q, text, matchCase))
+  const before = await paths("cafe")
   await api("POST", "file", { path: "Searchy/Café.md", text: "Coffee at the Café Ørsted in Łódź, Straße 4\nand a cafe on the corner\n" })
   for (const q of ["cafe", "café", "orsted", "lodz", "strasse", "STRASSE", "ørsted łódź"]) check(`search: accents and folded letters don't matter: ${q}`, (await paths(q)) === "Café.md", await paths(q))
   const [, res] = await api("GET", "search?q=cafe lodz&folder=Searchy&lines=5&total=1")
   check("search: what matches without its accents is what it marks, both lines counted", res.lines === 2 && res.results[0]?.matches?.map((m: Any) => m.text).join("|") === "Coffee at the Café Ørsted in Łódź, Straße 4|and a cafe on the corner", res)
+  check("search: the same search again sees a file written since", before === "" && (await paths("cafe")) === "Café.md", before)
+  const [, files] = await api("GET", "search?q=cafe&folder=Searchy&lines=5&total=files")
+  check("search: total=files says how many files, not lines", files.files === 1 && files.lines === undefined && files.results.length === 1, files)
   await api("DELETE", "file?path=Searchy/Café.md")
+  const lf = lineFinder(parse("rent OR food")), text = "rent\nnone\nfood and rent\n\nFOOD"
+  check("searchquery: the lines a query marks, and how many", JSON.stringify(lf.lines(text)) === "[0,2,4]" && lf.count(text) === 3, lf.lines(text))
 }
 
 export default async ($: VaultTest) => {

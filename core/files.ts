@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
 import { extOf, isTextKind, kindOf, tooBig } from "./filetypes.ts"
-import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } from "./searchquery.ts"
+import { highlighter, lineFinder, matches, type Node, parse, type SearchDoc, SearchError } from "./searchquery.ts"
 import { xmlDecode } from "./unzip.ts"
 import { editOf } from "./texthash.ts"
 import { planSave, saveBody } from "./contracts/save.ts"
@@ -526,32 +526,34 @@ function docOf(rel: string, e: Entry): SearchDoc {
   return d
 }
 
-type SearchOpts = { lines?: number; folder?: string; path?: string; only?: Set<string>; matchCase?: boolean; sort?: string; context?: number; offset?: number }
+type SearchOpts = { lines?: number; folder?: string; path?: string; only?: Set<string>; matchCase?: boolean; sort?: string; context?: number; offset?: number; total?: boolean }
+type Found = { item: Item; body?: string; from: number }
 
-async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<{ results: Item[]; files: number; lines: number }> {
-  if (!q.trim()) return { results: [], files: 0, lines: 0 }
-  let node: Node
-  try { node = parse(q, { matchCase: opts.matchCase }) } catch (e) {
+function queryOf(q: string, matchCase?: boolean): Node {
+  try { return parse(q, { matchCase }) } catch (e) {
     if (e instanceof SearchError) throw new HTTPError(400, e.message)
     throw e
   }
-  if (node.t === "all") return { results: [], files: 0, lines: 0 }
-  const marks = highlighter(node, "text"), names = highlighter(node, "name")
-  const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
-  const whole = q.trim().toLowerCase()
-  const excluded = folder && vault.excluded(`${folder}/`) ? () => false : (rel: string) => vault.excluded(rel)
-  const check = (d: SearchDoc, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
-    if (!matches(node, d)) return null
-    const { path: rel, name, text: body } = d
-    const score = names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0)
-    const item: Item = { path: rel, title: name, context: "", score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
-    if (opts.lines) {
+}
+
+function lineAt(text: string, n: number) {
+  let at = 0
+  for (let i = 0; i < n; i++) { const nl = text.indexOf("\n", at); if (nl < 0) return ""; at = nl + 1 }
+  const end = text.indexOf("\n", at)
+  return text.slice(at, end < 0 ? text.length : end)
+}
+
+function shower(node: Node, opts: SearchOpts) {
+  const marks = highlighter(node, "text"), finder = lineFinder(node)
+  const around = Math.min(opts.context ?? 0, 5)
+  return {
+    count: finder.count,
+    show(item: Item, body: string, from: number) {
+      const hits = finder.lines(body)
+      if (!opts.lines) { item.context ||= hits.length ? context(lineAt(body, hits[0]), marks) : ""; return }
       const lines = body.split("\n")
-      const hits: number[] = []
-      lines.forEach((l, i) => { if (marks(l).length) hits.push(i) })
-      const hit = new Set(hits)
-      const around = Math.min(opts.context ?? 0, 5)
-      const shown = new Set<number>()
+      item.count = (item.count ?? 0) + hits.length
+      const hit = new Set(hits), shown = new Set<number>()
       const matched: { line: number; text: string; ctx?: true }[] = []
       for (const i of hits.slice(0, opts.lines)) {
         for (let k = Math.max(0, i - around); k <= Math.min(lines.length - 1, i + around); k++) {
@@ -560,50 +562,71 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
           matched.push({ line: from + k + 1, text: chars(lines[k].trim(), 300), ...(hit.has(k) ? {} : { ctx: true as const }) })
         }
       }
-      item.context = context(hits.length ? lines[hits[0]] : "", marks)
-      item.matches = matched.sort((a, b) => a.line - b.line)
-      item.count = hits.length
-    } else unshown.set(item, body)
-    return item
+      if (!item.matches?.length) item.context = context(hits.length ? lines[hits[0]] : "", marks)
+      item.matches = [...item.matches ?? [], ...matched.sort((x, y) => x.line - y.line)]
+    },
   }
-  const unshown = new Map<Item, string>()
-  const firstLine = (body: string) => {
-    for (let i = 0; i <= body.length;) {
-      const j = body.indexOf("\n", i), end = j < 0 ? body.length : j, line = body.slice(i, end)
-      if (marks(line).length) return context(line, marks)
-      i = end + 1
-    }
-    return ""
-  }
-  const out: Item[] = []
+}
+
+type Search = { key: string; sorted: Found[]; lines?: number }
+type Searched = { results: Item[]; files: number; lines?: number }
+const lastSearch = new WeakMap<Vault, Search>()
+
+async function searched(vault: Vault, q: string, node: Node, opts: SearchOpts, shown: ReturnType<typeof shower>): Promise<Search> {
+  await refresh(vault)
+  const key = JSON.stringify([q, opts.folder, opts.path, opts.only && [...opts.only], opts.matchCase, opts.sort, opts.lines, opts.context, vault.version, indexes.get(vault)!.version])
+  const had = lastSearch.get(vault)
+  if (had?.key === key) return had
+  const names = highlighter(node, "name")
+  const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
+  const whole = q.trim().toLowerCase()
+  const excluded = folder && vault.excluded(`${folder}/`) ? () => false : (rel: string) => vault.excluded(rel)
+  const item = (rel: string, name: string, ns: bigint, born: number, e: Entry | null): Item => ({ path: rel, title: name, context: "", mtime: ms(ns), created: born,
+    score: names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0), ...(e?.archived ? { archived: true } : {}) })
+  const out: Found[] = []
   const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.only && !opts.only.has(rel)) || (opts.path ? rel !== opts.path : excluded(rel))
   for (const [rel, e] of vault.entries) {
     if (skip(rel)) continue
-    const item = check(docOf(rel, e), e.stat.ns, e.stat.born, e, e.bodyLine)
-    if (item) out.push(item)
+    const d = docOf(rel, e)
+    if (matches(node, d)) out.push({ item: item(rel, d.name, e.stat.ns, e.stat.born, e), body: d.text, from: e.bodyLine })
   }
-  await refresh(vault)
   for (const [rel, f] of indexes.get(vault)!.files) {
     const st = vault.others.get(rel)
     if (!st || skip(rel)) continue
-    let item: Item | null = null, from = 0
+    const file = rel.slice(rel.lastIndexOf("/") + 1)
+    let got: Item | null = null, from = 0
     for await (const text of textsOf(vault, rel, f)) {
-      const file = rel.slice(rel.lastIndexOf("/") + 1)
-      const got = check({ name: file, file, path: rel, text }, st.ns, st.born, null, from)
+      if (matches(node, { name: file, file, path: rel, text })) {
+        got ??= item(rel, file, st.ns, st.born, null)
+        shown.show(got, text, from)
+        if (!opts.lines) break
+      }
       from += (text.match(/\n/g)?.length ?? 0) + 1
-      if (!got) continue
-      if (!item) { item = got; if (!opts.lines) break; continue }
-      item.matches = [...item.matches, ...got.matches]
-      item.count += got.count
     }
-    if (item) out.push(item)
+    if (got) out.push({ item: got, from: 0 })
   }
-  const [key, reverse] = SORTS[opts.sort ?? ""] ?? SORTS.relevance
-  const sorted = sortBy(out, key, reverse)
-  const from = opts.offset ?? 0
-  const results = [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(from, from + limit)
-  for (const r of results) { const body = unshown.get(r); if (body !== undefined) r.context = firstLine(body) }
-  return { results, files: out.length, lines: out.reduce((n, r) => n + (r.count ?? 0), 0) }
+  const [by, reverse] = SORTS[opts.sort ?? ""] ?? SORTS.relevance
+  const sorted = sortBy(out, (x) => by(x.item), reverse)
+  const search = { key, sorted: [...sorted.filter((x) => !x.item.archived), ...sorted.filter((x) => x.item.archived)] }
+  lastSearch.set(vault, search)
+  return search
+}
+
+async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<Searched> {
+  if (!q.trim()) return { results: [], files: 0, lines: 0 }
+  const node = queryOf(q, opts.matchCase)
+  if (node.t === "all") return { results: [], files: 0, lines: 0 }
+  const shown = shower(node, opts), found = await searched(vault, q, node, opts, shown)
+  const at = opts.offset ?? 0
+  const results = found.sorted.slice(at, at + limit).map((x) => {
+    const item = { ...x.item }
+    if (x.body !== undefined) shown.show(item, x.body, x.from)
+    return item
+  })
+  if (opts.total && opts.lines) found.lines ??= found.sorted.reduce((n, x) => n + (x.body === undefined ? x.item.count ?? 0 : shown.count(x.body)), 0)
+  const out: Searched = { results, files: found.sorted.length }
+  if (opts.total) out.lines = opts.lines ? found.lines : 0
+  return out
 }
 
 let uploadN = 0
@@ -717,8 +740,8 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     const n = (v: string | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)))
     if (query.sort && !(query.sort in SORTS)) throw new HTTPError(400, `sort is one of ${Object.keys(SORTS).join(", ")}`)
     const found = await searchAll(vault, query.q ?? "", n(query.limit, 500) || 60, { lines: n(query.lines, 100_000), folder: query.folder, path: query.path,
-      only: query.only !== undefined ? new Set(query.only.split("\n")) : undefined, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
-    return query.total === "1" ? found : found.results
+      only: query.only !== undefined ? new Set(query.only.split("\n")) : undefined, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity), total: query.total === "1" })
+    return query.total === "1" || query.total === "files" ? found : found.results
   }
   if (route === "files/previews" && method === "GET") return previews(vault, query.folder ? clean(query.folder, false, vault, true) : "")
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
