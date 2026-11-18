@@ -199,6 +199,9 @@ const DATE = /^\d{4}-\d\d-\d\d$/
 /** A YYYY-MM-DD that's a day of the calendar (not 2026-02-30, which Date reads as March 2nd). */
 const isDay = (t: string) => { const ms = DATE.test(t) ? Date.parse(`${t}T00:00:00Z`) : NaN; return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === t }
 
+const secondsAsMs = (x: number, s: Schema) =>
+  /\bseconds\b/.test(s.description ?? "") && x >= 1000 && x / 1000 <= (s.maximum ?? 0) ? `: it's in seconds, not milliseconds (${x / 1000})` : ""
+
 function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } | { ok: false; why: string } {
   const bad = (what: string) => ({ ok: false as const, why: `${name}: ${what}` })
   if (s.format === "json" || !s.type) return { ok: true, v }
@@ -215,10 +218,7 @@ function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } 
       if (typeof x !== "number" || !Number.isFinite(x)) return bad(`should be a number, not ${typeName(x)}${typeof x === "string" ? ` ('${x}')` : ""}`)
       if (s.type === "integer" && !Number.isInteger(x)) return bad(`should be a whole number (got ${x})`)
       if (s.minimum !== undefined && x < s.minimum) return bad(`should be at least ${s.minimum} (got ${x})`)
-      if (s.maximum !== undefined && x > s.maximum) {
-        const ms = /\bseconds\b/.test(s.description ?? "") && x >= 1000 && x / 1000 <= s.maximum
-        return bad(`should be at most ${s.maximum} (got ${x})${ms ? `: it's in seconds, not milliseconds (${x / 1000})` : ""}`)
-      }
+      if (s.maximum !== undefined && x > s.maximum) return bad(`should be at most ${s.maximum} (got ${x})${secondsAsMs(x, s)}`)
       break
     case "boolean":
       if (x === "true" || x === "yes" || x === "1" || x === "on") x = true
@@ -351,12 +351,6 @@ function paramLine(k: string, s: Schema, required: boolean, positional: boolean)
   const bits = [t, required ? "required" : null, positional ? "positional" : null].filter(Boolean).join(", ")
   const def = s.default !== undefined ? ` Default: ${JSON.stringify(s.default)}.` : ""
   return `- \`${k}\` (${bits}): ${s.description ?? ""}${def}`
-}
-
-/** A summary cut for a list: no asides in parentheses, its first sentence, at most a line. */
-export function brief(summary: string, most = 72) {
-  const plain = summary.replace(/ \((?:[^()]|\([^()]*\))*\)/g, "").split(/(?<=\w)\. /)[0].replace(/\.$/, "")
-  return plain.length <= most ? plain : `${plain.slice(0, most - 1).replace(/\s+\S*$/, "").replace(/[,:;]$/, "")}…`
 }
 
 export const jsonBlock = (r: unknown) => "```json\n" + JSON.stringify(r, null, 2) + "\n```"

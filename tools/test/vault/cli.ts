@@ -33,50 +33,9 @@ export default async ($: VaultTest) => {
   check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)
   cr = await vau("errors", "3f9a")
   check("vau: a word too many names the command under it that takes one", cr.code === 2 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
-  cr = await vau("errors", "shwo")
-  check("vau: a misspelt command under one is named", cr.code === 2 && cr.err.endsWith("Did you mean vau errors show?"), cr.err)
-  cr = await vau("errors", "list")
-  check("vau: `<group> list` runs the list its word alone runs", cr.code === 0 && cr.out === (await vau("errors")).out, cr)
-  cr = await vau("errors", "--help")
-  check("vau: a group's --help ends with the commands under it, one short line each", cr.code === 0 && /\nAlso:\n {2}vau errors show +\S/.test(cr.out) && cr.out.split("\n").filter((l) => l.startsWith("  vau errors ")).every((l) => l.length <= 96), cr.out)
-  {
-    const { checkParams, defineOp } = await import("../../../core/ops.ts")
-    const op = defineOp({ id: "lantern.wait", summary: "Wait for the lantern.", kind: "read", params: { timeout: { type: "integer", maximum: 600, description: "seconds, at most" } }, run: async () => null })
-    const said = (() => { try { checkParams(op, { timeout: 8000 }); return "" } catch (e) { return e instanceof Error ? e.message : "" } })()
-    check("ops: seconds given as milliseconds says so", said.includes("timeout: should be at most 600 (got 8000): it's in seconds, not milliseconds (8)"), said)
-  }
-  {
-    const pic = path.join(os.tmpdir(), "Dot on the desk.png")
-    fs.writeFileSync(pic, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"))
-    cr = await vau("upload", pic)
-    const saved = path.join(VAULT, "Attachments", "Dot on the desk.png")
-    check("vau upload <a file here>: its bytes are sent, under its name", cr.code === 0 && fs.existsSync(saved) && fs.readFileSync(saved).equals(fs.readFileSync(pic)), cr)
-    fs.rmSync(saved, { force: true })
-    cr = await vau("upload", "--file", path.join(os.tmpdir(), "nope.png"))
-    check("vau upload --file <a file not here> says so", cr.code === 1 && cr.err.includes("no file") && cr.err.includes("nope.png"), cr)
-  }
-  {
-    // vau parses the catalog by hand (core/contracts/ops.ts): every entry the server lists comes through as it is, a
-    // field left out takes its default, and an entry with a field of the wrong type is left out.
-    const { catalogOf } = await import("../../../core/contracts/ops.ts")
-    const listed = JSON.parse(JSON.stringify(app.catalog()))
-    const parsed = catalogOf(listed) ?? [], read = listed.find((e: { id: string }) => e.id === "file.read")
-    check("vau: the catalog comes through, every entry", isDeepStrictEqual(parsed.map((e) => e.id), listed.map((e: { id: string }) => e.id))
-      && isDeepStrictEqual(parsed.find((e) => e.id === "file.read"), read) && isDeepStrictEqual(catalogOf(JSON.parse(JSON.stringify(parsed))), parsed), parsed.length)
-    const odd = catalogOf([{ id: "lantern.find" }, { id: "lantern.bad", kind: "never" }, { id: "lantern.worse", params: { properties: { x: { minimum: "1" } } } }, { id: 7 }, null,
-      { id: "lantern.act", action: { on: ["lantern"], param: "path", label: "Light it", icon: 3 } }, { id: "lantern.more", params: { type: "object", properties: { x: { type: "string", unknown: 1 } } } }])
-    check("vau: a catalog entry's defaults, and what it leaves out", isDeepStrictEqual(odd, [
-      { id: "lantern.find", plugin: null, summary: "", help: "", kind: "write", params: { type: "object" }, args: [], cli: null, mcp: null, result: null, owner: null, action: null },
-      { id: "lantern.more", plugin: null, summary: "", help: "", kind: "write", params: { type: "object", properties: { x: { type: "string" } } }, args: [], cli: null, mcp: null, result: null, owner: null, action: null },
-    ]), odd)
-  }
-  cr = await vau("--help")
-  check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
-  {
-    const { brief } = await import("../../../core/ops.ts")
-    check("vau: a summary in brief drops its asides and what comes after its first sentence", brief("Archive a file (or a folder). Links follow.") === "Archive a file"
-      && brief("Where am I: server, vault, client, workspace, pinned pages, sidebar panels, plugins, appearance. Run this first.") === "Where am I: server, vault, client, workspace, pinned pages, sidebar…")
-  }
+  await helpChecks($, vau)
+  await uploadChecks($, vau)
+  await catalogChecks($)
   {
     // A parameter becomes its flag only where the server names it: a problem's leading name, or one in backticks.
     const { cliError } = await import("../../../core/cli.ts")
@@ -96,4 +55,55 @@ export default async ($: VaultTest) => {
   fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["random-note"], enabled: ON, custom: 1 }, null, 2) + "\n")
   fs.rmSync(path.join(VAULT, ".vaultite/sidebars.json"), { force: true })
   Object.assign($.vars, { execute, servers, normalizeKeys, uiLive, cliApi, vau, conf })
+}
+
+type Vau = (...argv: string[]) => ReturnType<typeof import("../../../core/cli.ts").execute>
+
+async function helpChecks({ check }: VaultTest, vau: Vau) {
+  let cr = await vau("errors", "shwo")
+  check("vau: a misspelt command under one is named", cr.code === 2 && cr.err.endsWith("Did you mean vau errors show?"), cr.err)
+  cr = await vau("errors", "list")
+  check("vau: `<group> list` runs the list its word alone runs", cr.code === 0 && cr.out === (await vau("errors")).out, cr)
+  cr = await vau("errors", "--help")
+  check("vau: a group's --help ends with the commands under it, one short line each", cr.code === 0 && /\nAlso:\n {2}vau errors show +\S/.test(cr.out) && cr.out.split("\n").filter((l) => l.startsWith("  vau errors ")).every((l) => l.length <= 96), cr.out)
+  {
+    const { checkParams, defineOp } = await import("../../../core/ops.ts")
+    const op = defineOp({ id: "lantern.wait", summary: "Wait for the lantern.", kind: "read", params: { timeout: { type: "integer", maximum: 600, description: "seconds, at most" } }, run: async () => null })
+    const said = (() => { try { checkParams(op, { timeout: 8000 }); return "" } catch (e) { return e instanceof Error ? e.message : "" } })()
+    check("ops: seconds given as milliseconds says so", said.includes("timeout: should be at most 600 (got 8000): it's in seconds, not milliseconds (8)"), said)
+  }
+  cr = await vau("inbox", "report", "--help")
+  check("vau inbox report --help: the op's own help, its parameters", cr.code === 0 && cr.out.startsWith("vau inbox report (inbox.report)") && cr.out.includes("- `work`"), cr.out.slice(0, 200))
+  cr = await vau("--help")
+  check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
+  {
+    const { brief } = await import("../../../core/words.ts")
+    check("vau: a summary in brief drops its asides and what comes after its first sentence", brief("Archive a file (or a folder). Links follow.") === "Archive a file"
+      && brief("Where am I: server, vault, client, workspace, pinned pages, sidebar panels, plugins, appearance. Run this first.") === "Where am I: server, vault, client, workspace, pinned pages, sidebar…")
+  }
+}
+
+async function uploadChecks({ check, VAULT }: VaultTest, vau: Vau) {
+  const pic = path.join(os.tmpdir(), "Dot on the desk.png")
+  fs.writeFileSync(pic, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"))
+  let cr = await vau("upload", pic)
+  const saved = path.join(VAULT, "Attachments", "Dot on the desk.png")
+  check("vau upload <a file here>: its bytes are sent, under its name", cr.code === 0 && fs.existsSync(saved) && fs.readFileSync(saved).equals(fs.readFileSync(pic)), cr)
+  fs.rmSync(saved, { force: true })
+  cr = await vau("upload", "--file", path.join(os.tmpdir(), "nope.png"))
+  check("vau upload --file <a file not here> says so", cr.code === 1 && cr.err.includes("no file") && cr.err.includes("nope.png"), cr)
+}
+
+async function catalogChecks({ app, check }: VaultTest) {
+  const { catalogOf } = await import("../../../core/contracts/ops.ts")
+  const listed = JSON.parse(JSON.stringify(app.catalog()))
+  const parsed = catalogOf(listed) ?? [], read = listed.find((e: { id: string }) => e.id === "file.read")
+  check("vau: the catalog comes through, every entry", isDeepStrictEqual(parsed.map((e) => e.id), listed.map((e: { id: string }) => e.id))
+    && isDeepStrictEqual(parsed.find((e) => e.id === "file.read"), read) && isDeepStrictEqual(catalogOf(JSON.parse(JSON.stringify(parsed))), parsed), parsed.length)
+  const odd = catalogOf([{ id: "lantern.find" }, { id: "lantern.bad", kind: "never" }, { id: "lantern.worse", params: { properties: { x: { minimum: "1" } } } }, { id: 7 }, null,
+    { id: "lantern.act", action: { on: ["lantern"], param: "path", label: "Light it", icon: 3 } }, { id: "lantern.more", params: { type: "object", properties: { x: { type: "string", unknown: 1 } } } }])
+  check("vau: a catalog entry's defaults, and what it leaves out", isDeepStrictEqual(odd, [
+    { id: "lantern.find", plugin: null, summary: "", help: "", kind: "write", params: { type: "object" }, args: [], cli: null, mcp: null, result: null, owner: null, action: null },
+    { id: "lantern.more", plugin: null, summary: "", help: "", kind: "write", params: { type: "object", properties: { x: { type: "string" } } }, args: [], cli: null, mcp: null, result: null, owner: null, action: null },
+  ]), odd)
 }

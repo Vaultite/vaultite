@@ -3,7 +3,8 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { catalogOf, type OpEntry } from "./contracts/ops.ts"
-import { brief, camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
+import { camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
+import { brief } from "./words.ts"
 import { distance } from "./spelling.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { gitEnv } from "./gitenv.ts"
@@ -541,18 +542,23 @@ function leadingWords(argv: string[]) {
   return out
 }
 
-function usage(cmds: Command[], ops: OpEntry[] | null = null) {
+function overview(cmds: Command[], ops: OpEntry[]) {
   const rows: [string, string][] = []
-  for (const e of ops ?? []) {
+  for (const e of ops) {
     if (!e.cli) continue
     const first = e.cli.split(" ")[0]
     if (rows.some(([n]) => n === first)) continue
-    const group = (ops ?? []).filter((x) => x.cli?.split(" ")[0] === first)
+    const group = ops.filter((x) => x.cli?.split(" ")[0] === first)
     const subs = group.map((x) => x.cli!.split(" ").slice(1).join(" ") || first)
     const own = group.length === 1 && group[0].cli === first ? e.summary : group.find((x) => x.cli === first)?.summary
     rows.push([first, own ? brief(own) : `${subs.slice(0, 8).join(", ")}${subs.length > 8 ? `, … (+${subs.length - 8})` : ""}`])
   }
   for (const c of cmds) if (!rows.some(([n]) => n === c.name)) rows.push([c.name, brief(c.summary)])
+  return rows
+}
+
+function usage(cmds: Command[], ops: OpEntry[] | null = null) {
+  const rows = overview(cmds, ops ?? [])
   const w = Math.max(...rows.map(([n]) => n.length))
   const windows = process.platform === "win32" || !!process.env.WSL_DISTRO_NAME
   return `vau: drive Vaultite (the user's vault and app) from a terminal.
@@ -709,6 +715,21 @@ function nearby(word: string, names: string[]): string[] {
   return scored.sort((x, y) => x.d - y.d).slice(0, 4).map((x) => x.n)
 }
 
+const listWord = (op: OpEntry, which: string, next = "") => (op.id.endsWith(".list") && !op.args.length && op.cli === which && ["list", "ls"].includes(next) ? [next] : [])
+
+function opHelp(op: OpEntry, ops: OpEntry[]) {
+  const under = op.cli && !op.cli.includes(" ") ? ops.filter((x) => x.cli?.startsWith(`${op.cli} `)) : []
+  const subs = under.length ? `\n\nAlso:\n${under.map((x) => `  vau ${x.cli!.padEnd(24)} ${brief(x.summary, 60)}`).join("\n")}` : ""
+  return opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`) + subs
+}
+
+function meantUnder(op: OpEntry, ops: OpEntry[], extra: string) {
+  const subs = extra ? ops.filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `)) : []
+  const near = nearby(extra, subs.map((x) => (x.cli ?? "").split(" ")[1] ?? "")), under = subs.filter((x) => x.args.length)
+  return near.length ? ` Did you mean ${near.slice(0, 3).map((n) => `vau ${op.cli} ${n}`).join(" or ")}?`
+    : under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${extra}`).join(" or ")}?` : ""
+}
+
 export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ code: number; out: string; err: string; exact?: boolean }> {
   const all = await commands()
   const a = parseArgs(argv, all.flatMap((c) => c.bool ?? []))
@@ -755,28 +776,18 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     const near = nearby(which, [...all.map((x) => x.name), ...(every ?? []).flatMap((e) => [e.id, said(e)[0] ?? ""]).filter(Boolean)])
     return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
   }
-  if (help || a.flags.help) {
-    const under = op.cli && !op.cli.includes(" ") ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli} `)) : []
-    const subs = under.length ? `\n\nAlso:\n${under.map((x) => `  vau ${x.cli!.padEnd(24)} ${brief(x.summary, 60)}`).join("\n")}` : ""
-    return { code: 0, out: opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`) + subs, err: "" }
-  }
+  if (help || a.flags.help) return { code: 0, out: opHelp(op, ops ?? []), err: "" }
   const home = flag(a, "url") ?? opts.url ? null : homeEnv(c.env, op)
   if (home) c = new Ctx({ ...opts, api: undefined, env: home })
   c.command = op.cli ?? op.id
   const rest = [...argv]
-  for (const w of [...(help ? ["help"] : []), ...(op.id === which ? [which] : said(op))]) rest.splice(rest.indexOf(w), 1)
-  // (\`vau terminal list\`: what agents type for a list op its group's word alone runs)
-  if (op.id.endsWith(".list") && !op.args.length && op.cli === which && ["list", "ls"].includes(named[1] ?? "")) rest.splice(rest.indexOf(named[1]), 1)
+  for (const w of [...(help ? ["help"] : []), ...(op.id === which ? [which] : said(op)), ...listWord(op, which, named[1])]) rest.splice(rest.indexOf(w), 1)
   try {
     const { out, code } = await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths })
     return { code, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
   } catch (e) {
     if (!(e instanceof CliError)) throw e
-    const extra = e.message.startsWith("too many arguments") ? rest.find((w) => !w.startsWith("-")) ?? "" : ""
-    const subs = extra ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `)) : []
-    const near = nearby(extra, subs.map((x) => said(x)[1])), under = subs.filter((x) => x.args.length)
-    const hint = near.length ? ` Did you mean ${near.slice(0, 3).map((n) => `vau ${op.cli} ${n}`).join(" or ")}?`
-      : under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${extra}`).join(" or ")}?` : ""
+    const hint = e.message.startsWith("too many arguments") ? meantUnder(op, ops ?? [], rest.find((w) => !w.startsWith("-")) ?? "") : ""
     return { code: e.usage ? 2 : 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}${hint}` }
   }
 }

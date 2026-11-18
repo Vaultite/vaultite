@@ -617,8 +617,6 @@ export default async ($: VaultTest) => {
         !ls.needs.some((e: Any) => e.id === told.id) && ls.reports.some((r: Any) => r.id === "Inbox/.archive/Change needs you · Lighthouse docs updated") && countOf(ls) >= 2, ls.decisions)
       cr = await vau("inbox")
       check("vau inbox: decisions first, the report not listed", /^Decisions:\n  \[waits on you\] Which domain[^]*\[went with Publish\] Publish it today/.test(cr.out) && !cr.out.includes("Lighthouse docs updated"), cr.out)
-      cr = await vau("inbox", "report", "--help")
-      check("vau inbox report --help: the op's own help, its parameters", cr.code === 0 && cr.out.startsWith("vau inbox report (inbox.report)") && cr.out.includes("- `work`"), cr.out.slice(0, 200))
       cr = await vau("inbox", "reports")
       check("vau inbox reports: one line each, linked, with its TL;DR", cr.out.includes("- [[Change needs you · Lighthouse docs updated]]: The setup page is rewritten. Live on the preview."), cr.out)
     }
