@@ -1,5 +1,6 @@
 // How Vaultite Main takes updates through the root store (electron/storehost.ts), stated in one place: where it does,
 // and its two policies. No Electron: tools/test_update.ts reads it.
+import fs from "node:fs"
 import path from "node:path"
 import type { CiResult } from "../core/update/ci.ts"
 import type { Recipe } from "../core/update/store.ts"
@@ -37,13 +38,24 @@ export function pinOf(windows: Attachment[]): string | null {
 
 /** Attached to a service (`server`: the commit it runs, which CI for this OS passed): that commit only, checked by its
  *  server booting (about 10 s). Standalone: the branch's newest, CI not waited for (as before), with smoke too. */
-export async function policyFor(server: string): Promise<Policy> {
+export async function policyFor(server: string, cache: string): Promise<Policy> {
   const { appRecipe, serverBoots } = await import("../core/update/store.ts")
+  // (Node keys its compile cache by path, new with each root: the checks compile it before its first launch)
+  const warming = (r: Recipe): Recipe => ({ ...r, preflight: r.preflight.map((s) => ({ ...s, run: (c) => s.run({ ...c, env: { ...c.env, NODE_COMPILE_CACHE: cache } }) })) })
   if (server) return {
-    follows: "server", recipe: { ...appRecipe(), preflight: [serverBoots] },
+    follows: "server", recipe: warming({ ...appRecipe(), preflight: [serverBoots] }),
     ci: async (_repo, sha) => sha === server ? { ok: true, why: "the commit its server runs" } : { ok: null, why: `not the commit its server runs (${server.slice(0, 7)})` },
   }
-  return { follows: "branch", recipe: appRecipe(), ci: async () => ({ ok: true, why: "not waited for: a standalone app" }) }
+  return { follows: "branch", recipe: warming(appRecipe()), ci: async () => ({ ok: true, why: "not waited for: a standalone app" }) }
+}
+
+export const COMPILE_CACHE_ENTRIES = 20_000
+export async function trimCompileCache(dir: string, most = COMPILE_CACHE_ENTRIES) {
+  let n = 0
+  for (const v of await fs.promises.readdir(dir).catch(() => [])) n += (await fs.promises.readdir(path.join(dir, v)).catch(() => [])).length
+  if (n <= most) return 0
+  await fs.promises.rm(dir, { recursive: true, force: true })
+  return n
 }
 
 /** The store's folder and the marker, in `userData`. */

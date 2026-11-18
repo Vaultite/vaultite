@@ -42,6 +42,7 @@ export type StoreHost = {
 }
 
 export const userData = () => app.getPath("userData")
+export const compileCache = () => process.env.NODE_COMPILE_CACHE || path.join(userData(), "compile-cache")
 /** Whether this app takes updates through the store now (the marker read each time). */
 export const storeOn = () => storeWanted({ packaged: app.isPackaged, channel: SHELL.channel, release: SHELL.release, platform: process.platform,
   marker: fs.existsSync(markerFile(userData())) })

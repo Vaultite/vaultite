@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Vaultite Main: the first launch after an update, and its servers' restart onto it, find the new code already compiled
+  (its server's start took twice as long: 0.3 s of imports instead of 0.14 s); and its compile cache no longer grows by
+  about 11 MB with every update.
 - Pictures of a page (vau html picture): on Windows they use the installed Chrome or Edge, so they work on Windows on Arm,
   and a page that fails to open says so instead of "nothing on the page matches".
 - Companion and agents: they attach a file from the vault to a web page (a screenshot to a Reddit reply), through
