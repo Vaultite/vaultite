@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Updates: a page open from before an update still opens views and sheets it hadn't loaded yet (they failed with
+  "Failed to fetch dynamically imported module"): the server keeps an old build's files for three days.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its

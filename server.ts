@@ -59,6 +59,9 @@ const { thumbOf } = await import("./core/thumbs.ts")
 const { tooBig } = await import("./core/filetypes.ts")
 const { runsCode } = await import("./core/opening.ts")
 const { contentType, enabled, FileAnswer, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
+const KEPT_ASSETS = path.join(LOCAL, "web-assets")
+const { keepAssets, keptAsset } = await import("./core/keptassets.ts")
+web.on(() => void keepAssets(web.dist, KEPT_ASSETS).catch((e) => log.warn("couldn't keep the new build's assets", e)))
 const { fetchFromICloud, iCloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
 const { answers, bequeath, claim, reclaim, servingKey } = await import("./core/serving.ts")
@@ -94,6 +97,7 @@ const ready = open(VAULT_AT, { timing, watch: (v) => { live = new Live(v).start(
   log.info(`vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
   starting.end()
   startup.ready()
+  setTimeout(() => void keepAssets(web.dist, KEPT_ASSETS).catch((e) => log.warn("couldn't keep the build's assets", e)), 5000).unref()
   module.flushCompileCache?.() // Node writes the cache only on a normal exit, and a server ends by a signal
 }, (e) => {
   log.error("couldn't open the vault", e)
@@ -546,12 +550,17 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     if (fs.statSync(p).isDirectory()) p = path.join(p, "index.html")
     st = fs.statSync(p)
   } catch {
-    process.stderr.write(`"${req.method} ${url.pathname} HTTP/${req.httpVersion}" 404 -\n`)
-    return send(res, 404, "File not found", "text/plain", { "Cache-Control": "no-cache" })
+    const kept = path.dirname(p) === ASSETS ? keptAsset(KEPT_ASSETS, path.basename(p)) : null
+    if (!kept) {
+      process.stderr.write(`"${req.method} ${url.pathname} HTTP/${req.httpVersion}" 404 -\n`)
+      return send(res, 404, "File not found", "text/plain", { "Cache-Control": "no-cache" })
+    }
+    p = kept.file
+    st = kept.st
   }
   const type = contentType(p)
   const modified = st.mtime.toUTCString()
-  const headers: Record<string, string> = p.startsWith(ASSETS + path.sep)
+  const headers: Record<string, string> = p.startsWith(ASSETS + path.sep) || p.startsWith(KEPT_ASSETS + path.sep)
     ? { "Cache-Control": "public, max-age=31536000, immutable" }
     : { "Last-Modified": modified, "Cache-Control": type.startsWith("text/html") ? "no-cache" : "public, max-age=3600" }
   if (COMPRESSIBLE.test(type)) headers.Vary = "Accept-Encoding"
