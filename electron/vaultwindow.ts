@@ -20,6 +20,7 @@ import { buildMenu, devtools, find, known, nameOf, remember, save, zoom } from "
 import { adopt, adopted, answerCall, booting, handingOver, heirHere, helperOn, homeChanged, keepServer, kept, logFrom, logSince, servedElsewhere, serverFor, serverLog, type Server, startServer, type Win, wins } from "./servers.ts"
 import { crashedFor, failedBox, hangs } from "./errors.ts"
 import { guard } from "./guard.ts"
+import { keepLastScreen, showLastScreen } from "./lastscreen.ts"
 
 export let behind = !!process.env.VAULTITE_BEHIND
 export const setBehind = (to: boolean) => { behind = to }
@@ -58,6 +59,12 @@ export async function openVault(p: string, file?: string) {
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true, v8CacheOptions: "bypassHeatCheck" },
   })
   if (MAC && v.lightsOff) setLights(win, null)
+  function show() { if (win.isDestroyed()) return; if (v.maximized) win.maximize(); win.show() }
+  let shownYet = false
+  const showOnce = () => { if (shownYet || win.isDestroyed()) return; shownYet = true; if (behind) app.once("did-become-active", show); else win.show() }
+  if (v.maximized && !behind) win.maximize()
+  const picture = clear ? Promise.resolve(false) : showLastScreen(win, p)
+  void picture.then((painted) => { if (painted) showOnce() })
   let server: Server | null = null, link: Link | null = null, port: number, loadFailed = false
   const outside = () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : [])
   try {
@@ -78,9 +85,7 @@ export async function openVault(p: string, file?: string) {
   v.open = true
   save()
   // (maximized as it's shown: maximizing shows a hidden window)
-  const show = () => { if (win.isDestroyed()) return; if (v.maximized) win.maximize(); win.show() }
-  if (v.maximized && !behind) win.maximize()
-  void win.ready.then(() => { if (behind) app.once("did-become-active", show); else win.show() })
+  void win.ready.then(showOnce)
   win.on("swipe", (_e, dir) => { if (dir === "left" || dir === "right") win.webContents.send("vaultite", { type: "command", id: dir === "left" ? "nav:back" : "nav:forward" }) })
   const keep = () => {
     if (win.isDestroyed()) return
@@ -121,6 +126,7 @@ export async function openVault(p: string, file?: string) {
   webWindow(win)
   translucentWindow(win, clear, glass)
   if (apps) appsWindow(win)
+  if (!clear) keepLastScreen(win, p)
   await win.loadURL(`http://127.0.0.1:${port}/`)
   homeChanged()
   if (manager && !manager.isDestroyed()) manager.close()

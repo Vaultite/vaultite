@@ -28,6 +28,7 @@ export type DesktopApi = {
    *  button's index. */
   dialogSync?: (kind: "open" | "save" | "message", options: Record<string, unknown>) => unknown
   ready: () => Promise<string[]>
+  drawn?: () => Promise<void>
   restartToUpdate: () => Promise<unknown>
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
   login?: { get: () => Promise<{ on: boolean }>; set: (on: boolean) => Promise<unknown> }

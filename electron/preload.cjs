@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   showFolder: call("files:show"),
   dialogSync: (kind, options) => ipcRenderer.sendSync("dialog:sync", kind, options),
   ready: call("app:ready"),
+  drawn: call("app:drawn"),
   restartToUpdate: call("app:update-restart"),
   updates: { get: call("app:updates"), set: call("app:updates-set"), safe: call("app:update-safe") },
   login: MAC || WIN ? { get: call("app:login"), set: call("app:login-set") } : undefined,

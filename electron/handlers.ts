@@ -25,6 +25,7 @@ import { folderName, handle, str, who } from "./handle.ts"
 import { pathDirs, serverUrl, showSetup, where } from "./setupwin.ts"
 import { copyIn, openFiles, pathKind, pickOutside, showFolder } from "./fromoutside.ts"
 import { applyDockIcon, DOCK_ICON, IMAGE_TYPES, zoomBy } from "./appmenu.ts"
+import { pageDrawn } from "./lastscreen.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("desktop")
@@ -112,6 +113,7 @@ handle("app:ready", (w) => {
   shellReady(w)
   return w.queue.splice(0)
 })
+handle("app:drawn", (w) => { if (w) pageDrawn(w.win) })
 handle("app:update-restart", () => restartToUpdate(true))
 handle("app:updates", () => ({ mode: updates, available: updatable() }))
 handle("app:updates-set", (_w, mode: UpdateMode) => {
