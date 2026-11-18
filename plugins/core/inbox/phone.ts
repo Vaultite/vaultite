@@ -47,7 +47,7 @@ export function register() {
     try {
       return reply(201, { device: push.register(req.body ?? {}), ready: push.configured(apns()) })
     } catch (e) {
-      throw new HTTPError(400, (e as Error).message)
+      throw new HTTPError(400, e instanceof Error ? e.message : String(e))
     }
   })
 

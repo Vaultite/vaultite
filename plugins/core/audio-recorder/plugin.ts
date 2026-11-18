@@ -13,6 +13,7 @@ import { embedsAudio, paragraphs, textParagraphs, withTranscript } from "./trans
 
 export const plugin = new Plugin(import.meta.url)
 
+const Saved = z.object({ path: z.string() })
 const AUDIO = /\.(mp3|m4a|m4b|aac|wav|ogg|oga|opus|flac|webm|weba|mp4|m4v|mov|aiff?|caf)$/i
 const HOME = os.homedir()
 
@@ -286,7 +287,7 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
         const text = paras.join("\n\n").trim()
         if (!text) throw new Error("nothing was heard")
         const r = await plugin.host.call("inbox.voice", { text, from, ext: path.extname(file).slice(1) }, who, { http, input: fs.createReadStream(file) })
-        job.note = String((r.result as { path?: unknown })?.path ?? "")
+        job.note = Saved.safeParse(r.result).data?.path ?? ""
       } catch (e) {
         if (job.note) throw e
         why = `${found.name} couldn't: ${String(e instanceof Error ? e.message : e).replace(/\.$/, "")}.`
@@ -296,9 +297,9 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
       const d = new Date(), p2 = (n: number) => String(n).padStart(2, "0")
       const when = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`
       const up = await plugin.host.call("file.upload", { name: `Voice note ${when}${path.extname(file)}` }, who, { http, input: fs.createReadStream(file) })
-      const saved = String((up.result as { path?: unknown })?.path ?? "")
+      const saved = Saved.safeParse(up.result).data?.path ?? ""
       const r = await plugin.runOp("inbox.add", { title: `Voice note ${when}`, from, body: `![[${path.posix.basename(saved)}]]\n\n_Not transcribed: ${why}_` }, who, http)
-      job.note = String((r.result as { path?: unknown })?.path ?? "")
+      job.note = Saved.safeParse(r.result).data?.path ?? ""
       job.kept = why
     }
     job.state = "done"

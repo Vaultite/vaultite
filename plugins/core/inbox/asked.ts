@@ -93,7 +93,7 @@ async function mergeAlike(ctx: OpCtx, made: string[]) {
 
 export function specsOf(given: unknown, blocking: boolean): DecisionSpec[] {
   const xs = Array.isArray(given) ? given : given === undefined || given === null || given === "" ? [] : [given]
-  try { return xs.map((x) => specOf(x, blocking)) } catch (e) { throw new OpError(`decision: ${(e as Error).message}`) }
+  try { return xs.map((x) => specOf(x, blocking)) } catch (e) { throw new OpError(`decision: ${e instanceof Error ? e.message : String(e)}`) }
 }
 
 function answerTargets(d: Item): string[] {
@@ -116,7 +116,7 @@ async function sendAnswers(ctx: OpCtx, answered: { d: Item; answer: string }[]) 
   const sent: string[] = [], failed: string[] = []
   for (const [to, lines] of by) {
     const text = decidedText(lines)
-    try { await ctx.op("inbox.reply", { to, text }); sent.push(to) } catch (e) { failed.push(`${to}: ${(e as Error).message}`) }
+    try { await ctx.op("inbox.reply", { to, text }); sent.push(to) } catch (e) { failed.push(`${to}: ${e instanceof Error ? e.message : String(e)}`) }
   }
   return { sent, failed }
 }
