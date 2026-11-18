@@ -95,6 +95,22 @@ function files(dir) {
   return out
 }
 
+async function startOwnVault() {
+  const own = path.join(tmp, "own")
+  const mine = {
+    "AGENTS.md": "# My rules\n\nBe brief.\n", "CLAUDE.md": "@AGENTS.md\n", "Readme.md": "No newline at the end",
+    "Notes/Plain.md": "Just a thought.\n", "Notes/Tagged.md": "---\ntags: [x]\n---\nNo type.", "Daily/2026-10-01.md": "Windows\r\nline ends\r\n",
+    "People/Alice Park.md": "Alice.\n", "Projects/Thing.md": "A project\n", "Logs/Gym/2026-10-01 Gym.md": "Squats\n", "Inbox/Later.md": "Read later\n",
+    "Books/Dune.md": "A book\n", "Dashboards/Today.md": "My own page\n", ".obsidian/app.json": "{\"vimMode\":true}",
+  }
+  for (const [f, t] of Object.entries(mine)) { fs.mkdirSync(path.dirname(path.join(own, f)), { recursive: true }); fs.writeFileSync(path.join(own, f), t) }
+  const before = files(own)
+  const ownBase = await serve(own, path.join(tmp, "own-local"))
+  return { own, before, ownBase }
+}
+
+const owned = tmp ? startOwnVault() : null
+owned?.catch(() => {})
 try {
   await visit(base)
   doing = "the error screen"
@@ -118,18 +134,9 @@ try {
   await broken("code that throws as it loads", "throws", "boot test: the app's code threw")
   await broken("code that doesn't load", "missing", "didn't load")
 
-  if (tmp) {
-    const own = path.join(tmp, "own")
-    const mine = {
-      "AGENTS.md": "# My rules\n\nBe brief.\n", "CLAUDE.md": "@AGENTS.md\n", "Readme.md": "No newline at the end",
-      "Notes/Plain.md": "Just a thought.\n", "Notes/Tagged.md": "---\ntags: [x]\n---\nNo type.", "Daily/2026-10-01.md": "Windows\r\nline ends\r\n",
-      "People/Alice Park.md": "Alice.\n", "Projects/Thing.md": "A project\n", "Logs/Gym/2026-10-01 Gym.md": "Squats\n", "Inbox/Later.md": "Read later\n",
-      "Books/Dune.md": "A book\n", "Dashboards/Today.md": "My own page\n", ".obsidian/app.json": "{\"vimMode\":true}",
-    }
-    for (const [f, t] of Object.entries(mine)) { fs.mkdirSync(path.dirname(path.join(own, f)), { recursive: true }); fs.writeFileSync(path.join(own, f), t) }
+  if (owned) {
     doing = "the user's own vault"
-    const before = files(own)
-    const ownBase = await serve(own, path.join(tmp, "own-local"))
+    const { own, before, ownBase } = await owned
     await visit(ownBase, "own vault, ")
     await wait(1500)
     const after = files(own)
