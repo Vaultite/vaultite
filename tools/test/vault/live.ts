@@ -117,6 +117,12 @@ export default async ($: VaultTest) => {
       await vault.synced()
     }
     {
+      await vault.synced()
+      vault.downloading = ["Notes/Away.md"]
+      check("live: files iCloud is bringing down keep the index vouched for, and walked again on its own", vault.vouched() && vault.waiting())
+      vault.downloading = []
+    }
+    {
       let saw = ""
       const off = vault.afterSync((v) => { saw = v.doing }, "live-probe")
       await vault.synced()

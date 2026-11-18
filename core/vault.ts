@@ -832,8 +832,7 @@ export class Vault {
 
   private rewalk: ReturnType<typeof setTimeout> | null = null
   vouched(within = VOUCH) {
-    return this.watched && !this.stale && !this.linkedOut && !this.downloading.length && !this.evicted.length &&
-      !this.missing.size && Date.now() - this.walked < within
+    return this.watched && !this.stale && !this.linkedOut && !this.missing.size && Date.now() - this.walked < within
   }
 
   synced({ trusting = false, drained = false } = {}): Promise<boolean> {
@@ -1326,7 +1325,7 @@ export class Vault {
     return out.sort().join("\n")
   }
 
-  waiting() { return this.missing.size > 0 }
+  waiting() { return this.missing.size > 0 || this.downloading.length > 0 }
 
   async sync(pre?: Looked | null): Promise<boolean> {
     const fresh = !!pre && this.locks === pre.locks + 1 && this.holders === 1

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: while iCloud has files to bring down (Optimize Mac Storage), the app's requests no longer each walk the whole
+  vault (78 ms each, now 3).
 - Server: a file iCloud hasn't brought down no longer fails requests and the scheduler's runs ("Unknown system error
   -11"): what reads it waits for it, the rest goes on.
 - Server: an upload (a voice note from the watch, a photo) no longer holds every save until its bytes arrive.
