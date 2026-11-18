@@ -1,5 +1,5 @@
 import { Component, Fragment, type ReactNode } from "react"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/Button"
 import { ErrorDetails } from "@/components/kit"
 import { isStaleBuild, recoverFromStaleBuild } from "@/core/errors"
 
@@ -58,8 +58,8 @@ export class Guard extends Component<Props, State> {
         </p>
         {stale !== "waiting" && <>
           <div className="mt-4 flex gap-2">
-            <Button variant="outline" onClick={stale === "failed" ? () => location.reload() : this.retry}>{stale === "failed" ? "Reload" : "Try again"}</Button>
-            {close && <Button variant="outline" onClick={close}>Close tab</Button>}
+            <Button look="outline" onClick={stale === "failed" ? () => location.reload() : this.retry}>{stale === "failed" ? "Reload" : "Try again"}</Button>
+            {close && <Button look="outline" onClick={close}>Close tab</Button>}
           </div>
           <ErrorDetails className="mt-3" text={`${what} couldn't be drawn\n${message}`} />
         </>}

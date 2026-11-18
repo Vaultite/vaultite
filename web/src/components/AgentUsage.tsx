@@ -5,7 +5,7 @@ import { AgentSession } from "@/components/AgentSession"
 import { AmbientButton } from "@/components/Ambient"
 import { Bar, Bars, Empty, List, Loading, LoadingRows, Panel, Row, Section, Segmented, Stat } from "@/components/kit"
 import { usePluginSettings } from "@/components/PluginSettings"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/Button"
 import { canRunAgents, choosePlace, openAgent } from "@/core/agents"
 import { addDays, dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, today, useLive, useTick } from "@/core/data"
 import { api } from "@/core/http"
@@ -196,8 +196,8 @@ function Consent({ src, consent }: { src: AgentSource; consent: NonNullable<Agen
       <p className="text-[15px] leading-[20px]">{consent.ask}</p>
       <p className="text-[13px] text-muted-foreground">{consent.detail}</p>
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => answer(true)}>Read usage</Button>
-        <Button size="sm" variant="outline" onClick={() => answer(false)}>Not now</Button>
+        <Button look="primary" size="small" onClick={() => answer(true)}>Read usage</Button>
+        <Button size="small" look="outline" onClick={() => answer(false)}>Not now</Button>
       </div>
     </div>
   )
