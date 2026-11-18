@@ -8,6 +8,7 @@ import { asked, refreshed, reopening } from "./early.ts"
 import { QUIET, fakePointer, quiet, quietPage } from "./quiet.ts"
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
+import module from "node:module"
 import path from "node:path"
 import { unloadPages } from "./web.ts"
 import "./browser/index.ts"
@@ -333,4 +334,5 @@ app.whenReady().then(async () => {
   if (!MAC && !AppWindow.getAllWindows().length) showManager()
   if (LINUX) unsandboxedNotice()
   scheduleUpdates()
+  setTimeout(() => module.flushCompileCache?.(), 3000)
 })
