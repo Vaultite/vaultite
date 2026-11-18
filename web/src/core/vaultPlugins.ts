@@ -104,11 +104,24 @@ function reloadForApi(v: number) {
   go()
 }
 
+const DRAW_WAIT_MS = 1500
+const arriving = new Map<string, Promise<void>>()
+let loads = 0
+
+async function arrive(info: VaultPluginInfo, bundle: string) {
+  const key = `${info.id}/${bundle}`
+  const was = arriving.get(key)
+  if (was) return was
+  const p = importBundle(info, bundle).then((got) => { loaded.set(info.id, got) }).finally(() => arriving.delete(key))
+  arriving.set(key, p)
+  return p
+}
+
 export async function loadVaultPlugins(state: State) {
-  const list = state.vaultPlugins ?? []
+  const list = state.vaultPlugins ?? [], load = ++loads
   versions.clear()
   for (const info of list) if (info.bundle) versions.set(info.id, info.bundle)
-  await Promise.all(list.map(async (info) => {
+  const all = Promise.all(list.map(async (info) => {
     if (!info.bundle) return void loaded.delete(info.id)
     if (tooNew(info)) {
       reloadForApi(info.apiVersion!)
@@ -117,8 +130,16 @@ export async function loadVaultPlugins(state: State) {
     }
     const hit = loaded.get(info.id)
     if (hit?.version === info.bundle && hit.error && Date.now() - (hit.at ?? 0) < RETRY) return
-    if (hit?.version !== info.bundle || hit.error) loaded.set(info.id, await importBundle(info, info.bundle))
+    if (hit?.version !== info.bundle || hit.error) await arrive(info, info.bundle)
   }))
+  let late = 0
+  const inTime = await Promise.race([all.then(() => true), new Promise<false>((done) => { late = window.setTimeout(() => done(false), DRAW_WAIT_MS) })])
+  clearTimeout(late)
+  publishPlugins(list, inTime)
+  if (!inTime) void all.then(() => { if (load === loads) publishPlugins(list, true) })
+}
+
+function publishPlugins(list: VaultPluginInfo[], settled: boolean) {
   const plugins = list.map((info): Plugin => {
     const hit = info.bundle ? loaded.get(info.id) : undefined
     const { id, name, description, requires, enhances, runsOnServer, desktopApp, ai, tint, category, group, replaces, marks, folder, pages, blocks, draws, settings, warnings } = info
@@ -133,8 +154,8 @@ export async function loadVaultPlugins(state: State) {
         approval: approval ?? null, changedOff: changedOff ?? null, blocked: blocked ?? null, hash: hash ?? "", edits: !!edits },
     }
   })
-  setVaultPlugins(plugins)
-  tell(plugins.filter((p) => list.find((i) => i.id === p.id)?.on))
+  setVaultPlugins(plugins, settled ? [] : list.flatMap((i) => (i.bundle && !loaded.has(i.id) ? [i.id] : [])))
+  if (settled) tell(plugins.filter((p) => list.find((i) => i.id === p.id)?.on))
 }
 
 const SAID = "vaultite.pluginProblems"

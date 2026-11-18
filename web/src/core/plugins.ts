@@ -79,7 +79,11 @@ let generation = 0
 let vaultIn = false
 export const vaultPluginsIn = () => vaultIn
 
-export function setVaultPlugins(list: Plugin[]) {
+let arriving = new Set<string>()
+export const codeArriving = (id?: string) => (id ? arriving.has(id) : arriving.size > 0)
+
+export function setVaultPlugins(list: Plugin[], coming: string[] = []) {
+  arriving = new Set(coming)
   const app = PLUGINS.filter((p) => p.tier === "core"), hosted = PLUGINS.filter((p) => p.tier === "hosted")
   const was = signature(PLUGINS.filter((p) => p.tier === "vault"))
   generation++

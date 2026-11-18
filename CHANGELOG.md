@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
+- Vaultite opens without waiting for a vault plugin whose code is slow to come (a busy machine building it): after
+  1.5 s at most it draws, and that plugin's tabs and blocks fill in when its code arrives.
 - A window left open in view moves to a new build of Vaultite by itself once you leave it alone for 10 minutes with
   nothing unsaved, so days later a view it hadn't opened yet no longer fails with "couldn't be drawn".
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its

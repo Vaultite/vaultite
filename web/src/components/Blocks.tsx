@@ -12,7 +12,7 @@ import { blockName, scan } from "../../../core/sections.ts"
 import { innerOf, noteParts, setBlockText, setProp } from "@/core/frontmatter"
 import { errorText, notifyError } from "@/core/notify"
 import { resolver } from "@/core/links"
-import { blockFor, offText } from "@/core/plugins"
+import { blockFor, codeArriving, offText, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { slashItems } from "@/core/slash"
 import { useDraft } from "@/core/statefor"
@@ -85,6 +85,7 @@ export function chooseBlock(store: Store, pick: (fence: string) => void) {
  *  nothing). `editing` shows option notes; `edit` (in an editor): its bar and options form, which writes its fence. */
 export function BlockView(props: { name: string; text: string; ctx: FileCtx; disabled: string[]; quiet?: boolean; editing?: boolean; nth?: number; edit?: BlockEdit }) {
   const { name, text, ctx, edit } = props
+  usePluginsVersion()
   const [form, setForm] = useState(false)
   const { decl, plugin } = blockFor(name, props.disabled, parseOptions(text).options)
   const label = name.startsWith("```") && plugin ? plugin.name : capitalize(name.replace(/-/g, " "))
@@ -181,7 +182,7 @@ function Block({ name, text, ctx, disabled, quiet, editing, write }: { name: str
   const parsed = parseOptions(text)
   const { plugin, render, decl, unnamed } = blockFor(name, disabled, parsed.options)
   if (!render) {
-    if (quiet) return null
+    if (quiet || (plugin ? codeArriving(plugin.id) : codeArriving())) return null
     return (
       <p className="text-[15px] text-muted-foreground">
         {plugin ? `${offText(plugin, disabled)}, so this ${name} block isn't drawn.` : unnamed || `No plugin draws block-${name}.`}

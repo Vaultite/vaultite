@@ -1,5 +1,5 @@
-// Vault plugins (the made-up Lighthouse): off until turned on, unloaded when edited until allowed again or when breaking
-// the rules; the Plugins page's categories. WRITES .vaultite/plugins/lighthouse, Keepers/, plugins.json: throwaway only.
+// Vault plugins (the made-up Lighthouse): off until turned on, unloaded when edited until allowed again or breaking the
+// rules, slow code (core/vaultPlugins.ts), categories. WRITES .vaultite/plugins/lighthouse, Keepers/, plugins.json: throwaway only.
 //   node web/qa/vaultplugins.mjs <base url> <vault path> [out dir]
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
@@ -108,6 +108,17 @@ check("its block draws on its page", await until(async () => /^Beam (on|off), 1 
 const spacing = await beam.first().evaluate((el) => getComputedStyle(el).letterSpacing)
 check("its own Tailwind classes work, its md: variant over its plain one (md:tracking-[0.125em] at 15px)", spacing === "1.875px", spacing)
 check("one React: its hooks run inside the app's tree", !errs.some((e) => /Invalid hook call|more than one copy of React/.test(e)), errs)
+
+const slow = watch(await ctx.newPage(), { console: true, ignore: /WebSocket|ERR_CONNECTION|Failed to load resource/ })
+let held = 0, release = () => {}
+const arrives = new Promise((done) => { release = done })
+await slow.route(/\/api\/plugins\/lighthouse\/[^/]+\/bundle\.js/, async (r) => { held++; await arrives; await r.continue() })
+await slow.goto(`${B}#file/${encodeURIComponent(PAGE)}`)
+check("a vault plugin's slow code doesn't hold the app's first draw", await until(async () => await slow.locator(`[data-pin="${PAGE}"]`).count() > 0, 4000) && held === 1, held)
+check("nor says its block isn't drawn while it comes", (await slow.getByText(/No plugin draws block-lighthouse|so this lighthouse block isn't drawn/).count()) === 0)
+release()
+check("its block draws once its code is in", await until(async () => /^Beam (on|off)/.test(await slow.locator("[data-lighthouse]").first().innerText().catch(() => "")), 12000))
+await slow.close()
 const [, text] = await api(`render?path=${encodeURIComponent(PAGE)}`)
 check("its block as text for AIs (/api/render)", text.includes("## Lighthouse") && text.includes("[[Bob Lee]]: night shift"), text)
 check("its docs are among the topics", (await api("docs"))[1].some((t) => t.id === "lighthouse"))
@@ -207,7 +218,7 @@ await problems.getByRole("button", { name: "Show details" }).click()
 check("Show details shows what it threw", (await problems.innerText()).includes("Class extends value"), await problems.innerText())
 await shot("threw")
 check("and Errors keeps it", await until(async () => ((await api("errors?source=app"))[1].groups ?? []).some((g) => g.kind === "plugin" && /Lighthouse: Class extends/.test(g.message)), 8000))
-await page.locator("[data-settings-crumb=plugins]").click() // (back to the list, from its page)
+await page.locator("[data-settings-crumb=plugins]").click()
 cpSync(`${FIXTURE}label.ts`, abs(`${DIR}/label.ts`))
 check("fixed, it starts again", await until(async () => (await row.innerText()).includes("Couldn't start") === false, 12000), await row.innerText().catch(() => ""))
 

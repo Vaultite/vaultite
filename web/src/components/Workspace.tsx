@@ -13,7 +13,7 @@ import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
 import { isPage } from "@/core/pages"
 import { currentWorkspace } from "@/core/scope"
-import { fillsPane, offText, openElsewhere, switchedOn, usePluginsVersion, viewFor } from "@/core/plugins"
+import { codeArriving, fillsPane, offText, openElsewhere, switchedOn, usePluginsVersion, viewFor } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
@@ -333,7 +333,7 @@ const PageHeading = memo(function PageHeading({ label }: { label: string }) {
 
 export function viewBody(store: Store, pane: Pane, to: string, view: ReturnType<typeof viewFor>, focused: boolean):
   { title: string; drawn: ReactNode; note: string | null; bar?: { title?: ReactNode; right?: ReactNode } } {
-  if (!view) return { title: to.slice(5), drawn: null, note: "No plugin draws this tab." }
+  if (!view) return { title: to.slice(5), drawn: null, note: codeArriving() ? null : "No plugin draws this tab." }
   const title = view.def.title(view.arg)
   if (!view.on) return { title, drawn: null, note: `${offText(view.plugin)}.${switchedOn(view.plugin) ? "" : " Turn it on in Plugins to open this tab."}` }
   const name = to.slice(5).split("/")[0]
