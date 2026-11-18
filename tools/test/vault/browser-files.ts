@@ -26,6 +26,11 @@ export default async ($: VaultTest) => {
     const withMain = ["- RootWebArea \"Shop\" [ref=e1]", "  - banner", "    - link \"Home\" [ref=e2]", "  - main", "    - heading \"Orders\"", "    - row: \"A-1\" | \"$5\""]
     check("browser agents: a new page's content is its main part, else the page without navigation, header and footer",
       JSON.stringify(mainLines(withMain)) === JSON.stringify(["- heading \"Orders\"", "- row: \"A-1\" | \"$5\""]) && JSON.stringify(mainLines(page)) === JSON.stringify(["- heading \"Orders\""]), [mainLines(withMain), mainLines(page)])
+    const oneLine = ["- RootWebArea \"Billing\"", "  - navigation", "    - link \"Home\" [ref=e1]", "  - main: heading \"Billing\" | \"Balance: $0.00\""]
+    const footed = ["- main", "  - heading \"Inbox\"", "  - sectionfooter: link \"Terms\" [ref=e2]", "  - article", "    - sectionfooter: \"Sent by Ben\""]
+    check("browser agents: a main of one line is the content, and the main's own footer is left out (an article's stays)",
+      JSON.stringify(mainLines(oneLine)) === JSON.stringify(["- main: heading \"Billing\" | \"Balance: $0.00\""])
+        && JSON.stringify(mainLines(footed)) === JSON.stringify(["- heading \"Inbox\"", "- article", "  - sectionfooter: \"Sent by Ben\""]), [mainLines(oneLine), mainLines(footed)])
     const tree = ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "    - button \"Save settings\" [ref=e3]", "  - link \"Help\" [ref=e4]"].join("\n")
     check("browser agents: snapshot --find keeps the lines with it and what they're in",
       within(tree, "save") === ["- main", "  - form \"Settings\"", "    - button \"Save settings\" [ref=e3]"].join("\n") && within(tree, "/e[24]\\]/") === ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "  - link \"Help\" [ref=e4]"].join("\n"), within(tree, "save"))

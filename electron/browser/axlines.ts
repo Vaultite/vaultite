@@ -21,22 +21,27 @@ export function changes(before: string[], after: string[]) {
 }
 
 const AROUND_CONTENT = /^\s*- (navigation|banner|contentinfo|complementary)\b/
-export function mainLines(lines: string[]) {
-  const depth = (l: string) => l.length - l.trimStart().length
-  const at = lines.findIndex((l) => /^\s*- main\b/.test(l))
-  if (at >= 0) {
-    const d = depth(lines[at]), end = lines.findIndex((l, i) => i > at && depth(l) <= d)
-    return lines.slice(at + 1, end < 0 ? undefined : end).map((l) => l.slice(d + 2))
-  }
+const FOOTER = /^- (contentinfo|sectionfooter)\b/
+const depthOf = (l: string) => l.length - l.trimStart().length
+function without(lines: string[], around: (l: string) => boolean) {
   const out: string[] = []
-  const root = /^- RootWebArea\b/.test(lines[0] ?? "")
   let skip = -1
-  for (const l of root ? lines.slice(1) : lines) {
-    if (skip >= 0 && depth(l) > skip) continue
-    skip = AROUND_CONTENT.test(l) ? depth(l) : -1
-    if (skip < 0) out.push(root ? l.slice(2) : l)
+  for (const l of lines) {
+    if (skip >= 0 && depthOf(l) > skip) continue
+    skip = around(l) ? depthOf(l) : -1
+    if (skip < 0) out.push(l)
   }
   return out
+}
+export function mainLines(lines: string[]) {
+  const at = lines.findIndex((l) => /^\s*- main\b/.test(l))
+  if (at >= 0) {
+    const d = depthOf(lines[at]), end = lines.findIndex((l, i) => i > at && depthOf(l) <= d)
+    const inside = lines.slice(at + 1, end < 0 ? undefined : end).map((l) => l.slice(d + 2))
+    return inside.length ? without(inside, (l) => FOOTER.test(l)) : [lines[at].slice(d)]
+  }
+  const root = /^- RootWebArea\b/.test(lines[0] ?? "")
+  return without(root ? lines.slice(1) : lines, (l) => AROUND_CONTENT.test(l)).map((l) => (root ? l.slice(2) : l))
 }
 
 export type AXValue = { value?: unknown }
