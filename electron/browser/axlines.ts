@@ -94,7 +94,7 @@ export function axLines(nodes: AXNode[], r: Refs, filled: (id: number) => boolea
     if (!node || size > MAX_TREE) return []
     const role = text(node.role), name = text(node.name).slice(0, 200)
     const secret = !!node.backendDOMNodeId && filled(node.backendDOMNodeId)
-    const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name)
+    const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name) && !(role === "ListMarker" && /^[•◦▪▫‣⁃·*-]?$/.test(name))
     const under = (d: number, s: string | true) => (secret ? [] : (node.childIds ?? []).flatMap((c) => walk(byId.get(c), d, s)))
     if (!shown) return under(depth, said)
     if (role === "StaticText") {

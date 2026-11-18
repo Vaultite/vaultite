@@ -52,12 +52,12 @@ async function rolesAndNames(check: Check) {
   const doc = await pageOf(`<nav aria-label="Site"><a href="/posts/why">Why we built it</a></nav><main><h1>Lighthouse</h1>
     <button>Save <span aria-hidden="true">✓</span></button><div role="checkbox" tabindex="0" aria-checked="true">Remember me</div>
     <select aria-label="Plan"><option>Free</option><option selected>Pro</option></select><img alt="A lighthouse at dusk">
-    <p hidden>Not shown</p><p data-invisible>Invisible</p><ol><li>First</li><li>Second</li></ol></main>`)
+    <p hidden>Not shown</p><p data-invisible>Invisible</p><ol><li>First</li><li>Second</li></ol><ul><li>Third</li></ul></main>`)
   const lines = await inPage(doc, async () => (await world()).lines("https://example.com/"))
   const has = [/^- RootWebArea "Lighthouse"/, /navigation "Site"\n\s+- link "Why we built it" \(→ \/posts\/why\) \[ref=e\d+\]/, /heading "Lighthouse"/, /button "Save" \[ref=e\d+\]/,
     /checkbox "Remember me" \[ref=e\d+\] \[checked\]/, /combobox "Plan" \[ref=e\d+\]: Pro/, /image "A lighthouse at dusk"/, /ListMarker "1\."/, /ListMarker "2\."/]
-  check("browser agents: an in-page snapshot has Chromium's roles, names, values and states, and leaves out what's hidden or invisible",
-    has.every((r) => r.test(lines)) && !lines.includes("Not shown") && !lines.includes("Invisible") && !lines.includes("✓"), lines)
+  check("browser agents: an in-page snapshot has Chromium's roles, names, values and states, numbers but no bullets, and leaves out what's hidden or invisible",
+    has.every((r) => r.test(lines)) && !/ListMarker "•"/.test(lines) && /listitem "Third"|- text "Third"|listitem: "Third"/.test(lines) && !lines.includes("Not shown") && !lines.includes("Invisible") && !lines.includes("✓"), lines)
 }
 
 async function refsAndTables(check: Check) {
