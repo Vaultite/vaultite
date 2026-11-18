@@ -91,7 +91,7 @@ import { useStateFor } from "@/core/statefor"
 import { chooseScheme, schemeName } from "@/components/SchemeChooser"
 import { chooseFont, fontSetting } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
-import { shellDrawn, whenIdle } from "@/core/firstscreen"
+import { lastStartUnfinished, shellDrawn, whenIdle } from "@/core/firstscreen"
 
 const Toaster = apart(() => import("@/components/Toast").then((m) => m.Toaster))
 const WelcomeCards = apart(() => import("@/components/Welcome").then((m) => m.WelcomeCards), { memoized: true })
@@ -296,7 +296,11 @@ export default function App() {
   const desktop = useDesktop()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once the store arrives, not on each store change
   useEffect(() => { if (store) { shellDrawn(); whenIdle(() => { preloadEditor(); preloadSoon() }) } }, [!!store])
-  useEffect(() => { if (safeMode) notify("Vault plugins are off for now", { id: "safe-mode", duration: Infinity, action: { label: "Turn back on", run: turnPluginsBackOn } }) }, [])
+  useEffect(() => {
+    if (!safeMode) return
+    const why = lastStartUnfinished ? "Vault plugins are off: the app didn't finish starting last time" : "Vault plugins are off for now"
+    notify(why, { id: "safe-mode", duration: Infinity, action: { label: "Turn back on", run: turnPluginsBackOn } })
+  }, [])
   useEffect(() => { if (store) whenIdle(loadActions) }, [!!store, disabled, enabled])
   const workspacesOn = useWorkspacesOn()
   useEffect(() => { if (store && !workspacesOn) tabsInWorkspace(false) }, [!!store, workspacesOn])

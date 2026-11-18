@@ -4,6 +4,7 @@ import { get, send } from "@/core/http"
 import { hydratePrefs } from "@/core/prefs"
 import { notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
+import { pluginsStarting } from "@/core/firstscreen"
 import { trackSoon } from "@/core/unsaved"
 import { askAgain, failedOf, liveShown, mockedLive, useAskAgain, type Failed, type Live } from "@/core/liveread"
 import { setHere } from "@/core/here"
@@ -343,6 +344,7 @@ function load(): Promise<void> {
       try {
         const answer = (server ? null : await fromChunks()) ?? await assembled(await get<Manifest | Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`))
         loading?.mark("state")
+        pluginsStarting()
         startLive(isObj(answer.live) ? answer.live : undefined)
         setHere(answer.here === "connect" ? "connect" : "mac")
         if (editCount() !== gen) { again = true; continue }

@@ -30,6 +30,7 @@ import { switched } from "../../../core/pluginmeta.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 import { drawnBy, type SettingDecls } from "../../../core/blocks.ts"
 import { placeKey } from "../../../core/slots.ts"
+import { forgetUnfinishedStart, lastStartUnfinished } from "@/core/firstscreen"
 
 export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
 export { readSidebars, sameSidebars } from "../../../core/sidebars.ts"
@@ -140,9 +141,10 @@ const optIn = (p: Plugin) => p.tier === "vault" || !!p.offByDefault
 const hostedOwn = (p: Plugin, disabled: string[], seen: string[]) =>
   !!hostedOn.get(p.id) && !p.problems?.length && !p.meta?.approval && isEnabled(p.host!, disabled, [...seen, p.id])
 
-export const safeMode = (() => { try { return sessionStorage.getItem("vaultite.safe") === "1" } catch { return false } })()
+export const safeMode = lastStartUnfinished || (() => { try { return sessionStorage.getItem("vaultite.safe") === "1" } catch { return false } })()
 export function turnPluginsBackOn() {
   try { sessionStorage.removeItem("vaultite.safe") } catch { /* none kept */ }
+  forgetUnfinishedStart()
   location.reload()
 }
 

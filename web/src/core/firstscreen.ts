@@ -4,12 +4,18 @@ import { span } from "./spans"
 const LONGEST_HOLD_MS = 1500, NO_SCREEN_MS = 10_000
 const holds = new Set<string>()
 const told: (() => void)[] = []
-let shell = false, drawn = false, cap: ReturnType<typeof setTimeout> | null = null
+let shell = false, drawn = false, gaveUp = false, cap: ReturnType<typeof setTimeout> | null = null
+const STARTING = "vaultite.starting"
+const keepStarting = (on: boolean) => { try { if (on) localStorage.setItem(STARTING, "1"); else localStorage.removeItem(STARTING) } catch { return } }
+export const lastStartUnfinished = (() => { try { return localStorage.getItem(STARTING) === "1" } catch { return false } })()
+export const pluginsStarting = () => { if (!drawn) keepStarting(true) }
+export const forgetUnfinishedStart = () => keepStarting(false)
 
 function tell() {
   if (drawn || !shell || holds.size) return
   drawn = true
   if (cap) clearTimeout(cap)
+  if (!gaveUp) keepStarting(false)
   requestAnimationFrame(() => setTimeout(() => {
     span("app.screen", {}, 0).end()
     for (const fn of told.splice(0)) fn()
@@ -41,7 +47,7 @@ export function useFirstScreenHold(key: string, done: boolean) {
   useEffect(() => { if (done) releaseFirstScreen(key) }, [key, done])
 }
 
-setTimeout(() => { shell = true; holds.clear(); tell() }, NO_SCREEN_MS)
+setTimeout(() => { gaveUp = !drawn; shell = true; holds.clear(); tell() }, NO_SCREEN_MS)
 
 export function whenIdle(fn: () => void, timeout = 3000): () => void {
   let on = true, cancel = () => {}
