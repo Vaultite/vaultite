@@ -387,8 +387,10 @@ try {
   check("menu: a page from it shows and the menu closes", (await P.evaluate(() => location.hash)) === href && !(await P.locator("#bar-menu").count()), [href, P.url()])
   check("menu: lit while one of its pages is on screen", (await menuBtn.getAttribute("class")).includes("text-primary"), await menuBtn.getAttribute("class"))
   await menuBtn.tap(); await pUi.idle()
+  await P.evaluate(() => { window.__faded = false; new MutationObserver((ms) => { if (ms.some((m) => [...m.addedNodes].some((n) => n.dataset && "fading" in n.dataset && /New note/.test(n.textContent)))) window.__faded = true }).observe(document.body, { childList: true }) })
   await P.touchscreen.tap(195, 200); await pUi.idle()
   check("menu: a tap outside closes it", !(await P.locator("#bar-menu").count()))
+  check("… fading out, as other menus do", await P.evaluate(() => window.__faded))
   await P.evaluate((h) => { location.hash = h }, hash("Three")); await pUi.idle()
 
   // ---------- 320px ----------

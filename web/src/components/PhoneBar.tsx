@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { Check, ChevronLeft, ChevronRight, Command, FilePlus, Menu, Plus, Search, X } from "lucide-react"
 import { activeTab, closeTab, closeTabs, tabCount, useWorkspace } from "@/core/workspace"
 import { slide } from "@/core/motion"
+import { fadeAway } from "@/core/animation"
 import { canGoBack, canGoForward, entriesToward } from "@/core/nav"
 import { menuAbove } from "@/components/ContextMenu"
 import { liftFrom } from "@/core/pageLift"
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils"
 
 export const NAV_BUTTON = "grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50"
 export const BOTTOM_BAR = "fixed inset-x-3 bottom-(--phone-bar-gap) mx-auto max-w-md rounded-full p-0.5"
+const fadeAwayOnUnmount = (el: HTMLElement | null) => () => fadeAway([el])
 export const BAR_SLOT = "flex h-11 min-w-0 cursor-pointer items-center justify-center rounded-full text-primary transition-colors active:bg-foreground/[0.08] active:duration-0"
 export const BAR_PLUS = <Plus className="size-[26px]" strokeWidth={1.6} />
 
@@ -113,7 +115,7 @@ export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNew
         <>
           <button type="button" aria-label="Close menu" tabIndex={-1} className="fixed inset-0 z-[60] cursor-default md:hidden" onClick={() => setMenuAt(null)} />
           <div className="pointer-events-none fixed inset-x-3 bottom-[calc(var(--phone-bar)+0.5rem)] z-[61] mx-auto flex max-w-md justify-end md:hidden">
-            <div id="bar-menu" role="menu" className="glass-strong pointer-events-auto w-56 rounded-[12px] p-1 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-(--motion-fast)">
+            <div id="bar-menu" role="menu" ref={fadeAwayOnUnmount} className="glass-strong pointer-events-auto w-56 rounded-[12px] p-1 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-(--motion-fast)">
               <div>
                 <button type="button" role="menuitem" onClick={() => { setMenuAt(null); onNewNote() }} className={item}>
                   <FilePlus className="size-[20px] text-primary" strokeWidth={2} /><span className="flex-1">New note</span>
