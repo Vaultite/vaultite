@@ -18,12 +18,12 @@ const WIN = process.platform === "win32"
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-desktop-perf-"))
 
 type Launch = {
-  window: number; page: number; paint: number; ready: number; renderer: number; app: number; server: number
+  fork: number; window: number; page: number; paint: number; ready: number; renderer: number; app: number; server: number
   requests: number; ipc: number; commits: number
   idleRenderer: number; idleApp: number; idleServer: number; idleRequests: number; idleIpc: number; idleCommits: number
   memRenderer: number; memApp: number; memServer: number; memTotal: number
 }
-type Extra = { parts: Record<string, Record<string, number>>; memory: Record<string, number>; private: number; server: string; channels: Record<string, number>; idleChannels: Record<string, number>; idleRoutes: Record<string, number> }
+type Extra = { idleByType: Record<string, number>; parts: Record<string, Record<string, number>>; memory: Record<string, number>; private: number; server: string; channels: Record<string, number>; idleChannels: Record<string, number>; idleRoutes: Record<string, number> }
 
 type Proc = { pid: number; ppid: number; cpu: number; mem: number; name: string }
 /** Every process: CPU ms, memory MB. Linux's /proc (ps there counts whole seconds), Windows' CIM, else ps. */
@@ -124,13 +124,14 @@ async function launch(root: string, dir: string): Promise<[Launch, Extra]> {
     const m1 = await metrics(), s1 = usage(perf.pid), idled = await counts(app, win)
     const pct = (ms: number) => +(ms / secs / 10).toFixed(2)
     return [{
-      window, page: origin - epoch, paint: origin - epoch + fcp, ready, renderer: cpu(mr, true), app: cpu(mr, false), server: sr.cpu,
+      fork: main.fork ?? 0, window, page: origin - epoch, paint: origin - epoch + fcp, ready, renderer: cpu(mr, true), app: cpu(mr, false), server: sr.cpu,
       requests: loaded.requests.length, ipc: total(loaded.channels), commits: loaded.commits,
       idleRenderer: pct(cpu(m1, true) - cpu(m0, true)), idleApp: pct(cpu(m1, false) - cpu(m0, false)), idleServer: pct(s1.cpu - s0.cpu),
       idleRequests: idled.requests.length - settled.requests.length, idleIpc: total(idled.channels) - total(settled.channels), idleCommits: idled.commits - settled.commits,
       memRenderer: mem(m1, true), memApp: mem(m1, false), memServer: s1.mem, memTotal: mem(m1, true) + mem(m1, false) + s1.mem,
     }, {
       // (Windows' working set counts the pages processes share; private bytes, Windows' only, are each one's own)
+      idleByType: m1.reduce<Record<string, number>>((o, x) => { const was = m0.find((y) => y.pid === x.pid); const k = x.serviceName || x.type; o[k] = +((o[k] ?? 0) + pct(1000 * (x.cpu.cumulativeCPUUsage! - (was?.cpu.cumulativeCPUUsage ?? 0)))).toFixed(2); return o }, {}),
       parts: { "main (ms since its start)": main, ...parts }, memory: m1.reduce<Record<string, number>>((o, x) => ((o[x.type] = Math.round((o[x.type] ?? 0) + x.memory.workingSetSize / 1024)), o), {}),
       private: m1.reduce((n, x) => n + (x.memory.privateBytes ?? 0), 0) / 1024, server: `${s1.count} (${s1.names})`,
       channels: loaded.channels, idleChannels: minus(idled.channels, settled.channels),
@@ -176,7 +177,7 @@ for (const r of results) {
     const part = (name: string, key: keyof Launch, unit = "ms") => `${name} ${x[key]}${unit}${y ? ratio(y[key], x[key]) : ""}`
     const label = { first: "first launch (empty caches)", again: "launch again (median)      ", best: "launch again (best)        " }[k]
     console.log(`  ${label}: ` +
-      [part("window", "window"), part("page", "page"), part("first paint", "paint"), part("ready", "ready"),
+      [part("server forked", "fork"), part("window", "window"), part("page", "page"), part("first paint", "paint"), part("ready", "ready"),
         `cpu: ${part("renderer", "renderer")}`, part("electron", "app"), part("server", "server"),
         part("requests", "requests", ""), part("ipc", "ipc", ""), part("commits", "commits", "")].join(", "))
     console.log(`  ${" ".repeat(label.length)}  idle ${IDLE}s: cpu ${part("renderer", "idleRenderer", "%")}, ${part("electron", "idleApp", "%")}, ` +
@@ -184,6 +185,7 @@ for (const r of results) {
       `memory ${part("renderer", "memRenderer", "MB")}, ${part("electron", "memApp", "MB")}, ${part("server", "memServer", "MB")}, ${part("total", "memTotal", "MB")}`)
   }
   console.log(`  last launch's parts: ${JSON.stringify(r.last.parts)}; memory (MB): ${JSON.stringify(r.last.memory)}, Electron's private ${Math.round(r.last.private)}; the server's processes: ${r.last.server}`)
+  console.log(`  idle cpu by process (last launch, %): ${JSON.stringify(r.last.idleByType)}`)
   console.log(`  ipc until ready: ${JSON.stringify(r.last.channels)}; idle: ${JSON.stringify(r.last.idleChannels)}; idle requests: ${JSON.stringify(r.last.idleRoutes)}`)
 }
 if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2))
