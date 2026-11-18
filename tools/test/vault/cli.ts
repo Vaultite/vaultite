@@ -31,6 +31,13 @@ export default async ($: VaultTest) => {
   check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)
   cr = await vau("errors", "3f9a")
   check("vau: a word too many names the command under it that takes one", cr.code === 2 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
+  cr = await vau("--help")
+  check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
+  {
+    const { brief } = await import("../../../core/cli.ts")
+    check("vau: a summary in brief drops its asides and what comes after its first sentence", brief("Archive a file (or a folder). Links follow.") === "Archive a file"
+      && brief("Where am I: server, vault, client, workspace, pinned pages, sidebar panels, plugins, appearance. Run this first.") === "Where am I: server, vault, client, workspace, pinned pages, sidebar…")
+  }
   {
     // A parameter becomes its flag only where the server names it: a problem's leading name, or one in backticks.
     const { cliError } = await import("../../../core/cli.ts")

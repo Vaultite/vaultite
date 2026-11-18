@@ -529,6 +529,12 @@ function leadingWords(argv: string[]) {
   return out
 }
 
+/** A summary cut for the overview: no asides in parentheses, its first sentence, at most a line. */
+export function brief(summary: string, most = 72) {
+  const plain = summary.replace(/ \((?:[^()]|\([^()]*\))*\)/g, "").split(/(?<=\w)\. /)[0].replace(/\.$/, "")
+  return plain.length <= most ? plain : `${plain.slice(0, most - 1).replace(/\s+\S*$/, "").replace(/[,:;]$/, "")}…`
+}
+
 function usage(cmds: Command[], ops: OpEntry[] | null = null) {
   const rows: [string, string][] = []
   for (const e of ops ?? []) {
@@ -536,32 +542,31 @@ function usage(cmds: Command[], ops: OpEntry[] | null = null) {
     const first = e.cli.split(" ")[0]
     if (rows.some(([n]) => n === first)) continue
     const group = (ops ?? []).filter((x) => x.cli?.split(" ")[0] === first)
-    rows.push([first, group.length === 1 && group[0].cli === first ? e.summary : group.find((x) => x.cli === first)?.summary ??
-      `${group.map((x) => x.cli!.split(" ").slice(1).join(" ") || first).join(", ")}: vau ${first} --help`])
+    const subs = group.map((x) => x.cli!.split(" ").slice(1).join(" ") || first)
+    const own = group.length === 1 && group[0].cli === first ? e.summary : group.find((x) => x.cli === first)?.summary
+    rows.push([first, own ? brief(own) : `${subs.slice(0, 8).join(", ")}${subs.length > 8 ? `, … (+${subs.length - 8})` : ""}`])
   }
-  for (const c of cmds) if (!rows.some(([n]) => n === c.name)) rows.push([c.name, c.summary])
+  for (const c of cmds) if (!rows.some(([n]) => n === c.name)) rows.push([c.name, brief(c.summary)])
   const w = Math.max(...rows.map(([n]) => n.length))
+  const windows = process.platform === "win32" || !!process.env.WSL_DISTRO_NAME
   return `vau: drive Vaultite (the user's vault and app) from a terminal.
 
 Commands:
 ${rows.map(([n, s]) => `  ${n.padEnd(w)}  ${s}`).join("\n")}
 
-${ops ? `And every operation of the API by its id (${ops.length} here): \`vau ops\` lists them, \`vau <id> --help\` explains one.`
+${ops ? `And every operation of the API by its id (${ops.length} here): \`vau ops\` lists them.`
     : "The rest (context, render, read, search, panels, plugins...) are the server's operations: they're listed once it answers."}
 Start with \`vau context\`. \`vau <command> --help\` explains one, with examples.
 When you finish something the user should know about, \`vau notify <text>\` tells them (a toast, kept in their inbox).
 
-Options: --json (machine-readable output), --count (how many a list answer holds), --paths (its files, one a line),
---copy (the output on the clipboard too), --url <server>. \`-\` as a value reads stdin. \`vau\` alone in a terminal
-is a prompt (Tab completes, with history).
-Exit status: 0 done, 1 it failed, 2 the command line was wrong (an unknown command, a missing or bad argument).
-Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the
-app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal),
-VAULTITE_HOME (a job's terminal on another machine: what reaches the user, a knock or an inbox ask, goes to that server).
+Options: --json, --count (how many a list holds), --paths (its files, one a line), --copy (to the clipboard too),
+--url <server>. \`-\` as a value reads stdin. \`vau\` alone in a terminal is a prompt.
+Exit status: 0 done, 1 it failed, 2 the command line was wrong.
+Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the app's
+other open vaults), VAULTITE_HOME (a job's terminal on another machine: what reaches the user goes to that server).${windows ? `
 Windows: vau runs in PowerShell, cmd and Git Bash (there cmd expands %VAR% in arguments: such text goes by --from or
-stdin). In WSL (\`vau wsl install\` from Windows) it's Windows' vau: paths it prints are WSL's.
-Settings and data both go through the server (settings key by key, the rest of each file kept); the app follows
-every change live. File formats: vau docs.`
+stdin). In WSL (\`vau wsl install\` from Windows) it's Windows' vau: paths it prints are WSL's.` : ""}
+File formats: vau docs.`
 }
 
 const commandHelp = (c: Command) => `${c.usage}\n\n${c.summary}\n\n${c.help}`
@@ -743,7 +748,7 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     const more = named.length > 1 && !help && !a.flags.help
     if (group.length) {
       const close = more ? nearby(named[1], group.flatMap((e) => (e.cli?.startsWith(`${which} `) ? [said(e)[1]] : []))) : []
-      return { code: more ? 2 : 0, out: group.map((e) => `  vau ${(e.cli ?? e.id).padEnd(24)} ${e.summary}`).join("\n") + `\n\n\`vau ${which} <command> --help\` explains one.`,
+      return { code: more ? 2 : 0, out: group.map((e) => `  vau ${(e.cli ?? e.id).padEnd(24)} ${brief(e.summary)}`).join("\n") + `\n\n\`vau ${which} <command> --help\` explains one.`,
         err: more ? `vau: no command '${named.slice(0, 2).join(" ")}'${close.length ? `. Did you mean ${close.map((n) => `vau ${which} ${n}`).join(" or ")}?` : ""}` : "" }
     }
     const every = ops && (await catalog(c))
