@@ -25,7 +25,7 @@ if (typeof window !== "undefined") {
 // twice. React sets the attribute once, so it stays off.
 const quiet = (el: HTMLElement | null) => { el?.setAttribute("aria-live", "off") }
 
-export default function Toaster({ desktop }: { desktop: boolean }) {
+export function Toaster({ desktop }: { desktop: boolean }) {
   const phone = { bottom: "var(--toast-floor)", left: 16, right: 16 }
   useEffect(() => toasterDrawn(toast), []) // (after sonner's own: it listens from then)
   return (
