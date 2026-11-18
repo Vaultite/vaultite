@@ -5,6 +5,7 @@ import { TryAgain } from "@/components/TryAgain"
 import { ink } from "@/lib/ink"
 import { plain } from "@/core/data"
 import { haptic } from "@/core/haptics"
+import { notify } from "@/core/notify"
 import { isDesktop } from "@/core/platform"
 import { copyText } from "@/core/richmd"
 import { useDraft } from "@/core/statefor"
@@ -395,19 +396,32 @@ export function Segmented<T extends string>({ value, options, onChange, label, b
   )
 }
 
-/** A small switch in the app's accent colour. */
-export function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean }) {
+/** A small switch in the app's accent colour. An `onChange` that returns a promise shows the new state at once, dimmed
+ *  until it settles, so a slow change never looks like a dead click. `why`: it can't change now, and a click says why. */
+export function Switch({ on, onChange, label, disabled, why }: { on: boolean; onChange: (on: boolean) => unknown; label: string; disabled?: boolean; why?: string }) {
+  const [pending, setPending] = useState<boolean | null>(null)
+  const shown = pending ?? on
+  const click = (e: ReactMouseEvent) => {
+    e.stopPropagation()
+    if (why) return void notify(why)
+    if (pending !== null) return
+    haptic()
+    const r: unknown = onChange(!on)
+    if (!(r instanceof Promise)) return
+    setPending(!on)
+    void r.catch(() => {}).finally(() => setPending(null))
+  }
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} aria-describedby={useContext(Described)} disabled={disabled}
-      onClick={(e) => { e.stopPropagation(); haptic(); onChange(!on) }}
+    <button type="button" role="switch" aria-checked={shown} aria-label={label} aria-describedby={useContext(Described)} disabled={disabled}
+      aria-disabled={why ? true : undefined} aria-busy={pending !== null || undefined} data-tip={why} onClick={click}
       className={cn(
         "relative h-[22px] w-[36px] shrink-0 cursor-pointer rounded-full transition-colors duration-200 disabled:cursor-default disabled:opacity-50",
         "after:absolute after:-inset-2.5 after:content-['']",
-        on ? "bg-primary" : "bg-foreground/[0.18]",
+        shown ? "bg-primary" : "bg-foreground/[0.18]", why && "opacity-50", pending !== null && "animate-pulse",
       )}>
       <span className={cn(
         "absolute top-[2px] left-[2px] size-[18px] rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.2)] transition-transform duration-200",
-        on && "translate-x-[14px]",
+        shown && "translate-x-[14px]",
       )} />
     </button>
   )

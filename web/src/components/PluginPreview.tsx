@@ -102,6 +102,8 @@ function Waiting({ plugin }: { plugin: Plugin }) {
   const [all, setAll] = useState(false)
   const shown = all ? a.changed : a.changed.slice(0, 8)
   const host = plugin.tier === "hosted" ? hostOf(plugin) : null
+  const [busy, setBusy] = useState<"allow" | "off" | null>(null)
+  const run = async (what: "allow" | "off", f: () => Promise<unknown>) => { setBusy(what); try { await f() } finally { setBusy(null) } }
   return (
     <div className="mb-5 rounded-[10px] bg-muted px-3.5 py-3" data-plugin-approval={plugin.id}>
       <div className="flex items-center gap-2 text-[15px] font-medium">
@@ -124,9 +126,9 @@ function Waiting({ plugin }: { plugin: Plugin }) {
       )}
       {says.length > 0 && <p className="mt-1.5 text-[14px] leading-[19px] text-ink-(--orange) md:text-[13px] md:leading-[18px]" data-plugin-discloses>{host ? "A look at its code found it can" : "It says it"} {says.join("; ")}.</p>}
       <div className="mt-2.5 flex gap-2">
-        <Button look="primary" onClick={() => void allowPlugin(plugin)} data-plugin-allow={plugin.id}
-          >Allow</Button>
-        <Button onClick={() => setSwitch(plugin, false)}>{host ? "Not now" : "Turn off"}</Button>
+        <Button look="primary" disabled={!!busy} onClick={() => void run("allow", () => allowPlugin(plugin))} data-plugin-allow={plugin.id}
+          >{busy === "allow" ? "Allowing…" : "Allow"}</Button>
+        <Button disabled={!!busy} onClick={() => void run("off", () => setSwitch(plugin, false))}>{host ? "Not now" : "Turn off"}</Button>
       </div>
     </div>
   )
@@ -306,7 +308,7 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
       <Head plugin={plugin} kicker={kicker ? plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin) : undefined}>
         {!waiting && !plugin.alwaysOn && (
           <span className={cn("shrink-0 pt-1", kicker && "mr-9")} data-plugin-switch data-tip={switched && !blocked.length ? "Off keeps its files and settings" : undefined}>
-            <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
+            <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} why={blocked.length ? `Turn on ${names(blocked)} to use ${plugin.name}` : undefined} />
           </span>
         )}
       </Head>

@@ -66,7 +66,7 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: 
   const live = on && !blocked.length && !problem && !waiting
   const toggle = (v: boolean) => {
     if (v || !original) return setSwitch(own, v)
-    for (const q of [own, original]) if (switchedOn(q)) setSwitch(q, false)
+    return Promise.all([own, original].filter((q) => switchedOn(q)).map((q) => setSwitch(q, false)))
   }
   const mine = own.tier === "core" || own.meta?.author === "Vaultite" ? "Vaultite's" : own.name
   const kind = original ? `the ${hostOf(original)?.kind ?? "original"}` : ""
@@ -105,7 +105,7 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: 
         <button type="button" onClick={() => open(p.id)} data-plugin-review={p.id}
           className="h-8 shrink-0 cursor-pointer rounded-[8px] bg-foreground/[0.06] px-3 text-[13px] font-medium hover:bg-foreground/[0.1] max-md:h-9 max-md:text-[15px]">Review</button>
       )}
-      <Switch on={on && !blocked.length} onChange={toggle} label={`${p.name} plugin`} disabled={!!blocked.length} />
+      <Switch on={on && !blocked.length} onChange={toggle} label={`${p.name} plugin`} why={blocked.length ? `Turn on ${names(blocked)} to use ${p.name}` : undefined} />
       <ChevronRight className="pointer-events-none -ml-1 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
     </div>
   )

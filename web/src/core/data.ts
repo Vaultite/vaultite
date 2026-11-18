@@ -96,6 +96,8 @@ export type VaultMeta = {
   /** On, waiting for this machine's yes: new here, changed since (`changed`: its files that did), moved out of the app
    *  to Vaultite's plugins, or `updating` (updated elsewhere, being checked against its source). */
   approval: { state: "new" | "changed" | "moved" | "updating"; since: string | null; changed: string[] } | null
+  /** Off, and its files changed since this machine last allowed it (`changed`: which): turning it on asks first. */
+  changedOff?: { since: string | null; changed: string[] } | null
   /** Why the plugin directory blocks this version, or null. */
   blocked: string | null
   /** Its files' hash: allowing it is refused if they changed since it was shown. */

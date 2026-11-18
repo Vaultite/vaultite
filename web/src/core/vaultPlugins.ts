@@ -122,7 +122,7 @@ export async function loadVaultPlugins(state: State) {
   const plugins = list.map((info): Plugin => {
     const hit = info.bundle ? loaded.get(info.id) : undefined
     const { id, name, description, requires, enhances, runsOnServer, desktopApp, ai, tint, category, group, replaces, marks, folder, pages, blocks, draws, settings, warnings } = info
-    const { version, author, repo, fundingUrl, disclosures, source, approval, blocked, hash, edits } = info
+    const { version, author, repo, fundingUrl, disclosures, source, approval, changedOff, blocked, hash, edits } = info
     return {
       ...hit?.def, icon: hit?.icon ?? pluginIcon(info.icon) ?? Puzzle, id, name, description, requires: requires.length ? requires : undefined,
       enhances: enhances.length ? enhances : undefined, runsOnServer, desktopApp, ai, tint, category, group, replaces, marks, folder, pages, tier: "vault", version: hit?.version,
@@ -130,7 +130,7 @@ export async function loadVaultPlugins(state: State) {
       draws: draws?.length ? draws : undefined,
       settingsDecls: settings ?? {},
       meta: { version: version ?? null, author: author ?? null, repo: repo ?? null, fundingUrl: fundingUrl ?? null, disclosures: disclosures ?? {}, source: source ?? null,
-        approval: approval ?? null, blocked: blocked ?? null, hash: hash ?? "", edits: !!edits },
+        approval: approval ?? null, changedOff: changedOff ?? null, blocked: blocked ?? null, hash: hash ?? "", edits: !!edits },
     }
   })
   setVaultPlugins(plugins)

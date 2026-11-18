@@ -11,7 +11,8 @@ import { editorOf } from "@/core/editors"
 import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TabButton, TimelineKind, ViewDef, WebContainer, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
-import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
+import { getPrefs, restorePrefs, setPrefs, usePrefs } from "@/core/prefs"
+import { confirmDialog } from "@/components/ConfirmDialog"
 import { peekSidebar } from "@/core/peek"
 import { isDesktop, isMac, keysText } from "@/core/platform"
 import { canonical, keyCaps, keysOf, setMissingCommand } from "@/core/commands"
@@ -231,25 +232,38 @@ export function standingIn(app: string, id: string) {
   return PLUGINS.filter((q) => q.tier !== "hosted" && optIn(q) && stands(q).includes(`${app}:${id}`) && isEnabled(q.id, disabled))
 }
 
-export function setSwitch(p: Plugin, on: boolean, quiet = false): Promise<void> {
-  if (p.alwaysOn) return Promise.resolve()
+/** Turn a plugin on or off. Never silent: a vault plugin whose code changed since this machine allowed it asks first,
+ *  and an allow or a save that fails says why and leaves the switch as it was. */
+export async function setSwitch(p: Plugin, on: boolean, quiet = false): Promise<void> {
+  if (p.alwaysOn) return
+  if (p.tier === "vault" && on && !(await mayRun(p))) return
   if (on) {
     const others = alternativesOf(p)
-    for (const q of others) setSwitch(q, false)
+    for (const q of others) void setSwitch(q, false)
     const label = (q: Plugin) => (q.tier === "hosted" ? `${q.name} (${hostOf(q)?.kind ?? q.host})` : q.name)
     if (others.length && !quiet) notify(`Turned off ${others.map(label).join(" and ")}: ${label(p)} does the same`)
   }
   if (p.tier === "hosted") return Promise.resolve(hostOf(p)?.setOn(p.id, on)).then(() => {}, (e) => { notifyError(e, `Couldn't turn ${p.name} ${on ? "on" : "off"}`) })
-  if (p.tier === "vault" && on) return allowPlugin(p).then(() => turn(p, true))
   return turn(p, on)
 }
 
-function turn(p: Plugin, on: boolean) {
+async function mayRun(p: Plugin) {
+  const changed = p.meta?.changedOff
+  if (changed && !(await confirmDialog({ title: `Turn on ${p.name}?`, confirm: "Allow and turn on",
+    body: `Its files changed since you allowed it on this machine${changed.since ? ` (version ${changed.since})` : ""}: ${changed.changed.slice(0, 8).join(", ")}`
+      + `${changed.changed.length > 8 ? ` and ${changed.changed.length - 8} more` : ""}. It runs code here: turn it on only if you trust the change.` }))) return false
+  return allowPlugin(p)
+}
+
+async function turn(p: Plugin, on: boolean) {
   const { disabled, enabled } = getPrefs()
   if (on) { showPanelsOf(p); showSectionsOf(p); showBarItemsOf(p); showHeaderItemsOf(p) }
   if (on) void askGrant(p.id)
   const next = switched({ disabled, enabled }, p.id, on, optIn(p))
-  return setPrefs({ ...(next.disabled.join() !== disabled.join() ? { disabled: next.disabled } : {}), ...(next.enabled.join() !== enabled.join() ? { enabled: next.enabled } : {}) })
+  const failed = await setPrefs({ ...(next.disabled.join() !== disabled.join() ? { disabled: next.disabled } : {}), ...(next.enabled.join() !== enabled.join() ? { enabled: next.enabled } : {}) })
+  if (!failed) return
+  restorePrefs({ disabled, enabled })
+  notifyError(failed, `Couldn't turn ${p.name} ${on ? "on" : "off"}`)
 }
 
 export function useEnabled() {

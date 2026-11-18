@@ -546,6 +546,7 @@ export class VaultPlugins {
       const pages = path.join(vp.dir, "pages")
       const str = (k: string) => (typeof m[k] === "string" && m[k] ? m[k] as string : null)
       const changes = this.waits(vp, on) ? this.trust.changes(vp.id, vp.digest) : null
+      const changedOff = !on.has(vp.id) && this.trust.approval(vp.id) && !this.trust.approved(vp.id, vp.digest) ? this.trust.changes(vp.id, vp.digest) : null
       return {
         id: vp.id, name: typeof m.name === "string" && m.name ? m.name : vp.id, description: typeof m.description === "string" ? m.description : "",
         requires: Array.isArray(m.requires) ? m.requires : [], enhances: Array.isArray(m.enhances) ? m.enhances : [], runsOnServer: !!m.runsOnServer,
@@ -562,6 +563,7 @@ export class VaultPlugins {
         source: lock[vp.id] && typeof lock[vp.id] === "object" ? { ...lock[vp.id], official: official(String(lock[vp.id].source ?? "")) } : null,
         approval: changes ? { state: this.adopting.has(vp.id) ? "updating" : changes.since ? "changed" : (lock[vp.id] as Item | undefined)?.moved ? "moved" : "new",
           since: changes.since, changed: changes.files } : null,
+        changedOff: changedOff ? { since: changedOff.since, changed: changedOff.files } : null,
         blocked: vp.blocked, hash: vp.digest.content, edits: !!this.trust.approval(vp.id)?.edits,
         blocks: declsOf(m), draws: drawsOf(m),
         settings: settingsOf(m),

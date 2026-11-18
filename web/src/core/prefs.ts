@@ -138,21 +138,28 @@ const pick = (file: File, keys: readonly string[] = FILES[file]) => Object.fromE
   .map((k) => [k, UNSET_AT_DEFAULT.includes(k) && prefs[k] === DEFAULTS[k] ? null : prefs[k]]))
 
 function save(file: File, keys?: readonly string[]) {
-  return patch(`config/${file}`, pick(file, keys)).then(() => {}, () => { /* offline: the local copy still applies */ })
+  return patch(`config/${file}`, pick(file, keys))
 }
 
-export function setPrefs(changes: Partial<Prefs>) {
+const failure = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e ?? new Error("it couldn't be saved"))
+
+/** Change preferences here at once and save them to their files; resolves to why a save failed (offline: the local copy
+ *  still applies here), or null. */
+export function setPrefs(changes: Partial<Prefs>): Promise<unknown> {
   const before = prefs
   commit({ ...prefs, ...changes })
   const tab = changes.newTab && Object.keys(changes.newTab).filter(isNewTabKey).filter((k) => JSON.stringify(changes.newTab![k]) !== JSON.stringify(before.newTab[k]))
-  const newTab = tab?.length ? [patch("config/newtab", Object.fromEntries(tab.map((k) => [k, prefs.newTab[k]]))).then(() => {}, () => {})] : []
+  const newTab = tab?.length ? [patch("config/newtab", Object.fromEntries(tab.map((k) => [k, prefs.newTab[k]])))] : []
   const ed = changes.editor && [...new Set([...Object.keys(before.editor), ...Object.keys(changes.editor)])]
     .filter((k) => JSON.stringify(changes.editor![k]) !== JSON.stringify(before.editor[k]))
-  const editor = ed?.length ? [patch("config/editor", Object.fromEntries(ed.map((k) => [k, prefs.editor[k] ?? null]))).then(() => {}, () => {})] : []
-  const whole = WHOLE.flatMap((k) => (k in changes ? [put(`config/${k}`, prefs[k] ?? {}).then(() => {}, () => {})] : []))
+  const editor = ed?.length ? [patch("config/editor", Object.fromEntries(ed.map((k) => [k, prefs.editor[k] ?? null])))] : []
+  const whole = WHOLE.flatMap((k) => (k in changes ? [put(`config/${k}`, prefs[k] ?? {})] : []))
   const files = FILE_NAMES.flatMap((file) => (FILES[file].some((k) => k in changes) ? [save(file, Object.keys(changes))] : []))
-  return Promise.all([...whole, ...newTab, ...editor, ...files]).then(() => {})
+  return Promise.all([...whole, ...newTab, ...editor, ...files].map(failure)).then((all) => all.find((e) => e !== null) ?? null)
 }
+
+/** Put preferences back here only, unsaved: a change whose save failed. */
+export const restorePrefs = (was: Partial<Prefs>) => commit({ ...prefs, ...was })
 const isNewTabKey = (k: string): k is keyof NewTabSetup => Object.hasOwn(DEFAULTS.newTab, k)
 
 export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[number] | "newtab" | "editor", Record<string, unknown>>>,

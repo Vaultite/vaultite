@@ -8,6 +8,8 @@ export type Hold = { until: string; from: string; label?: string }
 export type Events = { events: InboxEvent[]; unread: number; needs: number; ready: boolean; hold: Hold | null }
 export const GATE_DETAIL = "inbox-gate"
 export const SESSION_DETAIL = "inbox-session"
+/** Another machine's event whose link opens a sheet: what it names (a plugin, a setting) is that machine's, not this one's. */
+export const ELSEWHERE_DETAIL = "inbox-elsewhere"
 const state = cell<Events>({ events: [], unread: 0, needs: 0, ready: false, hold: null })
 const fresh = new Set<(e: InboxEvent) => void>()
 
@@ -180,9 +182,9 @@ export function reportSession(r: InboxItem | undefined) {
 }
 
 export function fixEvent(e: InboxEvent) {
-  if (!e.fix) return
+  if (!e.fix) return Promise.resolve()
   haptic("medium")
-  void post<{ text: string }>(`inbox/events/${encodeURIComponent(e.id)}/fix`, {}).then((r) => notify(r.text), (err) => notifyError(err, `Couldn't ${e.fix!.label.toLowerCase()} it`))
+  return post<{ text: string }>(`inbox/events/${encodeURIComponent(e.id)}/fix`, {}).then((r) => notify(r.text), (err) => notifyError(err, `Couldn't ${e.fix!.label.toLowerCase()} it`))
 }
 
 export async function answerAsk(e: InboxEvent, answer: "approve" | "deny") {
@@ -210,6 +212,7 @@ export const agentOf = (e: InboxEvent, agents: Agent[] = agentsOn()) => agents.f
 
 export function targetOf(e: InboxEvent): string | null {
   if (e.gate) return `detail:${detailPath(GATE_DETAIL, e.id)}`
+  if (e.link?.startsWith("detail:") && e.machine) return `detail:${detailPath(ELSEWHERE_DETAIL, e.id)}`
   if (e.link) return /^(view:|detail:|https?:)/.test(e.link) ? e.link : `file:${e.link.replace(/^file:/, "")}`
   if (isSession(e)) return `detail:${detailPath(SESSION_DETAIL, e.id)}`
   return viewOf(e)
