@@ -6,6 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- vau: a call takes about a third of the time it did (about 135 ms instead of 350 ms on a busy Linux machine): it no
+  longer loads zod, yaml or Node's HTTP module to start.
+- vau: `vau --help` is a short overview, one line per command; `vau ops` lists each operation in a short line.
+- vau: `vau inbox report --help` (and every other inbox command's) shows that command's own flags, `vau terminal list`
+  works, a group's `--help` ends with the commands under it, and a misspelt one is named (`vau inbox reprot`).
+- vau: `vau upload <file>` takes a file on this machine by its path; a timeout given in milliseconds says it's in
+  seconds; `vau context` points to `vau tabs` (it named a `vau today` that doesn't exist).
+- MCP: the tool list is 13% smaller (no command-line examples, no repeated titles), so every session starts with fewer tokens.
+- Terminals: what an agent in one of the app's terminals is told about Vaultite is half as long.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its
