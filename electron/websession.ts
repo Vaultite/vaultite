@@ -47,6 +47,9 @@ export function webSession(profile: string) {
   sessionMade(s, profile)
   return s
 }
+export const usedProfile = (profile: string) =>
+  sessions.has(profile) || fs.existsSync(path.join(app.getPath("userData"), "Partitions", partitionOf(profile).replace(/^persist:/, "")))
+
 export async function readySession(profile: string) {
   const s = webSession(profile)
   await sessionReady(profile)

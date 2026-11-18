@@ -1,6 +1,6 @@
 import { app, shell } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { allPages, engineCall, engineLoaded, handle, mayOpen, pageKept, partitionOf, setOpener } from "./browser/engine.ts"
+import { allPages, engineCall, engineLoaded, handle, mayOpen, pageKept, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { shown } from "./pagespot.ts"
 import { PASSED, RAISE } from "./stack.ts"
@@ -8,10 +8,10 @@ import { claim, letGo, MOVE_MS, tabGone, tabMoved, unmoved } from "./webpages.ts
 import fs from "node:fs"
 import path from "node:path"
 import { FIND, hostOfUrl, PAGE_HTML, RECT, siteOf, SITES } from "./webwire.ts"
-import { loadDownloads, mine, pages, pagesChanged, profileOf, sessions, shows, stateOf, str, tabOf, tell, web } from "./webbase.ts"
+import { loadDownloads, mine, pages, pagesChanged, profileOf, shows, stateOf, str, tabOf, tell, web } from "./webbase.ts"
 import { keysOf } from "./webkeys.ts"
 import { looks } from "./webpaint.ts"
-import { readySession, readyView, webSession } from "./websession.ts"
+import { readySession, readyView, usedProfile, webSession } from "./websession.ts"
 import { hostIcon, loadIcons, staleIcons } from "./webicons.ts"
 import { forgetSite, sitesOf, whoIn } from "./webaccounts.ts"
 import { moveLogins, sealLogin } from "./weblogins.ts"
@@ -45,7 +45,7 @@ let cloudLoaded: Promise<ReturnType<typeof import("./cloud.ts").cloudHandlers>> 
 const cloudNow = () => (cloudLoaded ??= import("./cloud.ts").then(({ cloudHandlers }) => cloudHandlers({
   page: (profile, site) => [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)?.view.webContents,
   session: readySession,
-  used: (profile) => sessions.has(profile) || fs.existsSync(path.join(app.getPath("userData"), "Partitions", partitionOf(profile).replace(/^persist:/, ""))),
+  used: usedProfile,
   tell, profileOf,
 })))
 const cloud = {

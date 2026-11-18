@@ -72,6 +72,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   names who asked and opens that agent's terminal or session; it takes Done or "I can't" with a reason, which the agent's
   wait hears; it says when it was answered elsewhere or the agent's terminal ended. The page fills its pane, and what
   agents did there reads as words ("Clicked “Log In”", repeats folded) under links to its pages.
+- Browser: listing a container's sites no longer sets up a container that was never used (a new vault made four at
+  launch, and a fifth for agents 20 s later; now none).
 - iPhone: Download on a file or image opens the share sheet (Save Image, Save to Files) instead of showing the
   file in the app's own window with no way back.
 - iPhone: a voice note shows its words as they're said (through the server's cloud recognizer, Soniox, else the

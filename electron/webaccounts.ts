@@ -1,5 +1,5 @@
 import { app } from "electron"
-import { mayOpen, partitionOf } from "./browser/engine.ts"
+import { mayOpen } from "./browser/engine.ts"
 import { lastVisits } from "./browser/history.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
@@ -8,9 +8,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
 import { hostOfUrl, KNOWN, siteOf, FETCHED, type Known } from "./webwire.ts"
-import { type Page, pages, sessions, web, type WebSite } from "./webbase.ts"
+import { type Page, pages, web, type WebSite } from "./webbase.ts"
 import { answer, loadAnswers } from "./webpermissions.ts"
-import { readySession, webSession } from "./websession.ts"
+import { readySession, usedProfile, webSession } from "./websession.ts"
 import { iconBytes, iconOf, isIcon } from "./webicons.ts"
 
 export const accounts = new Map<string, { at: number; login: string; who: Who | null }>()
@@ -88,7 +88,8 @@ export async function askWho(s: Electron.Session, how: Rule, open: Page | undefi
   return typeof v === "string" ? (v ? { account: v } : null) : v && nonempty(v.account) ? { ...v, account: nonempty(v.account) } : null
 }
 
-export async function sitesOf(profile: string): Promise<WebSite[]> {
+export const sitesOf = (profile: string): Promise<WebSite[]> => (usedProfile(profile) ? siteList(profile) : Promise.resolve([]))
+async function siteList(profile: string): Promise<WebSite[]> {
   const cookies = await (await readySession(profile)).cookies.get({})
   const names = [...new Set(cookies.map((c) => siteOf(c.domain ?? "")).filter(Boolean))]
   const been = visitedOf(profile)
@@ -116,10 +117,9 @@ export async function sitesOf(profile: string): Promise<WebSite[]> {
 const WHO_MS = 1500
 export async function whoIn(site: string, profiles: string[]): Promise<Record<string, { account: string; more?: string[] } | null>> {
   const name = ACCOUNTS[site] ? site : Object.keys(ACCOUNTS).find((k) => Object.keys(ACCOUNTS[k].with ?? {}).some((w) => covers(w, site)))
-  const used = (p: string) => sessions.has(p) || fs.existsSync(path.join(app.getPath("userData"), "Partitions", partitionOf(p).replace(/^persist:/, "")))
   const out: Record<string, { account: string; more?: string[] } | null> = {}
   await Promise.all([...new Set(profiles)].map(async (p) => {
-    if (!name || !used(p) || !mayOpen(p)) return void (out[p] = null)
+    if (!name || !usedProfile(p) || !mayOpen(p)) return void (out[p] = null)
     const cookies = await (await readySession(p)).cookies.get({ domain: name }).catch(() => [])
     const late = new Promise<Who | null>((r) => setTimeout(() => r(loadKnown()[p]?.[name]?.who ?? null), WHO_MS).unref())
     const who = cookies.length ? await Promise.race([accountOf(p, name, cookies).catch(() => null), late]) : null
