@@ -28,6 +28,12 @@ const step = (what: string) => console.error(`${new Date().toISOString().slice(1
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 function cpu(pid: number | undefined) {
   if (!pid) return 0
+  if (process.platform === "linux") {
+    try {
+      const st = fs.readFileSync(`/proc/${pid}/stat`, "utf8"), f = st.slice(st.lastIndexOf(")") + 2).split(" ")
+      return (Number(f[11]) + Number(f[12])) * 10
+    } catch { return 0 }
+  }
   try {
     const t = execFileSync("/bin/ps", ["-o", "time=", "-p", String(pid)], { encoding: "utf8" }).trim() // [h:]m:ss.cc
     return t.split(":").reduce((acc, x) => acc * 60 + Number(x), 0) * 1000
