@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: a walk of the vault looks at the disk before it holds the vault, so a save no longer waits behind one on a slow
+  disk (2.4 s, now none).
 - Server: files gone from a folder (moved by hand) ask the disk once, not once each: 1.8 s frozen on a 3,000-note vault,
   now 0.3 s.
 - Server: a walk of the vault no longer reads every settings file again when none changed (each read a wait on iCloud).

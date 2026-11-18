@@ -186,7 +186,7 @@ export class Live {
     if (this.again || this.closed) return
     this.again = setTimeout(async () => {
       this.again = null
-      try { await this.vault.lock(() => this.vault.sync()) } catch (e) { log.error("syncing the vault failed", e) }
+      try { await this.vault.walkNow() } catch (e) { log.error("syncing the vault failed", e) }
       if (this.v !== this.sent) this.emit(null)
       if (this.vault.waiting()) this.recheck(delay < 4000 ? delay + 1000 : Math.min(delay * 2, 60000))
     }, delay)

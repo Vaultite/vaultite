@@ -679,18 +679,19 @@ export class App {
 
   hold<T>(fn: () => Promise<T> | T, { trusting = false } = {}): Promise<T> {
     if (this.holding.getStore()?.on) return Promise.resolve().then(fn)
-    return this.vault.lock(async () => {
+    const walks = () => !trusting || !this.vault.vouched()
+    return (walks() ? this.vault.looked() : Promise.resolve(null)).then((pre) => this.vault.lock(async () => {
       const token = { on: true }
       try {
         return await this.holding.run(token, async () => {
-          if (!trusting || !this.vault.vouched()) await this.vault.sync()
+          if (walks()) await this.vault.sync(pre)
           this.pagesOf = this.onKey()
           try { return await fn() } finally { await this.loadPlugins().then(() => this.followPlugins(), (e) => log.error("loading the plugins failed", e)) }
         })
       } finally {
         token.on = false
       }
-    })
+    }))
   }
 
   private async driveUi(message: Item | null) {
