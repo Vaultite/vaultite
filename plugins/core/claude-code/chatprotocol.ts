@@ -1,3 +1,7 @@
+import crypto from "node:crypto"
+import fs from "node:fs"
+import type net from "node:net"
+import path from "node:path"
 import { z } from "zod"
 import { Entry, UserEntry } from "./chatlog.ts"
 
@@ -131,3 +135,24 @@ export const TabMessage = z.discriminatedUnion("t", [
 export type TabMessage = z.infer<typeof TabMessage>
 
 export const issues = (e: z.ZodError) => e.issues.map((i) => `${i.path.join(".") || "it"} ${i.message}`).join("; ")
+
+export function codeOf(dir: string) {
+  const h = crypto.createHash("sha256")
+  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts", "chatprotocol.ts", "inputs.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
+  return h.digest("hex").slice(0, 16)
+}
+
+export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) => void) {
+  let buf = ""
+  sock.setEncoding("utf8")
+  sock.on("data", (chunk: string) => {
+    buf += chunk
+    for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
+      const line = buf.slice(0, nl)
+      buf = buf.slice(nl + 1)
+      let m: Record<string, unknown>
+      try { m = JSON.parse(line) } catch { continue }
+      fn(m)
+    }
+  })
+}

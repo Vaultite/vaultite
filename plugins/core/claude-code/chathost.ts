@@ -5,7 +5,7 @@ import path from "node:path"
 import type { CanUseTool, HookInput, McpServerConfig, Options, PermissionResult, PermissionUpdate, Query, SDKControlInterruptResponse, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import type { JSONSchema } from "zod/v4/core"
 import { type AskKind, type Entry, IMAGE_MAX, IMAGES_MAX, imageType, questionsOf, Reader, summarize } from "./chatlog.ts"
-import { type Answer, type Effort, type Event, issues, type Mode, type Op, type Reply, Request, type Spec, type State, type Summary, type ToolDef, ToolResult, type Uuid } from "./chatprotocol.ts"
+import { type Answer, eachMessage, type Effort, type Event, issues, type Mode, type Op, type Reply, Request, type Spec, type State, type Summary, type ToolDef, ToolResult, type Uuid } from "./chatprotocol.ts"
 import { isRecord } from "./inputs.ts"
 
 // Claude Code's terminal picker's words for Chat about this
@@ -34,11 +34,6 @@ export function relayed(create: typeof import("@anthropic-ai/claude-agent-sdk")[
 const toolUseIdOf = (extra: unknown) => {
   const meta = isRecord(extra) ? extra._meta : undefined, u = isRecord(meta) ? meta["claudecode/toolUseId"] : undefined
   return typeof u === "string" ? u : undefined
-}
-export function codeOf(dir: string) {
-  const h = crypto.createHash("sha256")
-  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts", "chatprotocol.ts", "inputs.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
-  return h.digest("hex").slice(0, 16)
 }
 
 const APP = "mcp__vaultite-app__"
@@ -539,20 +534,6 @@ function interrupted(es: Entry[]) {
 const lastLines = (lines: string[]) => lines.join("").trim().split("\n").slice(-4).join("\n").slice(0, 600)
 
 
-export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) => void) {
-  let buf = ""
-  sock.setEncoding("utf8")
-  sock.on("data", (chunk: string) => {
-    buf += chunk
-    for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
-      const line = buf.slice(0, nl)
-      buf = buf.slice(nl + 1)
-      let m: Record<string, unknown>
-      try { m = JSON.parse(line) } catch { continue }
-      fn(m)
-    }
-  })
-}
 
 const OPS = new Set<string>(Request.options.map((r) => r.shape.op.value))
 function withImages(text: string, images: string[]): SDKUserMessage["message"]["content"] {
