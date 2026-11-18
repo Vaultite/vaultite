@@ -42,6 +42,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   sooner: forked at 90 ms instead of 160 ms after the app starts).
 - Companion: Talk key answers over a note come up to 2 s sooner (a spoken ask no longer waits for the note to save it,
   only a typed one does), and its close-up is taken at the screen's own resolution, not upscaled, so each ask costs fewer tokens.
+- Desktop: with Cloud sessions open, the app reads claude.ai's sessions when they're due instead of waking each second
+  to see (4 wakeups in 38 s instead of 38).
 - Desktop: the left sidebar's header and bottom bar take what you drag there: Workspaces, Inbox, the Plugins button,
   or a panel with a rail icon (File explorer, Outline, Tags...), drawn as that icon and opening the panel beside it.
   Drag them back into either sidebar, or right-click a bar for its list. The vault picker and Settings stay put.

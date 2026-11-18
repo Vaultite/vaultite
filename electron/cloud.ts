@@ -1,6 +1,5 @@
 // Claude Code on the web's sessions (the Cloud sessions plugin), read and acted on with the Browser's claude.ai logins
 // through claude.ai's JSON API (plugins/core/cloud-sessions/CLAUDE.md), and their pull requests through `gh`.
-import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { Session, WebContents } from "electron"
@@ -8,6 +7,8 @@ import { z } from "zod"
 import { strings } from "../core/values.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { hostOfUrl, siteOf } from "./webwire.ts"
+import { askGitHub } from "./cloudgithub.ts"
+import { dueAt } from "./clouddue.ts"
 
 /** A claude.ai organization whose sessions are read: `label` its name, or its login's email for a personal one
  *  ("<email>'s Organization"); `profiles` the logins it's in, in the order the app named them. */
@@ -47,8 +48,6 @@ export const RAW_SESSION = z.object({
 })
 type RawSession = z.infer<typeof RAW_SESSION>
 const ForAccount = z.object({ account: z.string() })
-const PrNode = z.object({ number: z.number(), url: z.string().regex(/^https:\/\//), state: z.unknown().optional(), isDraft: z.unknown().optional() })
-const Prs = z.object({ data: z.record(z.string(), z.object({ pullRequests: z.object({ nodes: z.array(z.unknown()) }) }).nullable().catch(null)) })
 
 /** What it needs of the browser (web.ts): a profile's claude.ai page if one is open, its session, whether it was ever
  *  used, and telling a window. */
@@ -102,8 +101,8 @@ export function cloudHandlers(host: CloudHost) {
   const archived = new Map<string, number>()
   let accounts: CloudAccount[] = []
   let signedIn = false
-  let timer: ReturnType<typeof setInterval> | undefined
-  let reading = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let reading = false, again = false
 
   /** `url` asked with a profile's logins: from one of its claude.ai pages when one is open (the site's own origin: what
    *  its pages ask is never turned away), else with the session's cookies from here, like accountOf. */
@@ -119,7 +118,7 @@ export function cloudHandlers(host: CloudHost) {
     const had = cookies.get(profile)
     if (had && Date.now() - had.at < CLOUD.cookiesFor) return had.in
     // (logins never used have no folder: not made just to look, which would set up a session, extensions and all)
-    if (!host.used(profile)) return false
+    if (!host.used(profile)) { cookies.set(profile, { at: Date.now(), in: false }); return false }
     const all = await (await host.session(profile)).cookies.get({ url: BASE })
     const signed = all.some((c) => c.name.startsWith("sessionKey"))
     cookies.set(profile, { at: Date.now(), in: signed })
@@ -199,9 +198,10 @@ export function cloudHandlers(host: CloudHost) {
   /** Each named profile signed in to claude.ai, each of its organizations once (in the first profile that has it), each
    *  account's sessions when due, with news of what changed; the windows told when anything did. */
   async function read() {
+    clearTimeout(timer)
     for (const w of windows) if (w.isDestroyed()) windows.delete(w)
-    if (!windows.size) { clearInterval(timer); timer = undefined; return }
-    if (reading) return
+    if (!windows.size) return
+    if (reading) return void (again = true)
     reading = true
     try {
       const before = JSON.stringify(state())
@@ -238,10 +238,16 @@ export function cloudHandlers(host: CloudHost) {
       signedIn = signed
       await prs()
       tellAll(before)
-    } finally { reading = false }
+    } finally { reading = false; schedule() }
+  }
+  function schedule() {
+    if (reading) return
+    if (again) { again = false; return void read() }
+    clearTimeout(timer)
+    const at = dueAt({ ...want, cookies, cookiesFor: CLOUD.cookiesFor, orgs, next, prs: gh && lists.size ? prsAt + CLOUD.prsFor : Infinity })
+    if (at < Infinity && windows.size) timer = setTimeout(() => void read(), Math.max(1000, at - Date.now()))
   }
 
-  // ---------- pull requests, asked of GitHub with `gh` (the user's own login there), when it's installed
 
   const gh = process.env.VAULTITE_TEST_GH || (TEST ? "" : ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh",
     ...(process.env.PATH ?? "").split(path.delimiter).map((d) => path.join(d, "gh"))].find((p) => { try { return fs.statSync(p).isFile() } catch { return false } }) ?? "")
@@ -290,6 +296,7 @@ export function cloudHandlers(host: CloudHost) {
     } else lists.set(org, list.map((c) => (c.id === sid ? { ...c, title: String(value).trim().slice(0, 200) } : c)))
     // (read again soon: claude.ai's own word on it)
     next.set(org, { at: Date.now() + 1000, wait: CLOUD.idle })
+    schedule()
     tellAll(before)
     return { ok: true }
   }
@@ -300,11 +307,9 @@ export function cloudHandlers(host: CloudHost) {
     "web:cloud": (win: AppWindow, w: unknown) => {
       windows.add(win)
       want = wantOf(w)
-      if (!timer) timer = setInterval(() => void read(), 1000)
       void read()
       return state()
     },
-    // A session archived, back from the archive, or renamed, on claude.ai.
     "web:cloud-act": (_win: AppWindow, action: unknown, id: unknown, value: unknown) => act(action, id, value),
   }
 }
@@ -358,32 +363,4 @@ function newsOf(was: CloudSession, now: CloudSession | undefined): { kind: "done
 function branchOf(c: CloudSession) {
   const r = c.repos?.find((x) => x.branch && !/^(main|master|trunk|develop)$/.test(x.branch))
   return r ? `${r.repo} ${r.branch}` : null
-}
-
-/** Each ref's newest pull request, in one GraphQL query; null when GitHub couldn't be asked (no login, offline). */
-export function askGitHub(gh: string, refs: [string, string][]): Promise<Map<string, CloudPr> | null> {
-  const vars: string[] = [], parts: string[] = [], decl: string[] = []
-  refs.forEach(([repo, branch], i) => {
-    const [owner, name] = repo.split("/")
-    decl.push(`$o${i}: String!, $n${i}: String!, $b${i}: String!`)
-    parts.push(`r${i}: repository(owner: $o${i}, name: $n${i}) { pullRequests(headRefName: $b${i}, first: 1, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { number url state isDraft } } }`)
-    vars.push("-f", `o${i}=${owner}`, "-f", `n${i}=${name}`, "-f", `b${i}=${branch}`)
-  })
-  const query = `query(${decl.join(", ")}) { ${parts.join(" ")} }`
-  return new Promise((done) => execFile(gh, ["api", "graphql", "-f", `query=${query}`, ...vars], { timeout: 20_000, maxBuffer: 4 << 20 }, (_e, out) => {
-    // (a repository it can't see answers null among the rest: the others still count)
-    let answer: unknown
-    try { answer = JSON.parse(out) } catch { return done(null) }
-    const prs = Prs.safeParse(answer)
-    if (!prs.success) return done(null)
-    const got = new Map<string, CloudPr>()
-    refs.forEach(([repo, branch], i) => {
-      const node = PrNode.safeParse(prs.data.data[`r${i}`]?.pullRequests.nodes[0])
-      if (!node.success) return
-      const n = node.data
-      const state = n.state === "MERGED" ? "merged" : n.state === "CLOSED" ? "closed" : n.isDraft ? "draft" : "open"
-      got.set(`${repo} ${branch}`, { number: n.number, url: n.url, state })
-    })
-    done(got)
-  }))
 }

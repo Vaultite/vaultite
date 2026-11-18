@@ -11,6 +11,20 @@ async function commandLine(check: VaultTest["check"]) {
   ]))
 }
 
+async function cloudDue(check: VaultTest["check"]) {
+  const { dueAt } = await import("../../../electron/clouddue.ts")
+  const base = { profiles: ["a", "b"], read: true, cookiesFor: 10_000, orgs: new Map([["a", { at: 50_000 }]]), next: new Map<string, { at: number }>(), prs: Infinity }
+  const cookies = new Map([["a", { at: 1000, in: true }], ["b", { at: 3000, in: false }]])
+  check("cloud sessions: read again when the first thing is due: a profile's cookies, its organizations, an account's sessions", same([
+    [dueAt({ ...base, cookies }), 11_000],
+    [dueAt({ ...base, cookies, next: new Map([["org", { at: 5000 }]]) }), 5000],
+    [dueAt({ ...base, cookies: new Map(), orgs: new Map() }), 10_000],
+    [dueAt({ ...base, profiles: [], cookies, prs: 7000 }), 7000],
+    [dueAt({ ...base, profiles: [], cookies }), Infinity],
+  ]))
+}
+
 export default async ($: VaultTest) => {
   await commandLine($.check)
+  await cloudDue($.check)
 }
