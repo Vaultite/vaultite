@@ -268,8 +268,12 @@ async function run(n) {
   await s.page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, LONG)
   await until(() => s.page.evaluate(() => window.__lat.shows("Section 0")), 15000)
   await quiet(s)
+  if (await s.page.locator("[data-view-toggle=read]").isVisible()) { await s.page.tap("[data-view-toggle=read]"); await quiet(s) }
   check("the cursor put in the middle of the long note", await cursorTo(s, 0.5))
+  const length = () => s.page.evaluate(() => [...document.querySelectorAll(".cm-content")].find((e) => e.getClientRects().length && !e.closest("[data-kept]"))?.cmTile?.root?.view?.state.doc.length)
+  const was = await length()
   r.typing = await typing(s, "typing")
+  check("the keys typed went into the note", (await length()) > was, [was, await length()])
   await wait(1500)
 
   if (!PHONE) {
