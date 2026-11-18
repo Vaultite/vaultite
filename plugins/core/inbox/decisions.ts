@@ -18,7 +18,7 @@ export function optionOf(v: unknown): { label: string; does: string } {
   return at > 0 ? { label: t.slice(0, at).trim(), does: t.slice(at + 2).trim() } : { label: t, does: "" }
 }
 
-export function vagueOf(question: string) {
+function vagueOf(question: string) {
   if (words(question).length < 3) return "it's too short to say what it's about"
   if (/^\W*\w+\s+(?:it|this|that|these|those|them)\b/i.test(question) || /\b(?:the (?:first|next|last|other)|both)\s+(?:\w+\s+)?(?:steps?|ones?|options?|parts?)\b/i.test(question))
     return "it points at something (it, this, the first steps) instead of naming it"

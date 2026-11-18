@@ -10,7 +10,7 @@ const ARTIFACT = /\.html?$/i
 
 const FAILURE = z.object({ code: z.string().optional().catch(undefined), text: z.string().optional().catch(undefined) }).catch({})
 
-export const dataPath = (rel: string) => `.vaultite/artifacts/${rel}.data.json`
+const dataPath = (rel: string) => `.vaultite/artifacts/${rel}.data.json`
 
 export type ArtifactData = { db: Record<string, Item>; storage: { shared: Record<string, string>; personal: Record<string, string> } }
 

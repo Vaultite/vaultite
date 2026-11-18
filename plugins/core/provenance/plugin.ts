@@ -9,7 +9,7 @@ import { z } from "zod"
 export const plugin = new Plugin(import.meta.url)
 const log = logger("provenance")
 
-export const DEFAULT_VALUES = [
+const DEFAULT_VALUES = [
   { value: "human", label: "Human", icon: "user", tint: "green", hint: "You wrote it" },
   { value: "reviewed", label: "Reviewed", icon: "user-check", tint: "blue", hint: "AI, read by you" },
   { value: "mixed", label: "Mixed", icon: "blend", tint: "teal", hint: "You and AI both wrote it" },

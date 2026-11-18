@@ -1,7 +1,7 @@
 import { obj, viewsOf, type BaseConfig } from "./bases.ts"
 import { treeOf, type Group } from "./filters.ts"
 
-export type NewItem = { folder: string | null; props: Record<string, unknown> }
+type NewItem = { folder: string | null; props: Record<string, unknown> }
 
 export function newItem(cfg: BaseConfig, at: number): NewItem {
   const out: NewItem = { folder: null, props: {} }

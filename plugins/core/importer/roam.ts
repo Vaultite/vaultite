@@ -1,7 +1,7 @@
 // Roam's syntax: TODOs, ((block refs)), #[[tags]], __italics__, ^^highlights^^
 
 type Block = { string?: unknown; children?: unknown; uid?: unknown; heading?: unknown }
-export type RoamNote = { name: string; title: string; body: string; created: number | null; updated: number | null }
+type RoamNote = { name: string; title: string; body: string; created: number | null; updated: number | null }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 const kids = (v: unknown): Block[] => (Array.isArray(v) ? v.filter(isObj) : [])

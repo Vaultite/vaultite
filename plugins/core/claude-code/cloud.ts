@@ -17,8 +17,8 @@ const OUTPUT = z.object({ output: z.string().optional() }).catch({})
 const TRANSCRIPT = z.object({ status: said, entries: z.array(z.unknown()).nullish().catch(undefined), next_cursor: said }).catch({})
 
 const LISTED_LATE = 3 * 60_000
-export type CloudSeen = { status: string; title: string; updated: number; branch?: string }
-export type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; awaits?: Awaits; asks?: { question: string; choices: string[] }[] }
+type CloudSeen = { status: string; title: string; updated: number; branch?: string }
+type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; awaits?: Awaits; asks?: { question: string; choices: string[] }[] }
 
 const git = (cwd: string, args: string[]) => new Promise<string>((ok, fail) =>
   execFile("git", ["-C", cwd, ...args], { env: gitEnv(), timeout: 60_000, maxBuffer: 4 << 20 }, (e, out, err) => (e ? fail(new Error(String(err || e.message).trim().slice(0, 300))) : ok(String(out)))))

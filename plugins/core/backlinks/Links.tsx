@@ -121,7 +121,7 @@ function OutgoingLinks({ outgoing, failed, held, open }: { outgoing: Out[] | nul
   )
 }
 
-export function LinksList({ store, path, pane, inNote }: { store: Store; path: string; pane?: string; inNote?: boolean }) {
+function LinksList({ store, path, pane, inNote }: { store: Store; path: string; pane?: string; inNote?: boolean }) {
   const { linked, outgoing, unlinked, more, refresh, failed } = useLinks(store, path)
   const [busy, setBusy] = useState("")
   const looking = useKeptCount(`links:unlinked:${path}`, unlinked ? unlinked.mentions.length : undefined, 0, 6)
@@ -169,7 +169,7 @@ export function LinksList({ store, path, pane, inNote }: { store: Store; path: s
 
 type WebLinked = { site: string; about: { path: string }[]; linked: { path: string; line: string }[]; elsewhere: { path: string; url: string; line: string }[]; total: number }
 
-export const webPageOf = (tab: string) => /^view:web\/(?:@[^/]+\/)?(https?:\/\/.+)$/i.exec(tab)?.[1] ?? ""
+const webPageOf = (tab: string) => /^view:web\/(?:@[^/]+\/)?(https?:\/\/.+)$/i.exec(tab)?.[1] ?? ""
 
 export async function openPageNote(url: string, title: string) {
   const r = await get<WebLinked>(`backlinks/web?url=${encodeURIComponent(url)}&limit=1`)

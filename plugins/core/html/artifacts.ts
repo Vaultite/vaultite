@@ -51,14 +51,14 @@ export function wrapper(rawPath: string, dark: boolean) {
 }
 
 
-export const CDN_HOSTS = [
+const CDN_HOSTS = [
   "cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com", "esm.sh", "cdn.skypack.dev", "ga.jspm.io",
   "fonts.googleapis.com", "fonts.gstatic.com", "rsms.me", "cdn.tailwindcss.com", "d3js.org", "cdn.plot.ly",
   "code.jquery.com", "cdn.observableusercontent.com",
 ]
 const HOST_RE = new RegExp(`(?:https?:)?//(${CDN_HOSTS.map((h) => h.replaceAll(".", "\\.")).join("|")})(?=[/"'\\s)?#]|$)`, "g")
 
-export const viaCache = (text: string) => text.replace(HOST_RE, "/cdn/$1")
+const viaCache = (text: string) => text.replace(HOST_RE, "/cdn/$1")
 
 /** Root-relative paths in a CDN's file (esm.sh's `import "/react@18/..."`, a font's `url(/...)`) are that host's. */
 function rootRelative(text: string, host: string) {
@@ -108,7 +108,7 @@ export async function cdn(host: string, rest: string): Promise<{ status: number;
 }
 
 
-export const statePath = (rel: string) => `.vaultite/artifacts/${rel}.json`
+const statePath = (rel: string) => `.vaultite/artifacts/${rel}.json`
 
 function stateOf(vault: Vault, rel: string): Record<string, string> {
   try {

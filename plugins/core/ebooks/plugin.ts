@@ -48,7 +48,7 @@ export function epubMarkdown(bytes: Buffer): string {
   return [head.join("\n\n"), ...chapters].join("\n\n")
 }
 
-export function fb2Markdown(xml: string): string {
+function fb2Markdown(xml: string): string {
   const title = /<book-title>([\s\S]*?)<\/book-title>/.exec(xml)?.[1]
   const authors = [...(/<title-info>([\s\S]*?)<\/title-info>/.exec(xml)?.[1] ?? "").matchAll(/<author>([\s\S]*?)<\/author>/g)]
     .map((m) => xmlDecode(m[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()).filter(Boolean)

@@ -2,7 +2,7 @@ export type Moves = { seq: number; log: { seq: number; from: number; to: number 
 export const NO_MOVES: Moves = { seq: 0, log: [] }
 export const DELETED = 0
 
-export function afterMove({ from, to }: { from: number; to: number }, n: number): number | null {
+function afterMove({ from, to }: { from: number; to: number }, n: number): number | null {
   if (to === DELETED) return n === from ? null : n > from ? n - 1 : n
   if (n === from) return to
   if (from < to && n > from && n <= to) return n - 1

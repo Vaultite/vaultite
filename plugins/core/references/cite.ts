@@ -1,4 +1,4 @@
-export type CiteItem = {
+type CiteItem = {
   key: string
   prefix: string
   suffix: string
@@ -31,10 +31,10 @@ const LABELS: [RegExp, string][] = [
 ]
 
 const keyOf = (raw: string) => (raw.startsWith("{") ? raw.slice(1, -1).trim() : raw)
-export type Locator = { locator: string; label: string; suffix: string }
+type Locator = { locator: string; label: string; suffix: string }
 const NO_LOCATOR: Locator = { locator: "", label: "", suffix: "" }
 
-export function splitLocator(text: string): Locator {
+function splitLocator(text: string): Locator {
   const t = text.replace(/^\s*,?\s*/, "")
   for (const [re, label] of LABELS) {
     const m = re.exec(t)

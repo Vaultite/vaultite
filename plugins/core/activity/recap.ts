@@ -57,7 +57,7 @@ export function parseRecap(body: string): { entries: RecapEntry[]; before: strin
   return { entries, before: lines.slice(0, first).join("\n").replace(/\s+$/, ""), after: lines.slice(last + 1).join("\n").trim() }
 }
 
-export function entryLines(e: RecapEntry) {
+function entryLines(e: RecapEntry) {
   return [`- ${e.time} ${e.text}`, ...e.quote.map((q) => `  > ${q}`.trimEnd()), ...e.items.map((x) => `  - ${x}`)]
 }
 

@@ -137,7 +137,7 @@ function Handles({ node: n, selected, resizable }: { node: CanvasNode; selected:
 }
 
 const CURSOR: Record<Dir, string> = { n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize", ne: "nesw-resize", sw: "nesw-resize", nw: "nwse-resize", se: "nwse-resize" }
-export function ResizeHandle({ id, dir }: { id: string; dir: Dir }) {
+function ResizeHandle({ id, dir }: { id: string; dir: Dir }) {
   const t = px(10), half = px(5)
   const s: CSSProperties = { cursor: CURSOR[dir] }
   if (dir === "n" || dir === "s") Object.assign(s, { left: t, right: t, height: t, [dir === "n" ? "top" : "bottom"]: `calc(-1 * ${half})` })

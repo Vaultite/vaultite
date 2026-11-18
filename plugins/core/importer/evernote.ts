@@ -4,7 +4,7 @@ import { htmlToMarkdown, xmlDecode } from "../../../core/plugins.ts"
 import { fromEnml } from "./html.ts"
 
 export type Resource = { name: string; mime: string; data: Buffer; hash: string }
-export type EnNote = { title: string; created: number | null; updated: number | null; tags: string[]; source: string; author: string; html: string; resources: Resource[] }
+type EnNote = { title: string; created: number | null; updated: number | null; tags: string[]; source: string; author: string; html: string; resources: Resource[] }
 
 const tag = (xml: string, name: string) => {
   const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "i").exec(xml)
@@ -16,7 +16,7 @@ const text = (s: string) => {
 }
 
 // Evernote's times: "20261005T150405Z"
-export function enDate(s: string): number | null {
+function enDate(s: string): number | null {
   const m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z?$/.exec(s.trim())
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null
 }

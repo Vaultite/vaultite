@@ -14,12 +14,12 @@ export const BUILT_IN = [
   { id: "ieee", title: "IEEE", aliases: [] },
   { id: "nlm-citation-sequence", title: "Vancouver (NLM)", aliases: ["vancouver", "nlm"] },
 ]
-export const DEFAULT_STYLE = "apa"
+const DEFAULT_STYLE = "apa"
 
 const titleIn = (xml: string) => /<title>([^<]*)<\/title>/.exec(xml)?.[1]?.trim() ?? ""
 const parentIn = (xml: string) => /<link[^>]*rel="independent-parent"[^>]*href="[^"]*\/([^/"]+)"/.exec(xml)?.[1] ?? /<link[^>]*href="[^"]*\/([^/"]+)"[^>]*rel="independent-parent"/.exec(xml)?.[1] ?? null
 
-export type StyleChoice = { value: string; label: string }
+type StyleChoice = { value: string; label: string }
 
 export function styleChoices(files: StyleFiles): StyleChoice[] {
   const own: StyleChoice[] = []

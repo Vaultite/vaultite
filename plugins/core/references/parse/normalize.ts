@@ -9,7 +9,7 @@ export const CslJson = z.json()
 export type CslJson = z.infer<typeof CslJson>
 export const CslFields = z.record(z.string(), CslJson)
 export type CslFields = z.infer<typeof CslFields>
-export type CslFrom = { id?: string; type?: string; typeKey?: string; cslOnly?: boolean }
+type CslFrom = { id?: string; type?: string; typeKey?: string; cslOnly?: boolean }
 
 type Value = string | CslName[] | CslDate | CslJson
 
@@ -63,7 +63,7 @@ function copyFields(out: Map<string, Value>, fields: CslFields, skip: string, cs
   }
 }
 
-export type CslRead = { item: CslItem | null; problem: string }
+type CslRead = { item: CslItem | null; problem: string }
 
 export function readCslItem(fields: CslFields, options: CslFrom = {}): CslRead {
   const id = options.id ?? parsed(Scalar, fields.id) ?? ""

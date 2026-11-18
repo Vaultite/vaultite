@@ -13,7 +13,7 @@ import { BlobsAsk, type Compare, CompareRun, DeviceSettings, ExchangeAnswer, Exc
 export const plugin = new Plugin(import.meta.url)
 const log = logger("sync")
 
-export type SetConfig = {
+type SetConfig = {
   id: string
   folder: string
   input?: string
@@ -34,9 +34,9 @@ const PULL_MS = FAST || 20_000, SCAN_MS = FAST || 5 * 60_000, MAIL_MS = FAST || 
 const QUIET_MS = 700
 const SYNCED_BY_OTHERS = [/\/Library\/Mobile Documents\//, /\/Dropbox( \([^)]*\))?\//, /\/OneDrive[^/]*\//, /\/Google ?Drive\//, /\/My Drive\//]
 
-export const syncDir = () => path.join(process.env.VAULTITE_LOCAL || LOCAL, "sync")
+const syncDir = () => path.join(process.env.VAULTITE_LOCAL || LOCAL, "sync")
 const configFile = () => path.join(syncDir(), "sets.json")
-export function readSets(): SetConfig[] {
+function readSets(): SetConfig[] {
   try { const s = JSON.parse(fs.readFileSync(configFile(), "utf8")).sets; return Array.isArray(s) ? s : [] } catch { return [] }
 }
 function writeSets(sets: SetConfig[]) {
@@ -44,7 +44,7 @@ function writeSets(sets: SetConfig[]) {
   fs.writeFileSync(configFile() + ".tmp", JSON.stringify({ sets }, null, 2) + "\n")
   fs.renameSync(configFile() + ".tmp", configFile())
 }
-export function syncedByOthers(folder: string): string {
+function syncedByOthers(folder: string): string {
   const p = path.resolve(folder) + "/"
   if (SYNCED_BY_OTHERS.some((re) => re.test(p))) return `${folder} is synced by another tool (iCloud Drive, Dropbox, OneDrive or Google Drive): one sync per folder`
   for (let d = path.resolve(folder); ; d = path.dirname(d)) { if (fs.existsSync(path.join(d, ".stfolder"))) return `${folder} is in a Syncthing folder: one sync per folder`; if (d === path.dirname(d)) break }
@@ -60,7 +60,7 @@ async function machineList(): Promise<Peer[]> {
 }
 const selfId = async () => String(await plugin.ask<string | null>("machines:self", null) ?? "") || os.hostname().replace(/\.local$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
 
-export class SyncSet {
+class SyncSet {
   cfg: SetConfig
   device: string
   folder: DiskFolder
@@ -467,7 +467,7 @@ function servedSet(): SyncSet | null {
   for (const s of running.values()) { if (s.shadow) continue; try { if (fs.realpathSync(s.folder.root) === here) return s } catch {} }
   return null
 }
-export type SyncVersion = { id: string; at: number; from: string; text: string | null; base: string | null }
+type SyncVersion = { id: string; at: number; from: string; text: string | null; base: string | null }
 /** The served vault's clashes sync kept, for the note's banner: by path ({id, at, from}), or one file's with their text and base. */
 plugin.provide("sync:conflicts", async (rel?: string): Promise<Record<string, { id: string; at: number; from: string }[]> | SyncVersion[]> => {
   const s = servedSet()

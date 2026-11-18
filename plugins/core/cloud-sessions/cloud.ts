@@ -97,7 +97,7 @@ export const openSession = (c: CloudSession, newTab?: boolean) => openIn(c.url, 
 export const openGitHub = (url: string) => openIn(url, [], { newTab: true })
 
 /** claude.ai's new session page: `prompt` waits in its box for the user to send. */
-export const newSessionUrl = (base: string, prompt?: string) => `${base}/code${prompt ? `?q=${encodeURIComponent(prompt)}` : ""}`
+const newSessionUrl = (base: string, prompt?: string) => `${base}/code${prompt ? `?q=${encodeURIComponent(prompt)}` : ""}`
 export const newSession = (a: CloudAccount | undefined, prompt?: string) => openIn(newSessionUrl(now.base ?? "https://claude.ai", prompt), a?.profiles ?? [], { newTab: true })
 
 

@@ -21,11 +21,11 @@ const PARSERS: [RegExp, (text: string) => ParseResult][] = [
 ]
 const AUTO = /\.(bib|bibtex|ris)$|\.csl\.(json|ya?ml)$|(^|\/)[^/]*(librar|bibliograph|references|zotero)[^/]*\.(json|ya?ml)$/i
 
-export const foundOnItsOwn = (rel: string) => AUTO.test(rel)
+const foundOnItsOwn = (rel: string) => AUTO.test(rel)
 
 const parsed = new Map<string, { stamp: string; result: ParseResult }>()
 
-export function readBibliography(files: VaultFiles, rel: string, stamp: string): ParseResult {
+function readBibliography(files: VaultFiles, rel: string, stamp: string): ParseResult {
   const had = parsed.get(rel)
   if (had && had.stamp === stamp) return had.result
   const parse = PARSERS.find(([re]) => re.test(rel))?.[1]
@@ -55,7 +55,7 @@ export function bibliographyFiles(files: VaultFiles, listed: string[], auto: boo
   return [...out]
 }
 
-export type NoteSource = { entries: Entry[]; notes: Map<string, string> }
+type NoteSource = { entries: Entry[]; notes: Map<string, string> }
 
 export function noteEntries(files: VaultFiles): NoteSource {
   const entries: Entry[] = [], notes = new Map<string, string>()

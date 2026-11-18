@@ -28,7 +28,7 @@ function Row({ path, size, tip, level, depth = 0, big }: { path: string; size: s
 const sizeTip = (s: Sized) => [`About ${shortTokens(s.tokens)} tokens` + (s.total !== undefined ? `, ${shortTokens(s.total)} with its imports` : ""),
   s.limit ? `Its limit: ${shortTokens(s.limit)}` : "No limit"].join("\n")
 
-export function ContextList({ store, big }: { store: Store; big?: boolean }) {
+function ContextList({ store, big }: { store: Store; big?: boolean }) {
   const files = store.tokenCount?.files ?? []
   const over = files.filter((s) => s.level === "over"), near = files.filter((s) => s.level === "near"), chains = files.filter((s) => s.chain)
   const of = (s: Sized) => `${shortTokens(s.total ?? s.tokens)} / ${shortTokens(s.limit)}`

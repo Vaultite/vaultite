@@ -1,7 +1,7 @@
 import { children, type Conn, type ZoteroRow } from "./api.ts"
 import type { ZoteroRef } from "../library.ts"
 
-export type Html = (html: string) => Promise<string>
+type Html = (html: string) => Promise<string>
 
 export function zoteroLink(ref: ZoteroRef, attachment = "", page = "") {
   const lib = ref.library.startsWith("groups/") ? `groups/${ref.library.slice(7)}` : "library"

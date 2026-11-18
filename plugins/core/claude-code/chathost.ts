@@ -13,7 +13,7 @@ const CHAT = "The user wants to clarify these questions. They may have more cont
   "response into account, then ask again if it still applies. Start by asking them what they would like to clarify."
 
 export type Running = AsyncIterable<SDKMessage> & Pick<Query, "interrupt" | "setModel" | "applyFlagSettings" | "setPermissionMode" | "close">
-export type Sdk = {
+type Sdk = {
   query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Running
   mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown, use?: string) => Promise<ToolResult> }[]) => McpServerConfig
 }

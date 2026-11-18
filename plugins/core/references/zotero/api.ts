@@ -44,7 +44,7 @@ const Data = z.looseObject({
   annotationSortIndex: z.string().optional(),
   annotationColor: z.string().optional(),
 })
-export type ZoteroData = z.infer<typeof Data>
+type ZoteroData = z.infer<typeof Data>
 const Row = z.looseObject({ key: z.string(), version: z.number(), data: Data, csljson: z.looseObject({}).optional() })
 export type ZoteroRow = { key: string; version: number; data: ZoteroData; csl: CslItem | null }
 

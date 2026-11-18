@@ -126,7 +126,7 @@ plugin.op({
 })
 
 type Landing = "in" | "front" | "origin" | "clipboard" | "cancelled" | "lost" | "live"
-export type DictationItem = { id: string; t: number; text: string; kind: "dictation" | "companion"
+type DictationItem = { id: string; t: number; text: string; kind: "dictation" | "companion"
   where: { kind: "note" | "terminal" | "field" | "app" | "companion"; path?: string; name?: string; bundle?: string }
   landing?: Landing; inbox?: boolean; why?: string
   said?: string; who?: string }
@@ -170,7 +170,7 @@ serves this vault here, so only the companion's asks show.
   ].filter(Boolean).join("\n"),
 })
 
-export function landingSaid(x: Pick<DictationItem, "where" | "landing" | "inbox" | "why">) {
+function landingSaid(x: Pick<DictationItem, "where" | "landing" | "inbox" | "why">) {
   const w = x.where, at = w.kind === "note" ? (w.path ?? "a note").replace(/\.md$/, "") : w.kind === "terminal" ? (w.name ?? "a terminal") : w.kind === "field" ? (w.name ?? "a field") : (w.name ?? "another app")
   if (x.landing === "clipboard") return x.inbox ? "copied, and in the inbox" : "copied"
   if (x.landing === "cancelled") return `cancelled, never typed in ${at}`

@@ -14,7 +14,7 @@ const canFolder = (path: string) => {
   return !!s && !!path && !isHidden(path) && path.split("/").pop() !== ARCHIVE_DIR && isFolder(s.files, path)
 }
 
-export async function setArchived(path: string, on: boolean) {
+async function setArchived(path: string, on: boolean) {
   try {
     const r = await op<Moved>(on ? "archive.add" : "archive.restore", { path })
     await reload()

@@ -36,7 +36,7 @@ export function isoDate(text: string): CslDate | null {
   return parts.length ? fromParts(parts) : null
 }
 
-export function monthOf(text: string): number {
+function monthOf(text: string): number {
   const t = text.trim().toLowerCase()
   if (/^\d{1,2}$/.test(t)) return Number(t)
   const i = MONTHS.indexOf(t.slice(0, 3))

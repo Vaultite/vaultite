@@ -6,7 +6,7 @@ import { current, moveAt, named, type Sent } from "./state"
 type Moving = Exclude<Sent, { open: string[] }>
 type Source = { from: number; what: Moving }
 export type AllDrop = Source & { n: number; index: number; group: string | null; home: boolean }
-export type ListOf = (n: number) => TabList
+type ListOf = (n: number) => TabList
 
 function sourceOf(item: DragItem): Source | null {
   const a = item.away

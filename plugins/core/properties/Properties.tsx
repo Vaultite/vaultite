@@ -16,7 +16,7 @@ const RETYPES: PropType[] = ["text", "number", "checkbox", "date", "list"]
 const plural = (n: number, one: string) => `${numberText(n)} ${one}${n === 1 ? "" : "s"}`
 const sortPref = devicePref<"count" | "name">("properties.sort", "count")
 
-export function showFiles(key: string) {
+function showFiles(key: string) {
   const q = /^[\w-]+$/.test(key) ? `[${key}]` : `["${key.replace(/"/g, '\\"')}"]`
   openView(`search/${q}`, { newTab: !isViewOpen("search") })
 }

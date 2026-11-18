@@ -25,7 +25,7 @@ const LOOKS: Record<RecapKind, Look> = {
   updated: { icon: Puzzle, tint: "var(--indigo)", label: "Plugin updated" },
   other: { icon: Dot, tint: "var(--gray)", label: "" },
 }
-export const GROUP_TINT: Record<RecapGroup, string> = { notes: "var(--purple)", tasks: "var(--teal)", captures: "var(--blue)", logs: "var(--pink)", agents: "var(--orange)", plugins: "var(--indigo)" }
+const GROUP_TINT: Record<RecapGroup, string> = { notes: "var(--purple)", tasks: "var(--teal)", captures: "var(--blue)", logs: "var(--pink)", agents: "var(--orange)", plugins: "var(--indigo)" }
 
 function partsOf(e: RecapEntry) {
   const verb = verbOf(e.kind)

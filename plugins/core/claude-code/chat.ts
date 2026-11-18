@@ -28,7 +28,7 @@ const Settings = z.looseObject({
   effortLevel: z.unknown().optional(), modelSettings: z.record(z.string(), z.looseObject({ effortLevel: z.unknown().optional() }).catch({})).optional().catch(undefined),
 }).catch({})
 
-export type ChatDeps = {
+type ChatDeps = {
   accounts: () => Account[]
   sessionFile: (id: string, all?: boolean) => { file: string; account: Account } | null
   tuiOf: (id: string) => Promise<string | null>
@@ -40,7 +40,7 @@ export type ChatDeps = {
 
 /** A tool a plugin serves its session, run on the server (`use`: the tool_use id its streamed input named). */
 export type ChatTool = ToolDef & { run: (args: unknown, use?: string) => Promise<ToolResult>; stream?: (use: string, json: string, end?: "done" | "stop") => void }
-export type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
+type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
   /** Pictures on this machine sent with its message (a screenshot), seen without a Read; `uuid`: that message's id. */
   images?: string[]; uuid?: Uuid
   /** Answers without thinking first (the summoned companion's). */

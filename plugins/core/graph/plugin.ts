@@ -51,7 +51,7 @@ const count = (inbound: Map<string, number>, links: [string, string | null][], b
   for (const [, p] of links) if (p) inbound.set(p, (inbound.get(p) ?? 0) + by)
 }
 
-export function vaultGraph(vault: Vault): Graph {
+function vaultGraph(vault: Vault): Graph {
   const version = `${vault.version}:${vault.settingsVersion}:${[...vault.switchedOff()].join(",")}`
   const same = cached?.vault === vault && cached.plugins.length === LOADED.length && LOADED.every((p, i) => p === cached!.plugins[i])
   if (same && cached!.version === version) return cached!.graph

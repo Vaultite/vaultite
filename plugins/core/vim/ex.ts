@@ -56,7 +56,7 @@ export const EX: Ex[] = [
   { name: "help", short: "h", usage: ":help", help: "Show Vim's keys", run: () => showHelp() },
 ]
 
-export function exNamed(name: string) {
+function exNamed(name: string) {
   return EX.find((x) => x.name === name || (name.length >= x.short.length && x.name.startsWith(name) && name.startsWith(x.short)))
 }
 

@@ -9,7 +9,7 @@ const scrollsY = (el: Element) => el.scrollHeight > el.clientHeight + 1 && /(aut
 const scrollsX = (el: Element) => el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)
 const shown = (el: Element) => !(el instanceof HTMLElement) || el.offsetParent !== null || getComputedStyle(el).position === "fixed"
 
-export const openSheet = () => [...document.querySelectorAll<HTMLElement>("dialog[open]")].find(shown) ?? null
+const openSheet = () => [...document.querySelectorAll<HTMLElement>("dialog[open]")].find(shown) ?? null
 
 export const focusedRoot = (): HTMLElement | null => openSheet() ?? document.getElementById("main-scroll")
 

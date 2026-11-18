@@ -488,7 +488,7 @@ export function containerItems(n: number): { items: MenuItem[]; name?: string } 
     ...boxes.map((b) => ({ label: b.name, icon: dotIcon(colorVar(b.color)), checked: b.id === container, run: () => { patch(n, { container: b.id }) } })),
   ] }
 }
-export function lookItems(n: number): MenuItem[] {
+function lookItems(n: number): MenuItem[] {
   const { tint } = lookOf(n), box = containerItems(n)
   return [
     { label: "Change icon", icon: Smile, run: () => askIcon(n) },

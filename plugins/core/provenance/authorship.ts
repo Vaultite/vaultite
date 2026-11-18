@@ -24,7 +24,7 @@ export function alike(a: string, b: string) {
 }
 
 const blank = (s: string) => !s.trim()
-export function frontmatterEnd(lines: string[]) {
+function frontmatterEnd(lines: string[]) {
   if (lines[0]?.trimEnd() !== "---") return 0
   for (let i = 1; i < lines.length; i++) if (/^(---|\.\.\.)\s*$/.test(lines[i])) return i + 1
   return 0

@@ -13,7 +13,7 @@ export type Kept = z.infer<typeof Kept>
 export const KeptLibrary = z.object({ prefix: z.string(), name: z.string(), version: z.number(), items: z.array(Kept) })
 export type KeptLibrary = z.infer<typeof KeptLibrary>
 
-export type Citekeys = (keys: string[]) => Promise<Map<string, string>>
+type Citekeys = (keys: string[]) => Promise<Map<string, string>>
 
 function keptItem(r: ZoteroRow, bbt: Map<string, string>, taken: Set<string>): Kept {
   if (SKIP_TYPES.has(r.data.itemType) || !r.csl) return { key: r.key, version: r.version, citekey: "", item: null }

@@ -105,7 +105,7 @@ export function newMenu(e: MouseEvent, accounts: CloudAccount[], picked?: CloudA
   menuBelow(e, accounts.map((a) => ({ label: `New session in ${a.label}`, icon: Plus, run: () => newSession(a) })))
 }
 
-export function accountsMenu(e: MouseEvent, s: CloudState, shown: CloudAccount[], picked: CloudAccount | undefined, pick: (a: CloudAccount | null) => void, hidden: string[] | undefined) {
+function accountsMenu(e: MouseEvent, s: CloudState, shown: CloudAccount[], picked: CloudAccount | undefined, pick: (a: CloudAccount | null) => void, hidden: string[] | undefined) {
   menuBelow(e, [
     { label: "Sessions in", caption: true, run: () => {} },
     { label: "All accounts", checked: !picked, run: () => pick(null) },

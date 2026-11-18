@@ -3,7 +3,7 @@ import { Eraser, Presentation as Board, Undo2, X } from "lucide-react"
 import { cn } from "@vaultite"
 
 export type Stroke = { color: string; pts: number[] }
-export const INKS = ["red", "yellow", "blue", "green", "foreground"] as const
+const INKS = ["red", "yellow", "blue", "green", "foreground"] as const
 export type InkColor = (typeof INKS)[number]
 const WIDTH = 4
 
