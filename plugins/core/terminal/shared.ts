@@ -21,6 +21,7 @@ export type Session = {
   cell?: Cell
   held: boolean
   stall?: ReturnType<typeof setTimeout>
+  unwatched?: ReturnType<typeof setTimeout>
 }
 
 export const sessions = new Map<string, Session>()

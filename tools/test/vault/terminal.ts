@@ -244,6 +244,28 @@ export default async ($: VaultTest) => {
       servers({ VAULTITE_USER_DATA: path.join(tmp, "none") }, VAULT).join() === "http://127.0.0.1:8793", [found, outside])
   }
 
+  {
+    const { letGoUnwatched } = await import("../../../plugins/core/terminal/unwatched.ts")
+    const { sessions } = await import("../../../plugins/core/terminal/shared.ts")
+    const { WebSocket } = await import("ws")
+    const closed: string[] = []
+    const fake = (id: string, events: boolean, clients: number): import("../../../plugins/core/terminal/shared.ts").Session => {
+      const link = { cols: 80, rows: 24, write() {}, resize() {}, onData() {}, onExit() {}, snapshot() {}, close: () => { closed.push(id) } }
+      const backend = { name: "fake", label: "Fake", ready: async () => true, list: async () => [], create: async () => {}, attach: async () => link, kill: async () => {},
+        send: async () => {}, capture: async () => ({ text: "", cols: 80, rows: 24, cursor: { x: 0, y: 0 }, alternate: false }), events: events ? () => {} : undefined }
+      const s = { id, backend, link, clients: new Set<InstanceType<typeof WebSocket>>(Array.from({ length: clients }, () => Object.create(WebSocket.prototype))), started: 0, pending: new Set(),
+        queued: "", owed: new Map(), acks: new Set(), held: false } satisfies import("../../../plugins/core/terminal/shared.ts").Session
+      sessions.set(id, s)
+      return s
+    }
+    const quiet = fake("letgo1", true, 0), watched = fake("letgo2", true, 1), noEvents = fake("letgo3", false, 0)
+    for (const s of [quiet, watched, noEvents]) letGoUnwatched(s, 5)
+    await new Promise((r) => setTimeout(r, 40))
+    check("terminal: a terminal no page shows stops sending its output here, not one a page shows nor one whose end only its link tells",
+      JSON.stringify(closed) === JSON.stringify(["letgo1"]) && !sessions.has("letgo1") && sessions.has("letgo2") && sessions.has("letgo3"), closed)
+    for (const s of [watched, noEvents]) { clearTimeout(s.unwatched); sessions.delete(s.id) }
+  }
+
   // Terminal ids: an agent in one of its accounts, and another machine's.
   {
     const term = await import("../../../plugins/core/terminal/plugin.ts")

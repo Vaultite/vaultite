@@ -290,6 +290,11 @@ try {
   await sleep(10000)
   const nsecs = (performance.now() - nt0) / 1000
   result.noisy = { terminals: noisy.length, keeperCpuPerSec: +((cpu(keeperPid()) - nk0) / nsecs).toFixed(1), serverCpuPerSec: +((cpu(server!.pid) - ns0) / nsecs).toFixed(1) }
+  await sleep(30000)
+  const lk0 = cpu(keeperPid()), ls0 = cpu(server!.pid), lt0 = performance.now()
+  await sleep(10000)
+  const lsecs = (performance.now() - lt0) / 1000
+  result.noisyLater = { keeperCpuPerSec: +((cpu(keeperPid()) - lk0) / lsecs).toFixed(1), serverCpuPerSec: +((cpu(server!.pid) - ls0) / lsecs).toFixed(1) }
   for (const n of noisy) await op("terminal.end", { id: n }).catch(() => {})
 
   step("list")
@@ -488,6 +493,7 @@ row("60 fps program: frames seen", "tui.frames", ""); for (const k of ["median",
 row("  server cpu", "tui.serverCpu"); row("  keeper cpu", "tui.keeperCpu")
 row("reattach (10k lines): attached", "reattach.attached"); row("reattach: picture", "reattach.picture"); row("reattach: bytes", "reattach.bytes", "")
 row("50 idle + 5 printing: keeper cpu per s", "noisy.keeperCpuPerSec"); row("  server cpu per s", "noisy.serverCpuPerSec")
+row("  after 30 s with no page: keeper cpu per s", "noisyLater.keeperCpuPerSec"); row("    server cpu per s", "noisyLater.serverCpuPerSec")
 row("terminal.list (10 shells) median", "list.op.median"); row("terminal.list p90", "list.op.p90"); row("GET terminals/sessions median", "list.sessions.median")
 row("  server cpu per list + sessions", "list.cpuPerPair")
 for (const k of ["median", "p90"]) row(`browser: key to echo drawn ${k}`, `browser.echoDrawn.${k}`)
