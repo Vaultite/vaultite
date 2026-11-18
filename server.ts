@@ -64,7 +64,7 @@ const vaults = await import("./core/vaults.ts")
 const { answers, bequeath, claim, reclaim, servingKey } = await import("./core/serving.ts")
 const { attach, detach, inDesktop, LISTENING, onHost, onHostMessage } = await import("./core/desktopapp.ts")
 timing.mark("imports")
-void (await import("./core/running.ts")).running().then((r) => startup.runsCommit(r.startedOn), () => {})
+void (await import("./core/running.ts")).startedOn().then(startup.runsCommit, () => {})
 
 const HOST = process.env.HOST || "127.0.0.1"
 const PORT = Number(process.env.PORT || 8793)

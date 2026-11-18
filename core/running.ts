@@ -127,14 +127,15 @@ export function runningIn(root: string, web: () => WebBuild) {
       return { ...base, runs: p.commit ? "older" : "unknown", file: hit.file, ...(p.commit ? {} : { why: "it didn't say what commit it runs" }) }
     }))
   }
-  return { running, resolve, ambiguous, contains, onRef, processes, runsOf }
+  const startedOn = async () => (await start).commit
+  return { running, startedOn, resolve, ambiguous, contains, onRef, processes, runsOf }
 }
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const here = runningIn(ROOT, served.read)
 /** What this server runs now. */
 export const running = here.running
-export const { resolve: resolveCommit, ambiguous: ambiguousCommit, contains, onRef, processes, runsOf } = here
+export const { startedOn, resolve: resolveCommit, ambiguous: ambiguousCommit, contains, onRef, processes, runsOf } = here
 
 /** A commit's hash, full or short: how a caller names one to a server. A name (HEAD, a branch, a tag, HEAD~1) is the
  *  caller's checkout's, and read in the server's would answer about another commit. */

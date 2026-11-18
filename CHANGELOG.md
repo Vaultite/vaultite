@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: starts answering sooner after an update that changed no part of the web app (2.4 s, now 0.9 s on a 3,000-note
+  vault).
 - Server: an agent's request no longer checks every file of every vault plugin on the main thread (38 file reads each
   with 3 small plugins, now 8, however many plugins).
 - Server: iCloud is asked for the files it evicted a few at a time, and a file that stays away less and less often (in

@@ -73,6 +73,7 @@ await section("the commit it runs", async () => {
   build("index-B.js", b, "feat(web): two")
   const web = await r.running()
   check("after a web-only update, the web build's", web.commit === b && web.subject === "feat(web): two" && web.startedOn === a, web)
+  check("the commit it started on, told without working out the web build's", await r.startedOn() === a)
   const c = commit({ "core/x.ts": "3" }, "feat(server): three")
   build("index-C.js", c)
   const back = await r.running()
