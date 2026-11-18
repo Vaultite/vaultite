@@ -518,13 +518,14 @@ export default async ($: VaultTest) => {
       const before = () => app.vaultPlugins.trust.approve("lantern", { content: "0".repeat(16), files: {} }, { version: "1.0.0", source: given, says: {} })
       check("adopt: allowing it here keeps where it came from and what it said it does", app.vaultPlugins.trust.approval("lantern")?.source === given &&
         JSON.stringify(app.vaultPlugins.trust.approval("lantern")?.says) === "{}", app.vaultPlugins.trust.approval("lantern"))
+      await api("DELETE", "inbox/events")
       before()
       await app.syncPlugins()
       const waitFor = async (ok: () => Promise<boolean>) => { for (let i = 0; i < 100 && !await ok(); i++) await new Promise((r) => setTimeout(r, 100)); return ok() }
-      await api("DELETE", "inbox/events")
+      const told = async () => (await api("GET", "inbox/events"))[1].events.filter((e: Any) => e.title === "Lantern updated to 1.2.0: Brighter at night").length
       check("adopt: updated elsewhere, the same files as its source's: allowed here, running, said once", await waitFor(async () => (await vplugin("lantern")).loaded) &&
         await light() === "steady" && app.vaultPlugins.trust.approved("lantern", { content: now.hash, files: {} }) &&
-        (await waitFor(async () => (await api("GET", "inbox/events"))[1].events[0]?.title === "Lantern updated to 1.2.0: Brighter at night")), [await vplugin("lantern"), (await api("GET", "inbox/events"))[1].events])
+        await waitFor(async () => await told() > 0) && await told() === 1, [await vplugin("lantern"), (await api("GET", "inbox/events"))[1].events])
       write(".vaultite/plugins/lantern/plugin.ts", lts("lantern", "a stranger's"))
       await app.syncPlugins()
       const forged = (await vplugin("lantern")).hash
