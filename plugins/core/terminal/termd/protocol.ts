@@ -1,8 +1,8 @@
 import { z } from "zod"
 import type { Said as Told } from "../osc7501.ts"
 
-/** 1 ptyd.ts; 2 termd with xterm.js; 3 before pictures; 4 screens on its loop; 5 screens' pages unzeroed (vt/patches/3). */
-export const PROTOCOL = 6
+/** 1 ptyd.ts; 2 termd with xterm.js; 3 before pictures; 4 screens on its loop; 5 pages unzeroed; 6 mid-sequence snapshots. */
+export const PROTOCOL = 7
 
 const Meta = z.record(z.string(), z.string())
 const Id = z.string().min(1)

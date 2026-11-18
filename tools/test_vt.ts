@@ -13,6 +13,8 @@ import { Screen } from "../plugins/core/terminal/vt/screen.ts"
 import { keptScale, KittyFeed, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
 import { htmlWithPictures } from "../plugins/core/terminal/termd/capture.ts"
 import { decodePng } from "../plugins/core/terminal/termd/png.ts"
+import { Screen as TermdScreen } from "../plugins/core/terminal/termd/screen.ts"
+import { HELD_MAX, unfinishedAt } from "../plugins/core/terminal/termd/unfinished.ts"
 import { about, minisignOk } from "./ghostty_update.ts"
 import { inkFrames, seq, streaming } from "./perf/vtcorpus.ts"
 import { check, section, summary } from "./test/lib.ts"
@@ -213,6 +215,27 @@ await section("pictures replayed in xterm.js", async () => {
   v.write("x\x1b[?1049l")
   check("its own screen under it is kept", v.text(null) === "one\ntwo\n$ vim", v.text(null))
   v.dispose()
+
+  const cut = ["\x1b", "\x1b[", "\x1b[3", "\x1b]0;ti", "\x1bP", "\x1b_Ga=T", "\x1b(", "\x1b]0;ti\x1b"]
+  const whole = ["", "x", "\x1b[1m", "\x1b]0;t\x07", "\x1b]0;t\x1b\\", "\x1b(B", "\x1b7", "\x1b[?25h"]
+  const at = (tail: string) => unfinishedAt(`ab\x1b[1mc${tail}`)
+  check("an output's unfinished sequence is found where it starts", cut.every((t) => at(t) === 7) && whole.every((t) => at(t) === 7 + t.length),
+    [...cut, ...whole].map((t) => [t, at(t)]))
+  check("… not one longer than it holds back", unfinishedAt(`\x1b]0;${"x".repeat(HELD_MAX)}`) === HELD_MAX + 4)
+  const mid = newVt({ cols: 40, rows: 8, scrollback: 100 })
+  mid.write(`${data}\x1b[`)
+  let midPic = ""
+  try { midPic = mid.serialize() } catch (e) { midPic = String(e) }
+  check("the alternate screen up and its output inside a sequence: its picture has the alternate screen still", midPic.includes("in the editor"), midPic)
+  mid.dispose()
+  const sc = new TermdScreen({ cols: 40, rows: 8, scrollback: 100 })
+  sc.write(`${data}\x1b[1`)
+  const snap = await sc.snapshot().catch((e: Error) => e.message)
+  sc.write("mbold\x1b[0m")
+  const after = await xtermText(`${snap}mbold\x1b[0m`, 40, 8), afterDirect = await xtermText(`${data}\x1b[1mbold\x1b[0m`, 40, 8)
+  check("termd's screen holds an unfinished sequence back: a snapshot then the rest draws what the output did", after.alt && after.text === afterDirect.text,
+    [snap, after, afterDirect])
+  sc.dispose()
 })
 
 await section("sizes", async () => {

@@ -15,7 +15,7 @@ export type ScreenOptions = {
 }
 
 type Waiting = { n: number; at: number; bytes: number; ok?: (v: never) => void; fail?: (e: Error) => void }
-type Said = { n: number; app: boolean; paste: boolean; out?: unknown; error?: string; title?: string; reply?: string }
+type Said = { n: number; app: boolean; paste: boolean; out?: unknown; error?: string; broke?: string; title?: string; reply?: string }
 
 const screens = new Set<Screen>()
 let looking: ReturnType<typeof setInterval> | null = null
@@ -62,8 +62,7 @@ export class Screen {
     this.modes = { app: m.app, paste: m.paste }
     if (m.title !== undefined) this.o.onTitle?.(m.title)
     if (m.reply) this.o.onReply?.(m.reply)
-    const failed = (m.out as { failed?: string } | undefined)?.failed
-    if (failed && !x.ok) { this.o.onTrouble?.(`libghostty-vt failed on its output (${failed}): started again blank`); this.o.onBlank?.() }
+    if (m.broke) { this.o.onTrouble?.(`libghostty-vt failed ${m.broke}: started again blank`); this.o.onBlank?.() }
     if (m.error) x.fail?.(new Error(m.error)); else x.ok?.(m.out as never)
   }
 

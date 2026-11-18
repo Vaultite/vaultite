@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Terminal: a full-screen program's terminal (vim, htop, less) no longer opens blank now and then: its picture failed
+  whenever its output had stopped in the middle of an escape sequence. Open terminals move to a terminal server with the fix.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its
