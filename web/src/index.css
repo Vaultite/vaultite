@@ -328,7 +328,7 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 :root { --toast-floor: calc(var(--page-foot) + 0.75rem); --keyboard-cover: 0px; --key-bar: 0px; }
 :root[data-keyboard] { --toast-floor: calc(var(--keyboard-cover) + 0.5rem); }
 :root[data-keyboard] [data-phone-bar] { transform: translateY(100%); opacity: 0; visibility: hidden; pointer-events: none; }
-[data-phone-bar] { transition: transform 160ms ease, opacity 160ms ease; }
+[data-phone-bar] { transition: transform var(--motion-fast) var(--ease-out), opacity var(--motion-fast) var(--ease-out); }
 /* Scrolling down a page puts the header and the bar away (core/barhide.ts), as iOS apps do: the header keeps the status
    bar's strip, the bar drops below the screen. A scroll up, a tap, the page's top or end, or another place brings them
    back; only the user's own scrolling counts, never a place restored. With the keyboard up iOS pans the screen to the
@@ -634,8 +634,8 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 /* A status dot (Badged) pops in; one that asks for the user rings once as it comes. */
 @keyframes dot-in { from { transform: scale(0); } }
 @keyframes dot-ping { to { transform: scale(2.6); opacity: 0; } }
-.dot-in { animation: dot-in 180ms ease-out; }
-.dot-in.breathe { animation: dot-in 180ms ease-out, breathe 2.2s ease-in-out 3; }
+.dot-in { animation: dot-in var(--motion-fast) var(--ease-out); }
+.dot-in.breathe { animation: dot-in var(--motion-fast) var(--ease-out), breathe 2.2s ease-in-out 3; }
 .dot-ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: dot-ping 1s ease-out; }
 @media (prefers-reduced-motion: reduce) { .dot-in, .dot-ping::after { animation: none; } }
 /* Set up Vaultite's hint of what to do in System Settings: a pointer comes to the app's switch, clicks, and it turns on. */
@@ -873,7 +873,7 @@ body[data-resizing] [data-status-bar] { transition: none; }
 .vau-editor .cm-image { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; -webkit-touch-callout: none; user-select: none; }
 .vau-editor .is-sized > .cm-image { max-height: none; }
 .vau-editor .cm-image-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; padding: 2px; border-radius: 7px;
-  background: color-mix(in srgb, var(--background) 82%, transparent); opacity: 0; transition: opacity 0.12s; }
+  background: color-mix(in srgb, var(--background) 82%, transparent); opacity: 0; transition: opacity var(--motion-fast) var(--ease-out); }
 .vau-editor .cm-image-tools button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px;
   border-radius: 5px; color: var(--muted-foreground); cursor: pointer; }
 .vau-editor .cm-image-tools button:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 8%, transparent); }
@@ -896,7 +896,7 @@ body[data-resizing] [data-status-bar] { transition: none; }
 /* A drawn block's bar, top right on hover: its name, options, menu and </> (phones: a held finger opens its menu). */
 .cm-block-bar { position: absolute; top: 4px; right: 0; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 2px;
   border: 0.5px solid var(--border); border-radius: 7px; background: var(--background); font-family: var(--font-sans);
-  opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+  opacity: 0; pointer-events: none; transition: opacity var(--motion-fast) var(--ease-out); }
 .cm-block-slot { display: contents; }
 .cm-block-name { padding: 0 6px; font-size: 12px; line-height: 20px; color: var(--muted-foreground); user-select: none; }
 .cm-block-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; border-radius: 5px;
@@ -944,7 +944,7 @@ body[data-resizing] [data-status-bar] { transition: none; }
 .cm-table-tools { position: absolute; top: 0; left: 0; z-index: 1; font-family: var(--font-sans); }
 .cm-content[contenteditable="false"] .cm-table-tools, .cm-table-tools[hidden] { display: none; }
 .cm-table-tool { position: absolute; display: flex; align-items: center; justify-content: center; padding: 0; border: 0;
-  color: var(--muted-foreground); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.12s, color 0.12s, background-color 0.12s; }
+  color: var(--muted-foreground); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out); }
 .cm-table-tool[hidden] { display: none; }
 @media (hover: hover) { .cm-block-table:hover .cm-table-tool { opacity: 1; pointer-events: auto; } }
 @media (hover: none) { .cm-table-tools[data-active] .cm-table-tool { opacity: 1; pointer-events: auto; } }
@@ -1088,7 +1088,7 @@ body[data-resizing] [data-status-bar] { transition: none; }
   .cm-clash button:active { opacity: 0.5; }
 }
 .cm-fence-copy, .md-copy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; border-radius: 5px;
-  color: var(--muted-foreground); cursor: pointer; transition: opacity 0.12s; }
+  color: var(--muted-foreground); cursor: pointer; transition: opacity var(--motion-fast) var(--ease-out); }
 .cm-fence-copy:hover, .md-copy:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 8%, transparent); }
 .cm-fence-copy.is-copied, .md-copy.is-copied { color: var(--green); }
 @media (hover: hover) {
@@ -1150,7 +1150,7 @@ body[data-resizing] [data-status-bar] { transition: none; }
 summary.callout-title { cursor: pointer; user-select: none; }
 .callout-icon { display: inline-flex; flex: none; }
 .callout-title-text { min-width: 0; }
-.callout-fold { display: inline-flex; flex: none; transition: transform 0.15s; }
+.callout-fold { display: inline-flex; flex: none; transition: transform var(--motion-fast) var(--ease-out); }
 details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 .callout-content { margin-top: 6px; color: var(--foreground); }
 .callout .callout-content > :last-child, .vau-editor .cm-block .callout-content > :last-child { margin-bottom: 0; }
@@ -1476,7 +1476,7 @@ html[data-translucent][data-lights][data-pane-cards]:not([data-fullscreen]) asid
 
 /* The bars above files fading (appearance `fileBarFade`, core/barfade.ts): slower than they come back. Typing in a
    file, or always, back while the pointer is at one (or the keyboard in it); leaving it, a moment's grace first. */
-[data-view-bar] { transition: opacity 160ms ease-out; container-type: scroll-state; }
+[data-view-bar] { transition: opacity var(--motion-fast) var(--ease-out); container-type: scroll-state; }
 /* Its line only once the page scrolls under it. */
 @container scroll-state(stuck: top) { [data-view-bar]::after { content: ""; position: absolute; inset: auto 0 0; border-bottom: 0.5px solid color-mix(in srgb, var(--border) 70%, transparent); } }
 :root[data-typing] [data-view-bar] { opacity: 0; transition: opacity 500ms ease-in 200ms; }
