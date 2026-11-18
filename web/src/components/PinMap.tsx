@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useNearScreen } from "@/core/near"
-import { createRoot } from "react-dom/client"
+import { partRoot } from "@/core/roots"
 import * as maplibregl from "maplibre-gl"
 import type { Map as MLMap, Marker } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
@@ -55,7 +55,7 @@ function pinElement(it: Item) {
   const dot = el("span", one ? "nm-dot" : "nm-dot nm-group", one ? undefined : String(it.pins.length))
   dot.style.setProperty("--c", colors.size === 1 ? [...colors][0] : DEFAULT_COLOR)
   const Icon = one?.icon ? namedIcon(one.icon) : null
-  if (Icon) { dot.classList.add("nm-has-icon"); createRoot(dot).render(<Icon className="size-3.5" strokeWidth={2.5} />) }
+  if (Icon) { dot.classList.add("nm-has-icon"); partRoot(dot).render(<Icon className="size-3.5" strokeWidth={2.5} />) }
   b.append(dot, el("span", "nm-label", one ? one.title : `${it.pins.length} places`))
   b.setAttribute("aria-label", one ? one.title : `${it.pins.length} places: ${it.pins.map((p) => p.title).join(", ")}`)
   b.dataset.pin = one ? one.id : ""

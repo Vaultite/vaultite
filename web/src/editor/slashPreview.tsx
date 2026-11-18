@@ -1,5 +1,5 @@
 import { flushSync } from "react-dom"
-import { createRoot } from "react-dom/client"
+import { partRoot } from "@/core/roots"
 import type { autocompletion, Completion } from "@codemirror/autocomplete"
 import { getStore, type Store } from "@/core/data"
 import type { SlashItem } from "@/core/define"
@@ -12,7 +12,7 @@ export function iconNode(Icon: IconType): Node {
   let svg = icons.get(Icon)
   if (!svg) {
     const host = document.createElement("span")
-    const root = createRoot(host)
+    const root = partRoot(host)
     flushSync(() => root.render(<Icon className="size-[1em]" strokeWidth={2} />))
     svg = host.firstElementChild?.cloneNode(true) ?? document.createElement("span")
     root.unmount()
@@ -38,7 +38,7 @@ export function slashInfo(item: SlashItem): Completion["info"] {
     const store = sampleStore()
     if (!store) return null
     const dom = document.createElement("div")
-    const root = createRoot(dom)
+    const root = partRoot(dom)
     flushSync(() => root.render(<SlashPreview item={item} store={store} />))
     return { dom, destroy: () => setTimeout(() => root.unmount(), 0) }
   }

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type ReactNode } from "react"
-import { createRoot } from "react-dom/client"
+import { partRoot } from "@/core/roots"
 import type { Store } from "@/core/data"
 import { findEmbed, folderOf, inVault, isMd, openFile, readFile, stem } from "@/core/files"
 import { followLink, newLink, resolver, type LinkClick, type Target } from "@/core/links"
@@ -19,7 +19,7 @@ import type { Anchor, LinkName, Linking } from "@/editor/linkComplete"
 const failed = () => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn. Click to edit its Markdown.</p>
 
 export function island<T = string>(draw: (t: T) => ReactNode, text: T, el: HTMLElement): { update: (t: T) => void; destroy: () => void } {
-  const root = createRoot(el)
+  const root = partRoot(el)
   const paint = (t: T) => root.render(<Catch fallback={failed}><div className="cm-island">{draw(t)}</div></Catch>)
   paint(text)
   return { update: paint, destroy: () => setTimeout(() => root.unmount(), 0) }

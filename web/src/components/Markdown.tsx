@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
-import { createRoot } from "react-dom/client"
+import { partRoot } from "@/core/roots"
 import { getStore, type Store } from "@/core/data"
 import { Copy } from "lucide-react"
 import { keyHint } from "@/core/commands"
@@ -74,7 +74,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     for (const a of ref.current.querySelectorAll<HTMLElement>("a[data-wiki], a[data-tag], a[data-url]")) { a.tabIndex = 0; a.setAttribute("role", "link") }
     if (!s) return
     return drawEmbeds(ref.current, (el, target) => {
-      const root = createRoot(el)
+      const root = partRoot(el)
       root.render(<EmbedView store={s} target={target} from={from ?? ""} seen={seenKey ? seenKey.split("\n") : []} />)
       return () => { setTimeout(() => root.unmount(), 0) }
     })

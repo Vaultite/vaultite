@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
+- Errors: a part drawn on its own (a note's embed, a table or callout in the editor, a map's pin) logs what failed and
+  where, instead of React's bare "Minified React error #520".
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its
   buttons; and typing it did in another app is checked by what the field holds, so a box that stayed empty is said so.
 - Inbox: answering a question no longer closes other open ones as "settled" when nothing settled them (they showed
