@@ -106,7 +106,7 @@ function CardAction({ e }: { e: Listed }) {
   const label = !e.imported ? "Get" : e.current ? null : "Update"
   return (
     <span className="flex shrink-0 flex-col items-end gap-0.5">
-      {label ? <span className={cn("rounded-full px-3 text-[13px] leading-[26px] font-semibold", label === "Get" ? "bg-primary/15 text-primary" : "bg-primary text-primary-foreground")}
+      {label ? <span className={cn("rounded-full px-3 text-[13px] leading-[26px] font-semibold", label === "Get" ? "bg-primary/15 text-ink-(--primary)" : "bg-primary text-primary-foreground")}
         {...(label === "Update" ? { "data-listed-update": true } : {})}>{label}</span>
         : <span className="flex items-center gap-1 text-[13px] leading-[26px] text-muted-foreground md:text-[12px]" data-listed-imported><Check className="size-3.5" strokeWidth={2.5} />Imported</span>}
       {brings && (
