@@ -1,3 +1,4 @@
+import type { WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { pageHeld, watchedElsewhere } from "./browser/engine.ts"
 import { shown, type Spot, type SpotEffect, type SpotEvent, spotStep } from "./pagespot.ts"
@@ -48,29 +49,30 @@ export async function wake(p: Page) {
   if (left > 0) await new Promise<void>((done) => setTimeout(done, left))
   if (p.spot.at === "parked" && Date.now() - (p.drew ?? 0) > SEEN_MS) await seeDraws(p)
 }
-const askPage = (p: Page, code: string, ms: number) => Promise.race([new Promise<null>((done) => setTimeout(done, ms, null)),
-  p.view.webContents.executeJavaScriptInIsolatedWorld(1018, [{ code }]).catch(() => null)])
-const frameIn = async (p: Page, ms: number) => (await askPage(p, "new Promise((done) => requestAnimationFrame(() => done(true)))", ms)) === true
+const pageGone = (wc: WebContents | undefined) => !wc || wc.isDestroyed()
+const askPage = (wc: WebContents | undefined, code: string, ms: number) => (!wc || wc.isDestroyed() ? Promise.resolve(null)
+  : Promise.race([new Promise<null>((done) => setTimeout(done, ms, null)), wc.executeJavaScriptInIsolatedWorld(1018, [{ code }]).catch(() => null)]))
+const frameIn = async (wc: WebContents | undefined, ms: number) => (await askPage(wc, "new Promise((done) => requestAnimationFrame(() => done(true)))", ms)) === true
 const SEEN_MS = 5000
 export const seeDraws = (p: Page) => (p.seeing ??= drawing(p).finally(() => { p.seeing = undefined }))
 /** An unthrottled page that stopped drawing for good (Electron on a Mac keeps its widget shown, not its compositor) takes
  *  no press: it's hidden and throttled, then, once its page is hidden, shown unthrottled again, which shows both. */
 async function drawing(p: Page) {
-  const wc = p.view.webContents
-  if (wc.isDestroyed()) return
-  if (await frameIn(p, 300)) { p.drew = Date.now(); return }
-  if (!p.drawn || p.player || p.spot.at === "resting" || p.spot.at === "hidden" || !p.view.getVisible() || wc.isDestroyed()) return
+  const wc: WebContents | undefined = p.view.webContents
+  if (pageGone(wc)) return
+  if (await frameIn(wc, 300)) { p.drew = Date.now(); return }
+  if (!p.drawn || p.player || p.spot.at === "resting" || p.spot.at === "hidden" || !p.view.getVisible() || pageGone(wc)) return
   const parked = p.spot.at === "parked"
   if (parked) move(p, { type: "rest" })
   else { p.view.setVisible(false); wc.setBackgroundThrottling(true) }
   for (const until = Date.now() + 1000; Date.now() < until;) {
-    if (await askPage(p, "document.visibilityState", 200) === "hidden") break
+    if (await askPage(wc, "document.visibilityState", 200) === "hidden") break
     await new Promise((done) => setTimeout(done, 30))
   }
-  if (wc.isDestroyed()) return
+  if (pageGone(wc)) return
   if (parked && spotOf(p).at === "resting") move(p, { type: "park", now: Date.now() })
   else if (!parked && shown(p.spot) && !p.view.getVisible() && !p.player) { wc.setBackgroundThrottling(false); p.view.setVisible(true) }
-  await frameIn(p, 1000)
+  await frameIn(wc, 1000)
   p.drew = Date.now()
 }
 export const keysBackIfUnseen = (p: Page) => { if (!shown(p.spot) && !p.player) SPOT_DOES.unfocus(p) }
