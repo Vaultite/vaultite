@@ -1,24 +1,29 @@
-import { z } from "zod"
+import type { z } from "zod"
 import { CliError, done, type PluginCli } from "../../../core/cli.ts"
 
-const Waited = z.looseObject({ met: z.string().nullish(), timedOut: z.boolean().optional(),
-  exit: z.looseObject({ code: z.number(), signal: z.number(), lost: z.boolean().optional() }).nullish() })
-const Got = z.looseObject({ id: z.string().optional(), ended: z.boolean().optional(), exit: Waited.shape.exit })
+async function makeParsers() {
+  const { z } = await import("zod")
+  const Waited = z.looseObject({ met: z.string().nullish(), timedOut: z.boolean().optional(),
+    exit: z.looseObject({ code: z.number(), signal: z.number(), lost: z.boolean().optional() }).nullish() })
+  return { Waited, Got: z.looseObject({ id: z.string().optional(), ended: z.boolean().optional(), exit: Waited.shape.exit }) }
+}
+let made: ReturnType<typeof makeParsers> | null = null
+const parsers = () => (made ??= makeParsers())
+type Waited = z.infer<Awaited<ReturnType<typeof makeParsers>>["Waited"]>
 // 124 when the time ran out, as timeout(1) exits; 128 + a signal's number, as a shell reports one.
-const waitCode = (r: z.infer<typeof Waited> | undefined) => {
+const waitCode = (r: Waited | undefined) => {
   if (!r || r.met === undefined) return 0
   if (r.met === "exit" && r.exit) return r.exit.lost ? 1 : r.exit.signal ? 128 + r.exit.signal : r.exit.code & 255
   if (r.timedOut) return 124
   return r.met ? 0 : 1
 }
-
 const DETACH = 0x1c
 
 export const cli: PluginCli = {
   ops: {
-    "terminal.wait": { code: (r) => waitCode(Waited.safeParse(r).data) },
-    "terminal.start": { code: (r) => waitCode(Waited.safeParse(r).data) },
-    "terminal.send": { code: (r) => waitCode(Waited.safeParse(r).data) },
+    "terminal.wait": { code: async (r) => waitCode((await parsers()).Waited.safeParse(r).data) },
+    "terminal.start": { code: async (r) => waitCode((await parsers()).Waited.safeParse(r).data) },
+    "terminal.send": { code: async (r) => waitCode((await parsers()).Waited.safeParse(r).data) },
   },
   commands: [{
     name: "terminal",
@@ -37,7 +42,7 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
       const given = a._[0]
       if (!given) throw new CliError("which terminal? vau terminal attach <id or name> (vau terminal lists them)", true)
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new CliError("attach needs a terminal: run it in one, not piped")
-      const got = Got.parse(await c.call("POST", "ops/terminal.get", { id: given }))
+      const got = (await parsers()).Got.parse(await c.call("POST", "ops/terminal.get", { id: given }))
       if (!got.id) throw new CliError(`no terminal '${given}'`)
       if (got.ended) throw new CliError(`${got.id} ended${got.exit ? ` (exit code ${got.exit.code})` : ""}: vau terminal capture ${got.id} shows what it left`)
       const id = got.id

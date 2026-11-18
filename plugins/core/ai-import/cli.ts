@@ -1,9 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import { z } from "zod"
 import { CliError, done, flag, need, type PluginCli } from "../../../core/cli.ts"
 
-const Job = z.looseObject({ id: z.string(), name: z.string(), state: z.string(), chats: z.number(), read: z.number(), total: z.number(), error: z.string().nullish() })
+const jobSchema = async () => { const { z } = await import("zod"); return z.looseObject({ id: z.string(), name: z.string(), state: z.string(), chats: z.number(), read: z.number(), total: z.number(), error: z.string().nullish() }) }
 
 async function upload(url: string, file: string, headers: Record<string, string>) {
   const u = new URL(url)
@@ -61,6 +60,7 @@ in the vault: vau ai-import.run <path>.
       }
       if (r.status === 404 && !r.body.error) throw new CliError("the server has no /api/ai-import (an older version? restart it)")
       if (r.status >= 400) throw new CliError(String(r.body.error ?? r.status))
+      const Job = await jobSchema()
       let job = Job.parse(r.body)
       if (a.flags["no-wait"]) return done(job, `Importing ${job.name} (job ${job.id}): vau ai-import.job ${job.id} --wait follows it.`)
       let last = ""

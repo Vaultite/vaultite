@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -53,6 +54,21 @@ export default async ($: VaultTest) => {
     fs.rmSync(saved, { force: true })
     cr = await vau("upload", "--file", path.join(os.tmpdir(), "nope.png"))
     check("vau upload --file <a file not here> says so", cr.code === 1 && cr.err.includes("no file") && cr.err.includes("nope.png"), cr)
+  }
+  {
+    // vau parses the catalog by hand (core/contracts/ops.ts): every entry the server lists comes through as it is, a
+    // field left out takes its default, and an entry with a field of the wrong type is left out.
+    const { catalogOf } = await import("../../../core/contracts/ops.ts")
+    const listed = JSON.parse(JSON.stringify(app.catalog()))
+    const parsed = catalogOf(listed) ?? [], read = listed.find((e: { id: string }) => e.id === "file.read")
+    check("vau: the catalog comes through, every entry", isDeepStrictEqual(parsed.map((e) => e.id), listed.map((e: { id: string }) => e.id))
+      && isDeepStrictEqual(parsed.find((e) => e.id === "file.read"), read) && isDeepStrictEqual(catalogOf(JSON.parse(JSON.stringify(parsed))), parsed), parsed.length)
+    const odd = catalogOf([{ id: "lantern.find" }, { id: "lantern.bad", kind: "never" }, { id: "lantern.worse", params: { properties: { x: { minimum: "1" } } } }, { id: 7 }, null,
+      { id: "lantern.act", action: { on: ["lantern"], param: "path", label: "Light it", icon: 3 } }, { id: "lantern.more", params: { type: "object", properties: { x: { type: "string", unknown: 1 } } } }])
+    check("vau: a catalog entry's defaults, and what it leaves out", isDeepStrictEqual(odd, [
+      { id: "lantern.find", plugin: null, summary: "", help: "", kind: "write", params: { type: "object" }, args: [], cli: null, mcp: null, result: null, owner: null, action: null },
+      { id: "lantern.more", plugin: null, summary: "", help: "", kind: "write", params: { type: "object", properties: { x: { type: "string" } } }, args: [], cli: null, mcp: null, result: null, owner: null, action: null },
+    ]), odd)
   }
   cr = await vau("--help")
   check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)

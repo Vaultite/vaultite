@@ -2,7 +2,6 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { z } from "zod"
 import { catalogOf, type OpEntry } from "./contracts/ops.ts"
 import { brief, camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
 import { distance } from "./spelling.ts"
@@ -391,7 +390,7 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
     const kept: unknown[] = []
     for (;;) {
       const left = Math.max(0, Math.min(60, (end - Date.now()) / 1000))
-      const r = Waited.parse(await c.call("POST", "ops/events.wait", { types: flag(a, "type") ?? flag(a, "types"), path: flag(a, "path"), after, timeout: left }))
+      const r = (await answers()).Waited.parse(await c.call("POST", "ops/events.wait", { types: flag(a, "type") ?? flag(a, "types"), path: flag(a, "path"), after, timeout: left }))
       after = r.cursor ?? after
       if (r.missed) process.stderr.write("vau events: some events were let go of before they could be printed\n")
       for (const ev of r.events ?? []) {
@@ -410,10 +409,9 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
 const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- out and code read the server's answer, each parsing what it reads
-export type Local = { params?: (p: Obj, c: Ctx, extra: string[]) => Promise<Obj>; extra?: number; out?: (result: unknown, p: Obj, extra: string[]) => string; code?: (result: unknown) => number
+export type Local = { params?: (p: Obj, c: Ctx, extra: string[]) => Promise<Obj>; extra?: number; out?: (result: unknown, p: Obj, extra: string[]) => string; code?: (result: unknown) => number | Promise<number>
   again?: (p: Obj, ms: number) => Obj | null
   gone?: (p: Obj, why: string, ms: number) => { result: unknown; text: string } | null }
-const Live = z.looseObject({ live: z.looseObject({ live: z.unknown().optional() }) })
 const LOCAL: Record<string, Local> = {
   "app.version": {
     params: async (p) => {
@@ -423,7 +421,7 @@ const LOCAL: Record<string, Local> = {
       try { return { ...p, commit: execFileSync("git", ["rev-parse", "--verify", "--quiet", `${given}^{commit}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() || given } }
       catch { return p }
     },
-    code: (r) => { const l = Live.safeParse(r); return l.success && !l.data.live.live ? 1 : 0 },
+    code: async (r) => { const l = (await answers()).Live.safeParse(r); return l.success && !l.data.live.live ? 1 : 0 },
     again: (p, ms) => {
       const left = Math.round(Number(p.timeout ?? 900) - ms / 1000)
       return p.wait && left > 5 ? { ...p, timeout: left, waited: Number(p.waited ?? 0) + Math.round(ms / 1000) } : null
@@ -635,13 +633,7 @@ function listOf(r: unknown): unknown[] | null {
   return null
 }
 
-const OptionalText = z.string().optional().catch(undefined)
-const Waited = z.looseObject({ cursor: z.string().optional(), missed: z.boolean().optional(), events: z.array(z.unknown()).optional() })
-const Named = z.object({ path: OptionalText, file: OptionalText, id: OptionalText }).catch({})
-const Rows = z.array(z.looseObject({ path: z.unknown() })).optional().catch([]).transform((x) => x ?? [])
-const Tree = z.object({ files: Rows, others: Rows }).catch({ files: [], others: [] })
-const Failure = z.object({ problems: z.array(z.string()).optional().catch(undefined) }).catch({})
-const Both = z.object({ result: z.unknown(), text: z.unknown() }).partial().catch({})
+const answers = () => import("./clianswers.ts")
 
 async function listed(r: unknown, how: Shape, c: Ctx): Promise<string> {
   const rows = listOf(r)
@@ -650,10 +642,10 @@ async function listed(r: unknown, how: Shape, c: Ctx): Promise<string> {
   let tree: Set<unknown> | null = null
   const out: string[] = []
   for (const x of rows) {
-    const o = Named.parse(x)
+    const o = (await answers()).Named.parse(x)
     let p = typeof x === "string" ? x : o.path ?? o.file ?? null
     if (p === null && o.id !== undefined) {
-      if (!tree) { const t = Tree.parse(await c.call("GET", "files").catch(() => ({}))); tree = new Set([...t.files, ...t.others].map((f) => f.path)) }
+      if (!tree) { const t = (await answers()).Tree.parse(await c.call("GET", "files").catch(() => ({}))); tree = new Set([...t.files, ...t.others].map((f) => f.path)) }
       p = tree.has(`${o.id}.md`) ? `${o.id}.md` : tree.has(o.id) ? o.id : null
     }
     if (p === null) throw new CliError("--paths: this command's answer lists things that aren't files (see it with --json)")
@@ -692,18 +684,18 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
     if (next) { p = next; await new Promise((ok) => setTimeout(ok, 3000)); continue }
     const why = `the server at ${c.url} ${r ? `answered ${r.status}, not itself (a proxy: the server behind it is down)` : "didn't answer"} for ${Math.round((Date.now() - down) / 1000)} s`
     const gone = loc.gone?.(params, why, Date.now() - began)
-    if (gone) return { out: json ? JSON.stringify(gone.result, null, 2) : gone.text, code: loc.code?.(gone.result) ?? 1 }
+    if (gone) return { out: json ? JSON.stringify(gone.result, null, 2) : gone.text, code: await loc.code?.(gone.result) ?? 1 }
     throw failed ?? new CliError(why)
   }
   if (r.status >= 400) {
-    const b = r.body, { problems } = Failure.parse(b)
+    const b = r.body, { problems } = (await answers()).Failure.parse(b)
     const reason = String(isObj(b) && "error" in b ? b.error : b).replace(`${e.id}: `, "") || `the server answered ${r.status}, with no reason`
     const said = cliError(e, reason, problems ?? [])
     throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && !!problems)
   }
-  const shown = both ? Both.parse(r.body) : null
+  const shown = both ? (await answers()).Both.parse(r.body) : null
   const result = shown ? shown.result : r.body, text = shown ? shown.text : r.body
-  const code = loc.code?.(result) ?? 0
+  const code = await loc.code?.(result) ?? 0
   if (out) return { out: loc.out!(result, params, given.extra), code }
   if (list) return { out: await listed(result, how, c), code }
   if (json) return { out: JSON.stringify(result, null, 2), code }

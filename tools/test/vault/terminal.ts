@@ -219,8 +219,8 @@ export default async ($: VaultTest) => {
     const { cli: termCli } = await import("../../../plugins/core/terminal/cli.ts")
     const code = termCli.ops!["terminal.wait"].code!
     check("vau terminal wait: exits with the terminal's code, 128 + a signal, 1 when it was lost, 124 on a timeout, 1 when it ended first",
-      code({ met: "exit", exit: { code: 3, signal: 0 } }) === 3 && code({ met: "exit", exit: { code: 0, signal: 15 } }) === 143 && code({ met: null, timedOut: true }) === 124 &&
-      code({ met: "exit", exit: { code: 0, signal: 0, lost: true } }) === 1 && code({ met: null, timedOut: false, exit: { code: 0, signal: 0 } }) === 1 && code({ met: "idle" }) === 0)
+      await code({ met: "exit", exit: { code: 3, signal: 0 } }) === 3 && await code({ met: "exit", exit: { code: 0, signal: 15 } }) === 143 && await code({ met: null, timedOut: true }) === 124 &&
+      await code({ met: "exit", exit: { code: 0, signal: 0, lost: true } }) === 1 && await code({ met: null, timedOut: false, exit: { code: 0, signal: 0 } }) === 1 && await code({ met: "idle" }) === 0)
     // vau's --no-<switch> turns a switch off (vau terminal send --no-enter).
     const { entryOf } = await import("../../../core/ops.ts")
     let sentAs: Any = null
