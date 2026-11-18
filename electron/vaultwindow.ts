@@ -4,13 +4,11 @@ import { QUIET } from "./quiet.ts"
 import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { webWindow } from "./web.ts"
 import { revive } from "./revive.ts"
+import { appsWindow, checkInstalled, rest, webWindow } from "./rest.ts"
 import { attach, type Link } from "./host.ts"
 import { answers } from "../core/serving.ts"
 import { HOST, WORKTREE } from "./identity.ts"
-import { checkInstalled, restartToUpdate, worktreeChanged, worktreeNow } from "./updates.ts"
-import { appsWindow } from "./apps.ts"
 import { appsOn } from "./appson.ts"
 import { translucentAt, translucentWindow } from "./translucency.ts"
 import { openSandbox, sandboxPath } from "./sandbox.ts"
@@ -225,8 +223,8 @@ export async function startWorktree() {
   dev = await import("./devroot.ts")
   await dev.startDev({
     root: WORKTREE!, userData: app.getPath("userData"), headless: QUIET, debugPort: devtools ?? null, shellPrint: HOST?.shell.fingerprint,
-    info: worktreeNow,
-    changed: (what) => { worktreeChanged(what); if (QUIET) restartToUpdate() },
+    info: (w) => void rest.then((r) => r.worktreeNow(w)),
+    changed: (what) => void rest.then((r) => { r.worktreeChanged(what); if (QUIET) r.restartToUpdate() }),
     restartServers: () => { for (const w of wins.values()) w.watch?.restart("the worktree changed") },
     say: (text) => { for (const w of wins.values()) if (w.ready) w.win.webContents.send("vaultite", { type: "update-status", text, done: true }) },
   })

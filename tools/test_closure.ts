@@ -155,7 +155,7 @@ await section("the menu-bar helper shares no state with the main process", () =>
     "electron/dictationlist.ts", "electron/mics.ts", "electron/host.ts", "electron/updates.ts", "electron/storehost.ts", "electron/permissions.ts", "electron/gestures.ts",
     "electron/popup.ts", "electron/player.ts", "electron/apps.ts", "electron/helperload.ts",
     "electron/vaultlist.ts", "electron/servers.ts", "electron/errors.ts", "electron/titlebar.ts", "electron/vaultwindow.ts", "electron/remotewin.ts",
-    "electron/setupwin.ts", "electron/appmenu.ts",
+    "electron/setupwin.ts", "electron/appmenu.ts", "electron/rest.ts", "electron/mainrest.ts",
     ...["base", "keys", "paint", "permissions", "session", "icons", "accounts", "logins", "stack", "spot", "player", "life", "go", "menus", "page", "handlers"].map((p) => `electron/web${p}.ts`)]
   /** Imported by both, and why a second copy is harmless. A new one is a decision: stateless, or through HelperHost. */
   const STATELESS: Record<string, string> = {

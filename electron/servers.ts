@@ -5,15 +5,13 @@ import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
 import type { MenuSnapshot } from "./menu.ts"
-import { serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, servedHere, type Call, type Link } from "./host.ts"
 import type { Adopted } from "./heir.ts"
 import type { Serving } from "../core/serving.ts"
-import { talkCall } from "./talklog.ts"
 import { codeRoot, commitAt, compileCache, hold } from "./storehost.ts"
 import { DESKTOP_PROTOCOL, LISTENING } from "../core/desktopapp.ts"
 import { SERVER_V8_FLAGS } from "../core/serverflags.ts"
-import { appUpdates, lookNow, mainBehind } from "./updates.ts"
+import { rest } from "./rest.ts"
 import { mainLog } from "./mainlog.ts"
 import { heardHello } from "./serverhello.ts"
 import { ServerWatch } from "./serverwatch.ts"
@@ -70,20 +68,19 @@ export function serverFor(v: Known) {
 }
 
 const LOOK_ASKED = z.object({ port: z.number(), commit: z.string() })
-export const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
-  : m.name === "app:updates" ? appUpdates()
-  : m.name === "app:update-look" ? lookNow(LOOK_ASKED.safeParse(Array.isArray(m.args) ? m.args[0] : undefined).data)
+export const answerCall = (v: Known, m: Call) => rest.then((r) => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
+  : m.name === "app:updates" ? r.appUpdates()
+  : m.name === "app:update-look" ? r.lookNow(LOOK_ASKED.safeParse(Array.isArray(m.args) ? m.args[0] : undefined).data)
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
-  : typeof m.name === "string" && m.name.startsWith("talk:") ? talkCall(m.name, Array.isArray(m.args) ? m.args : [])
+  : typeof m.name === "string" && m.name.startsWith("talk:") ? r.talkCall(m.name, Array.isArray(m.args) ? m.args : [])
   : typeof m.name === "string" && m.name.startsWith("dictations:") ? (MAC ? import("./dictationlist.ts").then((d) => d.dictationsCall(String(m.name), Array.isArray(m.args) ? m.args : [])) : { items: [], total: 0, here: false })
   : typeof m.name === "string" && m.name.startsWith("voice:") ? (helper ? helper.voiceCall(m.name, Array.isArray(m.args) ? m.args : []) : { said: false, why: "no menu-bar helper here" })
-  : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
+  : r.serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
 
-function desktopEvent(w: Win, name: string, data: unknown) {
+export function desktopEvent(w: Win, name: string, data: unknown) {
   const m = { type: "desktop:event", name, data }
   if (w.server?.connected) w.server.send(m); else w.link?.send(m)
 }
-setServerSink((win, name, data) => { for (const w of wins.values()) if (w.win === win) desktopEvent(w, name, data) })
 
 export const rootOf = new WeakMap<Server, string>()
 export const logFrom = new WeakMap<Server, number>()
@@ -149,7 +146,7 @@ export function startServer(v: Known, port: number, own = false): Promise<ChildP
         if (spoke === DESKTOP_PROTOCOL) return ok(child)
         mainLog(`${name}'s server from ${root} speaks protocol ${String(spoke ?? "?")}, this app ${DESKTOP_PROTOCOL}: its own code instead`)
         const c = commitAt(root)
-        if (c) mainBehind(c)
+        if (c) void rest.then((r) => r.mainBehind(c))
         child.removeAllListeners("exit")
         child.once("exit", () => startServer(v, port, true).then(ok, fail))
         child.kill()

@@ -13,6 +13,7 @@ export type Shell = z.infer<typeof SHELL_STAMP>
 export type ShellHost = { root: string; bundleRoot: string; shell: Shell; from: string
   /** The first window's server answered (or, with none, the launch is done). */
   ready(): void
+  failed(why: string): boolean
   /** What happened since last asked: a root passed over, an earlier run that failed (electron/shell/roots.mjs). */
   events(): { t: number; kind: string; root: string; commit: string | null; why: string; ran?: string }[] }
 const CODE_STAMP = z.object({ commit: z.string(), repo: z.string() })

@@ -8,33 +8,21 @@ import { asked, refreshed, reopening } from "./early.ts"
 import { QUIET, fakePointer, quiet, quietPage } from "./quiet.ts"
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
-import module from "node:module"
 import path from "node:path"
-import { unloadPages } from "./web.ts"
-import "./browser/index.ts"
-import { engineBusy, engineFlush } from "./browser/engine.ts"
-import { servingOf } from "../core/serving.ts"
-import { DEV, WORKTREE } from "./identity.ts"
-import { codeRoot, commitAt } from "./storehost.ts"
-import { initUpdates, logUpdate, quitUpdates, scheduleUpdates } from "./updates.ts"
-import { stopApps } from "./apps.ts"
-import { setDictationServer, stopDictation } from "./dictation.ts"
-import type { HelperHost } from "./helper.ts"
-import type { HelperSlot } from "./helperload.ts"
+import { DEV, HOST, WORKTREE } from "./identity.ts"
 import { permissionFor, whose } from "./apppermissions.ts"
 import { mainLog } from "./mainlog.ts"
-import { DIST, ICON, LINUX, MAC, RELEASE, ROOT, WIN } from "./mainbase.ts"
+import { DIST, ICON, LINUX, MAC, RELEASE, WIN } from "./mainbase.ts"
 import { CONTROLS_HEIGHT } from "./titlebar.ts"
-import { buildMenu, devtools, helperPrefs, nameOf, remotes, save, setHelperPrefs, updates } from "./vaultlist.ts"
-import { adopted, handingOver, handOver, helper, helperOn, kept, ownPids, popouts, rootOf, setHelper, wins } from "./servers.ts"
+import { buildMenu, devtools, remotes } from "./vaultlist.ts"
+import { adopted, handingOver, handOver, helperOn, kept, wins } from "./servers.ts"
 import { failedBox, uncaught } from "./errors.ts"
-import { shellReady } from "./shellready.ts"
-import { beginQuit, dev, focusedVault, helperHome, lastFocused, manager, openHome, openVault, quitting, sandbox, setBehind, showManager, startWorktree } from "./vaultwindow.ts"
+import { beginQuit, dev, focusedVault, helperHome, manager, openHome, openVault, quitting, sandbox, setBehind, showManager, startWorktree } from "./vaultwindow.ts"
 import { openRemote, remoteWins } from "./remotewin.ts"
-import { firstRun, pathDirs, setupWin, showSetup } from "./setupwin.ts"
+import { firstRun, setupWin, showSetup } from "./setupwin.ts"
 import { appLink, argFiles, argLinks, openFiles } from "./fromoutside.ts"
 import { applyDockIcon, DOCK_ICON } from "./dockicon.ts"
-import "./handlers.ts"
+import { restIn, restNow } from "./rest.ts"
 import { logger } from "../core/log.ts"
 import { messageOf } from "../core/values.ts"
 
@@ -68,49 +56,14 @@ if (devtools) {
   app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1")
   app.commandLine.appendSwitch("remote-debugging-port", String(devtools))
 }
-let helperAt: HelperSlot | null = null
 AppWindow.each((w) => {
-  if (!MAC || !helperOn()) return
-  void app.dock?.show()
+  if (!MAC) return
+  if (helperOn()) void app.dock?.show()
   w.on("closed", () => { if (helperOn() && !AppWindow.getAllWindows().some((x) => x !== w && !x.isDestroyed())) app.dock?.hide() })
-})
-
-initUpdates({
-  windows: () => [...wins.values()],
-  popouts: () => popouts,
-  othersOpen: () => remoteWins.size > 0,
-  mode: () => updates,
-  busy: () => engineBusy() ?? helper?.helperBusy() ?? null,
-  talked: () => helper?.helperTalked() ?? Infinity,
-  quitting: () => quitting,
-  beginQuit: () => { mainLog("quitting for an update"); beginQuit() },
-  handOver,
-  flush: () => unloadOnce().then(() => engineFlush()),
-  buildMenu,
-  nameOf,
-  ownsServer: (w) => { const s = servingOf(w.vault.path); return !!s && ownPids.has(s.pid) },
-  helper: () => !!helper,
-  helperCommit: () => helperAt?.commit() ?? null,
-  reloadHelper: (root, commit) => helperAt?.reload(root, commit),
-  servers: () => {
-    const own = [...wins.values()].filter((w) => w.server?.exitCode === null)
-    const root = own[0]?.server ? rootOf.get(own[0].server) : undefined
-    if (!root) return null
-    const code = commitAt(root)
-    return { code, web: own[0].web ?? code }
-  },
-  restartServers: () => { for (const w of wins.values()) { w.watch?.restart("an update", (s) => rootOf.get(s) !== codeRoot()); w.web = undefined } },
-  restartServer: (u, why) => { for (const w of wins.values()) if (w === u) w.watch?.restart(why) },
-  adoptWeb: (dist, commit) => { for (const w of wins.values()) if (w.server?.exitCode === null && w.server.connected) { w.server.send({ type: "adopt-web", dist }); w.web = commit } },
-  path: () => [...pathDirs(), process.env.PATH].filter(Boolean).join(path.delimiter),
 })
 
 if (!app.isPackaged && QUIET) process.on("SIGUSR2", () => { handOver(); beginQuit(); app.relaunch(relaunchOptions()); app.quit() })
 
-// Sites save their sign-ins as their pages unload.
-let unloaded = false
-const unloadOnce = () => (unloaded ? Promise.resolve()
-  : Promise.race([unloadPages(), new Promise((done) => setTimeout(done, 5000))]).finally(() => { unloaded = true }))
 AppWindow.each((w) => w.on("focus", () => buildMenu()))
 if (WIN) AppWindow.each((w) => {
   let alone = false
@@ -177,9 +130,10 @@ app.on("second-instance", (_e, argv, cwd) => {
 app.on("before-quit", (e) => {
   if (!quitting) mainLog("quitting")
   beginQuit()
-  if (unloaded) return
+  const r = restNow()
+  if (!r || r.unloadedAll()) return
   e.preventDefault()
-  void unloadOnce().finally(() => app.quit())
+  void r.unloadOnce().finally(() => app.quit())
 })
 app.on("will-quit", () => {
   mainLog(handingOver ? "quit: its servers left running for the next launch" : "quit: its servers stopped")
@@ -188,9 +142,6 @@ app.on("will-quit", () => {
     else if (adopted(w.server)) w.server.release()
     w.link?.stop()
   }
-  stopApps()
-  stopDictation()
-  quitUpdates()
 })
 let launched = false
 app.on("window-all-closed", () => {
@@ -282,6 +233,23 @@ function guardPermissions() {
   })
 }
 
+const REST_WAITS_AT_MOST_MS = 2000
+const windowUp = new Promise<void>((ok) => {
+  setTimeout(ok, REST_WAITS_AT_MOST_MS)
+  AppWindow.each((w) => { w.once("show", () => ok()); w.webContents.once("did-start-loading", () => ok()) })
+})
+let restLoading: Promise<void> | null = null
+const loadRest = () => (restLoading ??= import("./mainrest.ts").then(async (r) => {
+  await r.startRest(process.env.VAULTITE_HELPER === "1" || (MAC && !driven && !DEV && process.env.VAULTITE_HELPER !== "0"))
+  restIn(r)
+}).catch((e) => {
+  const why = `its code didn't load: ${messageOf(e)}`
+  mainLog(`main process: ${why}`)
+  if (HOST?.failed(why)) return
+  dialog.showErrorBox(`${app.getName()} couldn't start`, why)
+  app.exit(1)
+}))
+
 app.whenReady().then(async () => {
   guardPermissions()
   if (await offerMove()) return
@@ -289,51 +257,26 @@ app.whenReady().then(async () => {
   app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() })
   if (WORKTREE) await startWorktree()
   if (DEV) app.dock?.setBadge(dev?.badge() ?? "dev")
-  if (process.env.VAULTITE_HELPER === "1" || (MAC && !driven && !DEV && process.env.VAULTITE_HELPER !== "0")) setHelper(await import("./helper.ts"))
-  const homePath = () => lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : [...wins.keys()][0] ?? [...kept.keys()][0]
-  setDictationServer((win) => {
-    const p = win ? [...wins.values()].find((w) => w.win === win)?.vault.path : homePath()
-    return (p ? wins.get(p)?.port ?? kept.get(p)?.port : null) ?? null
-  })
-  const helperHost: HelperHost = {
-    dictation: await import("./dictation.ts"),
-    home: () => {
-      const p = homePath()
-      const port = p ? wins.get(p)?.port ?? kept.get(p)?.port : undefined
-      return p && port ? { port, path: p, name: nameOf(p) } : null
-    },
-    homeWindow: () => {
-      const p = homePath(), w = p ? wins.get(p)?.win : undefined
-      if (!w || w.isDestroyed() || !w.isVisible() || w.isMinimized()) return null
-      return { page: w.webContents, bounds: w.getContentBounds(), zoom: w.webContents.getZoomFactor() }
-    },
-    openHome, quit: () => app.quit(),
-    focusedPage: () => AppWindow.getFocusedWindow()?.webContents ?? null,
-    event: (name, data) => { for (const w of [...wins.values(), ...kept.values()]) { const m = { type: "desktop:event", name, data }; if (w.server?.connected) w.server.send(m); else w.link?.send(m) } },
-    prefs: () => helperPrefs, setPrefs: (x) => { setHelperPrefs({ ...helperPrefs, ...x }); save() },
-    icon: path.join(ROOT, "electron", "tray", "stoneTemplate.png"),
-  }
-  if (helper) helperAt = (await import("./helperload.ts")).helperSlot({ now: () => helper, set: setHelper, host: helperHost, log: logUpdate })
-  if (helper) await helper.startHelper(helperHost)
   // (a Mac's Info.plist and Linux's desktop file name the scheme; the installer can't on Windows)
   if (WIN && app.isPackaged && !app.isDefaultProtocolClient("vaultite")) app.setAsDefaultProtocolClient("vaultite")
-  buildMenu()
   const a = asked()
   started = true
   const go = !a || await madeIfAsked(a)
   await refreshed
-  await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => log.error("a vault didn't open again", e, { path: p }))))
+  const opening = Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => log.error("a vault didn't open again", e, { path: p }))))
+  const setup = firstRun() && !asked()
+  if (setup && !DEV) showSetup()
+  await Promise.race([windowUp, opening])
+  await loadRest()
+  await opening
   if (!asked()) for (const r of remotes.filter((x) => x.open)) openRemote(r.url)
-  if (firstRun() && !asked() && DEV) await sandbox().catch((e) => log.error("the sandbox didn't open", e))
-  else if (firstRun() && !asked()) showSetup()
-  else if (!wins.size && !remoteWins.size && !early.length && !(await helperHome())) showManager()
+  if (setup && DEV) await sandbox().catch((e) => log.error("the sandbox didn't open", e))
+  else if (!setup && !wins.size && !remoteWins.size && !early.length && !(await helperHome())) showManager()
   if (early.length) await openFiles(early.splice(0), null)
   for (const u of earlyLinks.splice(0)) await appLink(u).catch(() => {})
   setBehind(false)
   launched = true
-  setTimeout(() => { if (!wins.size) shellReady(null) }, 20_000)
+  restNow()?.launchDone()
   if (!MAC && !AppWindow.getAllWindows().length) showManager()
   if (LINUX) unsandboxedNotice()
-  scheduleUpdates()
-  setTimeout(() => module.flushCompileCache?.(), 3000)
 })

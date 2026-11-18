@@ -11,6 +11,8 @@ const mark = () => {
 }
 mark()
 addEventListener("DOMContentLoaded", mark)
+const loaded = ipcRenderer.invoke("app:loaded").catch(() => {})
+const invoke = (name, ...args) => loaded.then(() => ipcRenderer.invoke(name, ...args))
 ipcRenderer.on("vaultite:fullscreen", (_e, on) => document.documentElement.toggleAttribute("data-fullscreen", !!on))
 ipcRenderer.on("vaultite:key", (_e, on) => document.documentElement.toggleAttribute("data-window-inactive", !on))
 // Windows hands a vault window's page the keyboard as if Tab were pressed when it's shown: its first button (the vault
@@ -49,7 +51,7 @@ if (process.platform === "win32") {
     const now = JSON.stringify([color, symbol, row, innerWidth])
     if (now === said) return
     said = now
-    ipcRenderer.invoke("window:controls", { color, symbol, height: row }).then((r) => {
+    invoke("window:controls", { color, symbol, height: row }).then((r) => {
       if (r && Number.isFinite(r.width)) html.style.setProperty("--window-controls", `${r.width}px`)
     }, () => {})
   }
@@ -65,7 +67,7 @@ if (process.platform === "win32") {
   })
 }
 
-const call = (name) => (...args) => ipcRenderer.invoke(name, ...args)
+const call = (name) => (...args) => invoke(name, ...args)
 
 contextBridge.exposeInMainWorld("vaultite", {
   desktop: true,
@@ -123,7 +125,6 @@ contextBridge.exposeInMainWorld("vaultite", {
   // The window's chrome see-through to the desktop (electron/translucency.ts): asked for, told whenever it changes.
   translucent: MAC || WIN ? { set: call("window:translucent"), on: (fn) => { ipcRenderer.on("vaultite:translucent", (_e, t) => fn(t)) } } : undefined,
   on: (fn) => { ipcRenderer.on("vaultite", (_e, msg) => fn(msg)) },
-  // The whole app's zoom (web/src/core/zoom.ts): asked, stepped, told whenever it changes.
   interfaceSize: { get: call("window:zoom"), step: call("window:zoom-step"), on: (fn) => { ipcRenderer.on("vaultite:zoom", (_e, z) => fn(z)) } },
   // The Browser's pages (electron/web.ts). The pages themselves get no preload: nothing of this reaches them.
   web: {
@@ -176,8 +177,8 @@ contextBridge.exposeInMainWorld("vaultite", {
     onMicrophones: (fn) => {
       const h = (_e, list) => fn(list)
       ipcRenderer.on("vaultite:microphones", h)
-      void ipcRenderer.invoke("dictation:microphones", true).catch(() => {})
-      return () => { ipcRenderer.removeListener("vaultite:microphones", h); void ipcRenderer.invoke("dictation:microphones", false).catch(() => {}) }
+      void invoke("dictation:microphones", true).catch(() => {})
+      return () => { ipcRenderer.removeListener("vaultite:microphones", h); void invoke("dictation:microphones", false).catch(() => {}) }
     },
     // (where a session that left this window lands its words: the helper asks, the page answers)
     onLand: (fn) => {
