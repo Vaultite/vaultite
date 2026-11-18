@@ -125,6 +125,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   had rewrapped went back to its old height.
 - Linux: Arch gets Vaultite from the AUR (`vaultite-bin`, each release's .deb repackaged), updated by pacman rather
   than by the app.
+- Linux: a Nix flake: `nix run github:Vaultite/vaultite` runs the app (`#server` the server, with `vau`), and `nix develop`
+  gives a dev shell. Thanks to Isaac Vargas.
 
 ## 0.15.0 (2026-11-19)
 

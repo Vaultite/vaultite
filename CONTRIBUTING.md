@@ -27,6 +27,9 @@ The desktop app is `npm run app`, the iPhone app `npm run ios` (needs Xcode, and
 `ios/App/Local.xcconfig`), and the Android app `npm run android` (needs JDK 21 and the Android SDK). On Windows, npm's
 scripts need a POSIX shell: `npm config set script-shell` to Git Bash's `bash.exe`.
 
+A change to `package-lock.json` makes `npmDepsHash` in `flake.nix` stale: set it to the hash `nix build .#server`, or
+the Nix job on CI, says it got.
+
 ## Pull requests
 
 Small fixes are fine to send directly. For anything larger, open an issue first so we can agree on the approach before

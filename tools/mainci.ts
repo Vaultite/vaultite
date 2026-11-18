@@ -8,7 +8,7 @@ import { gitEnv } from "../core/gitenv.ts"
 
 export const REPO = "Vaultite/vaultite"
 /** The workflows a push to main runs, by their file. */
-export const WORKFLOWS: Record<string, string> = { ".github/workflows/ci.yml": "CI", ".github/workflows/windows.yml": "Windows", ".github/workflows/transfer.yml": "Transfer" }
+export const WORKFLOWS: Record<string, string> = { ".github/workflows/ci.yml": "CI", ".github/workflows/windows.yml": "Windows", ".github/workflows/transfer.yml": "Transfer", ".github/workflows/nix.yml": "Nix" }
 
 export type Run = CiRun & { id: number; created_at: string; html_url?: string; head_commit?: { message?: string } | null }
 export type Job = { id: number; name: string; conclusion: string | null; steps?: { name: string; conclusion: string | null }[] }
