@@ -199,7 +199,17 @@ export default async ($: VaultTest) => {
     const raw = request({ "content-type": "application/octet-stream" }, { body: [piece, piece] })
     const [c2, r2] = await api("POST", "ops/file.upload?name=Raw.bin&folder=Inbox", {}, raw)
     check("file.upload: the raw body is the file", c2 === 200 && r2.path === "Inbox/Raw.bin" && fs.statSync(path.join(VAULT, "Inbox/Raw.bin")).size === 2 << 20, [c2, r2])
-    for (const f of ["Big.bin", "Raw.bin"]) fs.rmSync(path.join(VAULT, "Inbox", f))
+    const slow = request({ "content-type": "application/octet-stream" })
+    slow.push(piece)
+    const sending = api("POST", "ops/file.upload?name=Slow.bin&folder=Inbox", {}, slow)
+    await new Promise((r) => setTimeout(r, 50))
+    const wrote = await Promise.race([api("PUT", "file", { path: "Inbox/Meanwhile.md", text: "Saved meanwhile.\n" }).then(() => true),
+      new Promise((r) => setTimeout(r, 3000, false))])
+    slow.push(piece)
+    slow.push(null)
+    const [c3] = await sending
+    check("file.upload: a save goes ahead while its bytes are still coming", wrote === true && c3 === 200 && fs.statSync(path.join(VAULT, "Inbox/Slow.bin")).size === 2 << 20, [wrote, c3])
+    for (const f of ["Big.bin", "Raw.bin", "Slow.bin", "Meanwhile.md"]) fs.rmSync(path.join(VAULT, "Inbox", f))
   }
 
   // Files from outside the vault (desktop app): only paths its main process allowed.

@@ -718,7 +718,7 @@ export class App {
     const t0 = performance.now()
     const end = this.reported("POST", `ops/${op.id}`, {}, who, opts.report)
     try {
-      const out = this.holding.getStore()?.on ? await run() : write && op.lock !== false ? await this.hold(run)
+      const out = this.holding.getStore()?.on ? await run() : write && op.lock !== false && !op.input ? await this.hold(run)
         : opts.synced ? await run() : await this.vault.synced({ trusting: serversOwn }).then(run)
       const text = op.text ? op.text(out.result, out.params, who) : typeof out.result === "string" ? out.result
         : jsonBlock(out.result ?? null)
