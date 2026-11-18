@@ -48,6 +48,7 @@ type Kit = {
 
 type Listed = { id: string; pid?: number; process?: string; created?: number; title?: string; cols?: number; rows?: number; spare?: boolean; said?: Said }
 
+const AT_ONCE = 4
 const retryIn = (tries: number) => Math.min(60_000 * (tries + 1), 600_000)
 
 export function adopter(k: Kit) {
@@ -100,21 +101,26 @@ async function adoptFrom(k: Kit, socket: string, scrollback: number, tries: numb
   }
   ctl.sock.on("close", () => clearInterval(poll))
   let missed = 0
-  for (const x of listed) {
-    if (x.spare || x.id.startsWith("vauspare-")) { await ctl.ask({ op: "kill", id: x.id }).catch(() => {}); continue }
-    if (k.sessions.has(x.id)) continue
+  const one = async (x: Listed) => {
+    if (x.spare || x.id.startsWith("vauspare-")) { await ctl.ask({ op: "kill", id: x.id }).catch(() => {}); return }
+    if (k.sessions.has(x.id)) return
     try {
       const s = await adoptOne(k, socket, ctl, x, via, scrollback, procs, 15_000 * (tries + 1))
-      mine.set(x.id, s)
-      s.meta = { ...s.meta }
+      mine.set(x.id, s); s.meta = { ...s.meta }
       const end = s.ended.bind(s)
       s.ended = (exit) => { end(exit); if (mine.delete(x.id)) done("adopted: none left at") }
     } catch (e) { missed++; k.around.log("adopt", x.id, "failed:", e) }
   }
+  await inTurns(listed, AT_ONCE, one)
   k.around.log(`adopted ${mine.size} from ${socket} (pid ${via})${missed ? `, ${missed} not yet` : ""}`)
   done()
   if (missed) failed()
   return [...mine.keys()]
+}
+
+async function inTurns<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
+  const queue = [...items]
+  await Promise.all(Array.from({ length: n }, async () => { for (let x = queue.shift(); x !== undefined; x = queue.shift()) await fn(x) }))
 }
 
 async function adoptOne(k: Kit, socket: string, ctl: Wire, x: Listed, via: number, scrollback: number, procs: Map<string, string>, snapshotMs: number) {

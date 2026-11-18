@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Terminal: a full-screen program's terminal (vim, htop, less) no longer opens blank now and then: its picture failed
   whenever its output had stopped in the middle of an escape sequence. Open terminals move to a terminal server with the fix.
+- Terminal: after an update, open terminals move to the new terminal server up to 4 times sooner (four at a time, not one
+  by one), so they're frozen for less of it.
 - Terminal: a big picture (a PNG shown with kitty's protocol) no longer freezes every other terminal while it's decoded:
   it's decoded on a thread of its own, and only its own terminal's output waits for it.
 - Terminal: terminals you aren't looking at cost the terminal server about half the CPU they did while their programs
