@@ -39,6 +39,14 @@ export default async ($: VaultTest) => {
     check("browser agents: an act waits on a line saying the page is still at it, not on other text with an ellipsis",
       ["+ text \"Saving…\"", "- main: heading \"Billing\" | \"Loading usage...\"", "- status: \"Uploading 2 files…\""].every(saysPending)
         && !["- link \"Read more…\" [ref=e4]", "- text \"And then...\"", "- button \"Loading dock\" [ref=e5]", `- text "${"so much text before it ".repeat(4)}loading…"`].some(saysPending))
+    const { anywhere, HAS } = await import("../../../electron/browser/historyrows.ts")
+    const { DatabaseSync } = await import("node:sqlite")
+    const db = new DatabaseSync(":memory:")
+    db.exec("CREATE TABLE u (url TEXT)")
+    for (const u of ["https://GitHub.com/a", "https://shop.test/50%_off", "https://shop.test/50xxoff", "https://a.test/x\\y"]) db.prepare("INSERT INTO u VALUES (?)").run(u)
+    const like = (w: string) => db.prepare(`SELECT url FROM u WHERE ${HAS("url")}`).all(anywhere(w)).map((r) => String(r.url))
+    check("browser history: a word is found anywhere in any ASCII case, and %, _ and \\ in it are only themselves",
+      JSON.stringify([like("github"), like("50%_"), like("x\\y")]) === JSON.stringify([["https://GitHub.com/a"], ["https://shop.test/50%_off"], ["https://a.test/x\\y"]]), [like("github"), like("50%_"), like("x\\y")])
     const tree = ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "    - button \"Save settings\" [ref=e3]", "  - link \"Help\" [ref=e4]"].join("\n")
     check("browser agents: snapshot --find keeps the lines with it and what they're in",
       within(tree, "save") === ["- main", "  - form \"Settings\"", "    - button \"Save settings\" [ref=e3]"].join("\n") && within(tree, "/e[24]\\]/") === ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "  - link \"Help\" [ref=e4]"].join("\n"), within(tree, "save"))

@@ -5,7 +5,7 @@ import path from "node:path"
 import { eachPage, handle, tellAll, logger } from "./engine.ts"
 import { literal } from "./mask.ts"
 import { hasSecret, scrub } from "./pagesecrets.ts"
-import { COUNTS, GONE, HOST_LAST, ID_ROW, ID_ROWS, LIST_ASK, RANKED, RECENT, REMOVE_ASK, RESTORED, SUGGESTIONS, TABLES, URL_ROWS, VISITS,
+import { anywhere, COUNTS, GONE, HAS, HOST_LAST, ID_ROW, ID_ROWS, LIST_ASK, RANKED, RECENT, REMOVE_ASK, RESTORED, SUGGESTIONS, TABLES, URL_ROWS, VISITS,
   type How, type Removed, type Suggestion } from "./historyrows.ts"
 
 const log = logger("history")
@@ -133,9 +133,9 @@ const startsWord = (hay: string, w: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${
 export function search(text: string, limit = 8): { complete: { text: string; url: string } | null; rows: (Suggestion & { score: number })[] } {
   const t = text.trim().toLowerCase(), ws = words(t)
   if (!ws.length) return { complete: null, rows: [] }
-  const where = ws.map(() => "(instr(lower(url), ?) > 0 OR instr(lower(title), ?) > 0)").join(" AND ")
+  const where = ws.map(() => `(${HAS("url")} OR ${HAS("title")})`).join(" AND ")
   const found = RANKED.parse(sql(`SELECT url, title, host, visits, typed, last, frecency FROM urls WHERE frecency > 0 AND ${where} ORDER BY frecency DESC LIMIT 400`)
-    .all(...ws.flatMap((w) => [w, w])))
+    .all(...ws.flatMap((w) => [anywhere(w), anywhere(w)])))
   const scored = found.flatMap((r) => {
     const b = bare(r.url).toLowerCase(), title = r.title.toLowerCase()
     if (!ws.every((w) => w.length >= 3 || startsWord(b, w) || startsWord(title, w))) return []
@@ -176,9 +176,9 @@ export function top(limit = 8): Suggestion[] {
 
 export function list(opts: { before?: number; text?: string; limit?: number }) {
   const ws = words(opts.text ?? ""), limit = Math.min(Math.max(1, opts.limit ?? 200), 1000)
-  const where = ["v.at < ?", ...ws.map(() => "(instr(lower(u.url), ?) > 0 OR instr(lower(u.title), ?) > 0)")].join(" AND ")
+  const where = ["v.at < ?", ...ws.map(() => `(${HAS("u.url")} OR ${HAS("u.title")})`)].join(" AND ")
   const rows = VISITS.parse(sql(`SELECT v.id, v.at, v.profile, v.how, u.url, u.title, u.host FROM visits v JOIN urls u ON u.id = v.url WHERE ${where} ORDER BY v.at DESC LIMIT ?`)
-    .all(opts.before ?? Number.MAX_SAFE_INTEGER, ...ws.flatMap((w) => [w, w]), limit + 1))
+    .all(opts.before ?? Number.MAX_SAFE_INTEGER, ...ws.flatMap((w) => [anywhere(w), anywhere(w)]), limit + 1))
   return { visits: rows.slice(0, limit), more: rows.length > limit }
 }
 

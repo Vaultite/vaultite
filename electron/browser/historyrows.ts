@@ -11,6 +11,9 @@ export const TABLES = `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; P
     CREATE INDEX IF NOT EXISTS urls_host ON urls(host);
     CREATE INDEX IF NOT EXISTS urls_frecency ON urls(frecency);`
 
+export const HAS = (column: string) => `${column} LIKE ? ESCAPE '\\'`
+export const anywhere = (w: string) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+
 export const HOW = z.enum(["typed", "link", "bookmark", "form", "other"])
 export type How = z.infer<typeof HOW>
 

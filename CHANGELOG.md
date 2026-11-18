@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: the address bar's suggestions come in half the time from a long history (50,000 pages: 120 to 50 ms a key,
+  each of which held up the app's main process).
 - Browser: an agent's open or act that leaves "Saving…" or "Loading…" on the page waits for it to finish (up to 3 s),
   so the answer says "Settings saved" instead of needing another call to wait.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
