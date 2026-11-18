@@ -29,7 +29,8 @@ async function visit(name, browser) {
   // (WebKit fails the fetches a page leaving had going "due to access control checks": the old page's, not an error)
   const errors = []
   let leaving = false
-  page.on("pageerror", (e) => { if (!leaving) errors.push(e.stack || e.message) })
+  const noiseAsAppErrorsHasIt = (e) => e.message.startsWith("ResizeObserver loop")
+  page.on("pageerror", (e) => { if (!leaving && !noiseAsAppErrorsHasIt(e)) errors.push(e.stack || e.message) })
   ctx.on("weberror", (e) => { if (!leaving) errors.push(String(e.error())) })
   const leave = async () => { leaving = true; await page.goto("about:blank").finally(() => { leaving = false }) }
   const api = (method, p, body) => page.evaluate(async ([method, p, body]) => {
