@@ -27,12 +27,15 @@ await new Promise((r) => setTimeout(r, 3000))
 const sites = await startSites()
 /** An op as vau prints it: its text answer. */
 const op = async (id, params) => {
+  const t0 = performance.now()
   const r = await fetch(`${ORIGIN}/api/ops/web-viewer.${id}?as=text`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) })
   const t = await r.text()
+  lastMs = Math.round(performance.now() - t0)
   try { const j = JSON.parse(t); return typeof j.text === "string" ? j.text : typeof j.error === "string" ? `error: ${j.error}` : t } catch { return t }
 }
+let lastMs = 0
 const rows = []
-const note = (what, text) => { rows.push([what, text.length]); if (SHOW) console.log(`\n===== ${what} (${text.length})\n${text}`) }
+const note = (what, text) => { rows.push([what, text.length, lastMs]); if (SHOW) console.log(`\n===== ${what} (${text.length})\n${text}`) }
 try {
   for (const page of ["/mail", "/drive", "/doc/d6", "/doc/d8", "/billing", "/billing/invoices/INV-2026-10", "/settings", "/orders"]) {
     const opened = await op("open", { url: sites.url + page, task: "probe" })
@@ -72,8 +75,8 @@ try {
     await op("close", { tab })
   }
 } finally {
-  console.log(rows.map(([w, n]) => `${String(n).padStart(7)}  ${w}`).join("\n"))
-  console.log(`total ${rows.reduce((s, [, n]) => s + n, 0)}`)
+  console.log(rows.map(([w, n, ms]) => `${String(n).padStart(7)} ${String(ms).padStart(6)}ms  ${w}`).join("\n"))
+  console.log(`total ${rows.reduce((s, [, n]) => s + n, 0)} chars, ${rows.reduce((s, [, , ms]) => s + ms, 0)} ms`)
   sites.server.close()
   await app.close().catch(() => {})
   fs.rmSync(TMP, { recursive: true, force: true })
