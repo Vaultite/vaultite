@@ -14,11 +14,11 @@ import { keptScale, KittyFeed, pictureOf, readPicture, REPLAY_MAX, withPictures 
 import { decodeElsewhere } from "../plugins/core/terminal/termd/pictures.ts"
 import { htmlWithPictures } from "../plugins/core/terminal/termd/capture.ts"
 import { decodePng } from "../plugins/core/terminal/termd/png.ts"
-import { Screen as TermdScreen } from "../plugins/core/terminal/termd/screen.ts"
+import { Screen as TermdScreen, WRITE_EVERY } from "../plugins/core/terminal/termd/screen.ts"
 import { HELD_MAX, unfinishedAt } from "../plugins/core/terminal/termd/unfinished.ts"
 import { about, minisignOk } from "./ghostty_update.ts"
 import { inkFrames, seq, streaming } from "./perf/vtcorpus.ts"
-import { check, section, summary } from "./test/lib.ts"
+import { check, section, summary, waitFor } from "./test/lib.ts"
 
 const t0 = Date.now()
 const GRAPHEMES_AFTER_PICTURE_IN_A_WORKER = `
@@ -237,6 +237,16 @@ await section("pictures replayed in xterm.js", async () => {
   check("termd's screen holds an unfinished sequence back: a snapshot then the rest draws what the output did", after.alt && after.text === afterDirect.text,
     [snap, after, afterDirect])
   sc.dispose()
+  let answered = "", answeredAt = 0
+  const asked = new TermdScreen({ cols: 40, rows: 8, scrollback: 100, onReply: (d) => { answered += d; answeredAt ||= performance.now() } })
+  for (let i = 0; i < 5; i++) asked.write(`\r\x1b[2K\x1b[38;5;208mx\x1b[0m waiting ${i}`)
+  const askedAt = performance.now()
+  asked.write("\x1b[c")
+  await waitFor(() => answered || null, 2000, 5)
+  const spun = await asked.capture("text", null)
+  check("termd's screen takes output in batches, but a question to the terminal is answered at once, after what came before",
+    answered === "\x1b[?1;2c" && answeredAt - askedAt < WRITE_EVERY && spun.text === "x waiting 4", [answered, answeredAt - askedAt, spun.text])
+  asked.dispose()
 })
 
 await section("sizes", async () => {

@@ -10,6 +10,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   whenever its output had stopped in the middle of an escape sequence. Open terminals move to a terminal server with the fix.
 - Terminal: a big picture (a PNG shown with kitty's protocol) no longer freezes every other terminal while it's decoded:
   it's decoded on a thread of its own, and only its own terminal's output waits for it.
+- Terminal: terminals you aren't looking at cost the terminal server about half the CPU they did while their programs
+  draw (a spinner, an agent at work): their screens take output in batches, and still answer a program's questions at once.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no
   longer taken away when the workspace's own tabs come in, nor sent back behind the page the app was opened at.
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its

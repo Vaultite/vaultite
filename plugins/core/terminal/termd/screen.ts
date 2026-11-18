@@ -1,9 +1,13 @@
 import { Worker } from "node:worker_threads"
 import { vtModule } from "../vt/load.ts"
 import type { Capture, CaptureFormat } from "./protocol.ts"
+import type { ScreenRequest } from "./screenworker.ts"
 
 export const HUNG = 10_000
 const RESTARTS_MAX = 3
+export const WRITE_EVERY = 250
+const PENDING_MAX = 64 << 10
+const ASKS_OR_INPUT_MODES = /\x1b\[[?>=]?[\d;]*(?:[cntqux]|\$p)|\x1b\][^\x07\x1b]*\?|\x1bP|\x1b_G[^\x1b]*a=q|\x1bc|\x1b\[\?(?:[\d;]*;)?(?:1|2004)(?:;[\d;]*)?[hlrs]/
 
 export type ScreenOptions = {
   cols: number; rows: number; scrollback: number
@@ -32,6 +36,8 @@ export class Screen {
   private modes = { app: false, paste: false }
   private restarts: number[] = []
   private off = false
+  private pending = ""
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(o: ScreenOptions) {
     this.o = o
@@ -68,16 +74,32 @@ export class Screen {
 
   private freed() { this.o.onFree?.() }
 
-  private post(m: Record<string, unknown>, bytes = 0, ok?: Waiting["ok"], fail?: Waiting["fail"]) {
-    if (this.off || !this.w) { fail?.(new Error("its screen is off")); return }
+  private post(m: ScreenRequest, ok?: Waiting["ok"], fail?: Waiting["fail"]) {
+    this.sendPending()
+    this.postNow(m, 0, ok, fail)
+  }
+  private postNow(m: ScreenRequest, bytes: number, ok?: Waiting["ok"], fail?: Waiting["fail"]) {
+    if (this.off || !this.w) { this.inflight -= bytes; fail?.(new Error("its screen is off")); return }
     const n = ++this.n
     this.waiting.push({ n, at: performance.now(), bytes, ok, fail })
-    this.inflight += bytes
     this.w.postMessage({ n, ...m })
   }
-  private ask<T>(m: Record<string, unknown>) { return new Promise<T>((ok, fail) => this.post(m, 0, ok, fail)) }
+  private sendPending() {
+    if (this.pendingTimer) { clearTimeout(this.pendingTimer); this.pendingTimer = null }
+    const d = this.pending
+    if (!d) return
+    this.pending = ""
+    this.postNow({ op: "write", d }, d.length)
+  }
+  private ask<T>(m: ScreenRequest) { return new Promise<T>((ok, fail) => this.post(m, ok, fail)) }
 
-  write(d: string) { if (d) this.post({ op: "write", d }, d.length) }
+  write(d: string) {
+    if (!d) return
+    this.pending += d
+    this.inflight += d.length
+    if (ASKS_OR_INPUT_MODES.test(d) || this.pending.length >= PENDING_MAX) this.sendPending()
+    else if (!this.pendingTimer) { this.pendingTimer = setTimeout(() => this.sendPending(), WRITE_EVERY); this.pendingTimer.unref?.() }
+  }
   resize(cols: number, rows: number, cellWidth = this.cell.width, cellHeight = this.cell.height) {
     this.cols = cols; this.rows = rows; this.cell = { width: cellWidth, height: cellHeight }
     this.post({ op: "resize", cols, rows, cw: cellWidth, ch: cellHeight })
@@ -98,7 +120,7 @@ export class Screen {
   private restart(why: string) {
     const old = this.w, pending = this.waiting.splice(0)
     this.w = null
-    this.inflight = 0
+    this.inflight = this.pending.length
     void old?.terminate()
     const now = performance.now()
     this.restarts = [...this.restarts.filter((t) => now - t < 60_000), now]
@@ -122,6 +144,8 @@ export class Screen {
     void this.w?.terminate()
     this.w = null
     this.inflight = 0
+    this.pending = ""
+    if (this.pendingTimer) { clearTimeout(this.pendingTimer); this.pendingTimer = null }
     for (const x of this.waiting.splice(0)) x.fail?.(new Error("its terminal ended"))
   }
 }

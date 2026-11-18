@@ -5,8 +5,9 @@ import { withPictures } from "./kitty.ts"
 import type { CaptureFormat } from "./protocol.ts"
 import { unfinishedAt } from "./unfinished.ts"
 
-type In = { n: number; op: "write"; d: string } | { n: number; op: "resize"; cols: number; rows: number; cw: number; ch: number }
-  | { n: number; op: "capture"; format: CaptureFormat; lines: number | null } | { n: number; op: "snapshot" } | { n: number; op: "text"; lines: number }
+export type ScreenRequest = { op: "write"; d: string } | { op: "resize"; cols: number; rows: number; cw: number; ch: number }
+  | { op: "capture"; format: CaptureFormat; lines: number | null } | { op: "snapshot" } | { op: "text"; lines: number }
+type In = ScreenRequest & { n: number }
 
 type Modes = { app: boolean; paste: boolean }
 const { module, cols, rows, scrollback, modes: was } = workerData as { module: WebAssembly.Module; cols: number; rows: number; scrollback: number; modes?: Modes }
