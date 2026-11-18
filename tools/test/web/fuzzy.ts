@@ -79,3 +79,7 @@ const docs = NAMES.map((title, i): Doc => ({ id: `d${i}`, title, meta: i % 3 ? `
 const found = QUERIES.flatMap((q) => [search(docs, q), search(docs, q, 3), search(docs, q, Infinity)])
 const searched = createHash("sha256").update(JSON.stringify(found)).digest("hex").slice(0, 16)
 check("search: what every query over made-up docs finds, in order, and shows", found.flat().length > 100 && searched === "5001fe87f914dfd3", searched)
+check("fuzzy: accents don't matter either way, the name's own letters marked", shown("cafe", "Café Lisboa") === "Café" && shown("café", "Cafe Lisboa") === "Cafe"
+  && shown("lodz", "Łódź trip") === "Łódź" && shown("orsted", "Ørsted") === "Ørsted" && shown("cafe", "Cafe\u0301 Lisboa") === "Cafe", [shown("cafe", "Café Lisboa"), shown("café", "Cafe Lisboa")])
+check("fuzzy: a name only its letters in order could match is still found", shown("lsboa", "Café Lisboa") === "Lsboa" && fuzzy("running", "Runs") !== null && fuzzy("cities", "City guide") !== null,
+  [shown("lsboa", "Café Lisboa"), fuzzy("running", "Runs"), fuzzy("cities", "City guide")])

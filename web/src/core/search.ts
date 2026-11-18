@@ -6,6 +6,7 @@ import { folderOf, isHidden, stem } from "@/core/files"
 import { active, formatFor, type SearchDoc } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { marksOf, wordRanges } from "../../../core/searchquery.ts"
+import { lowerFolded } from "../../../core/fold.ts"
 import { fuzzy } from "@/core/fuzzy"
 import type { Hit } from "@/core/namesearch"
 import { trackSoon } from "@/core/unsaved"
@@ -64,7 +65,7 @@ export function useSearchIndex(store: Store): Doc[] {
 }
 
 function asHits(docs: Doc[], query: string): Hit[] {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const words = lowerFolded(query).split(/\s+/).filter(Boolean)
   return docs.map((d) => ({ ...d, marks: fuzzy(query, d.title)?.marks ?? marksOf(wordRanges(d.title, words)), metaMarks: marksOf(wordRanges(d.meta, words)), score: 0 }))
 }
 

@@ -44,6 +44,14 @@ function sources(anyCase: boolean): Map<string, string> {
   return m
 }
 
+export function lowerFolded(s: string): string {
+  if (!MAY_FOLD.test(s)) return s.toLowerCase()
+  const t = folds()
+  let out = ""
+  for (let i = 0; i < s.length; i++) { const to = t.get(s[i]); out += to?.length === 1 ? to : s[i] }
+  return out.toLowerCase()
+}
+
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const escapeIn = (s: string) => s.replace(/[\\\]^-]/g, "\\$&")
 

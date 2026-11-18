@@ -1,5 +1,6 @@
 import type { SearchDoc } from "@/core/plugins"
 import { excerpt, marksOf, wordRanges } from "../../../core/searchquery.ts"
+import { lowerFolded } from "../../../core/fold.ts"
 import { fuzzy } from "@/core/fuzzy"
 
 export type Hit = SearchDoc & {
@@ -11,7 +12,7 @@ type Found = { d: Doc; inTitle: boolean; marks: number[]; score: number; last: n
 
 function shown(d: Doc, words: string[], inTitle: boolean) {
   const inMeta = wordRanges(d.meta, words)
-  const rest = words.filter((w) => !d.title.toLowerCase().includes(w) && !d.meta.toLowerCase().includes(w))
+  const rest = words.filter((w) => !lowerFolded(d.title).includes(w) && !lowerFolded(d.meta).includes(w))
   if (inTitle || !rest.length || !d.text) return { meta: d.meta, metaMarks: marksOf(inMeta) }
   const at = wordRanges(d.text, rest)
   if (!at.length) return { meta: d.meta, metaMarks: marksOf(inMeta) }
@@ -21,12 +22,12 @@ function shown(d: Doc, words: string[], inTitle: boolean) {
 }
 
 const hays = new WeakMap<Doc, string>()
-const hayOf = (d: Doc) => { let h = hays.get(d); if (h === undefined) hays.set(d, h = `${d.title} ${d.text}`.toLowerCase()); return h }
+const hayOf = (d: Doc) => { let h = hays.get(d); if (h === undefined) hays.set(d, h = lowerFolded(`${d.title} ${d.text}`)); return h }
 
 export function search(docs: Doc[], query: string, limit = 40): Hit[] {
   const q = query.trim()
   if (!q) return []
-  const words = q.toLowerCase().split(/\s+/)
+  const words = lowerFolded(q).split(/\s+/)
   const out: Found[] = []
   for (const d of docs) {
     const m = fuzzy(q, d.title)

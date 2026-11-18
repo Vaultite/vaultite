@@ -22,6 +22,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Search: a word found in most notes answers about 5 times sooner (the search tab, the switcher, query blocks, vau search):
   only the shown files' lines are read out, and a page further down reuses the search.
 - Search: accents don't matter, as in Obsidian: "cafe" finds "café" and "café" finds "cafe"; ø, ł and ß match o, l and ss.
+  The quick switcher and the search tab's names ignore accents too.
 - Pictures of a page (vau html picture): on Windows they use the installed Chrome or Edge, so they work on Windows on Arm,
   and a page that fails to open says so instead of "nothing on the page matches".
 - Companion and agents: they attach a file from the vault to a web page (a screenshot to a Reddit reply), through

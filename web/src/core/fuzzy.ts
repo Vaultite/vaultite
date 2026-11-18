@@ -1,3 +1,4 @@
+import { lowerFolded } from "../../../core/fold.ts"
 export type Match = { score: number; marks: number[]; tier: number }
 
 export const TIER = { LETTERS: 0, INSIDE: 1, START: 2, WORD: 3, NAME: 4 } as const
@@ -23,7 +24,7 @@ export function stem(w: string): string {
 type At = { at: number; w: string; stem: string }
 type Name = { ls: string; ws: At[] }
 function nameOf(s: string): Name {
-  const ls = s.toLowerCase(), ws: At[] = []
+  const ls = lowerFolded(s), ws: At[] = []
   for (let i = 0; i < s.length; i++) {
     if (SEPARATORS.has(s[i]) || !boundary(s, i)) continue
     let j = i + 1
@@ -77,21 +78,14 @@ function word({ w, sw }: Typed, ws: At[], ls: string, s: string): Word | null {
 }
 
 let lastQ = "", lastWords: Typed[] = []
-const wordsOf = (q: string) => q === lastQ ? lastWords : (lastQ = q, lastWords = q.toLowerCase().split(/\s+/).filter(Boolean).map((w) => { const sw = stem(w); return { w, sw, lead: sw.replace(/y$/, "") } }))
+const wordsOf = (q: string) => q === lastQ ? lastWords : (lastQ = q, lastWords = lowerFolded(q).split(/\s+/).filter(Boolean).map((w) => { const sw = stem(w); return { w, sw, lead: sw.replace(/y$/, "") } }))
 
-const lows = new Map<string, string>()
-function lower(s: string) {
-  if (s.length > KEEP_UNDER) return s.toLowerCase()
-  let l = lows.get(s)
-  if (l === undefined) { if (lows.size >= KEEP_NAMES) lows.clear(); lows.set(s, l = s.toLowerCase()) }
-  return l
-}
 function inOrderIn(w: string, ls: string) {
   for (let i = 0, at = 0; i < w.length; i++, at++) { at = ls.indexOf(w[i], at); if (at < 0) return false }
   return true
 }
 const NONE: Name = { ls: "", ws: [] }
-const namedIfMay = (words: Typed[], s: string) => { const ls = lower(s); return words.every((x) => inOrderIn(x.w, ls) || ls.includes(x.lead)) ? named(s) : NONE }
+const namedIfMay = (words: Typed[], s: string) => { const ls = lowerFolded(s); return words.every((x) => inOrderIn(x.w, ls) || ls.includes(x.lead)) ? named(s) : NONE }
 
 export function fuzzy(q: string, s: string): Match | null {
   const words = wordsOf(q)
@@ -117,13 +111,13 @@ export function fuzzy(q: string, s: string): Match | null {
 }
 
 export const hasWords = (q: string, s: string) => {
-  const ls = s.toLowerCase()
-  return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => { const st = stem(w); return ls.includes(w) || (st.length >= 4 && ls.includes(st)) })
+  const ls = lowerFolded(s)
+  return lowerFolded(q).split(/\s+/).filter(Boolean).every((w) => { const st = stem(w); return ls.includes(w) || (st.length >= 4 && ls.includes(st)) })
 }
 
 export const startsWords = (q: string, s: string) => {
-  const ws = s.toLowerCase().split(/[\s\-_/]+/).filter(Boolean)
-  return q.toLowerCase().split(/\s+/).filter(Boolean).every((t) => {
+  const ws = lowerFolded(s).split(/[\s\-_/]+/).filter(Boolean)
+  return lowerFolded(q).split(/\s+/).filter(Boolean).every((t) => {
     const st = stem(t)
     return ws.some((w) => w.startsWith(t) || stem(w) === st || (st.length >= 3 && w.startsWith(st)))
   })

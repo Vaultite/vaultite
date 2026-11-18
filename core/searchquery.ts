@@ -393,7 +393,7 @@ export function explain(n: Node): string {
 export const marksOf = (ranges: [number, number][]) => ranges.flatMap(([a, b]) => Array.from({ length: b - a }, (_, k) => a + k))
 
 export function wordRanges(text: string, words: string[]): [number, number][] {
-  const low = text.toLowerCase()
+  const low = lowerFolded(text)
   const all: [number, number][] = []
   for (const w of words) if (w) for (let at = low.indexOf(w); at >= 0; at = low.indexOf(w, at + w.length)) all.push([at, at + w.length])
   all.sort((a, b) => a[0] - b[0])
@@ -468,4 +468,4 @@ export function suggestQuery(q: string, caret: number, v: QueryVocab, max = 8): 
 }
 
 import { messageOf } from "./values.ts"
-import { escapeRe, foldedPattern } from "./fold.ts"
+import { escapeRe, foldedPattern, lowerFolded } from "./fold.ts"
