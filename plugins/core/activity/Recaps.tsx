@@ -7,7 +7,7 @@ import { addDays, Bar, cn, dow, Empty, fmtDay, fmtLongDay, ink, Loading, Markdow
 import { Chips } from "./Feed"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, type RecapKind, verbOf } from "./recap"
 
-export const RECAP_TINT = "var(--activity)"
+const RECAP_TINT = "var(--activity)"
 
 type Look = { icon: ComponentType<{ className?: string; strokeWidth?: number }>; tint: string; label: string }
 const LOOKS: Record<RecapKind, Look> = {
