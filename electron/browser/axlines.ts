@@ -33,6 +33,24 @@ function without(lines: string[], around: (l: string) => boolean) {
   }
   return out
 }
+export function oneLineLists(lines: string[]) {
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    out.push(lines[i])
+    if (!/^\s*- combobox\b/.test(lines[i])) continue
+    const d = depthOf(lines[i]), names: string[] = []
+    let j = i + 1, more = ""
+    for (; j < lines.length && depthOf(lines[j]) > d; j++) {
+      const m = depthOf(lines[j]) === d + 2 ? /^\s*- (?:option ("[^"]*")|… (\d+) more options)/.exec(lines[j]) : null
+      if (!m) break
+      if (m[1]) names.push(m[1]); else more = m[2]
+    }
+    if (!names.length || (j < lines.length && depthOf(lines[j]) > d)) continue
+    out.push(`${" ".repeat(d + 2)}- options: ${names.join(" | ")}${more ? ` | … ${more} more` : ""}`)
+    i = j - 1
+  }
+  return out
+}
 export function mainLines(lines: string[]) {
   const at = lines.findIndex((l) => /^\s*- main\b/.test(l))
   if (at >= 0) {

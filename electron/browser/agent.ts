@@ -9,7 +9,7 @@ import { allPages, appWindows, busyWhen, eachPage, eachSession, engineBusy, hand
 import { docOf, exposed, filledIn, filling, heldNear, markRan, scrub, scrubDeep } from "./pagesecrets.ts"
 import { linesIn, nodeIdOf, refNow } from "./pagetree.ts"
 import { clipboardKey, keyEvent } from "./keypress.ts"
-import { changes, INTERACTIVE, mainLines } from "./axlines.ts"
+import { changes, INTERACTIVE, mainLines, oneLineLists } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
 import { AX_TREE, BOX, DESCRIBED, RESOLVED, type DomNode } from "./cdpwire.ts"
 import { messageOf } from "./messageof.ts"
@@ -93,7 +93,7 @@ async function tree(p: EnginePage, again = true): Promise<string[]> {
   const doc = docOf(p.wc)
   const text = await linesIn(p.wc, p.wc.getURL(), filledIn(p.wc))
   if (docOf(p.wc) !== doc) { if (again) return tree(p, false); throw new Error("the page kept changing as it was read: take a snapshot again in a moment") }
-  const lines = text ? scrub(text).split("\n") : []
+  const lines = text ? oneLineLists(scrub(text).split("\n")) : []
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
   return lines
 }
