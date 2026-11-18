@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // vau: Vaultite from a terminal (core/cli.ts). `vau --help`.
-// Node's compile cache first (modules type-stripped and compiled once are kept in os.tmpdir()), then the CLI.
+// Node's compile cache first (modules type-stripped and compiled once are kept), then the CLI. Linux's /tmp is often
+// RAM with a quota, so there it's kept in ~/.cache.
 import module from "node:module"
+import os from "node:os"
+import path from "node:path"
 
-module.enableCompileCache?.()
+const home = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache")
+module.enableCompileCache?.(process.env.NODE_COMPILE_CACHE || (process.platform === "linux" ? path.join(home, "vaultite", "compile-cache") : undefined))
 const { main } = await import("../core/cli.ts")
 process.exitCode = await main()
