@@ -1341,15 +1341,16 @@ export class Vault {
     if (late.join("\n") !== this.downloading.join("\n")) { this.downloading = late; this.version++ }
     changed = changed.filter((r) => texts.has(r))
     const now = Date.now()
+    const dirs = new Map<string, boolean>(), isDirNow = (p: string) => dirs.get(p) ?? dirs.set(p, isDir(p)).get(p)!
     const vanished = (top: string) => {
-      if (isDir(this.abs(top))) { this.missing.delete(top); return true }
-      if (!isDir(this.path)) return false
+      if (isDirNow(this.abs(top))) { this.missing.delete(top); return true }
+      if (!isDirNow(this.path)) return false
       const since = this.missing.get(top) ?? now
       this.missing.set(top, since)
       return now - since >= 3000
     }
     const gone = [...this.entries.keys()].filter((r) => !found.has(r) &&
-      (r.includes("/") ? vanished(r.split("/")[0]) : isDir(this.path)))
+      (r.includes("/") ? vanished(r.split("/")[0]) : isDirNow(this.path)))
     for (const rel of gone) this.drop(rel)
     if (this.missing.size) {
       const tops = new Set([...this.entries.keys()].map((r) => r.split("/")[0]))
