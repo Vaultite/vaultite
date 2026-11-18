@@ -127,7 +127,7 @@ function keepingVideo(body: string, markdown: string) {
   return [top, markdown, ...sectionsOf(body).filter((x) => !has.has(headingOf(x)))].filter(Boolean).join("\n\n")
 }
 
-export function updatedText(text: string, c: Clipped, now = nowStamp()): string {
+function updatedText(text: string, c: Clipped, now = nowStamp()): string {
   let out: string | null = text
   const set = (k: string, v: unknown) => { if (out !== null) out = setPropertyText(out, k, v) }
   if (c.author) set("author", [c.author])

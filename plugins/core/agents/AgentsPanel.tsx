@@ -19,7 +19,7 @@ const FILTER = "agents:filter"
 const EARLIER = "agents:earlier"
 const KEPT = "agents:agents"
 
-export function useAgentList(on = true) {
+function useAgentList(on = true) {
   const { runs: all, loading, unreachable, feeds } = useAgentRuns(on)
   const { hide } = useView()
   const runs = useMemo(() => (hide.length ? all.filter((r) => !hide.includes(r.kind)) : all), [all, hide])

@@ -5,10 +5,10 @@ import { type KeptLibrary, sync } from "./sync.ts"
 
 export type ZoteroState = { state: "off" | "ready" | "unreachable" | "refused" | "error"; detail: string; items: number; libraries: string[]; at: number; bbt: string | null }
 export type ZoteroOptions = { local: boolean; groups: boolean; webKey: string }
-export type ZoteroStore = { load: (web: boolean) => KeptLibrary[]; save: (web: boolean, libs: KeptLibrary[]) => void }
+type ZoteroStore = { load: (web: boolean) => KeptLibrary[]; save: (web: boolean, libs: KeptLibrary[]) => void }
 
 export const LOCAL_URL = () => process.env.VAULTITE_ZOTERO_URL || "http://127.0.0.1:23119"
-export const WEB_URL = () => process.env.VAULTITE_ZOTERO_API || "https://api.zotero.org"
+const WEB_URL = () => process.env.VAULTITE_ZOTERO_API || "https://api.zotero.org"
 
 const off = (detail = ""): ZoteroState => ({ state: "off", detail, items: 0, libraries: [], at: 0, bbt: null })
 const QUIET_FOR = 60_000

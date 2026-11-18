@@ -3,7 +3,7 @@ import { type CslItem, type CslName, yearOf } from "../csl.ts"
 const FOLDS = new Map([["ß", "ss"], ["ø", "o"], ["æ", "ae"], ["œ", "oe"], ["ł", "l"], ["đ", "d"], ["ð", "d"],
   ["þ", "th"], ["ı", "i"], ["ŋ", "n"]])
 
-export function asciiWord(text: string): string {
+function asciiWord(text: string): string {
   const lower = text.toLowerCase().replace(/[ßøæœłđðþıŋ]/g, (ch) => FOLDS.get(ch) ?? ch)
   return lower.normalize("NFD").replace(/\p{M}/gu, "").replace(/[^a-z0-9]/g, "")
 }

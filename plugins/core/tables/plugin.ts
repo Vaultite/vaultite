@@ -4,7 +4,7 @@ export const plugin = new Plugin(import.meta.url)
 
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ")
 
-export function csvMarkdown(text: string): string {
+function csvMarkdown(text: string): string {
   const [head, ...all] = parseCsv(text)
   if (!head) return "_(empty table)_"
   const rows = all.filter((r) => r.some((f) => f !== ""))

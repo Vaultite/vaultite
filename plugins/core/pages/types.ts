@@ -32,7 +32,7 @@ export type PinEntry = { key: string; label: string } & (
   { kind: "file"; path: string; file?: VaultFile } | { kind: "heading"; file: VaultFile; heading: string } | { kind: "folder"; path: string; parent: string }
   | { kind: "search"; query: string } | { kind: "view"; target: string })
 
-export const viewLabel = (key: string, s: Store | null | undefined = getStore()) => s?.pinLabels?.[key] || viewInfo(key).label
+const viewLabel = (key: string, s: Store | null | undefined = getStore()) => s?.pinLabels?.[key] || viewInfo(key).label
 
 export function shownEntries(store: Store, list = currentPins(store)): PinEntry[] {
   return list.flatMap((p): PinEntry[] => {
@@ -53,7 +53,7 @@ export function shownEntries(store: Store, list = currentPins(store)): PinEntry[
   })
 }
 
-export function pinVault(path: string, on = true, before?: string | null) {
+function pinVault(path: string, on = true, before?: string | null) {
   const next = placePin(pinnedOf(getStore()), path, on, before)
   mutate((s) => ({ ...s, pinned: next }))
   return post<{ pinned: string[] }>("pins", { path, pinned: on, ...(before !== undefined ? { before } : {}) })

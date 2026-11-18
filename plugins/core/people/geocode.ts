@@ -1,4 +1,4 @@
-export type LatLon = [number, number]
+type LatLon = [number, number]
 export type Places = Record<string, LatLon | null>
 
 export const placeKey = (location: string) => (location ?? "").trim().toLowerCase().replace(/\s+/g, " ")

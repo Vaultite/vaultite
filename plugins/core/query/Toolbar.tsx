@@ -25,7 +25,7 @@ export function named(cfg: BaseConfig, key: string): string | null {
   return null
 }
 
-export function propLabel(cfg: BaseConfig, key: string): string {
+function propLabel(cfg: BaseConfig, key: string): string {
   if (key === "file.self") return "File"
   return named(cfg, key) ?? FILE_PROPS.find(([k]) => k === key)?.[1] ?? label(key)
 }

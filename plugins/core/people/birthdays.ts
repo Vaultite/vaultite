@@ -1,6 +1,6 @@
 
 export type Birthday = { month: number; day: number; year: number | null }
-export type NextBirthday = { date: string; days: number; turns: number | null }
+type NextBirthday = { date: string; days: number; turns: number | null }
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate()

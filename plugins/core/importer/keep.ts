@@ -1,6 +1,6 @@
 // Keep's Takeout: a JSON file per note in Keep/, attachments beside them
 
-export type KeepNote = {
+type KeepNote = {
   title: string; body: string; tags: string[]; created: number | null; updated: number | null
   archived: boolean; trashed: boolean; attachments: { path: string; mime: string }[]
 }

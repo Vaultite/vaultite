@@ -70,7 +70,7 @@ export function viewOf(cm: HTMLElement) {
   return view && { target: editorTarget(view), dom: view.contentDOM }
 }
 
-export function editorTarget(view: EditorView): DictationTarget | null {
+function editorTarget(view: EditorView): DictationTarget | null {
   if (view.state.field(spot, false) === undefined) return null
   view.dispatch({ effects: set.of({ at: caret(view), text: "", moved: false }) })
   const here = () => (view.dom.isConnected ? view.state.field(spot, false) ?? null : null)

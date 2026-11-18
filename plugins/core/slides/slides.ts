@@ -15,7 +15,7 @@ export type Slide = {
   style: string
   data: Record<string, string>
 }
-export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; width?: unknown; height?: unknown; margin?: unknown; minScale?: unknown; maxScale?: unknown; center?: unknown; [fm: string]: unknown }
+type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; width?: unknown; height?: unknown; margin?: unknown; minScale?: unknown; maxScale?: unknown; center?: unknown; [fm: string]: unknown }
 export type Templates = (name: string) => string | undefined
 
 const SEP = /^\s{0,3}-{3,}\s*$/

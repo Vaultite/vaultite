@@ -10,8 +10,6 @@ export type Library = {
   notes: Map<string, string>
 }
 
-export const emptyLibrary = (): Library => ({ entries: new Map(), aliases: new Map(), notes: new Map() })
-
 const doiOf = (item: CslItem) => bareDoi(item.DOI ?? "").toLowerCase()
 
 export function unite(sources: Entry[][], notes: Map<string, string>): Library {

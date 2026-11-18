@@ -61,7 +61,7 @@ const UNIT_NAMES: [string[], number, number][] = [
 ]
 for (const [names, ms, months] of UNIT_NAMES) for (const n of names) UNITS[n] = [ms, months]
 
-export function parseDuration(s: string): BDuration | null {
+function parseDuration(s: string): BDuration | null {
   const t = s.trim()
   const parts = [...t.matchAll(/(-?\d+(?:\.\d+)?)\s*([A-Za-z]+)\s*/gy)]
   if (!parts.length || parts.reduce((n, p) => n + p[0].length, 0) !== t.length) return null
@@ -98,7 +98,7 @@ function relative(d: BDate, now: number) {
 }
 
 const SPANS: [number, string][] = [[864e5, "day"], [36e5, "hour"], [6e4, "minute"], [1e3, "second"]]
-export function durationText(ms: number) {
+function durationText(ms: number) {
   const abs = Math.abs(ms)
   for (const [n, unit] of SPANS) {
     if (abs >= n) { const k = Math.round((ms / n) * 10) / 10; return `${k} ${unit}${Math.abs(k) === 1 ? "" : "s"}` }

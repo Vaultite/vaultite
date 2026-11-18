@@ -76,7 +76,7 @@ export function condOf(src: string): Cond | null {
   return null
 }
 
-export function nameExpr(prop: string): string {
+function nameExpr(prop: string): string {
   if (/^(?:(?:note|file|formula)\.)?[A-Za-z_][\w-]*$/.test(prop)) return prop
   const bare = prop.replace(/^note\./, "")
   return `note[${JSON.stringify(bare)}]`

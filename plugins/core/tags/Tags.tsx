@@ -31,7 +31,7 @@ export function tagTree(store: Store): Node[] {
   return roots
 }
 
-export const filesWith = (store: Store, tag: string) =>
+const filesWith = (store: Store, tag: string) =>
   store.files.files.filter((f) => hasTag(f.tags ?? [], tag)).sort((a, b) => b.mtime - a.mtime)
 
 const OPEN_KEY = "vaultite.tags.open"

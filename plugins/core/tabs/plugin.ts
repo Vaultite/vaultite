@@ -58,7 +58,7 @@ async function computerAsking(req: Request): Promise<string> {
 }
 
 // `brands` is Sec-CH-UA, sent only by Chromium: every Chromium browser says "Chrome" in its user agent.
-export function browserName(ua: string, brands = "") {
+function browserName(ua: string, brands = "") {
   if (!/Chrome\//.test(ua)) brands = ""
   const brand = /"Brave"/.test(brands) ? "Brave" : /"Microsoft Edge"/.test(brands) ? "Edge" : /"Opera"/.test(brands) ? "Opera"
     : /"Vivaldi"/.test(brands) ? "Vivaldi" : /"Google Chrome"/.test(brands) ? "Chrome" : /"Chromium"/.test(brands) ? "Chromium" : ""

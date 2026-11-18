@@ -1,7 +1,7 @@
 // claude.ai's artifact runtime (window.claude, window.storage), so an artifact saved from Claude runs here as is.
 
 type Doc = Record<string, unknown>
-export type DbQuery = { coll: string; where: [string, string, unknown][]; order: [string, "asc" | "desc"] | null; limit: number | null }
+type DbQuery = { coll: string; where: [string, string, unknown][]; order: [string, "asc" | "desc"] | null; limit: number | null }
 
 export function queryDocs(docs: Map<string, Doc>, q: DbQuery): string[] {
   const depth = q.coll.split("/").length + 1

@@ -7,7 +7,7 @@ import { countText, FindField, FindTools, floatingBar, MAX } from "./tools"
 
 type Spec = { search: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
 
-export function pageRoot(): HTMLElement | null {
+function pageRoot(): HTMLElement | null {
   const sheet = [...document.querySelectorAll<HTMLElement>("dialog[open]")].reverse().find((d) => d.getClientRects().length > 0)
   const root = sheet ?? document.getElementById("main-scroll")
   return root && !root.querySelector("[data-term]") ? root : null

@@ -10,7 +10,7 @@ export const SIDES: Side[] = ["top", "right", "bottom", "left"]
 export const DIRS: Dir[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"]
 export const GRID = 20
 export const MIN_W = 80, MIN_H = 40
-export const MIN_K = 0.05, MAX_K = 4
+const MIN_K = 0.05, MAX_K = 4
 const DIR: Record<Side, Pt> = { top: { x: 0, y: -1 }, right: { x: 1, y: 0 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 } }
 
 export function anchor(n: Box, side: Side): Pt {
@@ -70,7 +70,7 @@ export const overlaps = (a: Box, b: { x0: number; y0: number; x1: number; y1: nu
 export const within = (a: Box, b: { x0: number; y0: number; x1: number; y1: number }) =>
   a.x >= b.x0 && a.y >= b.y0 && a.x + a.width <= b.x1 && a.y + a.height <= b.y1
 
-export const snapGrid = (v: number) => Math.round(v / GRID) * GRID
+const snapGrid = (v: number) => Math.round(v / GRID) * GRID
 const notch = (v: number, tol: number) => { const g = snapGrid(v); return Math.abs(g - v) <= Math.min(tol / 2, GRID / 4) ? g : v }
 
 function lines(others: Box[], axis: "x" | "y") {

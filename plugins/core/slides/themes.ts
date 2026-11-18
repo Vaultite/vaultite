@@ -1,6 +1,6 @@
 
 export type Tone = "light" | "dark"
-export type RevealTheme = { name: string; tone: Tone; vars: Record<string, string> }
+type RevealTheme = { name: string; tone: Tone; vars: Record<string, string> }
 
 const mix = (a: string, b: string, pct: number) => `color-mix(in oklab, ${a} ${100 - pct}%, ${b})`
 const T = (t: string) => `var(--${t})`

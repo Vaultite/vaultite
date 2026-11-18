@@ -232,7 +232,7 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: ToS
 }
 
 // A page without an origin may be unable to start a worker: then it runs the program itself.
-export function relayMain(code: string) {
+function relayMain(code: string) {
   const parentPost = (m: unknown) => parent.postMessage(m, "*")
   let toWorker: (m: ToSandbox) => void
   let kill = () => {}

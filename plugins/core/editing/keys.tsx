@@ -24,7 +24,8 @@ const editingIn = (field: HTMLElement) => {
 
 export function NoteKeys() {
   const [settings] = usePluginSettings("editing")
-  const ids = Array.isArray(settings?.toolbar) ? settings.toolbar as string[] : DEFAULT
+  const toolbar = settings?.toolbar
+  const ids = useMemo(() => (Array.isArray(toolbar) ? toolbar.map(String) : DEFAULT), [toolbar])
   useGiveKeys(useMemo<FieldKeys>(() => ({
     label: "Editing keys", scroll: true, owns: editingIn,
     keys: () => ids.flatMap((id) => {
@@ -38,7 +39,7 @@ export function NoteKeys() {
 export function ToolbarSettings() {
   const [settings, save] = usePluginSettings("editing")
   const [picked, setPicked] = useState<string | null>(null)
-  const ids = (Array.isArray(settings?.toolbar) ? (settings.toolbar as string[]) : DEFAULT).filter((id) => ICONS[id])
+  const ids = (Array.isArray(settings?.toolbar) ? settings.toolbar.map(String) : DEFAULT).filter((id) => ICONS[id])
   const rest = Object.keys(ICONS).filter((id) => !ids.includes(id))
   const custom = Array.isArray(settings?.toolbar)
   const put = (next: string[]) => save({ toolbar: next.join() === DEFAULT.join() ? null : next }).catch((e) => notifyError(e, "Couldn't save it"))

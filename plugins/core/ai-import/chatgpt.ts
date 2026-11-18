@@ -11,7 +11,7 @@ type Node = z.infer<typeof ChatNode>
 const clean = (s: string) => s.replace(/[ \t]*\ue200[^\ue201]*\ue201/g, "").replace(/\u3010\d+(?::\d+)?\u2020[^\u3011]*\u3011/g, "")
 
 // "file-service://file-AbC" and "sediment://file_00ab" -> "file-AbC", "file_00ab"
-export const assetId = (pointer: string) => pointer.replace(/^[a-z-]+:\/\//, "").trim()
+const assetId = (pointer: string) => pointer.replace(/^[a-z-]+:\/\//, "").trim()
 
 function line(raw: Record<string, unknown>, current: unknown) {
   const mapping: Record<string, Node> = {}
@@ -48,12 +48,12 @@ function partsOf(content: Record<string, unknown>): Part[] {
 }
 
 // ChatGPT wraps custom instructions in a ``` fence inside its own explanation
-export function instructionText(s: string) {
+function instructionText(s: string) {
   const m = /```(?:[a-z]*\n)?([\s\S]*?)```/.exec(s)
   return (m ? m[1] : s).trim()
 }
 
-export type ChatGptRead = { chat: Chat; memories: Memory[]; memoryList?: { at: number; facts: string[] } }
+type ChatGptRead = { chat: Chat; memories: Memory[]; memoryList?: { at: number; facts: string[] } }
 
 export function readConversation(c: unknown): ChatGptRead | null {
   if (!isObj(c) || !isObj(c.mapping)) return null

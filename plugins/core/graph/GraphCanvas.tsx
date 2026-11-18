@@ -16,7 +16,7 @@ type CanvasState = {
   onOpen: (path: string, newTab: boolean) => void; compact: boolean; arrows: boolean; look: Look; fit: (() => void) | null; setMoved: (moved: boolean) => void
 }
 
-export type CanvasProps = {
+type CanvasProps = {
   graph: Graph
   colorOf: (n: GraphNode) => string
   edgeColor?: (e: GraphEdge) => string | null

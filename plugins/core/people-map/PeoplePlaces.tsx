@@ -15,7 +15,7 @@ class MapBoundary extends Component<{ onFail: () => void; children: ReactNode },
   render() { return this.state.failed ? null : this.props.children }
 }
 
-export function Avatar({ name, relation, size = 30 }: { name: string; relation: string; size?: number }) {
+function Avatar({ name, relation, size = 30 }: { name: string; relation: string; size?: number }) {
   const c = colorOf(relation)
   return (
     <span aria-hidden className="grid shrink-0 place-items-center rounded-full font-semibold text-white num"

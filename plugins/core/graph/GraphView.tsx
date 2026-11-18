@@ -32,7 +32,7 @@ export function useGraph(path?: string, depth = 1, archived = false) {
 }
 
 type Match = { paths?: string[]; error?: string }
-export function useMatches(queries: string[]) {
+function useMatches(queries: string[]) {
   const asked = queries.map((q) => q.trim())
   const some = asked.some(Boolean)
   const { data } = useLive<{ results: Match[] }>(some ? `graph/match?q=${encodeURIComponent(JSON.stringify(asked))}` : null, undefined, true)

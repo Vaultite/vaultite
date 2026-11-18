@@ -4,7 +4,7 @@ const ROOT = "00000000-0000-4000-8000-000000000000"
 
 type Msg = Record<string, unknown>
 
-export function linearize(msgs: Msg[], current?: string) {
+function linearize(msgs: Msg[], current?: string) {
   const parentOf = (m: Msg) => text(m.parent_message_uuid)
   if (!msgs.some((m) => parentOf(m))) return { path: msgs, others: 0 }
   const byId = new Map(msgs.map((m) => [text(m.uuid), m]))

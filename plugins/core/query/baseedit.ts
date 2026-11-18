@@ -63,7 +63,7 @@ function put(d: Document, m: YAMLMap, key: string, value: unknown) {
   m.set(key, merge(d, m.get(key, true), value))
 }
 
-export function propId(key: string, written: string[]): string {
+function propId(key: string, written: string[]): string {
   const had = written.find((w) => keyOf(w) === key)
   if (had) return had
   if (key === "file") return "file.name"

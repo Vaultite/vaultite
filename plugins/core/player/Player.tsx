@@ -73,7 +73,7 @@ function VideoBook({ el, path }: { el: MediaEl; path: string }) {
   return <Book el={el} path={path} cs={cs} className="mt-4 px-1.5" />
 }
 
-export function Controls({ el, path, video, mark }: { el: MediaEl; path: string; video: boolean; mark?: boolean }) {
+function Controls({ el, path, video, mark }: { el: MediaEl; path: string; video: boolean; mark?: boolean }) {
   useTick(el)
   const cs = useMeta(path)?.chapters ?? []
   const from = getNow()?.el === el ? getNow()!.from : undefined

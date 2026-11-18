@@ -229,7 +229,7 @@ export function UserMessage({ e, Message }: { e: User; Message?: Driven["Message
   )
 }
 
-export function EntryView({ e, id, pending, Message }: { e: Entry; id: string; pending: boolean; Message?: Driven["Message"] }) {
+function EntryView({ e, id, pending, Message }: { e: Entry; id: string; pending: boolean; Message?: Driven["Message"] }) {
   switch (e.k) {
     case "user": return <UserMessage e={e} Message={Message} />
     case "text": return <Words text={e.text} live={!!e.live} />
@@ -392,7 +392,7 @@ function Run({ run, kids, live }: { run: Extract<Row, { kind: "tools" }>; kids: 
 
 const Spinner = () => <LoaderCircle className={cn(ICON, "chat-spin animate-spin")} strokeWidth={2.25} aria-label="Running" />
 
-export function ToolRow({ t, kids, live }: { t: Tool; kids: Entry[]; live: boolean }) {
+function ToolRow({ t, kids, live }: { t: Tool; kids: Entry[]; live: boolean }) {
   const x = useContext(TranscriptOf)
   const open = x.isOpen(t.id, false)
   const Icon = TOOL_ICONS[t.name] ?? Wrench

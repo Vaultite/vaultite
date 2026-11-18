@@ -10,7 +10,7 @@ const COMMA = /\s*,\s*/y
 const SPACE = /[\s~]+/y
 const KEYED = /^\s*(family|given|prefix|suffix|useprefix)\s*=\s*(.*)$/is
 
-export function topSplit(s: string, sep: RegExp): string[] {
+function topSplit(s: string, sep: RegExp): string[] {
   const out: string[] = []
   let depth = 0, start = 0
   for (let i = 0; i < s.length; i++) {

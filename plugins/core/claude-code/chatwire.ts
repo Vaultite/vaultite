@@ -3,8 +3,7 @@ import type net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { logger, runtimeDir } from "../../../core/plugins.ts"
-import { eachMessage } from "./chathost.ts"
-import { Answers, Event, issues, type Op, type Params, type Reply } from "./chatprotocol.ts"
+import { Answers, eachMessage, Event, issues, type Op, type Params, type Reply } from "./chatprotocol.ts"
 const log = logger("chat")
 
 export const SESSION = /^[\w-]{1,80}$/

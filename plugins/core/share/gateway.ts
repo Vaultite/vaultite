@@ -47,7 +47,7 @@ const PLUGIN_FIELDS = ["id", "name", "description", "requires", "enhances", "run
 const PAGE_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; " +
   "img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
 const wrapCsp = (at: string) => `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src ${at}; base-uri 'none'; frame-ancestors 'self'`
-export const GUEST_PLUGINS = ["share", "files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion", "html", ...VIEWS]
+const GUEST_PLUGINS = ["share", "files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion", "html", ...VIEWS]
 
 export const sha = (s: string) => crypto.createHash("sha256").update(s).digest("base64url")
 const same = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))

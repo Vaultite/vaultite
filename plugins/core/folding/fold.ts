@@ -21,7 +21,7 @@ function nodeAt(state: EditorState, n: number): SyntaxNode | null {
   return null
 }
 
-export function foldRangeAt(state: EditorState, n: number): (Range & { level: number }) | null {
+function foldRangeAt(state: EditorState, n: number): (Range & { level: number }) | null {
   const node = nodeAt(state, n)
   if (!node) return null
   const line = state.doc.line(n)

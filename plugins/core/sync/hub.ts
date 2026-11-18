@@ -33,7 +33,7 @@ export async function snapshot(gitDir: string, work: string, label = new Date().
 }
 
 type Copied = { hash: string; node: string; size: number; mtime: number }
-export type CopyNotice = { path: string; what: "imported" | "restored" }
+type CopyNotice = { path: string; what: "imported" | "restored" }
 
 export class Mirror {
   readonly target: string

@@ -1,6 +1,6 @@
 // Bear's .bear2bk: a zip of TextBundles (text.markdown, info.json, assets/); its Markdown has ::highlights:: and #multi word tags#
 
-export type BearInfo = { id: string | null; created: number | null; updated: number | null; archived: boolean; trashed: boolean }
+type BearInfo = { id: string | null; created: number | null; updated: number | null; archived: boolean; trashed: boolean }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 const time = (v: unknown) => { const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isNaN(t) ? null : t }

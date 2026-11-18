@@ -11,8 +11,8 @@ export const reviewing = (r: Result) => r.status === "new" && r.archived !== tru
 export const latestOf = (r: Result, now = Date.now()) => Math.max(snoozeMs(r.updated || r.created || ""), snoozed(r.snoozed, now) ? 0 : snoozeMs(r.snoozed))
 
 export const isDecision = (r: Pick<Result, "question">) => !!r.question
-export const isReport = (r: Result) => !r.question && !!(r.work || r.agent || r.session || r.terminal)
-export const REPORTS_MS = 24 * 3600_000
+const isReport = (r: Result) => !r.question && !!(r.work || r.agent || r.session || r.terminal)
+const REPORTS_MS = 24 * 3600_000
 
 export const joined = (events: Ev[], all = false) => new Set(events.filter((e) => (all || e.state !== "done") && e.link).map((e) => e.link!.replace(/^file:/, "")))
 

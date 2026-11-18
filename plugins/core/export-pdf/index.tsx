@@ -69,7 +69,7 @@ function Background() {
   return j ? <PrintRoot key={j.path + j.how} j={j} /> : null
 }
 
-export async function printNote(path: string, how: "pdf" | "print") {
+async function printNote(path: string, how: "pdf" | "print") {
   if (!path) { notify("Open a note to print it."); return }
   const store = getStore()
   if (job.get() || !store) return

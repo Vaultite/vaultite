@@ -107,7 +107,7 @@ export const decisionSnooze = (r: InboxItem) => snoozeMenu([resultKey(r)])
 export const stop = (fn: () => void) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); fn() }
 
 const resultAtPath = (path: string) => (getStore()?.inbox ?? []).find((r) => pathOf(r) === path && reviewing(r))
-export function itemButtons(r: InboxItem): TabButton[] {
+function itemButtons(r: InboxItem): TabButton[] {
   const key = resultKey(r)
   return [
     { icon: Check, label: "Settle", run: () => { haptic("medium"); void markDone(r) } },

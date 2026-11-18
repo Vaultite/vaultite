@@ -14,7 +14,7 @@ import { annotationsOf } from "./zotero/annotations.ts"
 
 const Made = z.looseObject({ path: z.string() })
 
-export function literatureFolder(refs: References): string {
+function literatureFolder(refs: References): string {
   const set = refs.host.settings().folder.trim().replace(/^\/+|\/+$/g, "")
   if (set) return set
   const count = new Map<string, number>()
@@ -35,7 +35,7 @@ function templateText(refs: References) {
   return text === null ? DEFAULT_TEMPLATE : text.replace(/^---\n[\s\S]*?\n---\n?/, "")
 }
 
-export async function literatureNote(refs: References, ctx: OpCtx, key: string, own = false): Promise<{ path: string; created: boolean }> {
+async function literatureNote(refs: References, ctx: OpCtx, key: string, own = false): Promise<{ path: string; created: boolean }> {
   const lib = refs.library()
   const had = lib.notes.get(key) ?? lib.notes.get(lib.aliases.get(key) ?? "")
   if (had) return { path: had, created: false }

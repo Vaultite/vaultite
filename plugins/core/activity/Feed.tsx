@@ -133,7 +133,7 @@ export function byDay(events: ActivityEvent[]) {
 
 export const pathOption = (o: unknown, file: string) => (o === "this" ? file : typeof o === "string" ? o : "")
 
-export type FeedOpts = { limit?: number; actor?: ActorKind | ""; action?: ActionKind | ""; path?: string }
+type FeedOpts = { limit?: number; actor?: ActorKind | ""; action?: ActionKind | ""; path?: string }
 
 export function useFeed({ limit = 30, actor = "", action = "", path = "" }: FeedOpts) {
   const q = `limit=${limit}${actor ? `&actor=${actor}` : ""}${action ? `&action=${action}` : ""}${path ? `&path=${encodeURIComponent(path)}` : ""}`
@@ -157,7 +157,7 @@ export function useFeed({ limit = 30, actor = "", action = "", path = "" }: Feed
   return { q, data, error, retry, events, more, loadMore, busy }
 }
 
-export function FeedList({ store, opts, empty }: { store: Store; opts: FeedOpts; empty?: ReactNode }) {
+function FeedList({ store, opts, empty }: { store: Store; opts: FeedOpts; empty?: ReactNode }) {
   const [actor, setActor] = useState<ActorKind | "">(opts.actor ?? "")
   useEffect(() => setActor(opts.actor ?? ""), [opts.actor])
   const [action, setAction] = useState<ActionKind | "">(opts.action ?? "")

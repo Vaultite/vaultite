@@ -28,7 +28,7 @@ const pickType = () => TYPES.find((t) => { try { return MediaRecorder.isTypeSupp
 export const extOf = (type: string) => (/mp4|aac|m4a/.test(type) ? "m4a" : /ogg/.test(type) ? "ogg" : /wav/.test(type) ? "wav" : "webm")
 
 const p2 = (n: number) => String(n).padStart(2, "0")
-export const recordingName = (d: Date) =>
+const recordingName = (d: Date) =>
   `Recording ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`
 
 export function elapsed(s = getStatus()) {

@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { codeOf, Host, listen, relayed } from "./chathost.ts"
+import { Host, listen, relayed } from "./chathost.ts"
+import { codeOf } from "./chatprotocol.ts"
 import { holdRoot } from "../../../core/update/lease.ts"
 
 const SOCK = process.argv[2]

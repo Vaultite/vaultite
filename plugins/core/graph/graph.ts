@@ -4,7 +4,7 @@ export type GraphNode = { path: string; title: string; type: string | null; fold
 export type GraphEdge = { from: string; to: string; both?: true; types?: string[] }
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
 
-export const topFolder = (path: string) => (path.includes("/") ? path.slice(0, path.indexOf("/")) : "")
+const topFolder = (path: string) => (path.includes("/") ? path.slice(0, path.indexOf("/")) : "")
 
 export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "")
 
@@ -83,7 +83,7 @@ function buildAll(files: GraphFile[], links: [string, string | null][][]): Built
   return { graph: { nodes: files.map((f, i) => nodeOf(f, degree[i])), edges }, files, links, index, pairs, degree }
 }
 
-export function adjacency(g: Graph) {
+function adjacency(g: Graph) {
   const adj = new Map<string, Set<string>>()
   for (const n of g.nodes) adj.set(n.path, new Set())
   for (const e of g.edges) { adj.get(e.from)?.add(e.to); adj.get(e.to)?.add(e.from) }
@@ -174,9 +174,9 @@ export type ColorBy = "folder" | "type" | "none"
 export type LegendRow = { key: string; label: string; tok: string; count: number; hidden: boolean; group?: number; auto?: string }
 
 export const PALETTE = ["--blue", "--green", "--orange", "--purple", "--pink", "--teal", "--yellow", "--indigo", "--red"]
-export const TAG_TOKEN = "--muted-foreground"
+const TAG_TOKEN = "--muted-foreground"
 export const tokenOf = (color: unknown) => (typeof color === "string" && /^[a-z][a-z0-9-]*$/.test(color) ? `--${color}` : "--gray")
-export const autoOf = (by: ColorBy, n: GraphNode) => (by === "type" ? n.type ?? "" : n.folder)
+const autoOf = (by: ColorBy, n: GraphNode) => (by === "type" ? n.type ?? "" : n.folder)
 export const autoLabel = (by: ColorBy, g: string) => g || (by === "type" ? "No type" : "Top level")
 
 export function grouping(g: Graph | null, by: ColorBy, groups: ColorGroup[], sets: (Set<string> | null)[], hidden: Set<string>) {

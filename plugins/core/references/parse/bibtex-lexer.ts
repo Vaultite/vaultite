@@ -131,7 +131,7 @@ function recover(sc: Scan, at: number): number {
   return m ? m.index + m[0].length - 1 : sc.s.length
 }
 
-export type Lexed = { entries: RawEntry[]; problems: string[] }
+type Lexed = { entries: RawEntry[]; problems: string[] }
 
 export function lexBibtex(text: string): Lexed {
   const sc: Scan = { s: text.replace(/^﻿/, ""), i: 0, key: "", macros: new Map(), problems: [] }

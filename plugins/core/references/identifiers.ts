@@ -3,10 +3,10 @@ import { bareDoi, CslItem } from "./csl.ts"
 import { readCslItem } from "./parse/normalize.ts"
 import { CslFields } from "./parse/normalize.ts"
 
-export const DOI_URL = () => process.env.VAULTITE_DOI_URL || "https://doi.org"
-export const BOOKS_URL = () => process.env.VAULTITE_OPENLIBRARY_URL || "https://openlibrary.org"
+const DOI_URL = () => process.env.VAULTITE_DOI_URL || "https://doi.org"
+const BOOKS_URL = () => process.env.VAULTITE_OPENLIBRARY_URL || "https://openlibrary.org"
 
-export type Identified = { kind: "doi" | "arxiv" | "isbn"; id: string }
+type Identified = { kind: "doi" | "arxiv" | "isbn"; id: string }
 
 export class LookupError extends Error {
   status: number

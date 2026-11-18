@@ -18,7 +18,7 @@ export function labels(vault: Vault): Record<string, string> {
 
 plugin.state(() => ({ pinned: pinned(plugin.vault), pinLabels: labels(plugin.vault) }))
 
-export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; before?: unknown }) {
+function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; before?: unknown }) {
   const p = typeof body.path === "string" ? relocatedPin(vault, body.path.trim()) : ""
   if (!p) throw new HTTPError(400, "path is required")
   const conf = vault.config("pages")
@@ -53,7 +53,7 @@ plugin.route("POST", "pins/label", (req) => {
   return { ok: true }
 })
 
-export function repin(vault: Vault, src: string, dst: string | null) {
+function repin(vault: Vault, src: string, dst: string | null) {
   const conf = vault.config("pages")
   const list = conf.pinned
   if (!Array.isArray(list)) return
@@ -62,7 +62,7 @@ export function repin(vault: Vault, src: string, dst: string | null) {
   if (JSON.stringify(out) !== JSON.stringify(list)) vault.setConfig("pages", { ...conf, pinned: out })
 }
 
-export function repanel(vault: Vault, src: string, dst: string | null) {
+function repanel(vault: Vault, src: string, dst: string | null) {
   const s = readSidebars(vault.config("sidebars"))
   if (!s) return
   const next = movedFilePanels(s, src, dst)
@@ -89,7 +89,7 @@ function addPins(vault: Vault, made: string[], { always = false } = {}): string[
   return add
 }
 
-export const pinInstalled = (vault: Vault, { made }: Installed) => { addPins(vault, made) }
+const pinInstalled = (vault: Vault, { made }: Installed) => { addPins(vault, made) }
 
 const Bookmarks = z.array(z.object({ path: z.string(), label: z.string().optional() }))
 let bookmarksAt = -1

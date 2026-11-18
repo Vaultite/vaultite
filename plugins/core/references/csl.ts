@@ -23,7 +23,7 @@ const NAME_FIELDS = ["author", "editor", "translator", "container-author", "coll
   "interviewer", "recipient", "reviewed-author", "editorial-director", "illustrator", "original-author"] as const
 const DATE_FIELDS = ["issued", "accessed", "original-date", "event-date", "submitted"] as const
 export type NameField = typeof NAME_FIELDS[number]
-export type DateField = typeof DATE_FIELDS[number]
+type DateField = typeof DATE_FIELDS[number]
 export const nameFields: readonly NameField[] = NAME_FIELDS
 export const dateFields: readonly DateField[] = DATE_FIELDS
 
@@ -59,7 +59,7 @@ export const ITEM_TYPES = ["article", "article-journal", "article-magazine", "ar
 const TYPES = new Set<string>(ITEM_TYPES)
 export const isItemType = (t: string) => TYPES.has(t)
 
-export function familyOf(n: CslName): string {
+function familyOf(n: CslName): string {
   if (n.literal) return n.literal
   return [n["non-dropping-particle"], n.family].filter(Boolean).join(" ") || n.given || ""
 }

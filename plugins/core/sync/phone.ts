@@ -1,5 +1,5 @@
 export type MediaKind = "image" | "video" | "audio" | "pdf" | "other"
-export type KeepRule = { path: string; kind?: MediaKind; since?: string; latest?: number }
+type KeepRule = { path: string; kind?: MediaKind; since?: string; latest?: number }
 export type DeviceRules = { keep?: KeepRule[]; keepAll?: boolean; cap?: number; bigOnWifi?: number }
 export type Media = { path: string; size: number; at: number }
 export type Want = { path: string; size: number; why: "kept" | "all" | "pinned" | "recent" | "daily" | "audio" }

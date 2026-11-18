@@ -118,7 +118,7 @@ export function awaitsOf(background: Map<string, Task>, named: (input: string) =
   return first ? { on: job ? `the job "${job.job}"` : first.on, since: first.since, n: all.length } : null
 }
 
-export function backgroundTask(result: string) {
+function backgroundTask(result: string) {
   return /^(?:Command (?:running in background|was manually backgrounded[^\n]*?) with ID: |Command [^\n]*?moved to the background \(ID: |Monitor started \(task |Async agent launched[\s\S]*?agentId: )([\w-]+)/m.exec(result)?.[1] ?? null
 }
 

@@ -14,7 +14,7 @@ const DATA = /^[ \t]*\{@data[ \t]+(\{.*\})\}[ \t]*$/m
 export type Data = { bindings?: Record<string, unknown>; refs?: Record<string, { url: string; title?: string; source?: string }>; images?: { url: string; alt?: string }[][]
   maps?: { name: string; lat: number; lon: number; address?: string; category?: string }[][] }
 
-export function jsEnd(src: string, i: number, close = "}"): number {
+function jsEnd(src: string, i: number, close = "}"): number {
   const stack: string[] = []
   let prev = "(" // the last significant character: whether a / starts a regex
   for (; i < src.length; i++) {
@@ -379,7 +379,7 @@ export function dilText(src: string): string {
   return out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
-export const hasDil = (s: string) => /\{[@#](body|each|if|const)\b|<[A-Z][A-Za-z]+[\s/>]|<(box|row|col|grid|grid-item|title|text|caption|label|select|slider|button|checkbox|segmented-control|card|divider|badge|icon|pressable|carousel|flow|radio-group|list-item|spacer|chart)[\s/>]/.test(s)
+const hasDil = (s: string) => /\{[@#](body|each|if|const)\b|<[A-Z][A-Za-z]+[\s/>]|<(box|row|col|grid|grid-item|title|text|caption|label|select|slider|button|checkbox|segmented-control|card|divider|badge|icon|pressable|carousel|flow|radio-group|list-item|spacer|chart)[\s/>]/.test(s)
 
 export function fenceDil(s: string, data = ""): string {
   if (!hasDil(s)) return s

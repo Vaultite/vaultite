@@ -1,7 +1,7 @@
 import { activeFile, dismissNotice, getStore, insertOnOwnLine, notify, notifyError, pasteAttachments, put, readFile, reload } from "@vaultite"
 
 /** Call it while the tap or key that asked is being handled: WebKit opens a picker for nothing else. */
-export function pickMedia(): Promise<File[]> {
+function pickMedia(): Promise<File[]> {
   const el = document.createElement("input")
   Object.assign(el, { type: "file", accept: "image/*,video/*", multiple: true, hidden: true })
   // (inside an open sheet when there is one: outside it the page is inert)

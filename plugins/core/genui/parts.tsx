@@ -241,7 +241,7 @@ function autoGap(a: string, b: string, top: boolean): number {
   if (a === "text" && b === "text") return 12
   return 8
 }
-export function Spaced({ k, top = false }: { k: Tree[]; top?: boolean }) {
+function Spaced({ k, top = false }: { k: Tree[]; top?: boolean }) {
   const shown = k.filter((x) => !(x.t === "md" && !x.s.trim()))
   return <>{shown.map((x, i) => (
     <Fragment key={keyOf(x, i)}>

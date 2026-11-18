@@ -8,7 +8,7 @@ export const SampleRow = z.object({ t: z.number(), load: z.array(z.number()),
   mem: z.object({ total: z.number(), free: z.number(), pressure: z.enum(["normal", "warn", "critical"]) }),
   swap: z.object({ used: z.number(), total: z.number() }), procs: z.array(TopRow) })
 export type Sample = z.infer<typeof SampleRow>
-export type Pressure = Sample["mem"]["pressure"]
+type Pressure = Sample["mem"]["pressure"]
 export type Top = z.infer<typeof TopRow>
 type Row = { pid: number; name: string; pcpu: number; secs: number; rss: number }
 
@@ -16,7 +16,7 @@ export const EVERY = 60_000
 export const KEEP_DAYS = 7
 const TOP = 5
 const HOG_CPU = 50, HOG_MIN = 5
-export const ALERT_CPU = 80, ALERT_SAMPLES = 10, ALERT_GAP = 6 * 3600_000
+const ALERT_CPU = 80, ALERT_SAMPLES = 10, ALERT_GAP = 6 * 3600_000
 
 const run = (cmd: string, args: string[]) => new Promise<string>((resolve) =>
   execFile(cmd, args, { timeout: 5000, maxBuffer: 8 << 20, env: { ...process.env, LC_ALL: "C" } }, (_e, out) => resolve(String(out ?? ""))))
@@ -87,7 +87,7 @@ export function machineNow(last: Sample | null, at = Date.now()): Now {
   return { cores: os.cpus().length, load: Math.round(os.loadavg()[0] * 100) / 100, memory: { total: memory.total, free: memory.free }, display }
 }
 
-export type Hog = { name: string; pid: number; samples: number; cpu: number; rss: number; first: number; last: number }
+type Hog = { name: string; pid: number; samples: number; cpu: number; rss: number; first: number; last: number }
 export type Report = {
   host: string; cores: number; since: number; samples: number; from: number | null; now: Sample | null
   cpu: Hog[]; memory: Hog[]; pressure: { warn: number; critical: number }; swapMax: number
@@ -138,7 +138,7 @@ export function reportText(r: Report) {
 
 export type Watch = { streaks: Map<string, { since: number; n: number; cpu: number }>; told: Map<string, number> }
 export const watch = (): Watch => ({ streaks: new Map(), told: new Map() })
-export type Alert = { key: string; title: string; body: string }
+type Alert = { key: string; title: string; body: string }
 export function alerts(w: Watch, s: Sample, host: string): Alert[] {
   const out: Alert[] = []
   const memBad = s.mem.pressure === "critical" || (s.mem.total > 0 && s.swap.used >= s.mem.total * 0.75)

@@ -66,7 +66,7 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
       let terminal: string | null = null, why = ""
       if (agent && words.length > LONG_VOICE) why = `${words.length} words is a recording, not a request: it's in the inbox`
       else if (agent) {
-        try { terminal = await dispatch(ctx, agent, file, said) } catch (e) { why = (e as Error).message }
+        try { terminal = await dispatch(ctx, agent, file, said) } catch (e) { why = e instanceof Error ? e.message : String(e) }
       }
       return { path: file, terminal, why }
     },

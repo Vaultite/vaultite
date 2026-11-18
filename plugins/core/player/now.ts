@@ -51,7 +51,7 @@ export function loadPlaces(force = false) {
 export const usePlaces = () => useSyncExternalStore((f) => { placeSubs.add(f); loadPlaces(); return () => { placeSubs.delete(f) } }, () => places)
 
 const lastSaved = new WeakMap<MediaEl, number>()
-export function savePlace(path: string, el: MediaEl, extra: { done?: boolean } = {}) {
+function savePlace(path: string, el: MediaEl, extra: { done?: boolean } = {}) {
   if (!Number.isFinite(el.duration) || el.duration < 60) return
   lastSaved.set(el, Date.now())
   const d = el.duration, t = el.currentTime
@@ -91,7 +91,7 @@ function askMeta(path: string) {
 }
 export const metaOf = (path: string) => { askMeta(path); return metas.get(path) ?? null }
 export const useMeta = (path: string) => useSyncExternalStore((f) => { metaSubs.add(f); askMeta(path); return () => { metaSubs.delete(f) } }, () => metas.get(path) ?? null)
-export const chaptersOf = (path: string) => metaOf(path)?.chapters ?? []
+const chaptersOf = (path: string) => metaOf(path)?.chapters ?? []
 export const chapterAt = (cs: Chapter[], t: number) => { let i = -1; cs.forEach((c, k) => { if (c.t <= t + 0.25) i = k }); return i }
 export const chapterEnd = (cs: Chapter[], i: number, d: number) => cs[i + 1]?.t ?? d
 export function stepChapter(el: MediaEl, cs: Chapter[], by: 1 | -1) {
@@ -130,7 +130,7 @@ export function parkEl(el: MediaEl) {
   }
   if (el.parentElement !== park) park.append(el)
 }
-export const isParked = (el: MediaEl) => !!park && el.parentElement === park
+const isParked = (el: MediaEl) => !!park && el.parentElement === park
 const orphan = (el: MediaEl) => !el.isConnected || isParked(el) || !!el.closest("[data-mini-player]")
 
 // Moving the element would end its full screen or picture in picture.

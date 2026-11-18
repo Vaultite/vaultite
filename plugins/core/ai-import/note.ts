@@ -118,7 +118,7 @@ export function projectNote(p: Project): { fm: Record<string, unknown>; body: st
 const ME = "Me", PREF = "How to work with me"
 
 export const labelOf = (about: MemoryAbout) => (about === "me" ? ME : about === "preference" ? PREF : about)
-export function aboutOfLabel(label: string): MemoryAbout {
+function aboutOfLabel(label: string): MemoryAbout {
   const l = label.replace(/^\[\[|\]\]$/g, "").split("|")[0].trim()
   if (!l || /^(me|about me|myself|i|user)$/i.test(l)) return "me"
   if (/^(how to work with me|preference|preferences)$/i.test(l)) return "preference"
@@ -130,7 +130,7 @@ export const norm = (s: string) => s.toLowerCase().replace(/\(from [^)]*\)/g, ""
 const TASK = /^([ \t]*)[-*+] \[( |x|X)\] (.*)$/
 const ERROR = /^[ \t]+[-*+] Couldn't add( it)?:/
 
-export type ReviewItem = { line: number; done: boolean; label: string; about: MemoryAbout; fact: string }
+type ReviewItem = { line: number; done: boolean; label: string; about: MemoryAbout; fact: string }
 
 export function reviewItems(textIn: string): ReviewItem[] {
   const out: ReviewItem[] = []
