@@ -4,6 +4,7 @@ import { Command as CommandIcon } from "lucide-react"
 import { available, runCommandById, useCommandList, type Command } from "@/core/commands"
 import { fingerHolding } from "@/core/drag"
 import { haptic } from "@/core/haptics"
+import { moves } from "@/core/animation"
 import { commandIcon } from "@/core/pages"
 import { usePrefs, type Prefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
@@ -115,7 +116,7 @@ export function PullActions() {
   const slotsRef = useRef(slots)
   slotsRef.current = slots
   const box = useRef<HTMLDivElement>(null), disc = useRef<HTMLSpanElement>(null)
-  useEffect(() => watchPulls((p) => flushSync(() => setPull(p)), () => slotsRef.current), [])
+  useEffect(() => watchPulls((p) => flushSync(() => setPull(p?.gone && !moves() ? null : p)), () => slotsRef.current), [])
   const gone = pull?.gone
   useLayoutEffect(() => {
     const el = box.current
@@ -134,7 +135,7 @@ export function PullActions() {
       style={{ top: document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0, height: shift(dy) }}>
       <div className="absolute inset-x-0 top-1/2">
         <span ref={disc} className={cn("absolute top-0 left-1/2 -mt-[22px] -ml-[22px] size-11 rounded-full bg-primary transition-[translate,scale,opacity]",
-          ready ? "scale-100 opacity-100 duration-200 ease-[cubic-bezier(.3,1.4,.6,1)]" : "scale-50 opacity-0 duration-150")}
+          ready ? "scale-100 opacity-100 duration-(--motion) ease-[cubic-bezier(.3,1.4,.6,1)]" : "scale-50 opacity-0 duration-(--motion-fast)")}
           style={{ translate: `${at(pick)}px 0` }} />
         {slots.map((c, i) => {
           if (!c) return null
@@ -142,14 +143,14 @@ export function PullActions() {
           const seen = i === 1 ? along(dy, SHOW, SIDES) : along(dy, SIDES, SHOWN)
           return (
             <span key={i} data-pull={c.id} data-on={on || undefined} className="absolute top-0 left-1/2" style={{ translate: `${at(i)}px 0` }}>
-              <span className={cn("absolute -top-[22px] -left-[22px] grid size-11 place-items-center rounded-full transition-colors duration-150",
+              <span className={cn("absolute -top-[22px] -left-[22px] grid size-11 place-items-center rounded-full transition-colors duration-(--motion-fast)",
                 on ? "text-primary-foreground" : "bg-foreground/[0.07] text-muted-foreground")}
                 style={{ opacity: seen, scale: String(0.6 + 0.4 * seen) }}>
                 {picked && !ready && ring > 0 && <Ring k={ring} />}
                 <Icon className="size-[21px]" strokeWidth={2} />
               </span>
               <span className={cn("absolute top-[28px] left-0 w-max max-w-[112px] -translate-x-1/2 truncate text-[13px] leading-[16px] font-medium text-foreground transition-opacity",
-                on ? "opacity-100 duration-150" : "opacity-0 duration-100")}>{pullLabel(c)}</span>
+                on ? "opacity-100 duration-(--motion-fast)" : "opacity-0 duration-100")}>{pullLabel(c)}</span>
             </span>
           )
         })}
