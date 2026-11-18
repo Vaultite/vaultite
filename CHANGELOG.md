@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: agents are told to use Vaultite's browser, not Chrome's Claude extension, which a Claude Code with both tried
+  first (in evals, 2 of 6 sessions instead of 6 of 6; some gave up when the extension wasn't connected).
 - Browser: the address bar's suggestions come in half the time from a long history (50,000 pages: 120 to 50 ms a key,
   each of which held up the app's main process).
 - Browser: an agent's open or act that leaves "Saving…" or "Loading…" on the page waits for it to finish (up to 3 s),
