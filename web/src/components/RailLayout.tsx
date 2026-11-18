@@ -74,7 +74,7 @@ export function RailMenu({ label, items, active, pick, tiles: tiled, chevrons, .
             {head}
             {!folded && (
               <SidebarRow icon={icon} tint={tiled ? undefined : it.tint} label={it.label} open active={active === it.id} aria-current={active === it.id ? "page" : undefined} onClick={() => pick(it.id)} {...it.attrs}>
-                {it.value && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.value}</span>}
+                {it.value && <span className={cn("pr-0.5 text-[12px] tabular-nums", active === it.id ? "text-[color-mix(in_oklab,var(--muted-foreground),var(--foreground)_30%)]" : "text-muted-foreground")}>{it.value}</span>}
                 {chevrons && <ChevronRight aria-hidden className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
               </SidebarRow>
             )}
