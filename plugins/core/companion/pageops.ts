@@ -133,7 +133,7 @@ plugin.op({
   help: `Per service: its uses, seconds heard and cost today and over the last 7 days; how often its voice failed an answer
 over to the next (a worse one, at last this Mac's) and the last reason; ElevenLabs' characters left this month from
 its API (with this machine's key); for the others, where to see the balance. The Claude plans' limits are Claude
-Code's (vau claude-code limits).
+Code's (vau limits).
 
   vau companion usage`,
   kind: "read",
