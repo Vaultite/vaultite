@@ -709,6 +709,11 @@ html[data-window-inactive] .vau-editor .cm-content ::selection {
   border-width: 0.5px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.06);
 }
 .dark [data-sonner-toaster] .vau-toast[data-styled=true] { box-shadow: 0 6px 20px rgb(0 0 0 / 0.4); }
+/* Sonner's own 400 ms ease, on the motion tokens (only durations and easing: a swipe's `transition: none` stays). */
+[data-sonner-toaster] .vau-toast[data-styled=true] {
+  transition-duration: var(--motion-spring), var(--motion-spring), var(--motion-spring), var(--motion-fast); transition-timing-function: var(--ease-out);
+}
+[data-sonner-toaster] .vau-toast[data-styled=true] > *, .vau-toaster[data-sonner-toaster] { transition-duration: var(--motion-spring); transition-timing-function: var(--ease-out); }
 /* At most 3 lines, so a long message (an agent's whole answer) can't fill the screen; buttons sit beside it, untouched. */
 [data-sonner-toaster] .vau-toast[data-styled=true] [data-title] {
   font-weight: 450; line-height: 18px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
