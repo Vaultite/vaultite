@@ -295,7 +295,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     })
     const ro = new ResizeObserver(() => touch())
     ro.observe(el)
-    const mo = new MutationObserver((rs) => { for (const m of rs) { if (s.dirty === "hits") return; touch(matters(m, el)) } })
+    const mo = new MutationObserver((rs) => { for (const m of rs) { if (s.dirty === "hits") return; touch(matters(m, el, s.lastHits === null)) } })
     mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] })
     const slid = (e: Event) => { if (s.dirty !== "hits") touch(moved(e, el)) }
     const all = () => touch()

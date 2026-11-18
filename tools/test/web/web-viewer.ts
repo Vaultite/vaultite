@@ -172,7 +172,15 @@ import { plugin } from "./lib.ts"
 }
 
 {
-  const { painted }: { painted(): Promise<void> } = await plugin("web-viewer/layers.ts")
+  type Box = { left: number; top: number; width: number; height: number; right: number; bottom: number }
+  const { painted, clipsOff }: { painted(): Promise<void>; clipsOff(b: Box, st: { overflowX: string; overflowY: string; position: string }, page: Box): boolean } = await plugin("web-viewer/layers.ts")
+  const at = (left: number, top: number, width: number, height: number): Box => ({ left, top, width, height, right: left + width, bottom: top + height })
+  const page = at(300, 100, 800, 600), clips = { overflowX: "hidden", overflowY: "hidden", position: "absolute" }
+  check("Browser: a change inside a clipping box beside the page, or a pixel's (a screen reader's text), can't cover it; one that overflows, lets its absolute children out or overlaps may",
+    clipsOff(at(0, 0, 280, 800), clips, page) && clipsOff(at(500, 300, 1, 1), clips, page) && clipsOff(at(0, 0, 280, 800), { ...clips, overflowX: "auto", overflowY: "auto" }, page)
+      && !clipsOff(at(0, 0, 280, 800), { ...clips, overflowX: "visible", overflowY: "visible" }, page) && !clipsOff(at(0, 0, 280, 800), { ...clips, overflowY: "visible" }, page)
+      && !clipsOff(at(0, 0, 280, 800), { ...clips, position: "static" }, page)
+      && !clipsOff(at(250, 0, 100, 800), clips, page))
   const faked = ["document", "requestAnimationFrame"], had = faked.map((k) => Object.getOwnPropertyDescriptor(globalThis, k))
   let frames: (() => void)[] = [], hidden = false
   Object.assign(globalThis, { document: { get hidden() { return hidden } }, requestAnimationFrame: (f: () => void) => frames.push(f) })

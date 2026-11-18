@@ -84,11 +84,16 @@ function changeAt(t: Element | null, box: HTMLElement): Change {
   const pane = t.closest("[data-pane], [data-kept]")
   return !pane || pane === t || pane.contains(box) ? "hits" : null
 }
-export function matters(r: MutationRecord, box: HTMLElement): Change {
+export const clipsOff = (b: Box, st: { overflowX: string; overflowY: string; position: string }, page: Box) =>
+  st.overflowX !== "visible" && st.overflowY !== "visible" && st.position !== "static" && (b.width <= 1 || b.height <= 1 || !overlap(b, page))
+const addsFixed = (r: MutationRecord) => r.type === "childList" && [...r.addedNodes].some((n) => n instanceof HTMLElement && getComputedStyle(n).position === "fixed")
+const addsPopup = (r: MutationRecord) => [...r.addedNodes].some((n) => n instanceof Element && (n.matches(POPUPS) || !!n.querySelector(POPUPS)))
+export function matters(r: MutationRecord, box: HTMLElement, uncovered: boolean): Change {
   const t = r.target instanceof Element ? r.target : r.target.parentElement
   const c = changeAt(t, box)
+  if (c === "hits" && uncovered && t && !addsFixed(r) && !addsPopup(r) && clipsOff(t.getBoundingClientRect(), getComputedStyle(t), box.getBoundingClientRect())) return null
   if (c || !t || box.contains(t) || t.closest("[data-status-bar]")) return c
-  return r.type === "childList" && [...r.addedNodes].some((n) => n instanceof HTMLElement && getComputedStyle(n).position === "fixed") ? "hits" : null
+  return addsFixed(r) ? "hits" : null
 }
 export const SLIDES = ["transitionrun", "transitionend", "transitioncancel", "animationstart", "animationend", "animationcancel"]
 export function moved(e: Event, box: HTMLElement): Change {
