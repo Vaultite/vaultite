@@ -7,6 +7,7 @@ import { keysBytes } from "../keys.ts"
 import { REPLY, watcher, type Said } from "../osc7501.ts"
 import { adopter } from "./adopt.ts"
 import { KittyFeed, remoteFront } from "./kitty.ts"
+import { decodeElsewhere } from "./pictures.ts"
 import { Screen } from "./screen.ts"
 import { fixHelper } from "./spawnhelper.ts"
 import { z } from "zod"
@@ -105,7 +106,8 @@ export class Session {
     this.meta = { ...x.meta }
     if (x.created) this.created = x.created
     this.term = this.screen(x.cols, x.rows, x.scrollback > 0 ? x.scrollback : SCROLLBACK)
-    this.kitty = new KittyFeed({ emit: (d) => this.take(d), log: (...a) => this.h.log(...a, this.id),
+    const log = (...a: unknown[]) => this.h.log(...a, this.id)
+    this.kitty = new KittyFeed({ emit: (d) => this.take(d), log, work: decodeElsewhere(log),
       remote: () => { try { return remoteFront(this.driver.process()) } catch { return true } } })
   }
 
@@ -134,7 +136,7 @@ export class Session {
       ...(this.exit ? { exit: this.exit } : {}), ...(this.driver.via ? { via: this.driver.via } : {}) }
   }
 
-  output(d: string) { this.kitty.feed(d) }
+  output(d: string) { this.kitty.feed(d); if (this.kitty.waiting > HOLD) this.hold() }
   private take(d: string) {
     this.activity = Date.now()
     this.queued += d
@@ -159,7 +161,7 @@ export class Session {
   }
 
   hold() {
-    const full = this.queued.length + this.term.inflight > HOLD || [...this.attached].some((c) => c.backlog() + (c.held?.bytes ?? 0) > HOLD)
+    const full = this.queued.length + this.term.inflight + this.kitty.waiting > HOLD || [...this.attached].some((c) => c.backlog() + (c.held?.bytes ?? 0) > HOLD)
     if (full === this.held) return
     this.held = full
     try { if (full) this.driver.pause(); else this.driver.resume() } catch { /* ended */ }

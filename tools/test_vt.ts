@@ -10,7 +10,8 @@ import zlib from "node:zlib"
 import { newVt } from "../plugins/core/terminal/vt/load.ts"
 import { KITTY_STORAGE, LAYOUT, wasiImports } from "../plugins/core/terminal/vt/vt.ts"
 import { Screen } from "../plugins/core/terminal/vt/screen.ts"
-import { keptScale, KittyFeed, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
+import { keptScale, KittyFeed, pictureOf, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
+import { decodeElsewhere } from "../plugins/core/terminal/termd/pictures.ts"
 import { htmlWithPictures } from "../plugins/core/terminal/termd/capture.ts"
 import { decodePng } from "../plugins/core/terminal/termd/png.ts"
 import { Screen as TermdScreen } from "../plugins/core/terminal/termd/screen.ts"
@@ -392,6 +393,24 @@ await section("kitty graphics", async () => {
     same = out === plain
   }
   check("termd's feed passes on what it doesn't rewrite, as it came, in any pieces", same)
+  const pngSeq = `\x1b_Ga=T,q=2,f=100,i=12;${png.toString("base64")}\x1b\\`, around = `before ${pngSeq} after \x1b[1mbold`
+  let ordered = ""
+  const later = new KittyFeed({ emit: (d) => { ordered += d }, remote: () => false,
+    work: (job) => new Promise((ok) => setTimeout(() => ok(pictureOf(job).out), 20)) })
+  for (let i = 0; i < around.length; i += 9) later.feed(around.slice(i, i + 9))
+  check("… a picture decoded elsewhere: what came after it waits for it", ordered === "before ", ordered)
+  await new Promise((r) => setTimeout(r, 60))
+  check("… then all of it comes in order", /^before \x1b_Ga=T,q=2,f=24,i=12,s=8,v=6,o=z,t=d;[^\x1b]+\x1b\\ after \x1b\[1mbold$/.test(ordered), ordered)
+  const huge = tinyPng(2400, 1600), bigSeq = `\x1b_Ga=T,q=2,f=100,i=13;${huge.toString("base64")}\x1b\\`
+  let bigOut = "", lag = 0, last = performance.now()
+  const ticker = setInterval(() => { const now = performance.now(); lag = Math.max(lag, now - last); last = now }, 5)
+  const decoded = new Promise<void>((ok) => {
+    new KittyFeed({ emit: (d) => { bigOut += d; if (d.endsWith("end")) ok() }, remote: () => false, work: decodeElsewhere(() => {}) }).feed(`${bigSeq}end`)
+  })
+  await decoded
+  clearInterval(ticker)
+  check("termd decodes a big PNG in a thread of its own: its loop goes on meanwhile", /^\x1b_Ga=T,q=2,f=\d+,i=13,s=2400,v=1600,o=z,t=d,m=1;/.test(bigOut) && lag < 100,
+    { lag, head: bigOut.slice(0, 60) })
   const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "vt-kitty-")), file = path.join(dir, "tty-graphics-protocol-1.png")
   fs.writeFileSync(file, png)
   const viaFile = (name: string, t: string, remote = false) => {

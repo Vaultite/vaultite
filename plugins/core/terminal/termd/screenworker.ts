@@ -21,7 +21,7 @@ const make = (c: number, r: number, sb: number) => {
 let t = make(cols, rows, scrollback)
 let unfinished = ""
 
-function answer(m: In): unknown {
+function answer(m: In) {
   switch (m.op) {
     case "write": {
       const d = unfinished + m.d, at = unfinishedAt(d)

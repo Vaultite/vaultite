@@ -45,6 +45,7 @@ export type KittyOptions = {
   emit: (d: string) => void
   remote: () => boolean
   log?: (...a: unknown[]) => void
+  work?: (job: PictureJob) => Promise<string>
 }
 
 export class KittyFeed {
@@ -54,10 +55,13 @@ export class KittyFeed {
   private tail = ""
   private chunks: { keys: Keys; heads: string[]; payload: string[]; size: number } | null = null
   private chunksPass = false
+  private decoding: string | null = null
 
   constructor(o: KittyOptions) { this.o = o }
+  get waiting() { return this.decoding?.length ?? 0 }
 
   feed(d: string) {
+    if (this.decoding !== null) { this.decoding += d; return }
     if (this.tail) { d = this.tail + d; this.tail = "" }
     if (this.cmd === null && !d.includes("\x1b_G")) {
       const t = d.endsWith("\x1b") ? 1 : d.endsWith("\x1b_") ? 2 : 0
@@ -90,11 +94,23 @@ export class KittyFeed {
         break
       }
       i = st + 2
-      if (this.passing) out += "\x1b\\"
-      else out += this.command(this.cmd)
+      const done = this.passing ? "\x1b\\" : this.command(this.cmd)
       this.cmd = null; this.passing = false
+      if (done instanceof Promise) { this.waitFor(done, out, d.slice(i)); return }
+      out += done
     }
     if (out) this.o.emit(out)
+  }
+
+  private waitFor(decoded: Promise<string>, before: string, after: string) {
+    if (before) this.o.emit(before)
+    this.decoding = after
+    void decoded.then((x) => {
+      if (x) this.o.emit(x)
+      const rest = this.decoding ?? ""
+      this.decoding = null
+      if (rest) this.feed(rest)
+    })
   }
 
   private decideEarly() {
@@ -111,7 +127,7 @@ export class KittyFeed {
     return t === "f" || t === "t" || (t === "d" && f === "100")
   }
 
-  private command(body: string) {
+  private command(body: string): string | Promise<string> {
     const raw = `\x1b_G${body}\x1b\\`
     const semi = body.indexOf(";"), head = semi < 0 ? body : body.slice(0, semi), keys = parseKeys(head), payload = semi < 0 ? "" : body.slice(semi + 1)
     const more = keys.get("m") === "1"
@@ -130,30 +146,43 @@ export class KittyFeed {
     return this.rewrite(keys, payload, raw)
   }
 
-  private rewrite(keys: Keys, payload: string, raw: string) {
+  private rewrite(keys: Keys, payload: string, raw: string): string | Promise<string> {
     const t = keys.get("t") ?? "d"
-    let data: Buffer
-    if (t === "d") data = Buffer.from(payload, "base64")
-    else {
-      if (this.o.remote()) return raw
-      const got = readPicture(Buffer.from(payload, "base64").toString("utf8"), t === "t", Number(keys.get("O")) || 0, Number(keys.get("S")) || 0)
-      if (typeof got === "string") { this.o.log?.("kitty", t === "t" ? "temporary file" : "file", "not read:", got); return raw }
-      data = got
-    }
-    const out = new Map(keys)
-    for (const k of ["t", "S", "O", "m"]) out.delete(k)
-    if ((keys.get("f") ?? "32") === "100") {
-      if (keys.get("o") === "z") try { data = zlib.inflateSync(data, { maxOutputLength: PICTURE_MAX }) } catch { return raw }
-      let px = decodePng(data, PICTURE_MAX)
-      if (!px) { this.o.log?.("kitty", isPng(data) ? "PNG not decoded" : "not a PNG"); return raw }
-      const k = keptScale(keys, px.width, px.height)
-      if (k > 1) px = { ...shrink(px.data, px.width, px.height, px.channels, px.channels, k), channels: px.channels }
-      out.set("f", String(px.channels * 8)); out.set("s", String(px.width)); out.set("v", String(px.height)); out.set("o", "z")
-      data = zlib.deflateSync(px.data, { level: 1 })
-    } else if (t === "d") return raw
-    out.set("t", "d")
-    return chunked(out, data.toString("base64"))
+    if (t === "d" ? (keys.get("f") ?? "32") !== "100" : this.o.remote()) return raw
+    const job: PictureJob = { keys: [...keys], payload, raw }
+    if (this.o.work) return this.o.work(job)
+    const done = pictureOf(job)
+    if (done.said) this.o.log?.("kitty", done.said)
+    return done.out
   }
+}
+
+export type PictureJob = { keys: [string, string][]; payload: string; raw: string }
+
+export type Pictured = { out: string; said?: string }
+
+export function pictureOf(job: PictureJob): Pictured {
+  const keys: Keys = new Map(job.keys), t = keys.get("t") ?? "d", raw = job.raw
+  let data: Buffer
+  if (t === "d") data = Buffer.from(job.payload, "base64")
+  else {
+    const got = readPicture(Buffer.from(job.payload, "base64").toString("utf8"), t === "t", Number(keys.get("O")) || 0, Number(keys.get("S")) || 0)
+    if (typeof got === "string") return { out: raw, said: `${t === "t" ? "temporary file" : "file"} not read: ${got}` }
+    data = got
+  }
+  const out = new Map(keys)
+  for (const k of ["t", "S", "O", "m"]) out.delete(k)
+  if ((keys.get("f") ?? "32") === "100") {
+    if (keys.get("o") === "z") try { data = zlib.inflateSync(data, { maxOutputLength: PICTURE_MAX }) } catch { return { out: raw, said: "not inflated" } }
+    let px = decodePng(data, PICTURE_MAX)
+    if (!px) return { out: raw, said: isPng(data) ? "PNG not decoded" : "not a PNG" }
+    const k = keptScale(keys, px.width, px.height)
+    if (k > 1) px = { ...shrink(px.data, px.width, px.height, px.channels, px.channels, k), channels: px.channels }
+    out.set("f", String(px.channels * 8)); out.set("s", String(px.width)); out.set("v", String(px.height)); out.set("o", "z")
+    data = zlib.deflateSync(px.data, { level: 1 })
+  }
+  out.set("t", "d")
+  return { out: chunked(out, data.toString("base64")) }
 }
 
 /** The protocol takes keys on the first chunk only, and `q` on each, else each chunk is answered. */
