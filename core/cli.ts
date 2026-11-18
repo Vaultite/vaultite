@@ -17,6 +17,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
 const RESTART_RETRY_MS = 60_000
 const COMING_BACK_MS = 30_000
+const UPLOAD_MOST = 50e6
 
 export type Obj = Record<string, unknown>
 export type Args = { _: string[]; flags: Record<string, string | true>
@@ -409,7 +410,7 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
 const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- out and code read the server's answer, each parsing what it reads
-export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: unknown, p: Obj, extra: string[]) => string; code?: (result: unknown) => number
+export type Local = { params?: (p: Obj, c: Ctx, extra: string[]) => Promise<Obj>; extra?: number; out?: (result: unknown, p: Obj, extra: string[]) => string; code?: (result: unknown) => number
   again?: (p: Obj, ms: number) => Obj | null
   gone?: (p: Obj, why: string, ms: number) => { result: unknown; text: string } | null }
 const Live = z.looseObject({ live: z.looseObject({ live: z.unknown().optional() }) })
@@ -432,6 +433,19 @@ const LOCAL: Record<string, Local> = {
       const live = { commit: p.commit, live: false, final: false, outcome: "unreachable", waited: Number(p.waited ?? 0) + Math.round(ms / 1000),
         why: `${p.commit.slice(0, 7)}: can't tell if it's live: ${why}, till the wait's ${p.timeout ?? 900} s were up` }
       return { result: { live }, text: live.why }
+    },
+  },
+  "file.upload": {
+    extra: 1,
+    params: async (p, _c, extra) => {
+      const given = extra[0] ?? (p.file === undefined || isObj(p.file) || /^\s*\{/.test(String(p.file)) ? undefined : String(p.file))
+      if (given === undefined) return p
+      const from = local(given)
+      const size = fs.statSync(from, { throwIfNoEntry: false })?.size
+      if (size === undefined) throw new CliError(`no file ${from} on this machine`)
+      if (size > UPLOAD_MOST) throw new CliError(`${from} is over ${UPLOAD_MOST / 1e6} MB: send its bytes as the body of POST /api/ops/file.upload (vau upload --help)`)
+      const { file: _, ...rest } = p
+      return { ...rest, data: fs.readFileSync(from).toString("base64"), name: p.name ?? path.basename(from) }
     },
   },
   "file.write": {
@@ -661,7 +675,7 @@ export function cliError(e: OpEntry, msg: string, problems: string[]): { msg: st
 async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ out: string; code: number }> {
   const loc = LOCAL[e.id] ?? (await loadPlugins(), pluginLocal.get(e.id)) ?? {}
   const given = await opParams(e, argv, c, loc.extra ?? 0)
-  const params = loc.params ? await loc.params(given.params, c) : given.params
+  const params = loc.params ? await loc.params(given.params, c, given.extra) : given.params
   const list = !!how.count || !!how.paths
   const json = !!how.json || list
   const out = !!loc.out && !json

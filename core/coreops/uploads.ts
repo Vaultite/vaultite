@@ -51,7 +51,7 @@ application/octet-stream' '<server>/api/ops/file.upload?name=Photo.jpg&note=...'
 one-time upload link instead: PUT the file's bytes to it within 15 minutes (curl -T photo.jpg <link>) from a sandbox
 that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-data/uploads/.
 
-  vau upload --url https://example.com/chart.png --note "Notes/Garden plan.md"
+  vau upload ~/Desktop/chart.png --note "Notes/Garden plan.md"     a file on this machine: vau sends its bytes
   vau upload --data "$(base64 -i photo.jpg)" --name "Paprika chicken.jpg" --note "Logs/Nutrition/2026-10-04 Lunch.md"`,
     input: "the file",
     kind: "write",

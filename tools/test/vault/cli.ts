@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 
@@ -42,6 +43,16 @@ export default async ($: VaultTest) => {
     const op = defineOp({ id: "lantern.wait", summary: "Wait for the lantern.", kind: "read", params: { timeout: { type: "integer", maximum: 600, description: "seconds, at most" } }, run: async () => null })
     const said = (() => { try { checkParams(op, { timeout: 8000 }); return "" } catch (e) { return e instanceof Error ? e.message : "" } })()
     check("ops: seconds given as milliseconds says so", said.includes("timeout: should be at most 600 (got 8000): it's in seconds, not milliseconds (8)"), said)
+  }
+  {
+    const pic = path.join(os.tmpdir(), "Dot on the desk.png")
+    fs.writeFileSync(pic, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"))
+    cr = await vau("upload", pic)
+    const saved = path.join(VAULT, "Attachments", "Dot on the desk.png")
+    check("vau upload <a file here>: its bytes are sent, under its name", cr.code === 0 && fs.existsSync(saved) && fs.readFileSync(saved).equals(fs.readFileSync(pic)), cr)
+    fs.rmSync(saved, { force: true })
+    cr = await vau("upload", "--file", path.join(os.tmpdir(), "nope.png"))
+    check("vau upload --file <a file not here> says so", cr.code === 1 && cr.err.includes("no file") && cr.err.includes("nope.png"), cr)
   }
   cr = await vau("--help")
   check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
