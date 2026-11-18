@@ -1,5 +1,6 @@
 import { onActivity } from "@/core/activity"
 import { BUILD, offerNewBuild } from "@/core/builds"
+import { buildName } from "../../../core/buildstamp.ts"
 import { safeToReload } from "@/core/unsaved"
 import { isText } from "../../../core/values.ts"
 
@@ -95,7 +96,8 @@ export const isStaleBuild = (error: unknown) => STALE.test(textOf(error))
 async function serverBuild(): Promise<string | null> {
   try {
     const html = await (await fetch("./", { cache: "no-store", signal: AbortSignal.timeout(3000) })).text()
-    return /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/.exec(html)?.[1] ?? ""
+    const entry = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/.exec(html)?.[1]
+    return entry ? buildName(entry, /<script type="importmap"[^>]*>([\s\S]*?)<\/script>/.exec(html)?.[1]) : ""
   } catch { return null }
 }
 // The browser's message: "…dynamically imported module: http://…/AppTab-C-zI.js".
@@ -124,18 +126,21 @@ function reconnecting() {
   return () => { clearTimeout(timer); box?.remove() }
 }
 
-let reloading: Promise<boolean> | null = null
-export function recoverFromStaleBuild(error: unknown, say = true): Promise<boolean> {
+const recovering = new Map<boolean, Promise<boolean>>()
+export function recoverFromStaleBuild(error: unknown, say = true, { prefetch = false } = {}): Promise<boolean> {
   if (!isStaleBuild(error)) return Promise.resolve(false)
-  return (reloading ??= (async () => {
+  const was = recovering.get(prefetch)
+  if (was) return was
+  const recovery = (async () => {
     const done = say ? reconnecting() : () => {}
     const until = Date.now() + 120_000
     for (let wait = 500; ; wait = Math.min(wait * 2, 4000)) {
       const build = await serverBuild()
       if (build !== null) {
-        const file = fileIn(error)
-        const back = (!!BUILD && !!build && build !== BUILD) || !file || (await loads(file))
-        if (!back) { done(); return false }
+        const file = fileIn(error), moved = !!BUILD && !!build && build !== BUILD
+        const back = moved || !file || (await loads(file))
+        // (a prefetch that failed while the server was away, its file still served: imported again when it's needed)
+        if (!back || (prefetch && !moved && !!file)) { done(); return false }
         if (!safeToReload()) { done(); offerNewBuild(); return false }
         if (!mayReload()) { done(); return false }
         noteAppError("stale", error)
@@ -145,7 +150,9 @@ export function recoverFromStaleBuild(error: unknown, say = true): Promise<boole
       if (Date.now() > until) { done(); return false }
       await new Promise((r) => setTimeout(r, wait))
     }
-  })()).then((r) => { if (!r) reloading = null; return r })
+  })().then((r) => { if (!r) recovering.delete(prefetch); return r })
+  recovering.set(prefetch, recovery)
+  return recovery
 }
 
 let started = false
@@ -159,6 +166,6 @@ export function startAppErrors() {
   })
   addEventListener("unhandledrejection", (e) => setTimeout(() => { if (!e.defaultPrevented) noteAppError("rejection", e.reason) }))
   // Vite's event for a lazy chunk's failed preload, before the import throws.
-  addEventListener("vite:preloadError", (e) => { void recoverFromStaleBuild("payload" in e ? e.payload : undefined) })
+  addEventListener("vite:preloadError", (e) => { void recoverFromStaleBuild("payload" in e ? e.payload : undefined, true, { prefetch: true }) })
   onActivity((n) => { trail.push(n.text.slice(0, 120)); if (trail.length > 8) trail.shift() })
 }

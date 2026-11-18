@@ -69,6 +69,13 @@ try {
   check("one kept from before the app started is sent after the reload", got?.kind === "boot" && got.fatal === 1, got)
   check("and the queue is empty after", await until(() => page.evaluate(() => localStorage.getItem("vaultite.errors") === null)), await page.evaluate(() => localStorage.getItem("vaultite.errors")))
 
+  const blip = page.waitForEvent("framenavigated", { timeout: 4000 }).then(() => true, () => false)
+  await page.evaluate(() => {
+    const e = new Event("vite:preloadError", { cancelable: true })
+    e.payload = new Error(`Unable to preload CSS for ${document.querySelector('script[type="module"][src*="assets/"]').src}`)
+    dispatchEvent(e)
+  })
+  check("a prefetch of this build's that failed a moment (its file still served) reloads nothing", !(await blip))
   await page.route((u) => u.href === base || u.href === `${base}./`, async (route) => {
     if (route.request().resourceType() !== "fetch") return route.continue()
     const res = await route.fetch()
