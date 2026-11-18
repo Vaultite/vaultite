@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react"
 import { notify } from "@/core/notify"
-import { safeToReload } from "@/core/unsaved"
+import { safeToReload, safeToRestart } from "@/core/unsaved"
 import { buildName, STAMP_META, stampOf, type Stamp } from "../../../core/buildstamp.ts"
 
 export const BUILD: string | null = (() => {
@@ -28,7 +28,7 @@ export function heardBuild(entry: string | null | undefined) {
   if (!behind()) return
   offerNewBuild()
   fetchBuild(entry)
-  if (!watching) { watching = true; document.addEventListener("visibilitychange", whenAway) }
+  if (!watching) { watching = true; document.addEventListener("visibilitychange", () => { clearTimeout(timer); timer = 0; whenAway() }) }
   whenAway()
 }
 
@@ -42,15 +42,17 @@ function fetchBuild(entry: string) {
   }).catch(() => { fetched = null })
 }
 
-const AWAY_MS = 2000, AGAIN_MS = 5000
+const AWAY_MS = 2000, AGAIN_MS = 5000, IN_VIEW_AGAIN_MS = 60_000, LEFT_ALONE_MS = 10 * 60_000
 const RELOADED = "vaultite.reloadedInto"
 let watching = false, timer = 0
+const hidden = () => document.visibilityState === "hidden"
+const leftAlone = () => safeToRestart() && performance.now() >= LEFT_ALONE_MS
 function whenAway() {
-  if (timer || !behind() || document.visibilityState !== "hidden") return
+  if (timer || !behind()) return
   timer = window.setTimeout(() => {
     timer = 0
-    if (!behind() || document.visibilityState !== "hidden") return
-    if (!safeToReload()) { timer = window.setTimeout(() => { timer = 0; whenAway() }, AGAIN_MS); return }
+    if (!behind()) return
+    if (!(hidden() ? safeToReload() : leftAlone())) { timer = window.setTimeout(() => { timer = 0; whenAway() }, hidden() ? AGAIN_MS : IN_VIEW_AGAIN_MS); return }
     try {
       if (sessionStorage.getItem(RELOADED) === served) return
       sessionStorage.setItem(RELOADED, served!)

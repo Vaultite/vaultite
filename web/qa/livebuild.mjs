@@ -1,6 +1,6 @@
-// A new web build reaches open pages at once (core/webbuild.ts, Live.newWeb): one in view offers Reload, one hidden
-// reloads into it by itself (web/src/core/builds.ts), unless something would be lost (sound playing: unsaved.ts), then
-// once it isn't. Starts its own throwaway server on a copy of web/dist it rebuilds; writes nothing else.
+// A new web build reaches open pages at once (core/webbuild.ts, Live.newWeb): one in view offers Reload, one hidden or left
+// alone reloads into it by itself (web/src/core/builds.ts), unless something would be lost (sound playing: unsaved.ts),
+// then once it isn't. Starts its own throwaway server on a copy of web/dist it rebuilds; writes nothing else.
 //   node web/qa/livebuild.mjs
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -118,6 +118,14 @@ try {
   check("a hidden page it reloaded for once already is offered it", await until(() => offered(stuck), 8000, 100))
   await wait(3500)
   check("and doesn't reload again", stuckLoads() === 0)
+
+  const alone = await open()
+  await alone.evaluate(() => { const ms = 11 * 60_000, now = Date.now, perf = performance.now.bind(performance); Date.now = () => now() + ms; performance.now = () => perf() + ms })
+  const aloneLoads = reloads(alone)
+  const fourth = rebuild()
+  check("a page in view left alone reloads into it by itself", await until(() => aloneLoads() > 0, 10000, 100))
+  await alone.waitForFunction(() => document.querySelector("#root > *"), null, { timeout: 30000 })
+  check("and runs it", await running(alone) === fourth, await running(alone))
 } finally {
   await browser.close()
   stop()
