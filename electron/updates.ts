@@ -10,6 +10,8 @@ import { plainError, sentence } from "../core/plainerror.ts"
 import { BRANCH, CODE, DEV, SHELL, WORKTREE } from "./identity.ts"
 import { relaunchSoon, storeLook, storeOn, storeReady, storeStatus, type StoreHost } from "./storehost.ts"
 import { relaunchOptions } from "./argv.ts"
+import type { UpdateMode } from "./vaultlist.ts"
+import { RELEASE } from "./mainbase.ts"
 import { describe, menuItem, offerMessage, restartWaitsOn, START, statusOf, step, type Current, type Effect, type How, type Leave, type ReleaseOutcome,
   type UpdateEvent, type Updates } from "./updatelogic.ts"
 
@@ -19,9 +21,6 @@ const BUILD_EVERY = 60 * 60_000
 const ROOT = path.dirname(import.meta.dirname)
 const MAC = process.platform === "darwin"
 const WIN = process.platform === "win32"
-
-export type UpdateMode = "automatic" | "notify" | "off"
-export const UPDATE_MODES: UpdateMode[] = ["automatic", "notify", "off"]
 
 export type UpdateWindow = { vault: { path: string }; win: { webContents: WebContents }; server: { exitCode: number | null } | null; link: unknown; port: number; ready: boolean }
 export type UpdatesHost = {
@@ -52,7 +51,6 @@ let host: UpdatesHost
 export function initUpdates(h: UpdatesHost) { host = h }
 
 export const updatable = () => !WORKTREE && app.isPackaged && !!CODE && (SHELL.release === true || !WIN)
-export const RELEASE = app.isPackaged && !!CODE && SHELL.release === true
 // (.noindex: Spotlight skips them, a .metadata_never_index file no longer works; else it indexed every build's files)
 const SOURCE = () => path.join(app.getPath("userData"), "source.noindex")
 const NEXT = () => path.join(app.getPath("userData"), "update.noindex")

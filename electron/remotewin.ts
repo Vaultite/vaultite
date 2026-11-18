@@ -1,5 +1,5 @@
 import { AppWindow } from "./appwindow.ts"
-import { revive } from "./web.ts"
+import { revive } from "./revive.ts"
 import { background } from "./titlebar.ts"
 import { buildMenu, remotes, save, zoom } from "./vaultlist.ts"
 import { crashedFor, hangs } from "./errors.ts"

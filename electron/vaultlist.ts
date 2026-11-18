@@ -2,10 +2,12 @@ import { app, type Rectangle } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { DEV } from "./identity.ts"
-import { UPDATE_MODES, type UpdateMode } from "./updates.ts"
 import type { HelperPrefs } from "./helper.ts"
 import { sandboxPath } from "./sandbox.ts"
 import * as Setup from "./setup.ts"
+
+export type UpdateMode = "automatic" | "notify" | "off"
+export const UPDATE_MODES: UpdateMode[] = ["automatic", "notify", "off"]
 
 export type Known = {
   path: string; port?: number; open?: boolean; last?: number

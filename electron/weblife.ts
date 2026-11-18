@@ -11,9 +11,6 @@ import { endSpare, spare } from "./websession.ts"
 import { addPage, raise, run } from "./webstack.ts"
 import { fit, keysBackIfUnseen, move, seeDraws, stow } from "./webspot.ts"
 import { fromPlayer, leaveFull } from "./webplayer.ts"
-import { logger } from "../core/log.ts"
-
-const log = logger("browser")
 
 export function moveTo(p: Page, win: AppWindow) {
   const from = p.win
@@ -96,20 +93,6 @@ function shortOfMemory(): Promise<boolean> {
     const m = fs.readFileSync("/proc/meminfo", "utf8"), kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, "m").exec(m)?.[1] ?? 0)
     return Promise.resolve(kb("MemTotal") > 0 && kb("MemAvailable") / kb("MemTotal") < 0.1)
   } catch { return Promise.resolve(false) }
-}
-
-export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) {
-  let times: number[] = []
-  wc.on("render-process-gone", (_e, d) => {
-    if (d.reason === "clean-exit" || wc.isDestroyed()) return
-    gone?.()
-    const now = Date.now()
-    times = times.filter((t) => now - t < 60_000)
-    log.error(`a page's process ended (${d.reason}, exit ${d.exitCode}): ${times.length < 3 ? "reloading" : "left, it keeps ending"}`)
-    if (times.length >= 3) return giveUp?.()
-    times.push(now)
-    setTimeout(() => { if (!wc.isDestroyed()) wc.reload() }, 300)
-  })
 }
 
 export function webWindow(win: AppWindow) {

@@ -1,5 +1,7 @@
+import { app } from "electron"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { CODE, SHELL } from "./identity.ts"
 
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 export const PRELOAD = path.join(ROOT, "electron", "preload.cjs")
@@ -8,3 +10,4 @@ export const ICON = path.join(ROOT, "web", "public", "icon-512.png")
 export const MAC = process.platform === "darwin"
 export const LINUX = process.platform === "linux"
 export const WIN = process.platform === "win32"
+export const RELEASE = app.isPackaged && !!CODE && SHELL.release === true

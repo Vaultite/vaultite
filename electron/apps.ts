@@ -7,7 +7,6 @@ import { type Call, lineHelper } from "./linehelper.ts"
 import { z } from "zod"
 import { appWindowsSwift } from "./swiftbuild.ts"
 import { APP_RECT, WID } from "./callwire.ts"
-import fs from "node:fs"
 import path from "node:path"
 
 type Rect = { x: number; y: number; width: number; height: number }
@@ -180,14 +179,6 @@ export const appHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "apps:through": (win, on) => setThrough(win, !!on && holesOf(win).length > 0, !!on),
 }
 
-export function appsOn(vault: string) {
-  if (process.platform !== "darwin") return false
-  try {
-    const c = JSON.parse(fs.readFileSync(path.join(vault, ".vaultite", "plugins.json"), "utf8"))
-    return Array.isArray(c.enabled) && c.enabled.includes("app-windows") && !(Array.isArray(c.disabled) && c.disabled.includes("app-windows")) &&
-      fs.existsSync(path.join(vault, ".vaultite", "plugins", "app-windows", "manifest.json"))
-  } catch { return false }
-}
 const hosts = new WeakSet<AppWindow>()
 
 export function appsWindow(win: AppWindow) {

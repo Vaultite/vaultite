@@ -2,11 +2,10 @@ import { app, clipboard, dialog, shell } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { hangReport, hangStarted, LONG_FRAME_LIST, LONG_FRAMES, LOOK_MS, MAX_SAMPLES, SAMPLE_EVERY_MS, sampled, type Hang, type HangEnd, type LongFrame } from "./hang.ts"
 import os from "node:os"
-import { CODE, HOST } from "./identity.ts"
-import { launchedFrom, updatesReady } from "./updates.ts"
+import { CODE } from "./identity.ts"
 import { plainError, sentence } from "../core/plainerror.ts"
 import { mainLog } from "./mainlog.ts"
-import { type Win, wins } from "./servers.ts"
+import { wins } from "./servers.ts"
 
 // Electron's error box for an uncaught exception stops everything and shows even over the QA scripts' quiet windows.
 export function uncaught(kind: "uncaught" | "rejection", e: unknown) {
@@ -19,20 +18,6 @@ function reportError(kind: string, message: string, stack: string) {
     const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message, stack, build: CODE?.commit ?? "" }] })
     for (const w of wins.values()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
   } catch {}
-}
-let shellTold = false, shellReported = false
-export function shellReady(w: Win | null) {
-  if (!shellTold) { shellTold = true; HOST?.ready(); updatesReady() }
-  if (!w || shellReported || !HOST) return
-  shellReported = true
-  const short = (c: string | null) => c?.slice(0, 7) ?? "this build"
-  const events = HOST.events(), passed = events.find((e) => e.kind === "passed")
-  launchedFrom({ from: HOST.from, commit: CODE?.commit ?? null, ...(passed ? { fellBack: { commit: passed.commit, why: passed.why } } : {}) })
-  const errors = events.map((e) => ({ kind: "boot", t: e.t, stack: "", build: CODE?.commit ?? "",
-    message: e.kind === "passed" ? `The app didn't start on ${short(e.commit)}: ${e.why}; it runs ${short(CODE?.commit ?? null)}`
-      : `The app ${e.kind === "late" ? "was slow to start" : e.kind === "crashed" ? "crashed starting" : "couldn't start"} on ${short(e.commit)}: ${e.why}` }))
-  if (errors.length) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ device: "desktop", errors }) }).catch(() => {})
 }
 const told = new WeakSet<object>()
 export function failedBox(title: string, e: unknown, o: { why?: string; log?: string } = {}) {
