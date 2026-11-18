@@ -135,7 +135,7 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       if (s) return Got.parse({ ...s, tabs: tabs.get(t) ?? [], inputs: Answer.parse(await ctx.api("GET", `terminals/${encodeURIComponent(t)}/inputs`).catch(() => ({ inputs: [] }))).inputs })
       const e = r.ended?.find((x) => x.id === t)
       if (e) return Got.parse({ ...e, ended: true })
-      throw new OpError(`there's no terminal '${t}' (vau terminal lists them)`, 404)
+      throw new OpError(`no terminal '${t}' runs, and none by that id ended in the last hour: stop waiting on it (vau terminal lists them)`, 404)
     },
     text: (r) => {
       if (r.ended) return `${r.id}  ${r.command || "-"}${r.name ? `  named "${r.name}"` : ""}  ended ${ago(r.exit.at)} (${how(r.exit)})`
