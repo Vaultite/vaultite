@@ -73,6 +73,12 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* Tailwind's `transition-*` and tw-animate's `animate-in`/`animate-out` without a duration: the motion tokens, so
+       the Animation setting reaches them (`duration-(--motion)` for the others). */
+    --default-transition-duration: var(--motion-fast);
+    --default-transition-timing-function: var(--ease-out);
+    --animate-in: enter var(--tw-animation-duration,var(--tw-duration,var(--motion-fast)))var(--tw-ease,var(--ease-out))var(--tw-animation-delay,0s)var(--tw-animation-iteration-count,1)var(--tw-animation-direction,normal)var(--tw-animation-fill-mode,none);
+    --animate-out: exit var(--tw-animation-duration,var(--tw-duration,var(--motion-fast)))var(--tw-ease,var(--ease-out))var(--tw-animation-delay,0s)var(--tw-animation-iteration-count,1)var(--tw-animation-direction,normal)var(--tw-animation-fill-mode,none);
 }
 /* The shape's three radii (rounded-card, rounded-control, rounded-chip): a pane's card; a control (tabs, group chips,
    fields); a chip set in a card's corner, concentric with it: the card's radius less its inset (--pane-gap). */

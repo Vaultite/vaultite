@@ -269,11 +269,11 @@ export function PaletteFrame({ label, onClose, onKeyDown, aside, children }: { l
     <div ref={box} data-overlay data-palette className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}
-        className={cn("absolute inset-0 cursor-default bg-black/30", !swapped && "animate-in fade-in duration-150")} />
+        className={cn("absolute inset-0 cursor-default bg-black/30", !swapped && "animate-in fade-in duration-(--motion-fast)")} />
       <div className="relative w-full max-w-[680px]">
         <div role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKey}
           style={{ maxHeight: "min(70dvh, 600px, calc(var(--vvh, 100dvh) - var(--key-bar) - 1.5rem - env(safe-area-inset-top)))" }}
-          className={cn("relative flex w-full flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl", !swapped && "animate-in fade-in zoom-in-95 duration-150")}>
+          className={cn("relative flex w-full flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl", !swapped && "animate-in fade-in zoom-in-95 duration-(--motion-fast)")}>
           {children}
         </div>
         {aside}

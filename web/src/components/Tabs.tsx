@@ -927,7 +927,7 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
       <div className="h-full min-w-0 flex-1" />
       {!merged && <div className="relative z-10 mt-0.5 flex self-start">{buttons}</div>}
       {dropping && (
-        <div data-drop-strip={id} className="absolute inset-x-0 top-0 z-30 shadow-sm animate-in fade-in slide-in-from-top-1 duration-150">
+        <div data-drop-strip={id} className="absolute inset-x-0 top-0 z-30 shadow-sm animate-in fade-in slide-in-from-top-1 duration-(--motion-fast)">
           <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu} adds={false}>{null}</PlaceStrip>
         </div>
       )}

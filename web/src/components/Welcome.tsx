@@ -105,11 +105,11 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
   return (
     <div className="welcome-scrim fixed inset-0 z-[80] grid place-items-center p-6" data-welcome-page={page} data-overlay>
       <div ref={card} role="dialog" aria-modal="true" aria-labelledby="welcome-title" tabIndex={-1} onKeyDown={keys} data-welcome={ask.firstRun ? "first-run" : ask.newVault ? "new-vault" : "again"}
-        className="relative flex w-full max-w-[492px] flex-col overflow-hidden rounded-[16px] border-[0.5px] border-border bg-card text-[13px] shadow-[0_32px_80px_-16px_rgb(0_0_0/0.4),0_4px_14px_rgb(0_0_0/0.1)] outline-none animate-in fade-in zoom-in-[0.97] duration-200">
+        className="relative flex w-full max-w-[492px] flex-col overflow-hidden rounded-[16px] border-[0.5px] border-border bg-card text-[13px] shadow-[0_32px_80px_-16px_rgb(0_0_0/0.4),0_4px_14px_rgb(0_0_0/0.1)] outline-none animate-in fade-in zoom-in-[0.97] duration-(--motion)">
         {page !== "done" && (
           <Button size="small" look="quiet" className="absolute top-3 right-3 z-[1] h-6.5 px-2 text-[12.5px]" onClick={() => finish("skip")} data-welcome-skip>Skip</Button>
         )}
-        <div key={page} className={cn("flex min-h-[300px] flex-col justify-center px-[32px] pt-9 pb-3 animate-in fade-in duration-200", dir > 0 ? "slide-in-from-right-3" : "slide-in-from-left-3")} data-welcome-body={page}>
+        <div key={page} className={cn("flex min-h-[300px] flex-col justify-center px-[32px] pt-9 pb-3 animate-in fade-in duration-(--motion)", dir > 0 ? "slide-in-from-right-3" : "slide-in-from-left-3")} data-welcome-body={page}>
           {page === "look" && <LookPage />}
           {page === "ai" && <AiPage agents={agents} />}
           {page === "permissions" && <PermissionsPage />}
@@ -263,9 +263,9 @@ function DonePage({ pressed, finish }: { pressed: boolean; finish: () => void })
     <div className="flex flex-1 flex-col items-center text-center" data-welcome-done={pressed ? "pressed" : ""}>
       <div className="flex flex-1 flex-col items-center justify-center">
       {keys && (
-        <span className={cn("mb-6 flex items-center gap-1.5 transition-transform duration-150", pressed && "scale-[0.96]")} aria-hidden>
+        <span className={cn("mb-6 flex items-center gap-1.5 transition-transform duration-(--motion-fast)", pressed && "scale-[0.96]")} aria-hidden>
           {keyCaps(keys).map((k, i) => (
-            <kbd key={i} className={cn("grid h-12 min-w-12 place-items-center rounded-[10px] px-3 font-keys text-[20px] leading-none transition-[background-color,color,box-shadow] duration-200",
+            <kbd key={i} className={cn("grid h-12 min-w-12 place-items-center rounded-[10px] px-3 font-keys text-[20px] leading-none transition-[background-color,color,box-shadow] duration-(--motion)",
               pressed ? "bg-primary text-primary-foreground shadow-[0_1px_0_rgb(0_0_0/0.15)]"
                 : "bg-card text-foreground shadow-[inset_0_0_0_0.5px_var(--border),0_1.5px_0_color-mix(in_oklab,var(--foreground)_14%,transparent)]")}>{k}</kbd>
           ))}

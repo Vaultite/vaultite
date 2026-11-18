@@ -126,7 +126,7 @@ export function Picture({ n, px, icon, className, round = "rounded-[8px]", whole
       {src && (
         <img key={src} src={src} alt="" loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded(src)}
           onError={() => { failed.add(src); setTried((t) => t + 1) }}
-          className={cn("transition-opacity duration-150", !done && "absolute opacity-0",
+          className={cn("transition-opacity duration-(--motion-fast)", !done && "absolute opacity-0",
             fill ? "size-full object-cover" : "max-h-[calc(100%-8px)] max-w-[calc(100%-8px)] rounded-[3px] object-contain shadow-[0_1px_3px_rgb(0_0_0/0.14)] ring-[0.5px] ring-border")} />
       )}
       {done && k === "video" && (

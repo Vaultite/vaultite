@@ -254,7 +254,7 @@ export function RailFlyout({ panel, ctx, open, setOpen, bar, button = !!bar }: {
       <Trigger panel={panel} at={ctx.panel} open={open} toggle={() => setOpen(!open)} tipSide={bar === "foot" ? "top" : bar ? undefined : side === "right" ? "left" : "right"} />
       {open && createPortal(
         <div ref={box} data-flyout={ctx.panel} role="dialog" aria-label={panel.title}
-          className={cn("fixed z-40 flex flex-col overflow-hidden rounded-[8px] border-[0.5px] border-border bg-sidebar px-2 pb-2 shadow-[0_8px_28px_rgb(0_0_0/0.16),0_1px_3px_rgb(0_0_0/0.08)] transition-opacity duration-150",
+          className={cn("fixed z-40 flex flex-col overflow-hidden rounded-[8px] border-[0.5px] border-border bg-sidebar px-2 pb-2 shadow-[0_8px_28px_rgb(0_0_0/0.16),0_1px_3px_rgb(0_0_0/0.08)] transition-opacity duration-(--motion-fast)",
             !panel.tall && "overflow-y-auto", "data-aside:pointer-events-none data-aside:opacity-0")}
           style={{ ...(at.left === undefined ? { [side]: `calc(${space(RAIL)} + 6px)` } : { left: at.left }), top: at.top, width, ...(panel.tall ? { height: Math.min(560, innerHeight * 0.7) } : { maxHeight: innerHeight - 16 }) }}>
           <PanelFold.Provider value={null}>
@@ -476,7 +476,7 @@ export function RowKeys({ id, className }: { id: string; className?: string }) {
   const first = firstKeys(id)
   if (!first) return null
   return (
-    <span aria-hidden data-rebind={id} data-tip="Change shortcut" className={cn("-my-0.5 flex shrink-0 gap-1 p-0.5 opacity-0 transition-opacity duration-150 data-rebinding:opacity-100", className)}>
+    <span aria-hidden data-rebind={id} data-tip="Change shortcut" className={cn("-my-0.5 flex shrink-0 gap-1 p-0.5 opacity-0 transition-opacity duration-(--motion-fast) data-rebinding:opacity-100", className)}>
       {keyCaps(first).map((k, i) => (
         <kbd key={i} className="grid h-5 min-w-5 place-items-center rounded-[4px] border-[0.5px] border-border bg-foreground/[0.06] px-1 font-keys text-[11px] leading-none text-muted-foreground">{k}</kbd>
       ))}

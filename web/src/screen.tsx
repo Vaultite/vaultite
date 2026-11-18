@@ -425,7 +425,7 @@ function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
       <div className="relative" style={{ height: h }}>
         <img src={b.img} alt="" draggable={false} className="absolute top-0 h-full max-w-none rounded-[8.5px] shadow-[0_0_0_0.5px_rgba(0,0,0,.18),0_1px_4px_rgba(0,0,0,.14)]"
           style={{ left: (THUMB_W - w) / 2, width: w }} />
-        <div ref={arrow} className={cn("absolute top-0 left-0 transition-opacity duration-200", !b.cursor && "opacity-0")}>
+        <div ref={arrow} className={cn("absolute top-0 left-0 transition-opacity duration-(--motion)", !b.cursor && "opacity-0")}>
           {!b.end && <span key={b.caption} aria-hidden className="behind-tap" style={{ "--c": tint }} />}
           <Arrow tint={tint} />
         </div>

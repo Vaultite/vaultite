@@ -39,7 +39,7 @@ function FoldHeading({ label, fold, count }: { label: string; fold: NonNullable<
       className="group/fold mt-3 flex h-7 cursor-pointer items-center gap-1 rounded-[5px] px-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
       <span className="flex-1 text-left">{label}</span>
       {!fold.open && <span className="font-normal tabular-nums">{count}</span>}
-      <ChevronRight aria-hidden className={cn("size-3.5 shrink-0 transition-transform duration-150", fold.open && "rotate-90")} strokeWidth={2.5} />
+      <ChevronRight aria-hidden className={cn("size-3.5 shrink-0 transition-transform duration-(--motion-fast)", fold.open && "rotate-90")} strokeWidth={2.5} />
     </button>
   )
 }

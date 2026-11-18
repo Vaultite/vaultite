@@ -59,7 +59,7 @@ function FileRow({ r, store, lines, shut, onToggle, nameMarks, pane }: {
       {lines ? (
         <button type="button" aria-label={shut ? "Show lines" : "Hide lines"} aria-expanded={!shut} onClick={onToggle}
           className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:text-foreground">
-          <ChevronRight className={cn("size-3.5 transition-transform duration-150", !shut && "rotate-90")} strokeWidth={2.5} />
+          <ChevronRight className={cn("size-3.5 transition-transform duration-(--motion-fast)", !shut && "rotate-90")} strokeWidth={2.5} />
         </button>
       ) : <span className="size-6 shrink-0" />}
       <button type="button" data-keyrow onClick={(e) => openFileAt(r.path, e, pane)} data-preview={/\.md$/i.test(r.path) ? r.path : undefined} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"

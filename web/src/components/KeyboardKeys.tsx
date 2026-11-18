@@ -35,7 +35,7 @@ export function KeyboardKeys() {
   if (!shown || !field || !area) return null
   const row = given ?? { label: "Keyboard keys", keys: () => [], scroll: false }
   return createPortal(
-    <div className={cn("fixed inset-x-0 z-[55] -translate-y-full transition-opacity duration-150", area.moving && "opacity-0")}
+    <div className={cn("fixed inset-x-0 z-[55] -translate-y-full transition-opacity duration-(--motion-fast)", area.moving && "opacity-0")}
       style={{ top: area.top + area.height }} data-keyboard-keys>
       <KeyBar label={row.label} scroll={row.scroll} keys={row.keys()} hide={() => field.blur()} />
     </div>,

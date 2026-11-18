@@ -113,7 +113,7 @@ export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNew
         <>
           <button type="button" aria-label="Close menu" tabIndex={-1} className="fixed inset-0 z-[60] cursor-default md:hidden" onClick={() => setMenuAt(null)} />
           <div className="pointer-events-none fixed inset-x-3 bottom-[calc(var(--phone-bar)+0.5rem)] z-[61] mx-auto flex max-w-md justify-end md:hidden">
-            <div id="bar-menu" role="menu" className="glass-strong pointer-events-auto w-56 rounded-[12px] p-1 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-150">
+            <div id="bar-menu" role="menu" className="glass-strong pointer-events-auto w-56 rounded-[12px] p-1 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-(--motion-fast)">
               <div>
                 <button type="button" role="menuitem" onClick={() => { setMenuAt(null); onNewNote() }} className={item}>
                   <FilePlus className="size-[20px] text-primary" strokeWidth={2} /><span className="flex-1">New note</span>

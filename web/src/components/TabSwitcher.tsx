@@ -51,7 +51,7 @@ type Info = (t: Tab | Pane) => TabInfo
 const CARD = "relative isolate flex aspect-[3/4] scroll-mt-[calc(env(safe-area-inset-top)+3.5rem)] scroll-mb-4 flex-col rounded-[14px]"
 const PAGE_SHAPE = { aspectRatio: "var(--tab-aspect, 3 / 5)" }
 function Ground({ className }: { className?: string }) {
-  return <span aria-hidden data-card-ground className={cn("absolute inset-0 -z-10 rounded-[14px] bg-[color-mix(in_srgb,var(--foreground)_4%,var(--card))] transition-[box-shadow] duration-150", className)} />
+  return <span aria-hidden data-card-ground className={cn("absolute inset-0 -z-10 rounded-[14px] bg-[color-mix(in_srgb,var(--foreground)_4%,var(--card))] transition-[box-shadow] duration-(--motion-fast)", className)} />
 }
 
 let grab: { id: string; dx: number; dy: number; w: number; h: number } | null = null
@@ -120,13 +120,13 @@ function Lifted({ store, info, current }: { store: Store; info: Info; current: s
   return createPortal(
     <div aria-hidden data-drag-ghost className="pointer-events-none fixed z-[70]"
       style={{ left, top: d.y - g.dy - o.top, width: g.w, height: g.h }}>
-      <div className="size-full transition-[scale] duration-200 ease-out" style={{ scale: s, transformOrigin: `${g.dx}px ${g.dy}px` }}>
+      <div className="size-full transition-[scale] duration-(--motion) ease-out" style={{ scale: s, transformOrigin: `${g.dx}px ${g.dy}px` }}>
         <div className={cn(CARD, "size-full animate-[tab-lift_180ms_cubic-bezier(.2,.8,.2,1)_forwards] shadow-2xl")}>
           <Ground className="ring-2 ring-[var(--primary)]" />
           <CardFace store={store} tab={tab} info={info(tab)} current={tab.id === current} panes={info} />
         </div>
       </div>
-      {hint && <span ref={pill} data-drag-hint className="absolute w-max -translate-x-1/2 rounded-full bg-card px-3 py-1.5 text-[15px] font-medium shadow-lg ring-[0.5px] ring-border transition-[top] duration-200 ease-out"
+      {hint && <span ref={pill} data-drag-hint className="absolute w-max -translate-x-1/2 rounded-full bg-card px-3 py-1.5 text-[15px] font-medium shadow-lg ring-[0.5px] ring-border transition-[top] duration-(--motion) ease-out"
         style={{ top: g.dy + (g.h * 1.03 - g.dy) * s + 8 }}>{hint}</span>}
     </div>,
     sheet ?? document.body,
@@ -180,7 +180,7 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu, pane, 
       }}
       className={cn("relative outline-none", lifted && "rounded-[14px] bg-foreground/[0.04]")}>
       <div ref={card} data-tab-card style={{ touchAction: "pan-y" }}
-        className={cn(CARD, "transition-[scale,opacity] duration-150", into && "scale-[0.94]", lifted && "opacity-0")}
+        className={cn(CARD, "transition-[scale,opacity] duration-(--motion-fast)", into && "scale-[0.94]", lifted && "opacity-0")}
         onPointerDown={(e) => {
           if (gone.current || e.button || e.pointerType === "mouse" || (selecting() && !pane)) return
           drag.current?.quit?.()
@@ -273,7 +273,7 @@ function GroupCard({ store, group: g, tabs, info, current, lit, onOpen }: { stor
   const shown = n > 4 ? tabs.slice(0, 3) : tabs
   return (
     <div data-group-card={g.id} data-ui={`group:${g.id}`} onContextMenu={menuOnCard(() => groupMenu(g.id, "phone"))} className="relative">
-      <div className={cn(CARD, "transition-[scale] duration-150", lit && "scale-[0.94]")}>
+      <div className={cn(CARD, "transition-[scale] duration-(--motion-fast)", lit && "scale-[0.94]")}>
         <Ground className={lit ? "ring-[3px] ring-[var(--primary)]" : current ? "ring-2 ring-[var(--primary)]" : "ring-[0.5px] ring-border"} />
         <span aria-hidden className="flex h-11 w-full shrink-0 items-center gap-2 pr-10 pl-3">
           <span className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(g.color) }} />
@@ -735,7 +735,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
           <TabsHeader title={host ? pages[at]?.label ?? "Workspace" : "Tabs"} count={found ? found.length : count} pages={pages} at={at}
             menu={host ? host.menu : null} more={more} query={query} setQuery={setQuery} items={draw(header.filter((h) => !h.item.phoneBar))} />
           {openSplit && !found && (
-            <div data-group-head data-split-head={openSplit.id} className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-150",
+            <div data-group-head data-split-head={openSplit.id} className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-(--motion-fast)",
               paneHit?.kind === "out" && "bg-primary/15 ring-2 ring-[var(--primary)]")}>
               <button type="button" data-group-back onClick={() => setSplit(null)}
                 className="-ml-2 flex h-11 min-w-0 cursor-pointer items-center pr-2 text-[17px] text-primary active:opacity-50">
@@ -747,7 +747,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
             </div>
           )}
           {open && !openSplit && !found && (
-            <div data-group-head data-ui={`group:${open.g.id}`} className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-150",
+            <div data-group-head data-ui={`group:${open.g.id}`} className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-(--motion-fast)",
               hit?.kind === "out" && hit.via === "head" && "bg-primary/15 ring-2 ring-[var(--primary)]")}>
               <button type="button" data-group-back onClick={() => setOpened(null)}
                 className="-ml-2 flex h-11 cursor-pointer items-center pr-2 text-[17px] text-primary active:opacity-50">

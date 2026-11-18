@@ -800,7 +800,7 @@ const TreeRow = memo(function TreeRow({ n, depth, pos, size, index, rows, isOpen
             data-tip={n.name} data-tip-side="right" data-tip-trunc data-archived={archived || undefined}
             className={cn("flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left", compact ? "h-full pr-8" : coarse ? "min-h-11 self-stretch pr-11" : "min-h-11 self-stretch pr-8", archived && "opacity-50")} style={{ paddingLeft: space(pad) }}>
             {n.folder
-              ? <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform duration-150", isOpen && "rotate-90")} strokeWidth={2.5} />
+              ? <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform duration-(--motion-fast)", isOpen && "rotate-90")} strokeWidth={2.5} />
               : <span className="w-3.5 shrink-0" />}
             {decor?.before?.length ? <RowNodes nodes={decor.before} />
               : fileIcons && <Icon className={cn("shrink-0", compact ? "size-[15px]" : "size-[18px]", !tint && "text-muted-foreground")} strokeWidth={2} style={tint ? { color: tint } : undefined} />}

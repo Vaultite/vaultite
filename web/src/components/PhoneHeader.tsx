@@ -31,7 +31,7 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
   const row = useSides()
   return (
     <header data-phone-header className="sight-top glass-strong fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] md:hidden">
-      <div ref={row} className="relative grid h-11 grid-cols-[1fr_minmax(0,auto)_1fr] items-center px-1 transition-opacity duration-200">
+      <div ref={row} className="relative grid h-11 grid-cols-[1fr_minmax(0,auto)_1fr] items-center px-1 transition-opacity duration-(--motion)">
         {ps.length > 1 && <PaneDots ids={ps.map((p) => p.id)} at={at} tabs={swipe === "tabs"} alone={inSight} />}
         <div className="flex min-w-(--side) items-center">
           <div data-side className="flex w-max items-center">
@@ -43,7 +43,7 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
           </div>
         </div>
         <div className={cn("relative flex min-w-0 flex-col items-center", ps.length > 1 && "self-stretch justify-center pb-2.5")}>
-          <div className={cn("group/title relative max-w-full transition-opacity duration-150", inSight && "opacity-0")}>
+          <div className={cn("group/title relative max-w-full transition-opacity duration-(--motion-fast)", inSight && "opacity-0")}>
             <div data-phone-title className="truncate px-1 text-center text-[17px] font-semibold group-has-[#phone-subtitle:not(:empty)]/title:text-[16px] group-has-[#phone-subtitle:not(:empty)]/title:leading-[20px]" style={NOW}>{name}</div>
             <div id="phone-subtitle" className="truncate px-1 text-center text-[12px] leading-[15px] text-muted-foreground empty:hidden" style={NOW} />
             {near.map((b) => (
@@ -96,7 +96,7 @@ function PaneDots({ ids, at, tabs, alone }: { ids: string[]; at: number; tabs: b
   const n = ids.length, k = Math.max(16 / 44, 1 - 19 / ((n - 1) * 22))
   const lit = (i: number) => (i === at ? `calc${COME[0]}` : i === at + 1 ? COME[1] : i === at - 1 ? COME[-1] : "0")
   return (
-    <div data-pane-dots role="group" aria-label="Panes" className={cn("absolute inset-y-0 left-1/2 flex -translate-x-1/2 transition-transform duration-150", alone && "-translate-y-3")} style={tabs ? { opacity: `calc${COME[0]}` } : undefined}>
+    <div data-pane-dots role="group" aria-label="Panes" className={cn("absolute inset-y-0 left-1/2 flex -translate-x-1/2 transition-transform duration-(--motion-fast)", alone && "-translate-y-3")} style={tabs ? { opacity: `calc${COME[0]}` } : undefined}>
       {ids.map((id, i) => (
         <button key={id} type="button" aria-label={`Pane ${i + 1} of ${n}`} aria-current={i === at || undefined} onClick={() => selectPane(id)}
           className="relative w-11 cursor-pointer">

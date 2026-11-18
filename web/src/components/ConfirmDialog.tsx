@@ -136,7 +136,7 @@ function Dialog({ a }: { a: Ask }) {
       }}
       className={cn(
         "m-auto w-[calc(100%-3rem)] max-w-[320px] overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card p-0 text-foreground shadow-2xl outline-none md:max-w-[400px]",
-        "backdrop:bg-black/30 open:animate-in open:fade-in open:zoom-in-95 open:duration-150",
+        "backdrop:bg-black/30 open:animate-in open:fade-in open:zoom-in-95 open:duration-(--motion-fast)",
       )}>
       <div className="px-5 pt-5 pb-4 text-center md:text-left">
         <h2 id="confirm-title" className="text-[17px] leading-[22px] font-semibold md:text-[15px] md:leading-[20px]">{a.title}</h2>

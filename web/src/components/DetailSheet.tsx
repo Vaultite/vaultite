@@ -158,12 +158,12 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
       className={cn(
         "sheet-h m-0 flex w-full max-w-none flex-col overflow-hidden overscroll-none border-0 p-0 text-foreground outline-none max-md:pr-[env(safe-area-inset-right)] max-md:pl-[env(safe-area-inset-left)]",
         "bg-card md:shadow-2xl md:ring-1 md:ring-border/40 md:bg-card/90 md:backdrop-blur-2xl md:backdrop-saturate-200",
-        "inset-0 transition-transform duration-200",
+        "inset-0 transition-transform duration-(--motion)",
         "md:inset-0 md:m-auto md:max-h-[80dvh] md:w-[calc(100%-2rem)] md:max-w-[560px] md:rounded-[12px]",
         wide && "md:h-[86dvh] md:max-h-none md:w-[80vw] md:max-w-none md:rounded-[14px]",
         "backdrop:bg-black/35",
         !still && "open:animate-in open:slide-in-from-bottom open:duration-300",
-        "md:open:fade-in md:open:zoom-in-95 md:open:slide-in-from-bottom-0 md:open:duration-200",
+        "md:open:fade-in md:open:zoom-in-95 md:open:slide-in-from-bottom-0 md:open:duration-(--motion)",
         "[&:not([open])]:hidden",
       )}>
       <header className={cn(
@@ -183,7 +183,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
           {bar && <div className={cn("min-w-0 flex-1 truncate text-[15px] font-semibold", !onBack && "pl-2")}>{title}</div>}
           {title && !bar && (
             <div aria-hidden className={cn(
-              "pointer-events-none absolute top-1/2 -translate-y-1/2 truncate text-center text-[17px] font-semibold transition-opacity duration-150",
+              "pointer-events-none absolute top-1/2 -translate-y-1/2 truncate text-center text-[17px] font-semibold transition-opacity duration-(--motion-fast)",
               onBack ? "inset-x-[128px]" : "inset-x-14 group-has-[#sheet-actions:not(:empty)]:inset-x-[100px]",
               compact ? "opacity-100" : "opacity-0",
             )}>{title}</div>
@@ -203,7 +203,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
           floating ? cn("md:pt-[17px]", !own && "pt-[calc(env(safe-area-inset-top)+22px)]") : "pt-1",
         )}>
         {open && (
-          <div key={key} className={cn(anim && "animate-in fade-in duration-200", anim === "push" && "slide-in-from-right-8", anim === "pop" && "slide-in-from-left-8")}>
+          <div key={key} className={cn(anim && "animate-in fade-in duration-(--motion)", anim === "push" && "slide-in-from-right-8", anim === "pop" && "slide-in-from-left-8")}>
             <InSheet.Provider value><Wide.Provider value={!!wide}>{children}</Wide.Provider></InSheet.Provider>
           </div>
         )}

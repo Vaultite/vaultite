@@ -66,7 +66,7 @@ export function SidebarHeading({ title, open, children, aside, className }: {
     return children ? <SwipeRow {...head} under={children} className={box}>{row}</SwipeRow> : <div {...head} className={box}>{row}</div>
   }
   return (
-    <div {...head} className={cn("flex h-7 items-center gap-0.5 pr-0.5 pl-1.5 transition-opacity duration-200", box)}>
+    <div {...head} className={cn("flex h-7 items-center gap-0.5 pr-0.5 pl-1.5 transition-opacity duration-(--motion)", box)}>
       {label}
       <span className="flex-1" />
       <span className="flex gap-0.5 opacity-0 transition-opacity group-hover/head:opacity-100 focus-within:opacity-100">
