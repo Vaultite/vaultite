@@ -20,6 +20,9 @@ export function changes(before: string[], after: string[]) {
   return [...added.filter(both).map((l) => `~ ${l}`), ...added.filter((l) => !both(l)).map((l) => `+ ${l}`), ...gone.filter((l) => !both(l)).map((l) => `- ${l}`)]
 }
 
+const PENDING = /"[^"]{0,40}\b(?:loading|saving|sending|uploading|processing|updating|syncing|searching|submitting|signing in|redirecting|preparing|generating|fetching)\b[^"]{0,40}(?:…|\.\.\.)"/i
+export const saysPending = (line: string) => PENDING.test(line)
+
 const AROUND_CONTENT = /^\s*- (navigation|banner|contentinfo|complementary)\b/
 const FOOTER = /^- (contentinfo|sectionfooter)\b/
 const depthOf = (l: string) => l.length - l.trimStart().length

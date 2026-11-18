@@ -9,7 +9,7 @@ Each call is a turn of yours, the slow part: let each answer do the work. MCP to
 - **Reading:** `read <tab> --main` (the page's main part), `read <tab> --find "invoice"` (the lines with it). A Google doc reads as its Markdown, a sheet as CSV, slides as text.
 - **Files** (an invoice, a PDF, an export): `download <tab> <its address>` saves it into the vault with the tab's logins; `pdf <tab>` saves the page itself.
 - **Several steps you needn't look between:** one `run` script (`ref(name)`, `act`, `fill`, `read`, `wait`, `go`), 30 s at most.
-- **Never sleep.** open, go and act wait for the page to settle; `wait <tab> --text "Saved"` for something slower.
+- **Never sleep.** open, go and act wait for the page to settle (a "Saving…" or "Loading…" they wait out, up to 3 s); `wait <tab> --text "Saved"` for something slower.
 - **Google Docs:** `read` is the doc's Markdown. Rewrite it whole: `click --name "<some of its text>"`, `press --key Meta+a`, then `paste --format markdown --value - < doc.md`. Add at a place: `click --name "<text there>"`, `press --key End` (or `Meta+ArrowDown`, its end), `paste`. Fix words: `dblclick --name "<word>"`, `type --value "<new>"`; many: Find and replace (`press --key Meta+Shift+h`, fill its fields by name, `click --name "Replace all"`).
 - **Addresses beat clicks** when you know them: `go <tab> <url>` (Gmail: `https://mail.google.com/mail/u/0/#search/<words>`; Drive: `https://drive.google.com/drive/search?q=<words>`).
 - **Only the user can** sign in, pass a check or approve a passkey: `ask <tab> "<what to do>"`, then `wait <tab> --helped --timeout 600`. Logins with the user's passwords for agents: `login <tab>`; a code the site mails: `code <site>` (from Gmail, only that code).

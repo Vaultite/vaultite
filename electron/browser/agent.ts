@@ -9,7 +9,7 @@ import { allPages, appWindows, busyWhen, eachPage, eachSession, engineBusy, hand
 import { docOf, exposed, filledIn, filling, heldNear, markRan, scrub, scrubDeep } from "./pagesecrets.ts"
 import { linesIn, nodeIdOf, refNow } from "./pagetree.ts"
 import { clipboardKey, keyEvent } from "./keypress.ts"
-import { changes, INTERACTIVE, mainLines, oneLineLists } from "./axlines.ts"
+import { changes, INTERACTIVE, mainLines, oneLineLists, saysPending } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
 import { AX_TREE, BOX, DESCRIBED, RESOLVED, type DomNode } from "./cdpwire.ts"
 import { messageOf } from "./messageof.ts"
@@ -161,6 +161,17 @@ async function quiet(p: EnginePage, since = Date.now(), cap = 2000) {
     if (!fetching(p, since)) return
     while (fetching(p, since) && Date.now() < until) await new Promise((r) => setTimeout(r, 50))
   }
+}
+
+const PENDING_MS = 3000
+async function untilDone(p: EnginePage, lines: string[], had: string[], since: number) {
+  const old = new Set(had), until = Date.now() + PENDING_MS
+  let now = lines
+  while (now.some((l) => saysPending(l) && !old.has(l)) && Date.now() < until && !p.wc.isDestroyed()) {
+    await quiet(p, since, until - Date.now())
+    now = await tree(p).catch(() => now)
+  }
+  return now
 }
 
 const diffLimit = (d: unknown) => (d === "none" ? 0 : /^\d+$/.test(String(d ?? "")) ? Math.min(1000, Number(d)) : 30)
@@ -442,9 +453,10 @@ async function act(p: EnginePage, a: Act) {
     return r
   }
   if (r.navigated || docOf(p.wc) !== doc) await quiet(p, since, 4000); else await still
-  const lines = await tree(p).catch(() => null)
-  if (!lines) return r
+  const drawn = await tree(p).catch(() => null)
+  if (!drawn) return r
   const page = !before || before.doc !== docOf(p.wc)
+  const lines = await untilDone(p, drawn, page ? [] : before.lines, since)
   return { ...r, navigated: r.navigated || page, diff: page ? pageLines(lines, a.diff) : { page: false, ...cutTo(changes(before.lines, lines), limit) } }
 }
 
@@ -649,7 +661,7 @@ async function firstLines(p: EnginePage, lines: unknown, since = Date.now()) {
   if (lines === "none" || p.wc.isDestroyed()) return {}
   await quiet(p, since, 4000)
   const all = await tree(p).catch(() => null)
-  return all ? { diff: pageLines(all, lines) } : {}
+  return all ? { diff: pageLines(await untilDone(p, all, [], since), lines) } : {}
 }
 export async function navigateIn(p: EnginePage, to: unknown, who: By, lines: unknown = "none") {
   const was = p.wc.getURL(), t = String(to ?? ""), since = Date.now()

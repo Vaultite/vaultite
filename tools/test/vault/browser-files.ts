@@ -17,7 +17,7 @@ export default async ($: VaultTest) => {
       at("http://127.0.0.1:3000/", "media") === "deny" && at("http://localhost:5000/", "clipboard-read") === "deny" && at("http://localhost:8793/", "media") === "allow")
     // What agents get of a page (electron/browser/axlines.ts, plugins/core/web-viewer/find.ts): a control that changed once,
     // new lines before gone ones; a new page's content without its navigation; a tree's lines with a word, and what holds them.
-    const { changes, mainLines, oneLineLists } = await import("../../../electron/browser/axlines.ts")
+    const { changes, mainLines, oneLineLists, saysPending } = await import("../../../electron/browser/axlines.ts")
     const { within } = await import("../../../plugins/core/web-viewer/find.ts")
     const diff = changes(["- textbox \"Email\" [ref=e2]: old", "- text \"Saving\"", "- button \"Save\" [ref=e3]"], ["- textbox \"Email\" [ref=e2]: new", "  - button \"Save\" [ref=e3]", "- status \"Saved\""])
     check("browser agents: an act's diff says a control changed once, new lines first, a moved line not at all",
@@ -36,6 +36,9 @@ export default async ($: VaultTest) => {
     check("browser agents: a <select>'s options are one line of names, a custom combobox's stay to click",
       JSON.stringify(oneLineLists(form)) === JSON.stringify(["- form", "  - combobox \"Plan\" [ref=e1]: Pro", "    - options: \"Free\" | \"Pro\"", "  - combobox \"Size\" [ref=e4]: S",
         "    - options: \"S\" | … 20 more", ...form.slice(7)]), oneLineLists(form))
+    check("browser agents: an act waits on a line saying the page is still at it, not on other text with an ellipsis",
+      ["+ text \"Saving…\"", "- main: heading \"Billing\" | \"Loading usage...\"", "- status: \"Uploading 2 files…\""].every(saysPending)
+        && !["- link \"Read more…\" [ref=e4]", "- text \"And then...\"", "- button \"Loading dock\" [ref=e5]", `- text "${"so much text before it ".repeat(4)}loading…"`].some(saysPending))
     const tree = ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "    - button \"Save settings\" [ref=e3]", "  - link \"Help\" [ref=e4]"].join("\n")
     check("browser agents: snapshot --find keeps the lines with it and what they're in",
       within(tree, "save") === ["- main", "  - form \"Settings\"", "    - button \"Save settings\" [ref=e3]"].join("\n") && within(tree, "/e[24]\\]/") === ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "  - link \"Help\" [ref=e4]"].join("\n"), within(tree, "save"))
