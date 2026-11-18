@@ -216,11 +216,18 @@ export const takeNew = (path: string) => { if (fresh !== path) return false; fre
 /** Open a file just made, in editing with its name ready to type. */
 export const openNew = (path: string, opts?: { newTab?: boolean }) => { markNew(path); openFile(path, opts) }
 
+const reading = new Map<string, Promise<FileText>>()
 /** A file's text. One read ahead of time (prefetchFile) is taken by the first call for that file. */
 export function readFile(path: string) {
   const early = ahead.get(path)
   ahead.delete(path)
-  return early?.p ?? get<FileText>(`file?path=${enc(path)}`)
+  const p = early?.p ?? reading.get(path) ?? get<FileText>(`file?path=${enc(path)}`)
+  if (!reading.has(path)) {
+    reading.set(path, p)
+    const done = () => { if (reading.get(path) === p) reading.delete(path) }
+    p.then(done, done)
+  }
+  return p
 }
 
 export function readAhead(path: string) {
@@ -228,16 +235,21 @@ export function readAhead(path: string) {
   return ahead.get(path)?.p ?? get<FileText>(`file?path=${enc(path)}`)
 }
 
-const ahead = new Map<string, { p: Promise<FileText>; at: number }>()
+type Ahead = { p: Promise<FileText>; at: number; answered?: boolean }
+const ahead = new Map<string, Ahead>()
 const AHEAD_MS = 30_000
-onVaultChange((paths) => { for (const p of [...ahead.keys()]) if (touches(paths, p)) ahead.delete(p) })
+onVaultChange((paths) => {
+  for (const [p, e] of ahead) if (touches(paths, p) && (paths !== null || e.answered)) ahead.delete(p)
+  if (paths) for (const p of reading.keys()) if (touches(paths, p)) reading.delete(p)
+})
 function prefetchFile(path: string) {
   const now = Date.now()
   for (const [p, e] of ahead) if (now - e.at > AHEAD_MS) ahead.delete(p)
   if (ahead.has(path) || isMedia(kindOf(path))) return
   const p = get<FileText>(`file?path=${enc(path)}`)
-  p.catch(() => { if (ahead.get(path)?.p === p) ahead.delete(path) })
-  ahead.set(path, { p, at: now })
+  const entry: Ahead = { p, at: now }
+  p.then(() => { entry.answered = true }, () => { if (ahead.get(path)?.p === p) ahead.delete(path) })
+  ahead.set(path, entry)
 }
 
 type Settler = { settle: () => Promise<void>; disk: () => string }
