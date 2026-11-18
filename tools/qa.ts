@@ -40,8 +40,10 @@ function lint() {
   const src = ["web/src", "web/index.html", "plugins", "core", "electron", "tools/fixtures", "node_modules/sonner/dist/index.mjs"].flatMap((d) => fs.statSync(path.join(ROOT, d)).isDirectory() ? walk(path.join(ROOT, d)) : [path.join(ROOT, d)])
     .filter((f) => /\.(tsx?|css|html|mjs|cjs|js)$/.test(f)).map((f) => fs.readFileSync(f, "utf8")).join("\n")
   const camel = (s: string) => s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
-  const drawn = (attr: string, own: string) => [src, own].some((t) => new RegExp(`data-${attr}(?![\\w-])`).test(t.replaceAll(`[data-${attr}`, ""))) ||
-    new RegExp(`dataset\\.${camel(attr)}\\b`).test(src)
+  const srcData = new Set(Array.from(src.matchAll(/data-(?=([\w-]+))/g)).flatMap((m) => (src[m.index - 1] === "[" ? [] : [m[1]])))
+  const srcDataset = new Set(Array.from(src.matchAll(/dataset\.(\w+)/g), (m) => m[1]))
+  const drawn = (attr: string, own: string) => srcData.has(attr) || srcDataset.has(camel(attr)) ||
+    new RegExp(`data-${attr}(?![\\w-])`).test(own.replaceAll(`[data-${attr}`, ""))
   // (`!(await page.$(sel))`, `(await page.locator(sel).count()) === 0`: what a change retired may stay retired)
   const gone = /(?<!!)!\(?await [\w.]+\.\$\(\s*(["'`])[^"'`]*\1\s*\)\)?|\(await [\w.]+\.(?:locator|\$\$)\(\s*(["'`])[^"'`]*\2\s*\)(?:\.count\(\))?\)(?:\.length)? === 0/g
   const bad: string[] = []
