@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { closest } from "./blocks.ts"
+import { closest } from "./spelling.ts"
 import { HTTPError, type Plugin, ROOT } from "./plugins.ts"
 import { readText } from "./vault.ts"
 

@@ -1,4 +1,4 @@
-import { distance } from "./blocks.ts"
+import { distance } from "./spelling.ts"
 import { actionProblems } from "./actions.ts"
 import type { OpAction, OpEntry, OpKind, Schema } from "./contracts/ops.ts"
 import type { Readable } from "node:stream"

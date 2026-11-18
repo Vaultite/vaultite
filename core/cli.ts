@@ -5,9 +5,10 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { z } from "zod"
 import { catalogOf, type OpEntry } from "./contracts/ops.ts"
 import { camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
-import { distance } from "./blocks.ts"
+import { distance } from "./spelling.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { gitEnv } from "./gitenv.ts"
+import { request } from "./clihttp.ts"
 import { servingOf } from "./serving.ts"
 import { TEST_HEADER, inTestRun, testRunId } from "./testrun.ts"
 import { isObj } from "./values.ts"
@@ -61,23 +62,6 @@ function parseJson(s: string): unknown {
   } catch (e) {
     throw new CliError(`that isn't JSON (${e instanceof Error ? e.message : String(e)})`)
   }
-}
-
-/** One HTTP request, with Node's http module: fetch would load undici, a third of a short command's start. */
-async function request(url: string, method: string, body?: string, extra: Record<string, string> = {}) {
-  const u = new URL(url)
-  const { request: send } = u.protocol === "https:" ? await import("node:https") : await import("node:http")
-  return new Promise<{ status: number; type: string; text: string }>((resolve, reject) => {
-    const headers = body === undefined ? extra : { ...extra, "Content-Type": "application/json", "Content-Length": String(Buffer.byteLength(body)) }
-    const req = send(u, { method, headers }, (res) => {
-      const chunks: Buffer[] = []
-      res.on("data", (c: Buffer) => chunks.push(c))
-      res.on("error", reject)
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, type: String(res.headers["content-type"] ?? ""), text: Buffer.concat(chunks).toString("utf8") }))
-    })
-    req.on("error", reject)
-    req.end(body)
-  })
 }
 
 export const userData = (env: Record<string, string | undefined> = process.env, platform: string = process.platform) => env.VAULTITE_USER_DATA || (

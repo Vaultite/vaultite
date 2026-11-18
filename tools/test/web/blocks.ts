@@ -3,6 +3,7 @@ import { web } from "./lib.ts"
 
 // The block contract (core/blocks.ts, shared): options checked against a declaration, defaults filled in.
 const B = await import("../../../core/blocks.ts")
+const { closest } = await import("../../../core/spelling.ts")
 const decl: import("../../../core/blocks.ts").BlockDecl = { description: "a made-up card", options: {
   limit: { type: "number", default: 5, min: 1, max: 50, description: "how many" },
   view: { type: "enum", values: ["table", "list"], description: "how it's drawn" },
@@ -32,7 +33,7 @@ check("blocks: options that aren't YAML or a map", B.parseOptions("a: [").error?
   && !B.parseOptions("").error && B.parseOptions("a: 1").options.a === 1)
 const r = B.resolveOptions(decl, { title: 2026, limit: null })
 check("blocks: defaults filled in, a number made text where a text is declared", r.limit === 5 && r.title === "2026" && !("view" in r), r)
-check("blocks: the closest name", B.closest("isues", ["issues", "stats"]) === "issues" && B.closest("x", ["issues"]) === null)
+check("blocks: the closest name", closest("isues", ["issues", "stats"]) === "issues" && closest("x", ["issues"]) === null)
 check("blocks: a sound declaration has no problems", !B.declProblems({ card: decl }, "m").length, B.declProblems({ card: decl }, "m"))
 const bad = B.declProblems({ "bad name": { description: "x" }, card: { description: "", options: { wide: { type: "boolean", description: "x" },
   n: { type: "integer", description: "" }, v: { type: "enum", description: "x" }, d: { type: "number", default: "five", description: "x" } } } }, "m")

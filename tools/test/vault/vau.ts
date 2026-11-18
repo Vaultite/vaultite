@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import type { Any, VaultTest } from "./harness.ts"
 import { request } from "../fakes.ts"
 import { portOf } from "../../../core/listening.ts"
@@ -236,9 +237,11 @@ export default async ($: VaultTest) => {
       req.on("data", (c) => { body += c })
       req.on("end", () => {
         const send = (status: number, out: unknown, type = "application/json") => { res.writeHead(status, { "Content-Type": type }); res.end(typeof out === "string" ? out : JSON.stringify(out)) }
-        if (req.url?.split("?")[0] === "/api/ops") return send(200, [entry("big.text", "big"), entry("bad.thing", "boom"), entry("echo.body", "echo", { body: { type: "string", stdin: true, description: "x" } })])
+        if (req.url?.split("?")[0] === "/api/ops") return send(200, [entry("big.text", "big"), entry("bad.thing", "boom"), entry("in.chunks", "chunks"), entry("echo.body", "echo", { body: { type: "string", stdin: true, description: "x" } })])
         if (req.url?.startsWith("/api/ops/big.text")) return send(200, big, "text/plain")
         if (req.url?.startsWith("/api/ops/bad.thing")) return send(500, { error: "it broke" })
+        const pieces = Buffer.from(`${"café ".repeat(3000)}fin`), chunked = () => { for (let i = 0; i < pieces.length; i += 1001) res.write(pieces.subarray(i, i + 1001)); res.end() }
+        if (req.url?.startsWith("/api/ops/in.chunks")) return void (res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" }), chunked())
         if (req.url?.startsWith("/api/ops/echo.body")) return send(200, `body: ${JSON.parse(body || "{}").body ?? "(none)"}`, "text/plain")
         send(404, { error: "not found" })
       })
@@ -261,6 +264,8 @@ export default async ($: VaultTest) => {
     })
     let r = await run(["big"], { stopAfter: 10 })
     check("bin/vau: piped into a reader that stops, it ends quietly", r.code === 0 && !r.err, { code: r.code, err: r.err.slice(0, 300) })
+    const whole = await Promise.all([run(["big"], { stdin: "ignore" }), run(["chunks"], { stdin: "ignore" })])
+    check("bin/vau: a long answer, and one in chunks with a character split across two, come whole", isDeepStrictEqual(whole.map((x) => [x.code, x.out]), [[0, big], [0, `${"café ".repeat(3000)}fin\n`]]), whole.map((x) => [x.code, x.out.length]))
     r = await run(["echo"])
     check("bin/vau: stdin an open socket nobody writes to isn't waited for", r.code === 0 && r.out === "body: (none)\n" && r.ms < 5000, r)
     r = await run(["echo"], { input: "piped text\n" })

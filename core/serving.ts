@@ -1,4 +1,3 @@
-import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
@@ -12,8 +11,9 @@ export type Serving = { pid: number; port: number; key: string; vault: string; a
    *  and the code root it runs. */
   heir?: { app: string; root: string } }
 
+const crypto = () => process.getBuiltinModule("node:crypto")
 const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
-const fileFor = (vault: string) => path.join(runtimeDir(), `vaultite-serves-${crypto.createHash("sha1").update(real(vault)).digest("hex").slice(0, 12)}.json`)
+const fileFor = (vault: string) => path.join(runtimeDir(), `vaultite-serves-${crypto().createHash("sha1").update(real(vault)).digest("hex").slice(0, 12)}.json`)
 const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return codeOf(e) === "EPERM" } }
 
 export function servingOf(vault: string): Serving | null {
@@ -32,7 +32,7 @@ export function claim(vault: string, port: number, app: boolean): Serving | null
     const other = servingOf(vault)
     if (other && other.pid !== process.pid) return other
     if (!other) try { fs.unlinkSync(file) } catch { /* none */ }
-    const s: Serving = { pid: process.pid, port, key: crypto.randomBytes(24).toString("base64url"), vault: real(vault), app }
+    const s: Serving = { pid: process.pid, port, key: crypto().randomBytes(24).toString("base64url"), vault: real(vault), app }
     try {
       fs.writeFileSync(file, JSON.stringify(s) + "\n", { flag: other ? "w" : "wx", mode: 0o600 })
       if (mine?.file !== file) release()
