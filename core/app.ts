@@ -686,7 +686,7 @@ export class App {
         return await this.holding.run(token, async () => {
           if (walks()) await this.vault.sync(pre)
           this.pagesOf = this.onKey()
-          try { return await fn() } finally { await this.loadPlugins().then(() => this.followPlugins(), (e) => log.error("loading the plugins failed", e)) }
+          try { return await fn() } finally { this.vault.doing = "loading the plugins"; await this.loadPlugins().then(() => this.followPlugins(), (e) => log.error("loading the plugins failed", e)) }
         })
       } finally {
         token.on = false

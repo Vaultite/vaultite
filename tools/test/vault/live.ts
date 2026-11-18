@@ -116,6 +116,13 @@ export default async ($: VaultTest) => {
       await new Promise((r) => setTimeout(r, 300))
       await vault.synced()
     }
+    {
+      let saw = ""
+      const off = vault.afterSync((v) => { saw = v.doing }, "live-probe")
+      await vault.synced()
+      off()
+      check("live: what the vault's holder is doing is known, down to a plugin's hook", saw === "after a sync: live-probe" && vault.doing === "", [saw, vault.doing])
+    }
     write(".vaultite/live-hand.json", '{"n":1}\n')
     await vault.synced()
     check("live: a settings file written by hand is read at the next walk", vault.config("live-hand").n === 1, vault.config("live-hand"))

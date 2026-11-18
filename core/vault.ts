@@ -678,6 +678,7 @@ export class Vault {
   private lastGood = new Map<string, { text: string; stat: string }>()
   private queue: Promise<unknown> = Promise.resolve()
   private locks = 0
+  doing = ""
   private holders = 0
   private waiters = 0
   private next: Promise<boolean> | null = null
@@ -708,12 +709,12 @@ export class Vault {
   lock<T>(fn: () => Promise<T> | T): Promise<T> {
     const watched = async () => {
       const t0 = Date.now(), by = errorContext.getStore() ?? "the server's own work"
-      const dog = setInterval(() => log.error(`held ${Math.round((Date.now() - t0) / 1000)} s by ${by}`), HELD_LONG)
+      const dog = setInterval(() => log.error(`held ${Math.round((Date.now() - t0) / 1000)} s by ${by}${this.doing ? ` (${this.doing})` : ""}`), HELD_LONG)
       dog.unref()
       holdingVault(by)
       this.locks++
       this.holders++
-      try { return await fn() } finally { this.holders--; clearInterval(dog); holdingVault("") }
+      try { return await fn() } finally { this.holders--; this.doing = ""; clearInterval(dog); holdingVault("") }
     }
     this.waiters++
     const run = this.queue.then(watched, watched).finally(() => { this.waiters-- })
@@ -866,16 +867,20 @@ export class Vault {
     return path.join(this.path, rel)
   }
 
-  afterSync(fn: (vault: Vault) => void) {
+  afterSync(fn: (vault: Vault) => void, by = "") {
+    if (by) this.hookNames.set(fn, by)
     return added(this.hooks, fn)
   }
+  private hookNames = new WeakMap<(vault: Vault) => void, string>()
 
   private async afterSyncHooks() {
     let since = performance.now()
     for (const fn of this.hooks) {
+      this.doing = `after a sync: ${this.hookNames.get(fn) ?? "a hook"}`
       if (performance.now() - since > 20) { await turn(); since = performance.now() }
       try { fn(this) } catch (e) { log.error("a plugin's after-sync hook failed", e) }
     }
+    this.doing = ""
   }
 
   onArrive(fn: (rel: string) => void) {
@@ -1340,6 +1345,7 @@ export class Vault {
   private async look({ ahead, before }: { ahead: boolean; before?: Looked | null }): Promise<Looked> {
     const t0 = Date.now(), locks = this.locks, heard = this.heardCount
     if (!ahead) this.stale = false
+    if (!ahead) this.doing = "listing the vault's files"
     const listed = await this.list()
     const start = this.startTexts, evictedNow = new Set(listed.away)
     const stale = (r: string, st: Stat) => { const e = this.entries.get(r); return !e || !sameStat(e.stat, st) || e.broken }
@@ -1350,6 +1356,7 @@ export class Vault {
       const t = before?.texts.get(r), was = before?.listed.found.get(r), st = listed.found.get(r)!
       if (t !== undefined && was && sameStat(was, st)) had.set(r, t)
     }
+    if (!ahead) this.doing = `reading ${changed.length - had.size} changed files${listed.away.length ? `, ${listed.away.length} iCloud has yet to bring down` : ""}`
     const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r))), this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
     return { t0, locks, heard, listed, texts: new Map([...had, ...texts]), late: [...late, ...away] }
   }
@@ -1402,6 +1409,7 @@ export class Vault {
     }
     const unchanged = new Set<string>()
     let since = performance.now()
+    this.doing = `indexing ${changed.length} changed files`
     for (const rel of changed.sort()) {
       if (performance.now() - since > 20) { await turn(); since = performance.now() }
       const st = found.get(rel)!

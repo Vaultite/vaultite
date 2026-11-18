@@ -502,7 +502,7 @@ export class Plugin {
   /** fn(vault) runs after every sync of the vault (before each request, and when files change on disk: core/live.ts),
    *  to follow the files themselves (File history keeps their earlier versions). Keep it cheap: it runs often. */
   onSync(fn: (vault: Vault) => void) {
-    return this.attach(fn, (v) => v.afterSync((vault) => runHook(this.id, "onSync", () => fn(vault))))
+    return this.attach(fn, (v) => v.afterSync((vault) => runHook(this.id, "onSync", () => fn(vault)), this.id))
   }
 
   /** fn(from, to) when the API moves, restores or trashes a file (to: null; `trashed`: where it went), so what the
