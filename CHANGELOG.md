@@ -17,6 +17,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the app loads while idle (palettes, the agents' chat and terminal) waits until the first screen has drawn.
 - Desktop app: a vault's window opens showing its last screen at once, as you left it, and fades to the live app as soon
   as that has drawn its file tree and open note, instead of a blank window until the vault has loaded.
+- Search: accents don't matter, as in Obsidian: "cafe" finds "café" and "café" finds "cafe"; ø, ł and ß match o, l and ss.
 - Pictures of a page (vau html picture): on Windows they use the installed Chrome or Edge, so they work on Windows on Arm,
   and a page that fails to open says so instead of "nothing on the page matches".
 - Companion and agents: they attach a file from the vault to a web page (a screenshot to a Reddit reply), through

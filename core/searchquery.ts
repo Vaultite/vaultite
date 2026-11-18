@@ -89,19 +89,16 @@ function tokens(q: string): Tok[] {
 
 type Ctx = { field: Field; matchCase: boolean }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-
 function textMatcher(s: string, matchCase: boolean): Matcher {
-  const want = matchCase ? s : s.toLowerCase()
-  const ascii = !matchCase && /^[\x20-\x7e]+$/.test(want) ? new RegExp(escapeRe(want), "i") : null
+  const source = foldedPattern(s, !matchCase), re = new RegExp(source, matchCase ? "g" : "gi")
   return {
     label: `"${s}"${matchCase ? " (match case)" : ""}`,
-    test: (text) => !!want && (ascii ? ascii.test(text) : (matchCase ? text : text.toLowerCase()).includes(want)),
+    test: (text) => { re.lastIndex = 0; return !!source && re.test(text) },
     ranges: (text) => {
-      if (!want) return []
-      const hay = matchCase ? text : text.toLowerCase()
       const out: [number, number][] = []
-      for (let at = hay.indexOf(want); at >= 0; at = hay.indexOf(want, at + want.length)) out.push([at, at + want.length])
+      if (!source) return out
+      re.lastIndex = 0
+      for (let m = re.exec(text); m; m = re.exec(text)) out.push([m.index, m.index + m[0].length])
       return out
     },
   }
@@ -440,3 +437,4 @@ export function suggestQuery(q: string, caret: number, v: QueryVocab, max = 8): 
 }
 
 import { messageOf } from "./values.ts"
+import { escapeRe, foldedPattern } from "./fold.ts"
