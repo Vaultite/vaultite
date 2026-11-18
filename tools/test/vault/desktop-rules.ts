@@ -9,7 +9,7 @@ const ROOT = path.resolve(import.meta.dirname, "../../..")
 function winspawnFirst(check: Check) {
   const firstImport = (file: string) => /^import\s+(?:[^"']*from\s+)?["']([^"']+)["']/m.exec(fs.readFileSync(path.join(ROOT, file), "utf8"))?.[1]
   check("desktop: winspawn is the first import of the main process and the server, so no program they start opens a console on Windows",
-    firstImport("electron/main.ts") === "../core/winspawn.ts" && firstImport("server.ts") === "./core/winspawn.ts", [firstImport("electron/main.ts"), firstImport("server.ts")])
+    /^await import\("\.\/early\.ts"\)\nawait import\("\.\/main\.ts"\)/m.test(fs.readFileSync(path.join(ROOT, "electron/boot.ts"), "utf8")) && firstImport("electron/early.ts") === "../core/winspawn.ts" && firstImport("server.ts") === "./core/winspawn.ts", [firstImport("electron/early.ts"), firstImport("server.ts")])
 }
 
 async function bridge(check: Check) {

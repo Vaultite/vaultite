@@ -4,6 +4,7 @@ import "./dockenv.ts"
 import { app, clipboard, dialog, Menu, session } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { relaunchOptions, vaultArg } from "./argv.ts"
+import { asked, refreshed, reopening } from "./early.ts"
 import { QUIET, fakePointer, quiet, quietPage } from "./quiet.ts"
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -11,22 +12,20 @@ import path from "node:path"
 import { unloadPages } from "./web.ts"
 import "./browser/index.ts"
 import { engineBusy, engineFlush } from "./browser/engine.ts"
-import { attachable } from "./host.ts"
 import { servingOf } from "../core/serving.ts"
-import { CODE, DEV, WORKTREE } from "./identity.ts"
+import { DEV, WORKTREE } from "./identity.ts"
 import { codeRoot, commitAt } from "./storehost.ts"
 import { initUpdates, logUpdate, quitUpdates, RELEASE, scheduleUpdates } from "./updates.ts"
 import { stopApps } from "./apps.ts"
 import { setDictationServer, stopDictation } from "./dictation.ts"
 import type { HelperHost } from "./helper.ts"
 import type { HelperSlot } from "./helperload.ts"
-import { refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { permissionFor, whose } from "./apppermissions.ts"
-import { mainLog, openMainLog } from "./mainlog.ts"
+import { mainLog } from "./mainlog.ts"
 import { DIST, ICON, LINUX, MAC, ROOT, WIN } from "./mainbase.ts"
 import { CONTROLS_HEIGHT } from "./titlebar.ts"
-import { buildMenu, devtools, find, helperPrefs, known, nameOf, remotes, save, setHelperPrefs, updates } from "./vaultlist.ts"
-import { adopted, handingOver, handOver, helper, helperOn, kept, ownPids, popouts, rootOf, serverFor, setHelper, wins } from "./servers.ts"
+import { buildMenu, devtools, helperPrefs, nameOf, remotes, save, setHelperPrefs, updates } from "./vaultlist.ts"
+import { adopted, handingOver, handOver, helper, helperOn, kept, ownPids, popouts, rootOf, setHelper, wins } from "./servers.ts"
 import { failedBox, shellReady, uncaught } from "./errors.ts"
 import { beginQuit, dev, focusedVault, helperHome, lastFocused, manager, openHome, openVault, quitting, sandbox, setBehind, showManager, startWorktree } from "./vaultwindow.ts"
 import { openRemote, remoteWins } from "./remotewin.ts"
@@ -36,9 +35,6 @@ import { applyDockIcon, DOCK_ICON } from "./appmenu.ts"
 import "./handlers.ts"
 import { logger } from "../core/log.ts"
 import { messageOf } from "../core/values.ts"
-
-openMainLog(app.getPath("logs"))
-mainLog(`started: ${CODE?.commit.slice(0, 7) ?? "no build stamp"} from ${ROOT}`)
 
 // Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes keep Electron's sandboxed
 // renderer, which runs service-worker preloads; not as root, where Chromium sandboxes nothing and each would die.
@@ -137,7 +133,6 @@ function unsandboxedNotice() {
     buttons: ["Copy the command", "OK"], defaultId: 1, cancelId: 1 }).then((r) => { if (r.response === 0) clipboard.writeText(command) })
 }
 
-const asked = () => vaultArg(process.argv)
 async function madeIfAsked(p: string) {
   if (fs.existsSync(p)) return true
   const r = await dialog.showMessageBox({ type: "question", message: `There's no folder ${p}`, detail: "Create a new vault there?",
@@ -146,7 +141,6 @@ async function madeIfAsked(p: string) {
   fs.mkdirSync(p, { recursive: true })
   return true
 }
-const reopening = () => { const a = asked(); return a ? [a] : known.filter((v) => v.open).map((v) => v.path) }
 
 // Finder's Open with (and a drop on the Dock icon) can come before the app is ready.
 const early: string[] = MAC ? [] : argFiles(process.argv, process.cwd())
@@ -164,18 +158,6 @@ app.on("open-url", (e, url) => {
   else earlyLinks.push(url)
 })
 
-let refreshed: Promise<unknown> = Promise.resolve()
-if (!app.requestSingleInstanceLock()) app.quit()
-else {
-  const start = (p: string) => {
-    const v = find(p)
-    if (v && !attachable(p) && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) serverFor(v).catch(() => {})
-  }
-  for (const p of reopening()) {
-    if (p !== sandboxPath()) { start(p); continue }
-    refreshed = refreshSandbox(p).then((made) => { const v = find(p); if (made && v) delete v.port }, (e) => log.error("the sandbox wasn't refreshed", e)).then(() => start(p))
-  }
-}
 app.on("second-instance", (_e, argv, cwd) => {
   const p = vaultArg(argv, cwd)
   const files = MAC ? [] : argFiles(argv, cwd), links = MAC ? [] : argLinks(argv)
