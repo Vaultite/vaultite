@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- iPhone notifications and widget updates keep one connection to Apple open and try once more on a new one when it
+  doesn't answer, instead of opening one per notification and failing with "timed out".
 - Updates: a page open from before an update still opens views and sheets it hadn't loaded yet (they failed with
   "Failed to fetch dynamically imported module"): the server keeps an old build's files for three days.
 - Workspaces: tabs opened as the app starts (by an agent, a link, or the demo's Browser page with its live sites) are no

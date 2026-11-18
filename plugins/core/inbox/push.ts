@@ -3,6 +3,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import http2 from "node:http2"
 import path from "node:path"
+import { z } from "zod"
 import { LOCAL } from "../../../core/plugins.ts"
 import { str, writeAtomic } from "../../../core/vault.ts"
 
@@ -79,25 +80,53 @@ export function payload(n: Note) {
   }
 }
 
-function post(d: Device, cfg: Apns, key: crypto.KeyObject, body: string): Promise<{ status: number; reason: string }> {
-  const kind = d.widgets ? { "apns-topic": `${d.topic}.push-type.widgets`, "apns-push-type": "widgets" } : { "apns-topic": d.topic, "apns-push-type": "alert" }
+const IDLE_MS = 10 * 60_000, ANSWER_MS = 10_000
+const sessions = new Map<string, http2.ClientHttp2Session>()
+function session(origin: string, o: http2.SecureClientSessionOptions) {
+  const was = sessions.get(origin)
+  if (was && !was.closed && !was.destroyed) return was
+  const s = http2.connect(origin, o)
+  const drop = () => { if (sessions.get(origin) === s) sessions.delete(origin) }
+  for (const e of ["error", "close", "goaway"]) s.on(e, drop)
+  s.setTimeout(IDLE_MS, () => s.close())
+  s.unref()
+  sessions.set(origin, s)
+  return s
+}
+
+type Answer = { status: number; reason: string; answered: boolean }
+const Refusal = z.object({ reason: z.string() })
+const reasonIn = (body: string) => { try { return Refusal.parse(JSON.parse(body)).reason } catch { return "" } }
+function once(origin: string, o: http2.SecureClientSessionOptions, headers: http2.OutgoingHttpHeaders, body: string, wait: number): Promise<Answer> {
   return new Promise((resolve) => {
-    const client = http2.connect(HOSTS[d.env])
-    const done = (status: number, reason: string) => { client.close(); resolve({ status, reason }) }
-    client.on("error", (e) => done(0, e.message))
-    const req = client.request({
-      ":method": "POST", ":path": `/3/device/${d.token}`, authorization: `bearer ${bearer(cfg, key)}`,
-      ...kind, "apns-priority": "10", "content-type": "application/json",
-    })
-    let status = 0, data = ""
-    const abandonSessionNotStream = () => { client.destroy(); resolve({ status: 0, reason: "timed out" }) }
-    req.setTimeout(10_000, abandonSessionNotStream)
+    const s = session(origin, o)
+    let status = 0, data = "", settled = false
+    const deadUnlessAnswered = (a: Answer) => { if (!a.answered) s.destroy() }
+    const done = (a: Answer) => { if (settled) return; settled = true; deadUnlessAnswered(a); resolve(a) }
+    const req = s.request(headers)
+    req.setTimeout(wait, () => { req.close(); done({ status, reason: "timed out", answered: status > 0 }) })
     req.on("response", (h) => { status = Number(h[":status"]) })
     req.on("data", (c) => { data += c })
-    req.on("end", () => { let reason = ""; try { reason = JSON.parse(data).reason ?? "" } catch { /* empty when sent */ } done(status, reason) })
-    req.on("error", (e) => done(0, e.message))
+    req.on("end", () => done({ status, reason: reasonIn(data), answered: status > 0 }))
+    req.on("error", (e) => done({ status, reason: e.message, answered: status > 0 }))
+    req.on("close", () => done({ status, reason: "the connection closed", answered: status > 0 }))
     req.end(body)
   })
+}
+
+export async function apnsPostTriedTwiceUnanswered(origin: string, headers: http2.OutgoingHttpHeaders, body: string, o: http2.SecureClientSessionOptions = {}, wait = ANSWER_MS) {
+  const first = await once(origin, o, headers, body, wait)
+  if (first.answered) return { status: first.status, reason: first.reason }
+  const again = await once(origin, o, headers, body, wait)
+  return { status: again.status, reason: again.reason }
+}
+
+function post(d: Device, cfg: Apns, key: crypto.KeyObject, body: string): Promise<{ status: number; reason: string }> {
+  const kind = d.widgets ? { "apns-topic": `${d.topic}.push-type.widgets`, "apns-push-type": "widgets" } : { "apns-topic": d.topic, "apns-push-type": "alert" }
+  return apnsPostTriedTwiceUnanswered(HOSTS[d.env], {
+    ":method": "POST", ":path": `/3/device/${d.token}`, authorization: `bearer ${bearer(cfg, key)}`,
+    ...kind, "apns-priority": "10", "apns-id": crypto.randomUUID(), "content-type": "application/json",
+  }, body)
 }
 
 export const send = (cfg: Apns | null, n: Note) => sendTo(devices().filter((d) => !d.widgets), cfg, JSON.stringify(payload(n)))

@@ -512,6 +512,27 @@ export default async ($: VaultTest) => {
       const push = await import("../../../plugins/core/inbox/push.ts")
       const p = push.payload({ title: "Claude Code is waiting for you", body: "Bash", category: "permission", thread: "claude-x", urgent: true, data: { event: "e1" } })
       check("push: the payload carries its buttons' category and the event", p.aps.category === "permission" && p.aps["interruption-level"] === "time-sensitive" && p.aps["thread-id"] === "claude-x" && "event" in p && p.event === "e1" && p.aps.alert.body === "Bash", p)
+      {
+        const http2 = await import("node:http2"), { portOf } = await import("../../../core/listening.ts")
+        let sessions = 0, streams = 0
+        const fake = http2.createServer()
+        fake.on("session", () => { sessions++ })
+        fake.on("stream", (s) => {
+          streams++
+          if (streams === 3) return s.session?.destroy()
+          if (streams === 5) return
+          s.respond({ ":status": 200 }); s.end()
+        })
+        await new Promise<void>((r) => fake.listen(0, "127.0.0.1", () => r()))
+        const at = `http://127.0.0.1:${portOf(fake)}`, h = { ":method": "POST", ":path": "/3/device/ab" }
+        const a = await push.apnsPostTriedTwiceUnanswered(at, h, "{}"), b2 = await push.apnsPostTriedTwiceUnanswered(at, h, "{}")
+        check("push: notifications share one connection to APNs", a.status === 200 && b2.status === 200 && sessions === 1, [a, b2, sessions])
+        const c = await push.apnsPostTriedTwiceUnanswered(at, h, "{}")
+        check("push: a dropped connection is tried again on a new one", c.status === 200 && sessions === 2 && streams === 4, [c, sessions, streams])
+        const d = await push.apnsPostTriedTwiceUnanswered(at, h, "{}", {}, 300)
+        check("push: no answer is tried again on a new connection", d.status === 200 && sessions === 3 && streams === 6, [d, sessions, streams])
+        fake.close()
+      }
       ;[st, b] = await api("POST", "inbox/devices", { token: "nothex", topic: "app.example.ios" })
       check("push: a device needs a token", st === 400, [st, b])
       ;[st, b] = await api("POST", "inbox/devices", { token: "AB".repeat(32), topic: "app.example.ios", env: "sandbox", name: "Sam's iPhone" })
