@@ -45,7 +45,8 @@ pages and a knowledge graph of what links to what.
    it to Applications. On Windows, the [installer](https://github.com/Vaultite/vaultite/releases/latest) (x64 or ARM64;
    not signed yet, so Windows asks: More info, Run anyway). On Linux, the
    [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest)
-   (`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+).
+   (`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+), or with Nix,
+   `nix run github:Vaultite/vaultite`.
 2. **Make a vault**, or open a folder of Markdown you already have: Vaultite changes none of it. Or try the playground,
    a made-up vault, first.
 3. **Connect your AI** in Settings, AI: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone (they
