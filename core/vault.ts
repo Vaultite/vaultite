@@ -583,7 +583,7 @@ export function sortBy<T>(xs: T[], key: (x: T) => unknown, reverse = false): T[]
 
 type Stat = { ns: bigint; size: number; born: number }
 type Listed = { found: Map<string, Stat>; others: Map<string, Stat>; folders: string[]; away: string[]; linkedOut: boolean; seen: string }
-export type Looked = { t0: number; locks: number; heard: number; listed: Listed; texts: Map<string, string | Error>; late: string[] }
+export type Looked = { t0: number; locks: number; heard: number; wrote: number; listed: Listed; texts: Map<string, string | Error>; late: string[] }
 const CACHES = new Set(["node_modules", "__pycache__"])
 const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsWith(".") && (n !== ARCHIVE_DIR || i === all.length - 1)) ||
   n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
@@ -711,6 +711,7 @@ export class Vault {
   private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
   private writes = new Set<(rel: string) => void>()
+  private wrote = 0
 
   mayWrite: (plugin: string, rel: string) => boolean = () => false
   writerHere = true
@@ -719,7 +720,7 @@ export class Vault {
   constructor(p: string) {
     this.path = p
     setGate(p, { may: (plugin, rel) => this.mayWrite(plugin, rel), refused: (plugin, rel) => this.writeRefused(plugin, rel), watch: (rel) => this.watch(rel),
-      wrote: (rel) => { for (const fn of this.writes) fn(rel) } })
+      wrote: (rel) => { if (!unseen(rel) && !rel.startsWith(".vaultite/")) this.wrote++; for (const fn of this.writes) fn(rel) } })
   }
 
   lock<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -765,6 +766,7 @@ export class Vault {
   }
 
   async hear(rels: string[] | null): Promise<boolean> {
+    if (!this.walked) { this.heard(null); return false }
     const seen = rels?.filter((r) => !unseen(r))
     const now = seen ? await statsOf(seen.map((r) => this.abs(r))) : []
     const told = seen?.filter((r, i) => !this.indexedAs(r, now[i] ?? undefined))
@@ -1351,7 +1353,7 @@ export class Vault {
   waiting() { return this.missing.size > 0 || this.downloading.length > 0 }
 
   async sync(pre?: Looked | null): Promise<boolean> {
-    const fresh = !!pre && this.locks === pre.locks + 1 && this.holders === 1
+    const fresh = !!pre && this.locks === pre.locks + 1 && this.holders === 1 && this.wrote === pre.wrote
     try {
       const at = fresh ? pre : await this.look({ ahead: false, before: pre })
       if (fresh && this.heardCount === pre.heard) this.stale = false
@@ -1365,7 +1367,7 @@ export class Vault {
   }
 
   private async look({ ahead, before }: { ahead: boolean; before?: Looked | null }): Promise<Looked> {
-    const t0 = Date.now(), locks = this.locks, heard = this.heardCount
+    const t0 = Date.now(), locks = this.locks, heard = this.heardCount, wrote = this.wrote
     if (!ahead) this.stale = false
     if (!ahead) this.doing = "listing the vault's files"
     const listed = await this.list()
@@ -1380,7 +1382,7 @@ export class Vault {
     }
     if (!ahead) this.doing = `reading ${changed.length - had.size} changed files${listed.away.length ? `, ${listed.away.length} iCloud has yet to bring down` : ""}`
     const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r))), this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
-    return { t0, locks, heard, listed, texts: new Map([...had, ...texts]), late: [...late, ...away] }
+    return { t0, locks, heard, wrote, listed, texts: new Map([...had, ...texts]), late: [...late, ...away] }
   }
 
   private async walk(at: Looked): Promise<boolean> {
