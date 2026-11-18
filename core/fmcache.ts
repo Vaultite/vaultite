@@ -1,6 +1,7 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { LOCAL } from "./plugins.ts"
 import { writeAtomic } from "./vault.ts"
 import { readBefore } from "./yaml.ts"
@@ -14,19 +15,43 @@ export type KeptText = [ns: string, size: number, text: string]
 export type StartTexts = { had: Map<string, KeptText>; now: Map<string, KeptText> }
 const KEEP_MAX = 1 << 20
 
-export function keepReads(vault: string): { texts: StartTexts; done: () => void } {
+export function keepReads(vault: string): { texts: StartTexts; read: Promise<void>; done: () => void } {
   const texts: StartTexts = { had: new Map(), now: new Map() }
-  try { texts.had = new Map(JSON.parse(fs.readFileSync(fileFor(vault, "texts"), "utf8")) as [string, KeptText][]) } catch { /* none yet */ }
   const file = fileFor(vault, "frontmatter")
   try { for (const [text, json] of JSON.parse(fs.readFileSync(file, "utf8")) as [string, string][]) readBefore.json.set(text, json) } catch { /* none yet */ }
   readBefore.on = true
-  return { texts, done: () => { keepTexts(vault, texts); keepHeaders(file) } }
+  const read = readTexts(textsFile(vault)).then((had) => { texts.had = had })
+  return { texts, read, done: () => { keepTexts(vault, texts); keepHeaders(file) } }
+}
+
+const textsFile = (vault: string) => fileFor(vault, "texts").replace(/\.json$/, ".bin")
+const TextsIndex = z.array(z.tuple([z.string(), z.string(), z.number(), z.number()]))
+
+async function readTexts(file: string) {
+  const had = new Map<string, KeptText>()
+  try {
+    const all = await fs.promises.readFile(file), start = 4 + all.readUInt32LE(0)
+    let at = start
+    for (const [rel, ns, size, bytes] of TextsIndex.parse(JSON.parse(all.toString("utf8", 4, start)))) had.set(rel, [ns, size, all.toString("utf8", at, at += bytes)])
+    if (at !== all.length) had.clear()
+  } catch { /* none yet */ }
+  return had
 }
 
 function keepTexts(vault: string, { had, now }: StartTexts) {
   const out = [...now].filter(([, k]) => k[2].length <= KEEP_MAX)
   if (out.length === had.size && out.every(([rel, k]) => had.get(rel)?.[0] === k[0] && had.get(rel)?.[1] === k[1])) return
-  setTimeout(() => write(fileFor(vault, "texts"), out), 2000).unref()
+  setTimeout(() => writeTexts(vault, out), 2000).unref()
+}
+
+function writeTexts(vault: string, out: [string, KeptText][]) {
+  const texts = out.map(([, k]) => Buffer.from(k[2])), index = Buffer.from(JSON.stringify(out.map(([rel, k], i) => [rel, k[0], k[1], texts[i].length])))
+  const length = Buffer.alloc(4)
+  length.writeUInt32LE(index.length)
+  try {
+    writeAtomic(textsFile(vault), Buffer.concat([length, index, ...texts]))
+    fs.rmSync(fileFor(vault, "texts"), { force: true })
+  } catch (e) { log.error("keeping the start's reads failed", e) }
 }
 
 function keepHeaders(file: string) {

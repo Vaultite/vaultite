@@ -43,7 +43,7 @@ import { browse, PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault, type Writer } from "./vault.ts"
 import { isObj, strings } from "./values.ts"
-import { keepReads, type StartTexts } from "./fmcache.ts"
+import { keepReads } from "./fmcache.ts"
 import { logger } from "./log.ts"
 
 const log = logger("app")
@@ -887,18 +887,19 @@ export function jsonOf(body: unknown): string | Buffer {
   return data
 }
 
-function watched(vaultPath: string, start: boolean, texts: StartTexts | null, watch?: (vault: Vault) => void) {
+function watched(vaultPath: string, kept: ReturnType<typeof keepReads> | null, watch?: (vault: Vault) => void) {
   const opening = new App(vaultPath)
-  opening.vault.startTexts = texts
+  opening.vault.startTexts = kept?.texts ?? null
+  opening.vault.startRead = kept?.read ?? null
   watch?.(opening.vault)
-  return { opening, looked: start ? opening.vault.looked() : null }
+  return { opening, looked: kept ? opening.vault.looked() : null }
 }
 
 export async function open(vaultPath: string, { start = true, timing, watch }: { start?: boolean; timing?: { mark(part: string): void }; watch?: (vault: Vault) => void } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite")), sandbox = start && newSandbox(vaultPath)
   const kept = start ? keepReads(vaultPath) : null
-  const { opening, looked } = watched(vaultPath, start, kept?.texts ?? null, watch)
+  const { opening, looked } = watched(vaultPath, kept, watch)
   const app = await opening.init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
@@ -910,7 +911,7 @@ export async function open(vaultPath: string, { start = true, timing, watch }: {
     B.tidy(app.vault)
     await turn()
     await app.vault.lock(async () => app.vault.sync(await looked))
-    app.vault.startTexts = null
+    app.vault.startTexts = app.vault.startRead = null
     kept?.done()
     timing?.mark("vault read")
     if (fresh) await app.hold(() => setUpNew(app.host()), { trusting: true }).catch((e) => log.error("setting up the new vault failed", e))

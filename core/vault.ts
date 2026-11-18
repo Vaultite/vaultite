@@ -707,6 +707,7 @@ export class Vault {
   pluginList: { id: string; manifest: Manifest; tier?: string }[] = []
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   startTexts: StartTexts | null = null
+  startRead: Promise<void> | null = null
   downloading: string[] = []
   private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
@@ -1371,6 +1372,7 @@ export class Vault {
     if (!ahead) this.stale = false
     if (!ahead) this.doing = "listing the vault's files"
     const listed = await this.list()
+    await this.startRead
     const start = this.startTexts, evictedNow = new Set(listed.away)
     const stale = (r: string, st: Stat) => { const e = this.entries.get(r); return !e || !sameStat(e.stat, st) || e.broken }
     const unkept = (r: string, st: Stat) => { const k = start?.had.get(r); return !k || k[0] !== String(st.ns) || k[1] !== st.size || evictedNow.has(r) }
