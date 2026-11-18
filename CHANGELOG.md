@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Lighter start: Activity's blocks, page and panel load when first shown (39 KB less for the app to load at start),
+  and the server no longer loads the chat keeper's code.
 - Companion: its Do it card for acting in another app is drawn over its answer box, so the box never covers its
   buttons; and typing it did in another app is checked by what the field holds, so a box that stayed empty is said so.
 - Inbox: answering a question no longer closes other open ones as "settled" when nothing settled them (they showed
