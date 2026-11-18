@@ -10,6 +10,7 @@ export {
 } from "@/core/data"
 export { statusOf, type Live } from "@/core/liveread"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
+export { whenIdle } from "@/core/firstscreen"
 /** A shared folder's guest (plugins/core/share), when this app is theirs: their name, role and folder; else null. */
 export { guestEdits, share, type Share } from "@/core/share"
 /** A note typed in together now (a plugin's live session): its editors' autosave stands down while the server keeps it. */

@@ -910,6 +910,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WebSite`
 - `WeeksGrid({ tip, tint, goal, weeks, onOpen })`
 - `weekStart(s)`
+- `whenIdle(fn, timeout?)`
 - `WIKI`
 - `withGroupFolded(l, id, collapsed?)`
 - `withMyTabs(w)`: Workspace `w` (saved elsewhere: another window, another device) with this window's own tabs: the main window's list and which pop-outs there are (it opens and closes them), or a pop-out's list.

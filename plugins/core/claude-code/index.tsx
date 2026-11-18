@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentProps } from "react"
-import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource } from "@vaultite"
+import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource, whenIdle } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { chatTitle, NEW } from "./titles"
 import { useChatRuns } from "./runs"
@@ -22,9 +22,7 @@ function PreloadChat() {
   useEffect(() => {
     const load = () => void loadChat().catch(() => {})
     if (matchMedia("(pointer: coarse)").matches) { const t = setTimeout(load, AFTER_PHONE_LAUNCH); return () => clearTimeout(t) }
-    if (typeof requestIdleCallback !== "function") { const t = setTimeout(load, 2000); return () => clearTimeout(t) }
-    const t = requestIdleCallback(load, { timeout: 5000 })
-    return () => cancelIdleCallback(t)
+    return whenIdle(load, 5000)
   }, [])
   return null
 }

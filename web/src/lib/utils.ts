@@ -13,12 +13,6 @@ export function followSystemTheme() {
 
 export const space = (n: number) => `calc(var(--spacing) * ${n})`
 
-// Safari has no requestIdleCallback: a short timeout there.
-export function whenIdle(fn: () => void) {
-  if (typeof requestIdleCallback === "function") requestIdleCallback(() => fn(), { timeout: 3000 })
-  else setTimeout(fn, 300)
-}
-
 export function scrollingBox(el: Element | null): HTMLElement | null {
   for (let p = el?.parentElement; p; p = p.parentElement) {
     if (/auto|scroll/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight) return p

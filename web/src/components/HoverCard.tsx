@@ -1,5 +1,5 @@
 import { useEffect, type ComponentProps } from "react"
-import { whenIdle } from "@/lib/utils"
+import { whenIdle } from "@/core/firstscreen"
 import { signal } from "@/core/signal"
 import { trackSoon } from "@/core/unsaved"
 import type * as Drawn from "@/components/HoverCardDrawn"

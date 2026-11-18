@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
-  devicePref, offerPanel, PageHeader, panelSide, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
+  devicePref, offerPanel, PageHeader, panelSide, SettingRow, useAi, useLive, viewsChanged, whenIdle } from "@vaultite"
 import { awaitsLine } from "../../../core/attention.ts"
 import { agentIn, autoLabel, awaiting, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
@@ -41,9 +41,7 @@ function SessionNames() {
   useEffect(() => {
     if (matchMedia("(pointer: coarse)").matches) return
     const load = () => void preload().catch(() => { chunk = null })
-    if (typeof requestIdleCallback !== "function") { const t = setTimeout(load, 2000); return () => clearTimeout(t) }
-    const t = requestIdleCallback(load, { timeout: 5000 })
-    return () => cancelIdleCallback(t)
+    return whenIdle(load, 5000)
   }, [])
   return null
 }

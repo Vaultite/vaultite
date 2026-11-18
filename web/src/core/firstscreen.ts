@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect } from "react"
 import { span } from "./spans"
 
-const LONGEST_HOLD_MS = 1500
+const LONGEST_HOLD_MS = 1500, NO_SCREEN_MS = 10_000
 const holds = new Set<string>()
 const told: (() => void)[] = []
 let shell = false, drawn = false, cap: ReturnType<typeof setTimeout> | null = null
@@ -39,4 +39,16 @@ export function useFirstScreenHold(key: string, done: boolean) {
     return () => releaseFirstScreen(key)
   }, [key])
   useEffect(() => { if (done) releaseFirstScreen(key) }, [key, done])
+}
+
+setTimeout(() => { shell = true; holds.clear(); tell() }, NO_SCREEN_MS)
+
+export function whenIdle(fn: () => void, timeout = 3000): () => void {
+  let on = true, cancel = () => {}
+  onFirstScreen(() => {
+    if (!on) return
+    if (typeof requestIdleCallback === "function") { const t = requestIdleCallback(() => fn(), { timeout }); cancel = () => cancelIdleCallback(t) }
+    else { const t = setTimeout(fn, 300); cancel = () => clearTimeout(t) }
+  })
+  return () => { on = false; cancel() }
 }

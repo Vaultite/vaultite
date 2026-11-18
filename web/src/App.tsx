@@ -84,14 +84,14 @@ import { VaultManager, webVaults } from "@/components/VaultManager"
 import { ContextMenus } from "@/components/ContextMenu"
 import { ConfirmDialogs } from "@/components/ConfirmDialog"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
-import { cn, space, whenIdle } from "@/lib/utils"
+import { cn, space } from "@/lib/utils"
 import { byTab } from "@/core/focus"
 import { canGoSide, focusArea, goSide } from "@/core/keylist"
 import { useStateFor } from "@/core/statefor"
 import { chooseScheme, schemeName } from "@/components/SchemeChooser"
 import { chooseFont, fontSetting } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
-import { shellDrawn } from "@/core/firstscreen"
+import { shellDrawn, whenIdle } from "@/core/firstscreen"
 
 const Toaster = apart(() => import("@/components/Toast").then((m) => m.Toaster))
 const WelcomeCards = apart(() => import("@/components/Welcome").then((m) => m.WelcomeCards), { memoized: true })
