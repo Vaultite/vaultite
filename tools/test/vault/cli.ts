@@ -37,6 +37,12 @@ export default async ($: VaultTest) => {
   check("vau: `<group> list` runs the list its word alone runs", cr.code === 0 && cr.out === (await vau("errors")).out, cr)
   cr = await vau("errors", "--help")
   check("vau: a group's --help ends with the commands under it, one short line each", cr.code === 0 && /\nAlso:\n {2}vau errors show +\S/.test(cr.out) && cr.out.split("\n").filter((l) => l.startsWith("  vau errors ")).every((l) => l.length <= 96), cr.out)
+  {
+    const { checkParams, defineOp } = await import("../../../core/ops.ts")
+    const op = defineOp({ id: "lantern.wait", summary: "Wait for the lantern.", kind: "read", params: { timeout: { type: "integer", maximum: 600, description: "seconds, at most" } }, run: async () => null })
+    const said = (() => { try { checkParams(op, { timeout: 8000 }); return "" } catch (e) { return e instanceof Error ? e.message : "" } })()
+    check("ops: seconds given as milliseconds says so", said.includes("timeout: should be at most 600 (got 8000): it's in seconds, not milliseconds (8)"), said)
+  }
   cr = await vau("--help")
   check("vau: --help is an overview, a line per command", cr.code === 0 && cr.out.split("\n").every((l) => l.length <= 120) && cr.out.length < 10_000, cr.out.length)
   {

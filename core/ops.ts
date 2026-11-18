@@ -215,7 +215,10 @@ function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } 
       if (typeof x !== "number" || !Number.isFinite(x)) return bad(`should be a number, not ${typeName(x)}${typeof x === "string" ? ` ('${x}')` : ""}`)
       if (s.type === "integer" && !Number.isInteger(x)) return bad(`should be a whole number (got ${x})`)
       if (s.minimum !== undefined && x < s.minimum) return bad(`should be at least ${s.minimum} (got ${x})`)
-      if (s.maximum !== undefined && x > s.maximum) return bad(`should be at most ${s.maximum} (got ${x})`)
+      if (s.maximum !== undefined && x > s.maximum) {
+        const ms = /\bseconds\b/.test(s.description ?? "") && x >= 1000 && x / 1000 <= s.maximum
+        return bad(`should be at most ${s.maximum} (got ${x})${ms ? `: it's in seconds, not milliseconds (${x / 1000})` : ""}`)
+      }
       break
     case "boolean":
       if (x === "true" || x === "yes" || x === "1" || x === "on") x = true
