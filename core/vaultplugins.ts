@@ -8,7 +8,7 @@ import { Manifest } from "./contracts/manifest.ts"
 import { readJson } from "./jsonfile.ts"
 import { disclosuresOf, exportsOf, ICON_NAME, iconOf, PLUGIN_MODULE } from "./pluginmeta.ts"
 import { onItsOwn } from "./writegate.ts"
-import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems, listedPackage, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, UNLISTED, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
+import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems, listedPackage, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, UNLISTED, UserFiles, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, drawsOf, settingsOf } from "./blocks.ts"
 import { groupOf } from "./categories.ts"
 import type { VaultEvent } from "./events.ts"
@@ -275,16 +275,26 @@ function notCodeBefore(dir: string) {
   return (f: string) => f === path.join(dir, "data.json") || own.has(path.relative(dir, f).split(path.sep).join("/"))
 }
 
-function statOf(dir: string) {
-  const skip = notCode(dir)
-  return walk(dir).filter((f) => !skip(f)).map((f) => {
-    try {
-      const st = fs.statSync(f)
-      return `${path.relative(dir, f)}:${st.size}:${st.mtimeMs}`
-    } catch {
-      return ""
-    }
-  }).join("\n")
+/** Off the main thread: an agent's every request looks at every file of every vault plugin. */
+async function lookAt(dir: string) {
+  const files: string[] = []
+  const list = async (d: string): Promise<void> => {
+    let names: fs.Dirent[]
+    try { names = await fs.promises.readdir(d, { withFileTypes: true }) } catch { return }
+    await Promise.all(names.filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+      .map((e) => (e.isDirectory() ? list(path.join(d, e.name)) : (files.push(path.join(d, e.name)), Promise.resolve()))))
+  }
+  const file = path.join(dir, "manifest.json")
+  const [, text] = await Promise.all([list(dir), fs.promises.readFile(file, "utf8").catch(() => "")])
+  const parsed = readJson(file, Manifest, () => text), users = readJson(file, UserFiles, () => text)
+  const own = new Set(users.ok ? users.value.userFiles : [])
+  const code = files.sort().filter((f) => !settingsFile(path.relative(dir, f)) && !own.has(path.relative(dir, f).split(path.sep).join("/")))
+  const stats = await Promise.all(code.map((f) => fs.promises.stat(f).catch(() => null)))
+  return {
+    stat: code.map((f, i) => (stats[i] ? `${path.relative(dir, f)}:${stats[i].size}:${stats[i].mtimeMs}` : "")).join("\n"),
+    requires: parsed.ok ? parsed.value.requires ?? [] : [],
+    front: files.includes(path.join(dir, "index.tsx")),
+  }
 }
 
 const fileHash = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex").slice(0, 16)
@@ -397,10 +407,10 @@ export class VaultPlugins {
   private async run() {
     let changed = false
     const root = this.vault.abs(DIR)
-    let names: string[] = []
-    try {
-      names = fs.readdirSync(root).filter((n) => !n.startsWith(".") && fs.existsSync(path.join(root, n, "manifest.json"))).sort()
-    } catch { /* no plugins folder */ }
+    const all = await fs.promises.readdir(root).catch(() => [])
+    const there = await Promise.all(all.map((n) => (n.startsWith(".") ? false : fs.promises.access(path.join(root, n, "manifest.json")).then(() => true, () => false))))
+    const names = all.filter((_, i) => there[i]).sort()
+    const looked = new Map(await Promise.all(names.map(async (n) => [n, await lookAt(path.join(root, n))] as const)))
     for (const [name, vp] of [...this.found]) {
       if (names.includes(name)) continue
       if (vp.plugin) { this.unload(vp); changed = true }
@@ -408,11 +418,11 @@ export class VaultPlugins {
     }
     const ids = new Map([...names.map((n): [string, string] => [n, "vault"]), ...this.tiers])
     const on = this.enabled()
-    const deps = new Map(names.map((n) => [n, requiresOf(path.join(root, n)).filter((r) => r !== n && names.includes(r))]))
+    const deps = new Map(names.map((n) => [n, looked.get(n)!.requires.filter((r) => r !== n && names.includes(r))]))
     for (const name of dependencyOrder(names, deps)) {
       const dir = path.join(root, name)
       const theirs = deps.get(name)!.map((r) => this.found.get(r)?.hash ?? "").join(",")
-      const stat = `${statOf(dir)}\n${names.join(",")}\n${theirs}`
+      const stat = `${looked.get(name)!.stat}\n${names.join(",")}\n${theirs}`
       let vp = this.found.get(name)
       if (!vp || vp.stat !== stat) {
         let manifest: Manifest = { id: name, name }
@@ -436,7 +446,7 @@ export class VaultPlugins {
       if (!want) { vp.failed = {}; this.hooks.stopped(name) }
       if (vp.plugin && (!want || vp.loaded !== vp.hash)) { this.unload(vp); changed = true }
       if (want && !vp.plugin && vp.failed.load?.[0] !== vp.hash && (await this.load(vp))) changed = true
-      const front = fs.existsSync(path.join(dir, "index.tsx")) || exportsOf(vp.manifest).length > 0
+      const front = looked.get(name)!.front || exportsOf(vp.manifest).length > 0
       if (vp.plugin && front && vp.bundle?.hash !== vp.hash && vp.failed.build?.[0] !== vp.hash) await this.build(vp)
     }
     if (!this.trust.made) this.trust.save()

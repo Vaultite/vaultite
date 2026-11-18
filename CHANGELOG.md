@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: an agent's request no longer checks every file of every vault plugin on the main thread (38 file reads each
+  with 3 small plugins, now 8, however many plugins).
 - Server: iCloud is asked for the files it evicted a few at a time, and a file that stays away less and less often (in
   an hour: 60 asks each, now 6).
 - Server: while iCloud has files to bring down (Optimize Mac Storage), the app's requests no longer each walk the whole

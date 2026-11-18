@@ -1,6 +1,8 @@
 import fs from "node:fs"
 import { isBuiltin } from "node:module"
 import path from "node:path"
+import { z } from "zod"
+import { readJson } from "./jsonfile.ts"
 import { declProblems, declsOf, drawsOf, settingDeclProblems } from "./blocks.ts"
 import { MOVED } from "./migrations.ts"
 import { CATEGORIES, GROUPS, groupOf, SWITCH_SECTIONS } from "./categories.ts"
@@ -55,11 +57,11 @@ export const hashed = (dir: string, p: string) => inside(dir, p) && !path.relati
 export const settingsFile = (rel: string) => /^[\w-]+\.json$/.test(rel) && rel !== "manifest.json"
 
 const CODE = /\.(m?[jt]sx?|cjs|css|wasm|sh|py|rb|pl)$/i
+export const UserFiles = z.object({ userFiles: z.array(z.unknown()).catch([])
+  .transform((a) => a.flatMap((f) => { const r = z.string().safeParse(f); return r.success && userFileOk(r.data) ? [r.data] : [] })) }).catch({ userFiles: [] })
 export function userFilesOf(dir: string): Set<string> {
-  let m: Record<string, unknown> = {}
-  try { m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { /* none */ }
-  const list = Array.isArray(m.userFiles) ? m.userFiles : []
-  return new Set(list.filter((f): f is string => typeof f === "string" && userFileOk(f)))
+  const r = readJson(path.join(dir, "manifest.json"), UserFiles)
+  return new Set(r.ok ? r.value.userFiles : [])
 }
 const userFileOk = (f: string) => /^[\w.-]+(\/[\w.-]+)*$/.test(f) && !f.split("/").some((s) => /^\.+$/.test(s) || s.startsWith(".")) && !CODE.test(f) && f !== "manifest.json"
 
