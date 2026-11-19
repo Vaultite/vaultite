@@ -1,4 +1,4 @@
-// tools/compilefill.mjs caches the main process's modules and runs none of them, side effects included. (npm test)
+// tools/compilefill.mjs caches the main process's modules, runs none, and a moved read-only root's cache is hit. (npm test)
 import "./test/isolate.ts"
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -32,4 +32,25 @@ check("(the fixture's side effect does happen when it's imported for real)", con
 
 const real = fill(path.join(tmp, "real"), ROOT), counted = /(\d+) of (\d+) entries compiled/.exec(real.stdout)
 check("every module the main process may load compiles", real.status === 0 && !!counted && counted[1] === counted[2] && Number(counted[2]) > 100 && entries(path.join(tmp, "real")) > 200, real.stdout.slice(-2000) + real.stderr.slice(-500))
+const at = path.join(tmp, "made"), moved = path.join(tmp, "root-moved"), CACHE = path.join(moved, ".compile-cache")
+fs.mkdirSync(path.join(at, "tools"), { recursive: true })
+for (const d of ["electron", "core"]) fs.cpSync(path.join(ROOT, d), path.join(at, d), { recursive: true })
+for (const f of ["package.json", "tools/compilefill.mjs"]) fs.copyFileSync(path.join(ROOT, f), path.join(at, f))
+fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(at, "node_modules"))
+const made = fill(path.join(at, ".compile-cache"), at)
+fs.renameSync(at, moved)
+const writable = (on: boolean) => { for (const f of fs.readdirSync(CACHE, { recursive: true, encoding: "utf8" }).map((f) => path.join(CACHE, f)).concat(CACHE)) fs.chmodSync(f, on ? 0o755 : 0o555) }
+writable(false)
+const load = ["early.ts", "main.ts", "mainrest.ts"].map((f) => pathToFileURL(path.join(moved, "electron", f)).href)
+const launch = spawnSync(electron, ["--input-type=module", "-e", `import module from "node:module"
+module.enableCompileCache({ directory: ${JSON.stringify(CACHE)}, portable: true })
+for (const u of ${JSON.stringify(load)}) try { await import("data:text/javascript," + encodeURIComponent("import " + JSON.stringify(u) + "; import { never } from 'node:path'")) } catch {}`],
+{ encoding: "utf8", env: { ...process.env, NODE_DISABLE_COMPILE_CACHE: undefined, ELECTRON_RUN_AS_NODE: "1", NODE_DEBUG_NATIVE: "COMPILE_CACHE" } })
+writable(true)
+const ours = launch.stderr.split("\n").filter((l) => l.includes(`${moved}/electron/`))
+const said = (re: RegExp) => ours.filter((l) => re.test(l))
+const stripped = said(/retrieving transpile cache for StrippedTypeScript .*success/), compiled = said(/V8 code cache for ESM .* was accepted/)
+const missed = said(/no transpile cache|was rejected|no such file/)
+check("a root's filled cache still answers once the root moved and went read only", made.status === 0 && stripped.length > 50, { made: made.stdout.slice(-300), stripped: stripped.length })
+check("...every module of the main process from it: none stripped or compiled again", stripped.length > 50 && !missed.length && compiled.length >= stripped.length, { compiled: compiled.length, missed: missed.slice(0, 5) })
 await exit(summary("compilefill", began))
