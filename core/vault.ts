@@ -7,8 +7,8 @@ import { setImmediate as turn } from "node:timers/promises"
 import { withKindBlocks } from "./blocks.ts"
 import type { Manifest } from "./contracts/manifest.ts"
 import type { KeptText, StartTexts } from "./fmcache.ts"
-import type { ReadAhead, ReadFile } from "./readahead.ts"
-import { CACHES, type Listed, listVault, NOT_SETTINGS, settingsStats, type Stat, statFrom, statsOf } from "./listing.ts"
+import type { ReadFile, Reading } from "./readahead.ts"
+import { CACHES, type Listed, listVault, NOT_SETTINGS, placeholderStat, settingsStats, type Stat, statFrom, statsOf } from "./listing.ts"
 import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
 import { tagsOf } from "./sections.ts"
@@ -282,7 +282,7 @@ export function slowReads(after = SLOW) {
 export const iCloud = {
   on: process.platform === "darwin",
   /** Whether a stat is of a placeholder: a size, nothing on disk. Cheap: from a stat the scan takes anyway. */
-  evicted: (_abs: string, st: { blocks: number | bigint; size: number | bigint }) => Number(st.blocks) === 0 && Number(st.size) > 0,
+  evicted: (_abs: string, st: { blocks: number | bigint; size: number | bigint }) => placeholderStat(st),
   download(p: string, done: (err: Error | null) => void) { execFile("/usr/bin/brctl", ["download", p], { timeout: 60_000 }, done) },
 }
 const placeholder = (e: unknown) => iCloud.on && Math.abs(errnoOf(e) ?? 0) === 11
@@ -701,7 +701,7 @@ export class Vault {
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   startTexts: StartTexts | null = null
   startRead: Promise<void> | null = null
-  readAhead: ReadAhead | null = null
+  reading: Reading | null = null
   downloading: string[] = []
   private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
@@ -1356,7 +1356,7 @@ export class Vault {
     const t0 = Date.now(), locks = this.locks, heard = this.heardCount, settingsHeard = this.settingsHeard, wrote = this.wrote
     if (!ahead) this.stale = this.settingsStale = false
     if (!ahead) this.doing = "listing the vault's files"
-    const listed = await listVault(this.path, evicted)
+    const listed = (this.startTexts ? await this.reading?.listing() : null) ?? await listVault(this.path, evicted)
     await this.startRead
     const start = this.startTexts, evictedNow = new Set(listed.away)
     const stale = (r: string, st: Stat) => { const e = this.entries.get(r); return !e || !sameStat(e.stat, st) || e.broken }
@@ -1375,8 +1375,8 @@ export class Vault {
 
   private async readFirst(rels: string[], before?: Looked | null) {
     const parsed = new Map(before?.parsed)
-    if (!this.startTexts || !this.readAhead) return parsed
-    for (const [r, f] of await this.readAhead(this.path, rels.filter((r) => !parsed.has(r)))) parsed.set(r, f)
+    if (!this.startTexts || !this.reading) return parsed
+    for (const [r, f] of await this.reading.read(rels.filter((r) => !parsed.has(r)))) parsed.set(r, f)
     return parsed
   }
 

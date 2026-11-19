@@ -890,7 +890,7 @@ export function jsonOf(body: unknown): string | Buffer {
 
 function watched(vaultPath: string, kept: ReturnType<typeof keepReads> | null, watch?: (vault: Vault) => void, read?: ReadAhead) {
   const opening = new App(vaultPath)
-  opening.vault.readAhead = read ?? null
+  opening.vault.reading = kept ? read?.(vaultPath) ?? null : null
   opening.vault.startTexts = kept?.texts ?? null
   opening.vault.startRead = kept?.read ?? null
   watch?.(opening.vault)
@@ -914,7 +914,7 @@ export async function open(vaultPath: string, { start = true, timing, watch, rea
     B.tidy(app.vault)
     await turn()
     await app.vault.lock(async () => app.vault.sync(await looked))
-    app.vault.startTexts = app.vault.startRead = null
+    app.vault.startTexts = app.vault.startRead = app.vault.reading = null
     kept?.done()
     timing?.mark("vault read")
     if (fresh) await app.hold(() => setUpNew(app.host()), { trusting: true }).catch((e) => log.error("setting up the new vault failed", e))

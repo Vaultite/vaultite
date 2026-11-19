@@ -8,6 +8,7 @@ export type Evicted = (abs: string, st: fs.BigIntStats) => boolean
 export const CACHES = new Set(["node_modules", "__pycache__"])
 export const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated"])
 
+export const placeholderStat = (st: { blocks: number | bigint; size: number | bigint }) => Number(st.blocks) === 0 && Number(st.size) > 0
 export const ms = (ns: bigint) => Number(ns / 1000000n)
 
 const STATS_AT_ONCE = 256

@@ -46,7 +46,7 @@ export default async ($: VaultTest) => {
         const rel = `Notes/n${i * 2}.md`, st = fs.statSync(path.join(dir, rel), { bigint: true })
         return [rel, [String(st.mtimeNs), Number(st.size), fs.readFileSync(path.join(dir, rel), "utf8").replace(/\r\n?/g, "\n").replace(/^\ufeff/, "")]]
       })) }
-      if (ahead) v.readAhead = readAhead
+      if (ahead) v.reading = readAhead(dir)
       await v.sync()
       return v
     }
