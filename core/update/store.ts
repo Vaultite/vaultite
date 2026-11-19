@@ -10,6 +10,7 @@ import { leaseIn, processStart, type Lease } from "./lease.ts"
 import { fingerprint } from "../../electron/shell/print.mjs"
 import { atExit } from "../exit.ts"
 import { codeOf, isObj, messageOf } from "../values.ts"
+import { CODE_CACHE } from "../codecache.ts"
 
 const exec = promisify(execFile)
 const MINUTE = 60_000
@@ -57,7 +58,8 @@ export const serverBoots: Step = {
       const vault = path.join(tmp, "vault"), port = await freePort()
       await c.exec(c.node, [path.join(c.root, "bin", "vau"), "sandbox", vault], { cwd: c.root, env: c.env, timeout: 2 * MINUTE })
       const server = tracked(spawn(c.node, [path.join(c.root, "server.ts")], { cwd: c.root, stdio: ["ignore", "ignore", "pipe"],
-        env: { ...c.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: path.join(tmp, "local"), VAULTITE_QUIET: "1" } }))
+        env: { ...c.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: path.join(tmp, "local"), VAULTITE_QUIET: "1",
+          NODE_COMPILE_CACHE: path.join(c.root, CODE_CACHE), NODE_COMPILE_CACHE_PORTABLE: "1" } }))
       let said = ""
       server.stderr.on("data", (b) => { said = (said + b).slice(-2000) })
       try {
@@ -243,7 +245,7 @@ export function rootStore(o: StoreOptions) {
     for (const name of Object.keys(pkg?.dependencies ?? {})) {
       if (!fs.existsSync(path.join(root, "node_modules", name, "package.json"))) { out.push(`its dependency ${name} doesn't resolve`); break }
     }
-    const status = await git(["status", "--porcelain"], root).catch((e) => `(git status failed: ${messageOf(e)})`)
+    const status = (await git(["status", "--porcelain"], root).catch((e) => `(git status failed: ${messageOf(e)})`)).split("\n").filter((l) => l !== `?? ${CODE_CACHE}/`).join("\n")
     if (status) out.push(`git finds it changed: ${status.split("\n").slice(0, 3).join("; ")}`)
     return out
   }

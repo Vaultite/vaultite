@@ -158,7 +158,11 @@ await section("verify: a root changed after it was made", async () => {
   fs.writeFileSync(path.join(root, "extra.ts"), "planted")
   const problems = await store.verify(c1)
   check("git finds it changed", problems.some((p) => /git finds it changed: \?\? extra\.ts/.test(p)), problems)
-  fs.rmSync(path.join(root, "extra.ts")); fs.chmodSync(root, 0o555)
+  fs.rmSync(path.join(root, "extra.ts"))
+  fs.mkdirSync(path.join(root, ".compile-cache/v1"), { recursive: true }); fs.writeFileSync(path.join(root, ".compile-cache/v1/a1b2"), "code")
+  const cached = await store.verify(c1)
+  check("its compile cache, filled as it boots, isn't a change", !cached.length, cached)
+  fs.rmSync(path.join(root, ".compile-cache"), { recursive: true }); fs.chmodSync(root, 0o555)
 })
 
 await section("gc: current, good and leased roots stay", async () => {

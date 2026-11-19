@@ -21,3 +21,4 @@ web/dist-demo/
 plugins/core/terminal/claude-pictures/.claude-plugin/types/
 plugins/core/terminal/claude-pictures/tsconfig.json
 .tsbuild/
+.compile-cache/
