@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FocusEvent, type MouseEvent, type PointerEvent } from "react"
+import { Fragment, lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FocusEvent, type MouseEvent, type PointerEvent, type RefObject } from "react"
 import { ArrowUpDown, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, RotateCcw, Share, Trash2 } from "lucide-react"
 import { getStore, reload, useStore, useStoreWith, vaultName, type Store } from "@/core/data"
 import { createFolder, folderOf, freeName, inArchive, inTrash, openFile, openingSoon, pathTarget, restoreFile } from "@/core/files"
@@ -19,7 +19,7 @@ import { runOrSay } from "@/core/commands"
 import { askMove, canMoveInto, fixed, folderItems, moveManyInto, newNote, treeShownItems, type FolderItem } from "@/components/FileTree"
 import { ROW, SidebarRow } from "@/components/Sidebar"
 import type { SwipeAction } from "@/components/SwipeRow"
-import { PageHeader } from "@/components/kit"
+import { Arriving, PageHeader } from "@/components/kit"
 import { cn } from "@/lib/utils"
 import { drawnRows, hrefOf, iconFor, metaOf, NameField, naming, pick, pickedIn, SELECT, Tile, useEnter, useKept, usePicked, usePreviews, type Kids, type Moves } from "@/pages/FolderParts"
 import { arrive, arrived, focusThing, keyedPages } from "@/pages/FolderKeys"
@@ -230,12 +230,6 @@ function VaultFolderPage({ store, path }: { store: Store; path: string }) {
       showAs: (v) => { arrive(path); setView(v) },
     }))
   })
-  useEffect(() => {
-    const el = root.current, all = got?.items
-    if (!el || !all?.length || !arrived(path)) return
-    const was = pickedIn(path)
-    if (was && all.some((n) => n.path === was)) focusThing(el, was)
-  }, [path, view, got])
   const onThing = (e: FocusEvent) => {
     const k = closestOf<HTMLElement>(e.target, "[data-folder-item]")?.dataset.folderItem
     if (k && got?.items.some((n) => n.path === k)) pick(path, k)
@@ -245,10 +239,11 @@ function VaultFolderPage({ store, path }: { store: Store; path: string }) {
   const { items, counts } = got
   const kids: Kids = { setMoves: (m) => { moves.current = m }, items, counts, open, menuOf, swipe, press, renaming, lit, desk }
   const sections = view === "list" || view === "grid" ? sectionsOf(items, groupOf(folderGroup)) : null
-  const body = view === "columns" ? <Suspense><Columns {...kids} lister={vaultLister} folder={path} openIt={openIt} /></Suspense>
-    : !items.length ? <Empty path={path} desk={desk} />
-    : view === "gallery" ? <Gallery {...kids} folder={path} openIt={openIt} />
-    : view === "grid" ? <Grid {...kids} sections={sections} folder={path} /> : <Rows {...kids} sections={sections} folder={path} />
+  const keyOn = <KeyOnPickedOnceDrawn page={root} path={path} view={view} items={items} />
+  const body = view === "columns" ? <Suspense fallback={<Arriving />}><Columns {...kids} lister={vaultLister} folder={path} openIt={openIt} />{keyOn}</Suspense>
+    : <>{!items.length ? <Empty path={path} desk={desk} />
+      : view === "gallery" ? <Gallery {...kids} folder={path} openIt={openIt} />
+      : view === "grid" ? <Grid {...kids} sections={sections} folder={path} /> : <Rows {...kids} sections={sections} folder={path} />}{keyOn}</>
   return (
     <div ref={root} data-folder-page={path} data-folder-shown={view} data-own-keys data-file-drop {...computer} onFocus={onThing}
       onContextMenu={(e) => { if (!closestOf(e.target, "[data-folder-item]")) menuFor(() => spaceMenu(path))(e) }}
@@ -258,6 +253,16 @@ function VaultFolderPage({ store, path }: { store: Store; path: string }) {
       {body}
     </div>
   )
+}
+
+function KeyOnPickedOnceDrawn({ page, path, view, items }: { page: RefObject<HTMLDivElement | null>; path: string; view: FolderView; items: FolderItem[] }) {
+  useEffect(() => {
+    const el = page.current
+    if (!el || !items.length || !arrived(path)) return
+    const was = pickedIn(path)
+    if (was && items.some((n) => n.path === was)) focusThing(el, was)
+  }, [page, path, view, items])
+  return null
 }
 
 function PhoneHead({ path, view }: { path: string; view: FolderView }) {

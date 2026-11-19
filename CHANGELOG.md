@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Folders: switching a folder page to columns (⌥⌘3) keeps the keyboard on the thing you were on, instead of losing it
+  now and then while the columns loaded.
 - Vaultite Main: the first launch after an update, and its servers' restart onto it, find the new code already compiled
   (its server's start took twice as long: 0.3 s of imports instead of 0.14 s); and its compile cache no longer grows by
   about 11 MB with every update.
