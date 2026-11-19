@@ -18,6 +18,7 @@ export { trustClaudeProject } from "./claudeconfig.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
 import { type Item, sortBy, writeAtomic } from "./vault.ts"
 import { atExit } from "./exit.ts"
+import { whenReady } from "./startup.ts"
 
 /** This machine's home folder, where agents keep their files. */
 export const HOME = os.homedir()
@@ -716,6 +717,7 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
     } catch {}
   }
 }
+const WARM_AFTER = 3000
 const SAVE_MS = 30 * 60_000
 const KEEP_FORMAT = 1
 
@@ -1007,7 +1009,7 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
     if (Date.now() - forgot > 10_000) { forgot = Date.now(); plugin.forget(); a.forget?.() }
     return { ok: true }
   })
-  if (a.warm) setTimeout(() => { if (plugin.loaded && !plugin.isOff()) void a.warm!() }, 2000).unref()
+  if (a.warm) void whenReady.then(() => setTimeout(() => { if (plugin.loaded && !plugin.isOff()) void a.warm!() }, WARM_AFTER).unref())
   usageBlocks(plugin, a, usage)
   return { accountsFor, usedBy, accountOf: (id: unknown) => (id ? accountsFor(id)[0] : a.accounts?.all()[0]) }
 }

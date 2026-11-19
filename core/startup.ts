@@ -20,10 +20,14 @@ export function markPassed(mark: string) {
   if (next && phase !== "ready") enter(next)
 }
 
+let served = () => {}
+export const whenReady = new Promise<void>((resolve) => { served = resolve })
+
 export function ready() {
   readyAt = Date.now()
   enter("ready")
   Atomics.store(readyFlag, 0, 1)
+  served()
 }
 
 export function runsCommit(sha: string | null) {
