@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 import { once } from "node:events"
+import { setImmediate as turn } from "node:timers/promises"
 import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
@@ -14,14 +15,14 @@ const HOUR = 3600_000
 /** A file left alone this long before its next change: what it said then is a version, whatever the interval. */
 const PAUSE = 60_000
 const LIST_OVER = 100
-const BULK_WAIT = 10_000
+const BULK_WAIT = 10_000, SAVE_EVERY = 1000, SLICE = 20
 
 type Stat = { mtime: number; size: number; ns?: string }
 const META = z.object({ mtime: z.number(), size: z.number(), ns: z.string().optional(), path: z.string(), hash: z.string(), last: z.number(), gone: z.boolean().optional() })
 type Meta = z.infer<typeof META>
 const ERRNO = z.object({ errno: z.number() }).catch({ errno: 0 })
 const KEEP = z.object({ path: z.unknown(), text: z.string().optional().catch(undefined) })
-type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>; made: number
+type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>; made: number; tracked: number; unread: string[]
   saving: ReturnType<typeof setTimeout> | null }
 const INDEX = "heads.json"
 
@@ -35,15 +36,13 @@ function state(vault: Vault): State {
   const root = path.join(LOCAL, "history", key)
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, "vault.txt"), real + "\n")
-  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null, made: Date.now() }
+  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null, made: Date.now(), tracked: 0, unread: [] }
   let index: Meta[] | null = null
   try { index = z.array(META).parse(JSON.parse(fs.readFileSync(path.join(root, INDEX), "utf8"))) } catch { /* none yet */ }
   for (const m of index ?? []) s.heads.set(m.path, m)
   for (const name of fs.readdirSync(root)) {
     if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue }
-    if (index) continue
-    const m = readMeta(path.join(root, name))
-    if (m && !m.gone) s.heads.set(m.path, m)
+    if (!index) s.unread.push(name)
   }
   if (!index) (s.saving = setTimeout(() => saveIndex(s), 10_000)).unref?.()
   states.set(vault, s)
@@ -67,6 +66,7 @@ function current(s: State, rel: string, kept?: Set<string>): Meta | undefined {
 }
 
 function saveIndex(s: State) {
+  if (s.unread.length) return
   if (s.saving) clearTimeout(s.saving)
   s.saving = null
   try { writeAtomic(path.join(s.root, INDEX), JSON.stringify([...s.heads.values()])) } catch (e) { log.error("writing the index", e) }
@@ -192,17 +192,10 @@ export async function follow(vault: Vault) {
   }
   s.version = vault.version
   const { out: now, gone } = candidates(s, vault)
-  const added: string[] = [], changed: string[] = []
-  const differs = (m: Meta, st: Stat) => m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)
   const unsure = [...now.keys()].filter((rel) => { const m = s.heads.get(rel); return !m || differs(m, now.get(rel)!) })
   if (later(vault, s, unsure)) return
-  const kept = keptDirs(s, unsure.length)
-  for (const [rel, st] of now) {
-    let m = s.heads.get(rel)
-    if (!m || differs(m, st)) m = current(s, rel, kept)
-    if (!m) { if (s.skip.get(rel) !== `${st.mtime}:${st.size}`) added.push(rel) }
-    else if (differs(m, st)) changed.push(rel)
-  }
+  await readHeads(s)
+  const { added, changed } = await sorted(s, now, keptDirs(s, unsure.length))
   for (let i = gone.length - 1; i >= 0; i--) if (!current(s, gone[i])) gone.splice(i, 1)
   if (added.length || changed.length || gone.length) {
     s.saving ??= setTimeout(() => saveIndex(s), 10_000)
@@ -233,6 +226,7 @@ export async function follow(vault: Vault) {
       const from = byHash.get(hash)
       if (from) { byHash.delete(hash); gone.splice(gone.indexOf(from), 1); carry(s, from, rel) }
       track(s, rel, st, copy, hash)
+      if (++s.tracked % SAVE_EVERY === 0) saveIndex(s)
     }
     for (const rel of gone) untrack(s, rel)
   }
@@ -256,6 +250,32 @@ export function prune(vault: Vault, at = Date.now()) {
     }
     if (!left && !files.includes("head")) fs.rmSync(dir, { recursive: true, force: true })
   }
+}
+
+const differs = (m: Meta, st: Stat) => m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)
+
+async function readHeads(s: State) {
+  if (!s.unread.length) return
+  let since = performance.now()
+  for (const name of s.unread.splice(0)) {
+    if (performance.now() - since > SLICE) { await turn(); since = performance.now() }
+    const m = readMeta(path.join(s.root, name))
+    if (m && !m.gone) s.heads.set(m.path, m)
+  }
+  saveIndex(s)
+}
+
+async function sorted(s: State, now: Map<string, Stat>, kept?: Set<string>) {
+  const added: string[] = [], changed: string[] = []
+  let since = performance.now()
+  for (const [rel, st] of now) {
+    if (performance.now() - since > SLICE) { await turn(); since = performance.now() }
+    let m = s.heads.get(rel)
+    if (!m || differs(m, st)) m = current(s, rel, kept)
+    if (!m) { if (s.skip.get(rel) !== `${st.mtime}:${st.size}`) added.push(rel) }
+    else if (differs(m, st)) changed.push(rel)
+  }
+  return { added, changed }
 }
 
 function later(vault: Vault, s: State, unsure: string[]) {
