@@ -18,7 +18,9 @@ process.exit(failed ?? 0)
 async function fillCompileCache() {
   let electron: string
   try { electron = z.string().parse(createRequire(path.join(ROOT, "package.json"))("electron")) } catch { return }
+  const { execIn, mainCompiles, serverBoots, writable } = await import("../core/update/store.ts")
+  writable(path.join(ROOT, "dist-app"), true)
   fs.rmSync(path.join(ROOT, CODE_CACHE), { recursive: true, force: true })
-  const { execIn, serverBoots } = await import("../core/update/store.ts")
-  await serverBoots.run({ root: ROOT, store: "", helpers: "", node: electron, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, exec: execIn })
+  const ctx = { root: ROOT, store: "", helpers: "", node: electron, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, exec: execIn }
+  await Promise.all([serverBoots.run(ctx), mainCompiles.run(ctx)])
 }

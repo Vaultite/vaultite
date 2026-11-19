@@ -170,6 +170,7 @@
       "screenshots/**",
       "CHANGELOG.md",
       "server.ts",
+      ".compile-cache/**",
       "core/**",
       "bundles/**",
       "plugins/**",

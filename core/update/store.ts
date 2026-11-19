@@ -79,6 +79,15 @@ export const serverBoots: Step = {
   },
 }
 
+const MAIN_FILL = "electron/compilefill.mjs"
+export const mainCompiles: Step = {
+  name: "main's compile cache",
+  run: async (c) => {
+    if (!fs.existsSync(path.join(c.root, MAIN_FILL))) return
+    await c.exec(c.node, [MAIN_FILL], { cwd: c.root, env: { ...c.env, NODE_COMPILE_CACHE: path.join(c.root, CODE_CACHE), NODE_COMPILE_CACHE_PORTABLE: "1" } })
+  },
+}
+
 export function appRecipe(o: { channel?: string } = {}): Recipe {
   const npm = (c: StepCtx, args: string[], env: Record<string, string> = {}) => c.exec("npm", args, { cwd: c.root, env: { ...c.env, ...env } })
   return {
@@ -89,7 +98,7 @@ export function appRecipe(o: { channel?: string } = {}): Recipe {
     ],
     keyFiles: ["server.ts", "package.json", "bin/vau", "electron/boot.ts", "electron/main.ts", "electron/build.json", "web/dist/index.html",
       ...["boot.mjs", "roots.mjs", "vau.mjs", "print.mjs", "inputs.json"].map((f) => `electron/shell/${f}`)],
-    preflight: [serverBoots, { name: "smoke", run: (c) => c.exec(c.node, ["web/qa/boot.mjs"], { cwd: c.root, env: c.env }).then(() => {}) }],
+    preflight: [serverBoots, mainCompiles, { name: "smoke", run: (c) => c.exec(c.node, ["web/qa/boot.mjs"], { cwd: c.root, env: c.env }).then(() => {}) }],
   }
 }
 
@@ -126,7 +135,7 @@ const writeJson = (file: string, v: unknown) => {
   fs.writeFileSync(`${file}.${process.pid}.tmp`, JSON.stringify(v, null, 2) + "\n")
   fs.renameSync(`${file}.${process.pid}.tmp`, file)
 }
-function writable(dir: string, on: boolean) {
+export function writable(dir: string, on: boolean) {
   const walk = (p: string) => {
     const st = fs.lstatSync(p)
     if (st.isSymbolicLink()) return

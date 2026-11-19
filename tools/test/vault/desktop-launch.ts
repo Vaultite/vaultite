@@ -15,15 +15,8 @@ async function commandLine(check: VaultTest["check"]) {
 }
 
 async function compileCache(check: VaultTest["check"], tmp: string) {
-  const { policyFor, trimCompileCache } = await import("../../../electron/storepolicy.ts")
-  const cache = path.join(tmp, "compile-cache"), envs: (string | undefined)[] = []
-  const ctx = { root: "", store: "", helpers: "", node: "", env: { PATH: "/bin" }, exec: async (_c: string, _a: string[], o: { env?: NodeJS.ProcessEnv }) => {
-    envs.push(o.env?.NODE_COMPILE_CACHE)
-    throw new Error("stop")
-  } }
-  for (const p of [await policyFor("", cache), await policyFor("5".repeat(40), cache)]) for (const step of p.recipe.preflight) await step.run(ctx).catch(() => {})
-  check("store: an update's checks run its code with the app's compile cache, so its first launch finds it compiled",
-    envs.length === 3 && envs.every((e) => e === cache) && ctx.env.PATH === "/bin", envs)
+  const { trimCompileCache } = await import("../../../electron/storepolicy.ts")
+  const cache = path.join(tmp, "compile-cache")
   fs.mkdirSync(path.join(cache, "v1"), { recursive: true })
   for (let i = 0; i < 4; i++) fs.writeFileSync(path.join(cache, "v1", String(i)), "")
   const kept = await trimCompileCache(cache, 4), held = fs.existsSync(cache), trimmed = await trimCompileCache(cache, 3)

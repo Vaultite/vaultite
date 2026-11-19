@@ -36,7 +36,7 @@ export async function look(h: StoreHost) {
   const { checkForUpdate: lookOnce, updateStatus } = await engine()
   const server = await h.attached()
   if (server === null) { h.log("store: a server its windows attach to didn't say its commit: looking again later"); return updateStatus() }
-  const p = await policyFor(server, compileCache()), store = await storeOf(h, p.recipe)
+  const p = await policyFor(server), store = await storeOf(h, p.recipe)
   if (p.follows !== follows) { follows = p.follows; h.log(`store: follows ${server ? `the commit its server runs (${server.slice(0, 7)})` : "the branch's newest"}`) }
   // (the clone update.sh built in, moved in: its objects, no download)
   await store.init(path.join(userData(), "source.noindex"))

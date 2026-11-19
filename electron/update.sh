@@ -12,6 +12,8 @@ unalias -a 2>/dev/null || true
 [ "$(uname)" = Darwin ] && export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 # An app started from the Dock gets 256 open files, too few for electron-builder signing every file it copied.
 ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
+# A built app's compile cache is read-only (electron/sign.cjs): writable first, or rm can't empty its folders.
+gone() { chmod -R u+w "$@" 2>/dev/null || true; rm -rf "$@"; }
 
 # A whole copy of the build in <from> at <to>, checked: its build.json is the commit update.sh build wrote, its key
 # files and shell are there, as many files as the build. Else why not (stdout), with rsync's own words in the log.
@@ -72,10 +74,10 @@ build)
       npm ci --no-audit --no-fund
       echo "$lock" > node_modules/.lock
     fi
-    rm -rf dist-app
+    gone dist-app
     # (VAULTITE_UPDATING: electron/sign.cjs fails rather than sign ad hoc)
     VAULTITE_UPDATING=1 npm run "$script"
-    rm -rf "$next" && mkdir -p "$next"
+    gone "$next" && mkdir -p "$next"
     if [ "$(uname)" = Darwin ]; then mv dist-app/mac*/*.app "$next/"
     else mv dist-app/linux*-unpacked "$next/$(node -p 'require(process.argv[1]).productName' "$PWD"/dist-app/linux*-unpacked/resources/app/package.json)"; fi
     echo "$new" > "$next/commit"
@@ -91,9 +93,9 @@ install)
   else res=resources/app bin=${exe:-$(basename "$app")}; fi
   # Staged beside it while the app still runs (the same volume, so the swap is a rename), and checked: the app quits only
   # once it's whole, and a copy cut off or wrong never goes in.
-  rm -rf "$app.new" "$app.old"
+  gone "$app.new" "$app.old"
   if ! why=$(stage "$new" "$app.new"); then
-    rm -rf "$app.new" || true
+    gone "$app.new" || true
     echo "not installed: $why"
     exit 1
   fi
@@ -103,22 +105,22 @@ install)
   # Opened again meanwhile (the Dock, a link, its LaunchAgent): never swap an app out from under itself, or that copy
   # runs the old tree while the disk says new. It offers the update again.
   if [ -n "$(mains "$app/$bin" "$app/$res")" ]; then
-    rm -rf "$app.new" || true
+    gone "$app.new" || true
     echo "not installed: $app was opened again before the swap"
     exit 0
   fi
   # Two renames, the old app whole until the second; failed, it stays (and opens again, the old one).
   if mv "$app" "$app.old"; then
     if mv "$app.new" "$app"; then
-      rm -rf "$app.old" || true
+      gone "$app.old" || true
       echo "installed $want"
     else
       mv "$app.old" "$app" || true
-      rm -rf "$app.new" || true
+      gone "$app.new" || true
       echo "not installed: couldn't move the new app into $app"
     fi
   else
-    rm -rf "$app.new" || true
+    gone "$app.new" || true
     echo "not installed: couldn't move $app aside"
   fi
   [ "$stay" = stay ] && exit 0

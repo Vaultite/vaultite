@@ -134,7 +134,14 @@ function stampShell(context) {
   return shell
 }
 
+function readOnly(p) {
+  if (!fs.existsSync(p)) return
+  if (fs.statSync(p).isDirectory()) for (const n of fs.readdirSync(p)) readOnly(path.join(p, n))
+  fs.chmodSync(p, fs.statSync(p).isDirectory() ? 0o555 : 0o444)
+}
+
 exports.default = async function sign(context) {
+  readOnly(path.join(context.packager.getResourcesDir(context.appOutDir), "app", ".compile-cache"))
   await fuses(context, stampShell(context))
   if (context.electronPlatformName === "win32") return require("./natives.cjs").windows(context)
   if (context.electronPlatformName !== "darwin") return

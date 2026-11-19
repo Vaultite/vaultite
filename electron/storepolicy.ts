@@ -38,15 +38,13 @@ export function pinOf(windows: Attachment[]): string | null {
 
 /** Attached to a service (`server`: the commit it runs, which CI for this OS passed): that commit only, checked by its
  *  server booting (about 10 s). Standalone: the branch's newest, CI not waited for (as before), with smoke too. */
-export async function policyFor(server: string, cache: string): Promise<Policy> {
-  const { appRecipe, serverBoots } = await import("../core/update/store.ts")
-  // (Node keys its compile cache by path, new with each root: the checks compile it before its first launch)
-  const warming = (r: Recipe): Recipe => ({ ...r, preflight: r.preflight.map((s) => ({ ...s, run: (c) => s.run({ ...c, env: { ...c.env, NODE_COMPILE_CACHE: cache } }) })) })
+export async function policyFor(server: string): Promise<Policy> {
+  const { appRecipe, mainCompiles, serverBoots } = await import("../core/update/store.ts")
   if (server) return {
-    follows: "server", recipe: warming({ ...appRecipe(), preflight: [serverBoots] }),
+    follows: "server", recipe: { ...appRecipe(), preflight: [serverBoots, mainCompiles] },
     ci: async (_repo, sha) => sha === server ? { ok: true, why: "the commit its server runs" } : { ok: null, why: `not the commit its server runs (${server.slice(0, 7)})` },
   }
-  return { follows: "branch", recipe: warming(appRecipe()), ci: async () => ({ ok: true, why: "not waited for: a standalone app" }) }
+  return { follows: "branch", recipe: appRecipe(), ci: async () => ({ ok: true, why: "not waited for: a standalone app" }) }
 }
 
 export const COMPILE_CACHE_ENTRIES = 20_000

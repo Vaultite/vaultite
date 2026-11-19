@@ -62,10 +62,12 @@ const opens = () => (fs.existsSync(opened) ? fs.readFileSync(opened, "utf8").tri
 type Install = { child: ChildProcess; staged: Promise<boolean>; done: Promise<number | null>; log: () => string; events: string[] }
 /** update.sh install for the app `pid` stands for: the old app installed, the new build in update.noindex. */
 let n = 0
-function install(o: { next?: string; build?: string; omit?: string; print?: string; stay?: boolean; pid: number }): Install & { app: string } {
+function install(o: { next?: string; build?: string; omit?: string; print?: string; stay?: boolean; cached?: boolean; pid: number }): Install & { app: string } {
   const dir = path.join(tmp, `case-${++n}`), apps = path.join(dir, "Applications"), next = path.join(dir, "update.noindex")
   fs.mkdirSync(apps, { recursive: true })
   makeBuild(bundle(apps), OLD)
+  const cache = path.join(bundle(apps), RES, ".compile-cache", "v24")
+  if (o.cached) { fs.mkdirSync(cache, { recursive: true }); fs.writeFileSync(path.join(cache, "a1b2"), "code"); for (const p of [path.join(cache, "a1b2"), cache, path.dirname(cache)]) fs.chmodSync(p, 0o555) }
   makeBuild(bundle(next), o.build ?? NEW, { omit: o.omit, print: o.print })
   fs.writeFileSync(path.join(next, "commit"), `${o.next ?? NEW}\n`)
   fs.rmSync(opened, { force: true })
@@ -86,7 +88,7 @@ function install(o: { next?: string; build?: string; omit?: string; print?: stri
 const appPid = () => run(process.execPath, [hold])
 
 await section("staged, swapped in once the app quit, then opened", async () => {
-  const app = appPid(), i = install({ pid: app.pid! })
+  const app = appPid(), i = install({ pid: app.pid!, cached: true })
   check("it says it's staged while the app still runs", await i.staged && app.exitCode === null, i.log())
   await sleep(600)
   check("...and touches nothing of the running app meanwhile", commitAt(i.app) === OLD && commitAt(`${i.app}.new`) === NEW && !opens().length,
@@ -95,7 +97,7 @@ await section("staged, swapped in once the app quit, then opened", async () => {
   const code = await i.done
   check("once it quit, the new build is the app", code === 0 && commitAt(i.app) === NEW, { code, log: i.log() })
   check("...whole: every file the build has", fs.readFileSync(path.join(i.app, RES, "plugins/core/lighthouse/plugin.ts"), "utf8") === `// ${NEW}`)
-  check("...with no copy left beside it", !fs.existsSync(`${i.app}.new`) && !fs.existsSync(`${i.app}.old`))
+  check("...with no copy left beside it, its read-only compile cache too", !fs.existsSync(`${i.app}.new`) && !fs.existsSync(`${i.app}.old`))
   const o = opens()
   check("it's opened once, after the swap was done", o.length === 1 && o[0].commit === NEW && !o[0].leftNew && !o[0].leftOld, o)
   check("the log says what it installed", i.log().includes(`installed ${NEW}`), i.log())
@@ -332,11 +334,11 @@ await section("Main's updates through its code store: where, and its two policie
   check("Vaultite Main where its marker is: the store", storeWanted(main) && storeWanted({ ...main, platform: "linux" }))
   check("...not without the marker (updates as before), nor a release, Windows, Dev or a run from source", !storeWanted({ ...main, marker: false }) && !storeWanted({ ...main, release: true })
     && !storeWanted({ ...main, platform: "win32" }) && !storeWanted({ ...main, channel: "dev" }) && !storeWanted({ ...main, channel: "nightly", release: true }) && !storeWanted({ ...main, packaged: false }))
-  const server = "5".repeat(40), attached = await policyFor(server, "/c"), alone = await policyFor("", "/c")
+  const server = "5".repeat(40), attached = await policyFor(server), alone = await policyFor("")
   check("attached to a service: only the commit its server runs, checked by its server booting", attached.follows === "server" && (await attached.ci("", server)).ok === true
-    && (await attached.ci("", "6".repeat(40))).ok === null && attached.recipe.preflight.map((x) => x.name).join() === "server boots")
+    && (await attached.ci("", "6".repeat(40))).ok === null && attached.recipe.preflight.map((x) => x.name).join() === "server boots,main's compile cache")
   check("standalone: the branch's newest, CI not waited for, smoke too", alone.follows === "branch" && (await alone.ci("", "6".repeat(40))).ok === true
-    && alone.recipe.preflight.map((x) => x.name).join() === "server boots,smoke")
+    && alone.recipe.preflight.map((x) => x.name).join() === "server boots,main's compile cache,smoke")
   // (what updates.ts' attachedTo gives policyFor: a window's server, own or a service, and the commit it runs)
   const service = (commit: string) => ({ own: false, commit }), mine = { own: true, commit: "" }
   check("every window on a real service (vau service's, another app's): pinned to the commit it runs", pinOf([service(server), service(server)]) === server)
