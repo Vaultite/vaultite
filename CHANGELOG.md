@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Folders: switching a folder page to columns (⌥⌘3) keeps the keyboard on the thing you were on, instead of losing it
+  now and then while the columns loaded.
 - Desktop app: the first launch after an update or on a new account opens its window about 0.2 s sooner and starts its
   server about half a second sooner: the code comes with its compiled cache, and the app's own cache no longer grows by
   about 11 MB with every update.
