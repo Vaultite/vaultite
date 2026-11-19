@@ -14,13 +14,14 @@ const HOUR = 3600_000
 /** A file left alone this long before its next change: what it said then is a version, whatever the interval. */
 const PAUSE = 60_000
 const LIST_OVER = 100
+const BULK_WAIT = 10_000
 
 type Stat = { mtime: number; size: number; ns?: string }
 const META = z.object({ mtime: z.number(), size: z.number(), ns: z.string().optional(), path: z.string(), hash: z.string(), last: z.number(), gone: z.boolean().optional() })
 type Meta = z.infer<typeof META>
 const ERRNO = z.object({ errno: z.number() }).catch({ errno: 0 })
 const KEEP = z.object({ path: z.unknown(), text: z.string().optional().catch(undefined) })
-type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>
+type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>; made: number
   saving: ReturnType<typeof setTimeout> | null }
 const INDEX = "heads.json"
 
@@ -34,7 +35,7 @@ function state(vault: Vault): State {
   const root = path.join(LOCAL, "history", key)
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, "vault.txt"), real + "\n")
-  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null }
+  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null, made: Date.now() }
   let index: Meta[] | null = null
   try { index = z.array(META).parse(JSON.parse(fs.readFileSync(path.join(root, INDEX), "utf8"))) } catch { /* none yet */ }
   for (const m of index ?? []) s.heads.set(m.path, m)
@@ -201,6 +202,7 @@ export async function follow(vault: Vault) {
     else if (differs(m, st)) changed.push(rel)
   }
   for (let i = gone.length - 1; i >= 0; i--) if (!current(s, gone[i])) gone.splice(i, 1)
+  added.splice(0, added.length, ...later(vault, s, added))
   if (added.length || changed.length || gone.length) {
     s.saving ??= setTimeout(() => saveIndex(s), 10_000)
     s.saving.unref?.()
@@ -255,13 +257,23 @@ export function prune(vault: Vault, at = Date.now()) {
   }
 }
 
+function later(vault: Vault, s: State, added: string[]) {
+  const wait = s.made + BULK_WAIT - Date.now()
+  if (added.length <= LIST_OVER || wait <= 0) return added
+  for (const rel of added) s.seen.delete(rel)
+  s.version = -1
+  setTimeout(() => followSoon(vault), wait).unref()
+  return []
+}
+
 let following: Promise<void> | null = null, again = false
-plugin.onSync((vault) => {
+function followSoon(vault: Vault) {
   if (following) { again = true; return }
   following = (async () => {
     do { again = false; await follow(vault) } while (again)
   })().catch((e) => { states.get(vault)?.seen.clear(); log.error("following changes", e) }).finally(() => { following = null })
-})
+}
+plugin.onSync(followSoon)
 const timer = setInterval(() => { try { if (plugin.loaded) prune(plugin.vault) } catch (e) { log.error("pruning", e) } }, HOUR)
 timer.unref()
 plugin.onUnload(() => {
