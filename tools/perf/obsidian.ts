@@ -143,7 +143,7 @@ async function search(k: Kind, page: Page) {
 }
 
 async function launch(name: string, k: Kind, n: number, note: string) {
-  const dir = path.join(tmp, name.replace(/\W+/g, "-")), vault = path.join(dir, "vault"), profile = path.join(dir, "profile")
+  const dir = path.join(tmp, name.replace(/ \(.*\)$/, "").replace(/\W+/g, "-")), vault = path.join(dir, "vault"), profile = path.join(dir, "profile")
   if (n === 0) { fs.mkdirSync(profile, { recursive: true }); execFileSync("cp", ["-r", SRC, vault]) }
   if (n === 0 && DROP) execFileSync("sudo", ["-n", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
   const port = await freePort()
