@@ -618,6 +618,8 @@ const deflating = new WebSocketServer({ noServer: true, maxPayload: 32 << 20,
   perMessageDeflate: { threshold: 256, zlibDeflateOptions: { level: 6 } } })
 const socketsFor = (req: http.IncomingMessage) => (overNetwork(req) ? deflating : sockets)
 
+const fromApp = (req: http.IncomingMessage) => app.trusts(req) || req.headers.origin !== undefined
+
 function refuse(socket: Duplex, status: number, message: string) {
   process.stderr.write(`WS refused: ${status} ${message}\n`)
   const reason = http.STATUS_CODES[status] ?? "Error"
@@ -648,8 +650,9 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
       })
     }
     const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)
-    await app.syncPlugins()
-    await vault.synced()
+    const trusting = fromApp(req)
+    await app.syncPlugins({ trusting })
+    await vault.synced({ trusting })
     const hit = matchSocket(app.plugins, parts)
     if (!hit) return refuse(socket, 404, "not found")
     const [plugin, sock, wild] = hit
