@@ -56,7 +56,6 @@ late.unref?.()
 
 globalThis.vaultiteShell = {
   root: picked.root, bundleRoot: bundle, shell, from: picked.from,
-  /** Its first window's server answers (or, with none, the launch is done): this root is good. */
   ready() {
     if (isReady) return
     isReady = true
@@ -65,7 +64,6 @@ globalThis.vaultiteShell = {
     setTimeout(() => roots.settled(dir, process.pid), roots.SETTLED_AFTER).unref?.()
   },
   failed,
-  /** What happened since it was last asked (roots this run passed over, earlier runs that failed). */
   events: () => roots.unreported(dir),
 }
 
