@@ -6,13 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- Vaultite Main: the first launch after an update, and its servers' restart onto it, find the new code already compiled
-  (its server's start took twice as long: 0.3 s of imports instead of 0.14 s); and its compile cache no longer grows by
-  about 11 MB with every update.
-- Desktop app: its server starts about half a second sooner the first time after an update or on a new account: the
-  code comes with its compiled cache.
 - Desktop app: the first launch after an update or on a new account opens its window about 0.2 s sooner and starts its
-  server about half a second sooner: the code comes with its compiled cache.
+  server about half a second sooner: the code comes with its compiled cache, and the app's own cache no longer grows by
+  about 11 MB with every update.
 - A big vault no longer stalls the app every 10 s: the app's requests stop waiting for the server's periodic check of
   every file (130 to 300 ms at 15,000 notes), and checking which Claude Code sessions run no longer blocks the server.
 - If the app didn't finish starting last time (a vault plugin froze it), it starts with vault plugins off and says so,
@@ -35,8 +31,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   time one does, which on a machine with hundreds of them held the server for about 10 ms several times a second.
 - File history: catching up on a big vault's files, about 10 s after the server starts, no longer holds every other
   request for up to a second; it lets them through every few milliseconds.
-- Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: TBD).
-- Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: the first time 4.5 s to 3.0 s; after, 1.7 s to 1.4 s).
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes, the server's start to
   its first answer: the first time 4.5 s to 1.3 s, after that 1.4 s to 1.0 s; its notes are read on other threads).
 - Settings: a change in a big vault no longer has the app's next request wait while every note's file is looked at
@@ -122,8 +116,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (`vau open --split left`, `up`; the same for terminals and jobs).
 - Desktop: an update no longer sometimes runs the app's own older server for a while, then relaunches and shows
   "A new version of Vaultite is ready" again: a server that started up fast is no longer mistaken for one it can't talk to.
-- Desktop: at launch, the vaults it reopens start their servers before the rest of the app loads (on Linux, 70 ms
-  sooner: forked at 90 ms instead of 160 ms after the app starts).
 - Companion: Talk key answers over a note come up to 2 s sooner (a spoken ask no longer waits for the note to save it,
   only a typed one does), and its close-up is taken at the screen's own resolution, not upscaled, so each ask costs fewer tokens.
 - Desktop: with Cloud sessions open, the app reads claude.ai's sessions when they're due instead of waking each second
