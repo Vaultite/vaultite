@@ -38,11 +38,14 @@ export default async ($: VaultTest) => {
     fs.mkdirSync(path.join(dir, "Notes"), { recursive: true })
     const odd = ["---\ntitle: crlf\r\ntags: [a, b]\r\n---\r\n\r\nBody #inline\r\n", "\ufeff---\ntitle: bom\n---\nBody", "---\ntitle: [broken\n---\nBody", "---\ntitle: only header\n---",
       "No header at all, #tag and `#code`\n", "  \n\n  ", "---\n---\n\n  spaced body  \n\n"]
-    for (let i = 0; i < 600; i++) fs.writeFileSync(path.join(dir, `Notes/n${i}.md`), odd[i % odd.length] + (i % 3 ? `\nline ${i} #t${i % 5}\n` : ""))
+    for (let i = 0; i < 900; i++) fs.writeFileSync(path.join(dir, `Notes/n${i}.md`), odd[i % odd.length] + (i % 3 ? `\nline ${i} #t${i % 5}\n` : ""))
     fs.writeFileSync(path.join(dir, "Notes/latin1.md"), Buffer.from([0x66, 0xe9, 0x0a]))
     const read = async (ahead: boolean) => {
       const v = new Vault(dir)
-      v.startTexts = { now: new Map(), had: new Map() }
+      v.startTexts = { now: new Map(), had: new Map(Array.from({ length: 300 }, (_, i) => {
+        const rel = `Notes/n${i * 2}.md`, st = fs.statSync(path.join(dir, rel), { bigint: true })
+        return [rel, [String(st.mtimeNs), Number(st.size), fs.readFileSync(path.join(dir, rel), "utf8").replace(/\r\n?/g, "\n").replace(/^\ufeff/, "")]]
+      })) }
       if (ahead) v.readAhead = readAhead
       await v.sync()
       return v
@@ -50,7 +53,7 @@ export default async ($: VaultTest) => {
     const [plain, ahead] = await Promise.all([read(false), read(true)])
     const offThread = [...ahead.entries.values()].filter((e) => e.tagCache).length
     const seen = (v: Vault) => [...v.entries.values()].map((e) => [e.rel, e.text, e.fm, e.body, e.bodyLine, e.tags, e.problems, e.broken])
-    check("start: notes read ahead on other threads index as read on the main one", JSON.stringify(seen(plain)) === JSON.stringify(seen(ahead)) && plain.entries.size === 601 && offThread > 500,
+    check("start: notes read ahead on other threads index as read on the main one", JSON.stringify(seen(plain)) === JSON.stringify(seen(ahead)) && plain.entries.size === 901 && offThread > 500,
       seen(ahead).filter((x, i) => JSON.stringify(x) !== JSON.stringify(seen(plain)[i])).slice(0, 3))
   }
   // A vault opened for the first time starts from Standard (core/start.ts), writing nothing outside .vaultite/; a new one
