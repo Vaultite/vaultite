@@ -45,7 +45,8 @@ async function launch() {
     env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
   })
   if (process.env.DEBUG) app.process().stderr.on("data", (d) => process.stderr.write(d)), app.process().stdout.on("data", (d) => process.stdout.write(d))
-  win = await app.firstWindow()
+  await app.firstWindow()
+  for (let t = Date.now(); !(win = app.windows().find((w) => w.url().startsWith("http"))) && Date.now() - t < 30_000;) await app.waitForEvent("window", { timeout: 1000 }).catch(() => {})
   watch(win, { console: true, fail: false })
 }
 const origin = () => new URL(win.url()).origin
