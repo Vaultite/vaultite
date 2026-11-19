@@ -8,10 +8,13 @@ const MARKED: [q: string, text: string, marked: string, matchCase?: boolean][] =
 ]
 
 async function paging({ api, check }: VaultTest) {
-  for (const name of ["Mossy note", "b", "c", "d"]) await api("POST", "file", { path: `Searchy/Paging/${name}.md`, text: "about moss\n" })
+  for (const name of ["Mossy note", "b", "c", "d"]) await api("POST", "file", { path: `Searchy/Paging/${name}.md`, text: "about Moss and moss\n" })
   const titles = async (more: string) => { const [, r] = await api("GET", `search?q=moss&folder=Searchy/Paging${more}`); return (Array.isArray(r) ? r : r.results).map((x: Any) => x.title).join(",") }
+  const titles2 = async (q: string) => { const [, r] = await api("GET", `search?q=${q}&case=1&folder=Searchy/Paging&limit=4`); return r.map((x: Any) => x.title).join(",") }
   const pages = [await titles("&limit=2"), await titles("&limit=2&offset=2")].join(","), all = await titles("&limit=4")
   check("search: a name that matches comes first; pages in the same order as one", all.startsWith("Mossy note,") && all.split(",").length === 4 && pages === all, [pages, all])
+  const other = await titles2("moss -zzz"), same = await titles2("Moss -zzz")
+  check("search: with match case, only a name in the query's case counts as a name match", !other.startsWith("Mossy note") && same.startsWith("Mossy note") && other.split(",").length === 4, [other, same])
   const [, total] = await api("GET", "search?q=moss&folder=Searchy/Paging&limit=1&total=1&lines=5")
   check("search: the total counts past the page", total.files === 4 && total.lines === 4 && total.results.length === 1, total)
   await api("DELETE", "file?path=Searchy/Paging")

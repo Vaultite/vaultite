@@ -319,6 +319,7 @@ export function highlighter(n: Node, where: "text" | "name" = "text"): (s: strin
   const ms = markers(n, where)
   return (s) => {
     if (!ms.length || !s) return []
+    if (ms.length === 1 && ms[0].re) return ms[0].ranges(s)
     const all = ms.flatMap((m) => m.ranges(s)).sort((a, b) => a[0] - b[0] || b[1] - a[1])
     const out: [number, number][] = []
     for (const r of all) {
@@ -331,8 +332,8 @@ export function highlighter(n: Node, where: "text" | "name" = "text"): (s: strin
 }
 
 export type LineFinder = { lines: (text: string) => number[]; count: (text: string) => number }
-export function lineFinder(n: Node): LineFinder {
-  const ms = markers(n, "text"), marks = highlighter(n)
+export function lineFinder(n: Node, where: "text" | "name" = "text"): LineFinder {
+  const ms = markers(n, where), marks = highlighter(n, where)
   if (!ms.every((m) => m.re)) {
     const lines = (text: string) => text.split("\n").flatMap((l, i) => (marks(l).length ? [i] : []))
     return { lines, count: (text) => lines(text).length }
