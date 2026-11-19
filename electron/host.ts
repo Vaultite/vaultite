@@ -1,7 +1,7 @@
 // A window attached to a server on this Mac that already serves its vault (core/serving.ts).
 import { session } from "electron"
 import fs from "node:fs"
-import { WebSocket } from "ws"
+import type { WebSocket } from "ws"
 import { DESKTOP_PROTOCOL } from "../core/desktopapp.ts"
 import { serviceVault } from "../core/service.ts"
 import { servingOf, type Serving } from "../core/serving.ts"
@@ -32,6 +32,7 @@ export async function servedHere(vault: string): Promise<Serving | null> {
 export async function attach(vault: string, s: Serving, answer: (m: Call) => Promise<unknown>, hello: () => object[], refused?: () => void): Promise<Link> {
   await session.defaultSession.cookies.set({ url: `http://127.0.0.1:${s.port}`, name: "vaultite_client", value: "desktop",
     expirationDate: Date.now() / 1000 + 10 * 365 * 86400 })
+  const { WebSocket } = await import("ws")
   let ws: WebSocket | null = null, stopped = false, wait = 500
   const connect = () => {
     if (stopped) return
