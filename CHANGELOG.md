@@ -19,8 +19,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   as that has drawn its file tree and open note, instead of a blank window until the vault has loaded.
 - Search: the search tab shows its first results as you type, with no pause: about 70 ms on a vault of 15,000 notes, where
   it took 300 to 800. The switcher and a note's query blocks don't wait before searching either.
-- Search: the search tab shows its first results as you type, with no pause: about 45 ms on a vault of 15,000 notes, where
-  it took 300 to 800, as the first files found are shown before the rest are counted. The switcher and a note's query
+- Search: the search tab shows its first results as you type, with no pause: drawn about 15 ms after a key on a vault of
+  15,000 notes, where it took 300 to 800, as the first files found are shown before the rest are counted. The switcher and a note's query
   blocks don't wait before searching either.
 - Search: a word found in most notes answers about 5 times sooner (the search tab, the switcher, query blocks, vau search):
   only the shown files' lines are read out, and a page further down reuses the search.
