@@ -34,8 +34,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   its first answer: the first time 4.5 s to 1.3 s, after that 1.4 s to 1.0 s; its notes are read on other threads).
 - Settings: a change in a big vault no longer has the app's next request wait while every note's file is looked at
   again (15,000 notes: about 200 ms each).
-- Desktop: a vault's window opens sooner at launch: its server starts and its window is made before the Browser,
-  updates and menus load, and the app keeps the code it compiled even when it was stopped or crashed.
+- Desktop: a vault opens sooner at launch: its server starts before the rest of the app loads, its window before the
+  Browser, updates and menus, and the app keeps the code it compiled even when it was stopped or crashed.
 - Pictures of a page (vau html picture): on Windows they use the installed Chrome or Edge, so they work on Windows on Arm,
   and a page that fails to open says so instead of "nothing on the page matches".
 - Companion and agents: they attach a file from the vault to a web page (a screenshot to a Reddit reply), through
