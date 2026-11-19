@@ -687,12 +687,12 @@ export class App {
 
   hold<T>(fn: () => Promise<T> | T, { trusting = false } = {}): Promise<T> {
     if (this.holding.getStore()?.on) return Promise.resolve().then(fn)
-    const walks = () => !trusting || !this.vault.vouched()
+    const walks = () => !trusting || !this.vault.filesVouched()
     return (walks() ? this.vault.looked() : Promise.resolve(null)).then((pre) => this.vault.lock(async () => {
       const token = { on: true }
       try {
         return await this.holding.run(token, async () => {
-          if (walks()) await this.vault.sync(pre)
+          await (walks() ? this.vault.sync(pre) : this.vault.settle())
           this.pagesOf = this.onKey()
           try { return await fn() } finally { this.vault.doing = "loading the plugins"; await this.loadPlugins().then(() => this.followPlugins(), (e) => log.error("loading the plugins failed", e)) }
         })

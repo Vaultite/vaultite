@@ -583,11 +583,12 @@ export function sortBy<T>(xs: T[], key: (x: T) => unknown, reverse = false): T[]
 
 type Stat = { ns: bigint; size: number; born: number }
 type Listed = { found: Map<string, Stat>; others: Map<string, Stat>; folders: string[]; away: string[]; linkedOut: boolean; seen: string }
-export type Looked = { t0: number; locks: number; heard: number; wrote: number; listed: Listed; texts: Map<string, string | Error>; late: string[] }
+export type Looked = { t0: number; locks: number; heard: number; settingsHeard: number; wrote: number; listed: Listed; texts: Map<string, string | Error>; late: string[] }
 const CACHES = new Set(["node_modules", "__pycache__"])
 const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsWith(".") && (n !== ARCHIVE_DIR || i === all.length - 1)) ||
   n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
 const sameStat = (a: Stat, b: Stat) => a.ns === b.ns && a.size === b.size
+const SETTINGS_FILE = /^\.(vaultite|obsidian)\//
 const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated"])
 const unseen = (rel: string) => NOT_SETTINGS.has(rel.split("/").slice(0, 2).join("/")) ||
   (unscanned(rel) && !/^\.(vaultite|obsidian)(\/|$)/.test(rel) && !rel.endsWith(".icloud"))
@@ -767,19 +768,20 @@ export class Vault {
   }
 
   async hear(rels: string[] | null): Promise<boolean> {
-    if (!this.walked) { this.heard(null); return false }
+    if (!this.walked) return this.heardBefore(rels)
     const seen = rels?.filter((r) => !unseen(r))
     const now = seen ? await statsOf(seen.map((r) => this.abs(r))) : []
     const told = seen?.filter((r, i) => !this.indexedAs(r, now[i] ?? undefined))
     if (told && !told.length) return false
-    if (!told || this.next || !this.vouched() || told.some((r) => !this.entries.has(r) && !this.others.has(r))) {
+    if (told && this.settingsOnly(told)) return this.heardSettings()
+    if (!told || this.next || !this.filesVouched() || told.some((r) => !this.entries.has(r) && !this.others.has(r))) {
       this.stale = true
       this.heardCount += told?.length ?? 1
       return this.synced({ trusting: true })
     }
     this.heardCount++
     return this.lock(async () => {
-      if (!this.vouched()) return this.sync()
+      if (!this.filesVouched()) return this.sync()
       const stats = (await statsOf(told.map((r) => this.abs(r)))).map((st) => st ?? undefined)
       if (this.walks(told, stats)) return this.sync()
       const md = told.filter((r, i) => stats[i] && r.endsWith(".md"))
@@ -816,7 +818,7 @@ export class Vault {
   }
 
   async reread(rels: string[]): Promise<boolean> {
-    if (!this.vouched()) return this.sync()
+    if (!this.filesVouched()) return this.sync()
     const stats = (await statsOf(rels.map((rel) => this.abs(rel)))).map((st) => st ?? undefined)
     if (this.walks(rels, stats)) return this.sync()
     const { texts } = await this.readAll(rels.filter((r, i) => stats[i] && r.endsWith(".md")))
@@ -851,16 +853,56 @@ export class Vault {
 
   private rewalk: ReturnType<typeof setTimeout> | null = null
   vouched(within = VOUCH) {
+    return this.filesVouched(within) && !this.settingsStale
+  }
+
+  filesVouched(within = VOUCH) {
     return this.watched && !this.stale && !this.linkedOut && !this.missing.size && Date.now() - this.walked < within
+  }
+
+  private settingsStale = false
+  private settling: Promise<boolean> | null = null
+  private settingsOnly(told?: string[]) {
+    return (told ? told.every((r) => SETTINGS_FILE.test(r)) : this.settingsStale) && !this.next && this.filesVouched()
+  }
+
+  private trustedNow(): Promise<boolean> | null {
+    if (this.settingsOnly()) return this.settleSoon()
+    if (this.next || !this.vouched(Infinity)) return null
+    this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => log.error("the walk after a trusted read failed", e)) }, 100)
+    return Promise.resolve(false)
+  }
+
+  private undrained(trusting: boolean) {
+    return this.synced({ trusting: trusting && this.settingsStale })
+  }
+
+  private settleSoon() {
+    return this.settling ??= turn().then(() => this.lock(() => { this.settling = null; return this.settle() }))
+  }
+
+  private heardBefore(rels: string[] | null) {
+    if (rels?.every((r) => SETTINGS_FILE.test(r))) this.settingsChanged()
+    else this.heard(null)
+    return false
+  }
+
+  private heardSettings() {
+    this.settingsChanged()
+    return this.synced({ trusting: true })
+  }
+
+  private settingsHeard = 0
+  private settingsChanged() {
+    this.settingsStale = true
+    this.settingsHeard++
   }
 
   synced({ trusting = false, drained = false } = {}): Promise<boolean> {
     if (trusting && !this.next && this.vouched()) return Promise.resolve(false)
-    if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.synced()))
-    if (trusting && !this.next && this.vouched(Infinity)) {
-      this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => log.error("the walk after a trusted read failed", e)) }, 100)
-      return Promise.resolve(false)
-    }
+    if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.undrained(trusting)))
+    const trusted = trusting ? this.trustedNow() : null
+    if (trusted) return trusted
     return this.next ??= turn().then(async () => {
       const pre = await this.looked()
       return this.lock(() => {
@@ -868,6 +910,20 @@ export class Vault {
         return this.sync(pre)
       })
     })
+  }
+
+  async settle(): Promise<boolean> {
+    if (!this.settingsStale) return false
+    this.settingsStale = false
+    try {
+      const away: string[] = [], seen = await this.settingsStats(away), notes = this.evicted.filter((r) => !SETTINGS_FILE.test(r))
+      const found = new Map([...this.entries].map(([r, e]) => [r, e.stat]))
+      return await this.walk({ t0: Date.now(), locks: this.locks, heard: this.heardCount, settingsHeard: this.settingsHeard, wrote: this.wrote, texts: new Map(), late: this.downloading,
+        listed: { found, others: this.others, folders: this.folders, away: [...notes, ...away], linkedOut: this.linkedOut, seen } })
+    } catch (e) {
+      this.settingsStale = true
+      throw e
+    } finally { this.owners = null }
   }
 
   async looked(): Promise<Looked | null> {
@@ -1358,6 +1414,7 @@ export class Vault {
     try {
       const at = fresh ? pre : await this.look({ ahead: false, before: pre })
       if (fresh && this.heardCount === pre.heard) this.stale = false
+      if (fresh && this.settingsHeard === pre.settingsHeard) this.settingsStale = false
       const changed = await this.walk(at)
       this.walked = at.t0
       return changed
@@ -1368,8 +1425,8 @@ export class Vault {
   }
 
   private async look({ ahead, before }: { ahead: boolean; before?: Looked | null }): Promise<Looked> {
-    const t0 = Date.now(), locks = this.locks, heard = this.heardCount, wrote = this.wrote
-    if (!ahead) this.stale = false
+    const t0 = Date.now(), locks = this.locks, heard = this.heardCount, settingsHeard = this.settingsHeard, wrote = this.wrote
+    if (!ahead) this.stale = this.settingsStale = false
     if (!ahead) this.doing = "listing the vault's files"
     const listed = await this.list()
     await this.startRead
@@ -1384,7 +1441,7 @@ export class Vault {
     }
     if (!ahead) this.doing = `reading ${changed.length - had.size} changed files${listed.away.length ? `, ${listed.away.length} iCloud has yet to bring down` : ""}`
     const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r))), this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
-    return { t0, locks, heard, wrote, listed, texts: new Map([...had, ...texts]), late: [...late, ...away] }
+    return { t0, locks, heard, settingsHeard, wrote, listed, texts: new Map([...had, ...texts]), late: [...late, ...away] }
   }
 
   private async walk(at: Looked): Promise<boolean> {
@@ -1784,14 +1841,14 @@ export class Vault {
     fs.rmSync(this.abs(`.vaultite/${name}.json`), { force: true })
     this.settings.delete(name)
     this.lastGood.delete(name)
-    this.stale = true
+    this.settingsChanged()
   }
 
   setConfig(name: string, data: unknown) {
     const file = this.abs(`.vaultite/${name}.json`), text = JSON.stringify(data, null, 2) + "\n"
     writeAtomic(file, text)
     this.settings.delete(name)
-    this.stale = true
+    this.settingsChanged()
     try { this.lastGood.set(name, { text, stat: configStat(file) }) } catch { this.lastGood.delete(name) }
   }
 

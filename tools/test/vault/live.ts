@@ -82,11 +82,13 @@ export default async ($: VaultTest) => {
     check("live: a change not in the index isn't vouched for", !vault.vouched())
     await vault.synced({ trusting: true })
     check("live: so the app's next read walks", walks >= 1, walks)
+    await vault.synced()
+    const settingsWere = vault.settingsVersion
     vault.setConfig("live-check", { on: true })
     check("live: a settings file the server writes isn't vouched for either (its state is old)", !vault.vouched())
     walks = 0
     await vault.synced({ trusting: true })
-    check("live: so after it, the app's next read walks (again if the watcher heard the write mid-walk)", walks >= 1, walks)
+    check("live: so after it, the app's next read reads the settings again, not every note", vault.settingsVersion > settingsWere && walks === 0, walks)
     vault.removeConfig("live-check")
     await new Promise((r) => setTimeout(r, 400)) // (what the watcher heard of that, passed on)
     await vault.synced()
