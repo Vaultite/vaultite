@@ -44,6 +44,7 @@ import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault, type Writer } from "./vault.ts"
 import { isObj, strings } from "./values.ts"
 import { keepReads } from "./fmcache.ts"
+import type { ReadAhead } from "./readahead.ts"
 import { logger } from "./log.ts"
 
 const log = logger("app")
@@ -887,19 +888,21 @@ export function jsonOf(body: unknown): string | Buffer {
   return data
 }
 
-function watched(vaultPath: string, kept: ReturnType<typeof keepReads> | null, watch?: (vault: Vault) => void) {
+function watched(vaultPath: string, kept: ReturnType<typeof keepReads> | null, watch?: (vault: Vault) => void, read?: ReadAhead) {
   const opening = new App(vaultPath)
+  opening.vault.readAhead = read ?? null
   opening.vault.startTexts = kept?.texts ?? null
   opening.vault.startRead = kept?.read ?? null
   watch?.(opening.vault)
   return { opening, looked: kept ? opening.vault.looked() : null }
 }
 
-export async function open(vaultPath: string, { start = true, timing, watch }: { start?: boolean; timing?: { mark(part: string): void }; watch?: (vault: Vault) => void } = {}) {
+export async function open(vaultPath: string, { start = true, timing, watch, read }: { start?: boolean; timing?: { mark(part: string): void }; watch?: (vault: Vault) => void
+  read?: ReadAhead } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite")), sandbox = start && newSandbox(vaultPath)
   const kept = start ? keepReads(vaultPath) : null
-  const { opening, looked } = watched(vaultPath, kept, watch)
+  const { opening, looked } = watched(vaultPath, kept, watch, read)
   const app = await opening.init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {

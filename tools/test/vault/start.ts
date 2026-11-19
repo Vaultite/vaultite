@@ -3,6 +3,7 @@ import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 import { MOVED, NOW_OPT_IN } from "../../../core/migrations.ts"
 import { whoOf } from "../../../core/ops.ts"
+import { readAhead } from "../../../core/readahead.ts"
 import { Vault } from "../../../core/vault.ts"
 
 /** The desktop app, as Set up Vaultite calls the starter (the user's write, not an agent's). */
@@ -31,6 +32,26 @@ export default async ($: VaultTest) => {
     check("start: an unchanged file's text comes from the last start's, a changed one is read",
       v.entries.get("same.md")?.fm.title === "same kept" && v.entries.get("changed.md")?.fm.title === "changed on disk" &&
       kept.get("changed.md")?.[2].includes("changed on disk") && kept.size === 2, [...v.entries.values()].map((e) => e.fm.title))
+  }
+  {
+    const dir = path.join(tmp, "Read ahead")
+    fs.mkdirSync(path.join(dir, "Notes"), { recursive: true })
+    const odd = ["---\ntitle: crlf\r\ntags: [a, b]\r\n---\r\n\r\nBody #inline\r\n", "\ufeff---\ntitle: bom\n---\nBody", "---\ntitle: [broken\n---\nBody", "---\ntitle: only header\n---",
+      "No header at all, #tag and `#code`\n", "  \n\n  ", "---\n---\n\n  spaced body  \n\n"]
+    for (let i = 0; i < 600; i++) fs.writeFileSync(path.join(dir, `Notes/n${i}.md`), odd[i % odd.length] + (i % 3 ? `\nline ${i} #t${i % 5}\n` : ""))
+    fs.writeFileSync(path.join(dir, "Notes/latin1.md"), Buffer.from([0x66, 0xe9, 0x0a]))
+    const read = async (ahead: boolean) => {
+      const v = new Vault(dir)
+      v.startTexts = { now: new Map(), had: new Map() }
+      if (ahead) v.readAhead = readAhead
+      await v.sync()
+      return v
+    }
+    const [plain, ahead] = await Promise.all([read(false), read(true)])
+    const offThread = [...ahead.entries.values()].filter((e) => e.tagCache).length
+    const seen = (v: Vault) => [...v.entries.values()].map((e) => [e.rel, e.text, e.fm, e.body, e.bodyLine, e.tags, e.problems, e.broken])
+    check("start: notes read ahead on other threads index as read on the main one", JSON.stringify(seen(plain)) === JSON.stringify(seen(ahead)) && plain.entries.size === 601 && offThread > 500,
+      seen(ahead).filter((x, i) => JSON.stringify(x) !== JSON.stringify(seen(plain)[i])).slice(0, 3))
   }
   // A vault opened for the first time starts from Standard (core/start.ts), writing nothing outside .vaultite/; a new one
   // gets Start here only when the user chose it (vault.starter). Last: opening another vault binds the plugins to it.

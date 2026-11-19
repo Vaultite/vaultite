@@ -7,10 +7,11 @@ import { setImmediate as turn } from "node:timers/promises"
 import { withKindBlocks } from "./blocks.ts"
 import type { Manifest } from "./contracts/manifest.ts"
 import type { KeptText, StartTexts } from "./fmcache.ts"
+import type { ReadAhead, ReadFile } from "./readahead.ts"
 import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
 import { tagsOf } from "./sections.ts"
-import { bodyLine, FM, frontmatter, loadFm, parseText, prose, stripNl } from "./frontmatter.ts"
+import { bodyLine, FM, frontmatter, loadFm, parseText, prose, stripNl, textOf } from "./frontmatter.ts"
 import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived, isHiddenPath } from "./fileprops.ts"
 import { kindOf } from "./filetypes.ts"
 import { formatLink, linkStyleOf, type NewLink, shortestName } from "./linkformat.ts"
@@ -206,14 +207,11 @@ function gone(file: string, e: unknown) {
   return codeOf(e) === "ENOENT" && !fs.existsSync(path.join(path.dirname(file), `.${path.basename(file)}.icloud`))
 }
 
-const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-
 /** A text file, line endings as \n. Throws ENOENT, a TypeError when it isn't UTF-8, or a read iCloud hasn't given yet
  *  (notHereYet: the API answers 503): a placeholder (asked for, there at a later sync) or one readSoon waits on. */
 export function readText(p: string) {
   return textOf(readBytes(p))
 }
-const textOf = (buf: Buffer) => decoder.decode(buf).replace(/\r\n?/g, "\n")
 
 /** A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says. */
 export function readBytes(p: string): Buffer {
@@ -583,7 +581,8 @@ export function sortBy<T>(xs: T[], key: (x: T) => unknown, reverse = false): T[]
 
 type Stat = { ns: bigint; size: number; born: number }
 type Listed = { found: Map<string, Stat>; others: Map<string, Stat>; folders: string[]; away: string[]; linkedOut: boolean; seen: string }
-export type Looked = { t0: number; locks: number; heard: number; settingsHeard: number; wrote: number; listed: Listed; texts: Map<string, string | Error>; late: string[] }
+export type Looked = { t0: number; locks: number; heard: number; settingsHeard: number; wrote: number; listed: Listed; texts: Map<string, string | Error>; late: string[]
+  parsed?: Map<string, ReadFile> }
 const CACHES = new Set(["node_modules", "__pycache__"])
 const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsWith(".") && (n !== ARCHIVE_DIR || i === all.length - 1)) ||
   n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
@@ -631,6 +630,17 @@ export class Entry {
     this.tagCache = { fm: this.fm, body: this.body, tags }
     return tags
   }
+}
+
+function fill(e: Entry, t: string, pre?: ReadFile) {
+  if (pre?.[1] === t) {
+    e.fm = pre[2]; e.body = t.slice(pre[3], pre[4]); e.bodyLine = pre[5]
+    e.tagCache = { fm: e.fm, body: e.body, tags: pre[6] }
+  } else {
+    [e.fm, e.body] = parseText(t)
+    e.bodyLine = bodyLine(t)
+  }
+  e.text = t
 }
 
 const base = (rel: string) => rel.slice(rel.lastIndexOf("/") + 1)
@@ -709,6 +719,7 @@ export class Vault {
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   startTexts: StartTexts | null = null
   startRead: Promise<void> | null = null
+  readAhead: ReadAhead | null = null
   downloading: string[] = []
   private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
@@ -1447,8 +1458,16 @@ export class Vault {
       if (t !== undefined && was && sameStat(was, st)) had.set(r, t)
     }
     if (!ahead) this.doing = `reading ${changed.length - had.size} changed files${listed.away.length ? `, ${listed.away.length} iCloud has yet to bring down` : ""}`
-    const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r))), this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
-    return { t0, locks, heard, settingsHeard, wrote, listed, texts: new Map([...had, ...texts]), late: [...late, ...away] }
+    const parsed = await this.readFirst(changed.filter((r) => !had.has(r) && !evictedNow.has(r)), before)
+    const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r) && !parsed.has(r))), this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
+    return { t0, locks, heard, settingsHeard, wrote, listed, texts: new Map([...had, ...[...parsed].map(([r, f]) => [r, f[1]] as const), ...texts]), late: [...late, ...away], parsed }
+  }
+
+  private async readFirst(rels: string[], before?: Looked | null) {
+    const parsed = new Map(before?.parsed)
+    if (!this.startTexts || !this.readAhead) return parsed
+    for (const [r, f] of await this.readAhead(this.path, rels.filter((r) => !parsed.has(r)))) parsed.set(r, f)
+    return parsed
   }
 
   private async walk(at: Looked): Promise<boolean> {
@@ -1505,7 +1524,7 @@ export class Vault {
       if (performance.now() - since > 20) { await turn(); since = performance.now() }
       const st = found.get(rel)!
       const was = this.entries.get(rel)
-      const e = this.read(rel, st, texts.get(rel))
+      const e = this.read(rel, st, texts.get(rel), at.parsed?.get(rel))
       if (was && was.broken && e.broken && sameStat(was.stat, st) && same(was.problems, e.problems)) unchanged.add(rel)
     }
     changed = changed.filter((r) => !unchanged.has(r))
@@ -1514,16 +1533,14 @@ export class Vault {
     return !!(changed.length || gone.length)
   }
 
-  read(rel: string, st: Stat, text?: string | Error): Entry {
+  read(rel: string, st: Stat, text?: string | Error, pre?: ReadFile): Entry {
     const e = new Entry(rel, st, null)
     const old = this.entries.get(rel)
     if (old?.kind) this.ordered.delete(old.kind)
     try {
       const t = text ?? readText(this.abs(rel))
       if (typeof t !== "string") throw t
-      ;[e.fm, e.body] = parseText(t)
-      e.text = t
-      e.bodyLine = bodyLine(t)
+      fill(e, t, pre)
     } catch (ex) {
       const name = ex instanceof YAMLError ? "YAMLError" : ex instanceof TypeError ? "UnicodeDecodeError" : "OSError"
       e.problems = [`can't read the frontmatter (${name}); nothing from this file was updated`]

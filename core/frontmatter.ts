@@ -18,6 +18,9 @@ export function loadFm(raw: string): Item {
   return fm as Item
 }
 
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+export const textOf = (bytes: Uint8Array) => decoder.decode(bytes).replace(/\r\n?/g, "\n")
+
 export const HEAD = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/
 /** [frontmatter, body]. Throws on a broken header. */
 export function parseText(text: string): [Item, string] {

@@ -47,6 +47,7 @@ const { WebSocketServer } = await import("ws")
 const { decodePart: decode, jsonOf, open, queryOf } = await import("./core/app.ts")
 ;(await import("./core/update/graph.ts")).giveGraph(() => import("./core/update/closure.ts"))
 const { Live } = await import("./core/live.ts")
+const { readAhead } = await import("./core/readahead.ts")
 const { served: web } = await import("./core/webbuild.ts")
 const { flushKept } = await import("./core/kept.ts")
 const events = await import("./core/events.ts")
@@ -87,7 +88,7 @@ if (servedBy) {
   process.exit(1)
 }
 let app: App, vault: Vault, live: LiveType
-const ready = open(VAULT_AT, { timing, watch: (v) => { live = new Live(v).start() } }).then((a) => {
+const ready = open(VAULT_AT, { timing, watch: (v) => { live = new Live(v).start() }, read: readAhead }).then((a) => {
   app = a
   vault = a.vault
   watch(live)
