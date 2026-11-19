@@ -11,6 +11,7 @@ import type { Serving } from "../core/serving.ts"
 import { codeRoot, commitAt, compileCache, hold } from "./storehost.ts"
 import { DESKTOP_PROTOCOL, LISTENING } from "../core/desktopapp.ts"
 import { SERVER_V8_FLAGS } from "../core/serverflags.ts"
+import { compileCacheEnv } from "../core/codecache.ts"
 import { rest } from "./rest.ts"
 import { mainLog } from "./mainlog.ts"
 import { heardHello } from "./serverhello.ts"
@@ -108,8 +109,8 @@ export function startServer(v: Known, port: number, own = false): Promise<ChildP
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port), [INHERITED]: leaks || undefined,
-      // (Node's compile cache out of the temp folder: restarts and cleanups empty it)
-      NODE_COMPILE_CACHE: compileCache(),
+      // (Node's compile cache: its code's own, else this app's, out of the temp folder cleanups empty)
+      ...compileCacheEnv(root, compileCache()),
       VAULTITE_LAUNCHED_AT: String(Math.round(Date.now() - process.uptime() * 1000)), VAULTITE_FORKED_AT: String(Date.now()),
     },
   })
