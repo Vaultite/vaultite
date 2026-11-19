@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, History } from "lucide-react"
-import { cn, glide, moves, notifyError, trackSoon, useDesktop } from "@vaultite"
+import { Arriving, cn, glide, moves, notifyError, trackSoon, useDesktop } from "@vaultite"
 import "./chat.css"
 import { type Driven, drivenOf } from "./driven"
 import { nameTab, NEW } from "./titles"
@@ -23,7 +23,7 @@ function Chat({ id, setArg }: { id: string; setArg: (arg: string) => void }) {
   const d = drivenOf(c.driven)
   const [chat, setChat] = useState(false)
   useEffect(() => { if (d?.title && !c.title) nameTab(id, d.title) }, [d?.title, c.title, c.ready]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (d?.View && !chat) return <Suspense fallback={null}><d.View id={id} c={c} chat={() => setChat(true)} /></Suspense>
+  if (d?.View && !chat) return <Suspense fallback={<Arriving />}><d.View id={id} c={c} chat={() => setChat(true)} /></Suspense>
   return <ChatOf id={id} setArg={setArg} c={c} d={d} back={d?.View ? () => setChat(false) : undefined} />
 }
 

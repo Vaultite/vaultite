@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
-import { agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
+import { Arriving, agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
   devicePref, offerPanel, PageHeader, panelSide, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
 import { awaitsLine } from "../../../core/attention.ts"
 import { agentIn, autoLabel, awaiting, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
@@ -118,7 +118,7 @@ export default definePlugin({
       onClose: (arg) => tabClosed(arg || "main"),
       tabMenu: (arg) => [{ label: "End session", icon: SquareX, danger: true, run: () => endForGood(arg || "main") }],
       render: ({ arg, focused, close }) => (
-        <Suspense fallback={null}>
+        <Suspense fallback={<Arriving />}>
           <TerminalView key={arg} id={arg || "main"} focused={focused} close={close} />
         </Suspense>
       ),

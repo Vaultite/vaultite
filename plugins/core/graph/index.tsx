@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react"
 import { SquareArrowOutUpRight, Waypoints } from "lucide-react"
-import { currentFile, definePlugin, isViewOpen, notify, openView, Panel } from "@vaultite"
+import { Arriving, currentFile, definePlugin, isViewOpen, notify, openView, Panel } from "@vaultite"
 import { LocalGraph, LocalGraphPanel } from "./GraphView"
 import { MAX_DEPTH, nameOf } from "./graph"
 
@@ -31,9 +31,9 @@ export default definePlugin({
     graph: {
       icon: Waypoints, full: true,
       title: (arg) => (arg ? `Graph of ${nameOf(arg)}` : "Graph view"),
-      render: ({ arg }) => <Suspense fallback={null}><GraphView key={arg} arg={arg} /></Suspense>,
+      render: ({ arg }) => <Suspense fallback={<Arriving />}><GraphView key={arg} arg={arg} /></Suspense>,
     },
-    "local-graph": { icon: Waypoints, full: true, title: () => "Local graph", render: () => <Suspense fallback={null}><FollowingGraph /></Suspense> },
+    "local-graph": { icon: Waypoints, full: true, title: () => "Local graph", render: () => <Suspense fallback={<Arriving />}><FollowingGraph /></Suspense> },
   },
   commands: [
     { id: "graph:open", name: "Open graph view", keys: ["Mod+G"], run: () => openView("graph", { newTab: !isViewOpen("graph") }) },

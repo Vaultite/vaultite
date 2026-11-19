@@ -1,7 +1,7 @@
 import { lazy, Suspense, type MouseEvent } from "react"
 import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
-  canRunAgents, cell, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, openMenu, openPlace, openTerminal, openView, Panel, places,
+  Arriving, canRunAgents, cell, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, openMenu, openPlace, openTerminal, openView, Panel, places,
   SidebarHeading, SidebarRow,
   useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
@@ -136,7 +136,7 @@ export default definePlugin({
     },
   },
   sidebar: { machines: { title: "Machines", heading: false, sort: 32, hidden: true, view: "machines", render: (ctx) => <MachinesPanel {...ctx} /> } },
-  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, pinAs: (id) => id || null, render: (ctx) => <Suspense fallback={null}><MachineFiles {...ctx} /></Suspense> } },
+  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, pinAs: (id) => id || null, render: (ctx) => <Suspense fallback={<Arriving />}><MachineFiles {...ctx} /></Suspense> } },
   commands: [{ id: "machines:open-tab", name: "Open machines in a tab", run: () => openView("machines", { newTab: true }) }],
   mockLive: () => ({ machines: mock }),
 })

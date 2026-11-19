@@ -333,6 +333,13 @@ for (const f of sources.filter((f) => /\.(tsx?|css)$/.test(f) && !f.includes(`${
     if (bentBar(rule)) problems.push(`${path.relative(ROOT, f)}:${text.slice(0, at).split("\n").length}: a left bar on a box with rounded left corners bends round them: make it a marked box (class \`marked\`, its colour in --mark: web/src/index.css), or square the left corners where the bar runs on past the box`)
 }
 
+const OWN_FALLBACK = new Set(["web/src/screendraw/index.tsx"].map((f) => path.join(ROOT, f)))
+for (const f of sources.filter((f) => f.endsWith(".tsx") && !OWN_FALLBACK.has(f))) {
+  fs.readFileSync(f, "utf8").split("\n").forEach((l, i) => {
+    if (/<Suspense fallback=\{null\}/.test(l)) problems.push(`${path.relative(ROOT, f)}:${i + 1}: Suspense's fallback is <Arriving /> (with a className for the room it keeps): React holds what came up to 300 ms, and QA's idle() can't see a null`)
+  })
+}
+
 {
   const { diskTree, graphOf } = await import("../core/update/closure.ts")
   const g = graphOf(diskTree(ROOT))

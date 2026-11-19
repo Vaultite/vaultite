@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RectangleEllipsis, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { Arriving, choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, sitesColor, sitesTitle, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
@@ -236,7 +236,7 @@ export default definePlugin({
         return tab && loadingIn(tab) ? spinnerIcon(color) : url.startsWith("view-source:") ? FileCode2 : siteIcon(url, color)
       },
       tabColor: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
-      tabPicture: (arg, tab) => <Suspense fallback={null}><WebPicture arg={arg} tab={tab} /></Suspense>,
+      tabPicture: (arg, tab) => <Suspense fallback={<Arriving />}><WebPicture arg={arg} tab={tab} /></Suspense>,
       groupName: (arg) => siteName(splitArg(arg).url),
       full: true,
       history: (_arg, tab, dir) => {
@@ -250,7 +250,7 @@ export default definePlugin({
       pinAs: (arg) => (/^https?:\/\//i.test(splitArg(arg).url) ? arg : null),
       pinLabel: (arg) => { const { url } = splitArg(arg); return titleOf(url) ?? framedSite(url)?.title },
       render: ({ arg, focused, setArg }) => (
-        <Suspense fallback={null}><WebPage key={splitArg(arg).container ?? ""} arg={arg} focused={focused} setArg={setArg} /></Suspense>
+        <Suspense fallback={<Arriving />}><WebPage key={splitArg(arg).container ?? ""} arg={arg} focused={focused} setArg={setArg} /></Suspense>
       ),
       tabMark: (arg, tab) => {
         const a = agentPageOfTab(tab), s = soundOf(arg, tab)
@@ -277,20 +277,20 @@ export default definePlugin({
         ]
       },
     },
-    "agent-runs": { icon: Bot, title: () => "Agents in the browser", full: true, render: () => <Suspense fallback={null}><ReplaysView /></Suspense> },
-    passwords: { icon: RectangleEllipsis, title: () => "Passwords", full: true, render: () => <Suspense fallback={null}><PasswordsView /></Suspense> },
-    "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <Suspense fallback={null}><AgentPasskeys /></Suspense> },
+    "agent-runs": { icon: Bot, title: () => "Agents in the browser", full: true, render: () => <Suspense fallback={<Arriving />}><ReplaysView /></Suspense> },
+    passwords: { icon: RectangleEllipsis, title: () => "Passwords", full: true, render: () => <Suspense fallback={<Arriving />}><PasswordsView /></Suspense> },
+    "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <Suspense fallback={<Arriving />}><AgentPasskeys /></Suspense> },
     "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(arg) || "Browser tab" : "Browser tabs"), argState: true, full: true,
       onScreen: (arg) => { const p = agentPage(Number(arg.split("@")[0])); return !!p && onScreen.get().has(p.id) },
-      render: ({ arg, setArg }) => <Suspense fallback={null}><LiveView arg={arg} setArg={setArg} /></Suspense> },
+      render: ({ arg, setArg }) => <Suspense fallback={<Arriving />}><LiveView arg={arg} setArg={setArg} /></Suspense> },
     sites: { icon: Globe, title: sitesTitle, iconTint: sitesColor, tabColor: sitesColor, argState: true, render: ({ arg, setArg }) => <SitesView openPage={openPage} focus={arg} setFocus={setArg} /> },
-    "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <Suspense fallback={null}><ExtensionsView openPage={openPage} /></Suspense> },
-    "web-history": { icon: History, title: () => "History", render: () => <Suspense fallback={null}><HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /></Suspense> },
+    "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <Suspense fallback={<Arriving />}><ExtensionsView openPage={openPage} /></Suspense> },
+    "web-history": { icon: History, title: () => "History", render: () => <Suspense fallback={<Arriving />}><HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /></Suspense> },
   },
   details: {
-    [ENTRY_DETAIL]: { title: (_s, [id]) => entryTitle(id), render: (_s, [id]) => <Suspense fallback={null}><EntrySheet id={id} /></Suspense> },
-    [EDIT_DETAIL]: { title: (_s, [id]) => `Edit ${entryTitle(id)}`, render: (_s, [id]) => <Suspense fallback={null}><EditSheet id={id} /></Suspense> },
-    [NEW_DETAIL]: { title: () => "New password", render: (_s, [group]) => <Suspense fallback={null}><EditSheet group={group} /></Suspense> },
+    [ENTRY_DETAIL]: { title: (_s, [id]) => entryTitle(id), render: (_s, [id]) => <Suspense fallback={<Arriving />}><EntrySheet id={id} /></Suspense> },
+    [EDIT_DETAIL]: { title: (_s, [id]) => `Edit ${entryTitle(id)}`, render: (_s, [id]) => <Suspense fallback={<Arriving />}><EditSheet id={id} /></Suspense> },
+    [NEW_DETAIL]: { title: () => "New password", render: (_s, [group]) => <Suspense fallback={<Arriving />}><EditSheet group={group} /></Suspense> },
   },
   files: { types: ["bookmarks"], icon: Bookmark },
   ...switcherSearch(openPage),
