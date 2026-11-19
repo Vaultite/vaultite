@@ -31,7 +31,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: TBD).
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: the first time 4.5 s to 3.0 s; after, 1.7 s to 1.4 s).
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes, the server's start to
-  its first answer: the first time 4.5 s to 2.1 s, after that 1.4 s to 1.2 s).
+  its first answer: the first time 4.5 s to 1.3 s, after that 1.4 s to 1.0 s; its notes are read on other threads).
 - Settings: a change in a big vault no longer has the app's next request wait while every note's file is looked at
   again (15,000 notes: about 200 ms each).
 - Desktop: a vault's window opens sooner at launch: its server starts and its window is made before the Browser,
