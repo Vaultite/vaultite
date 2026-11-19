@@ -204,10 +204,10 @@ export function Loading({ error, retry, className }: { error?: ReactNode; retry?
   return <p className={cn("loading-in text-[15px] leading-[20px] text-muted-foreground", className)} aria-busy><span className="shimmer">Loading…</span></p>
 }
 
-/** Suspense's fallback for code on its way: React shows what came up to 300 ms after it does. */
+/** Suspense's fallback for code on its way (`className`: the room it keeps): React shows what came up to 300 ms after it does. */
 export function Arriving({ className }: { className?: string }) {
   useEffect(() => trackSoon("code on its way", () => true), [])
-  return <div className={className} />
+  return className ? <div className={className} /> : null
 }
 
 /** A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width). */

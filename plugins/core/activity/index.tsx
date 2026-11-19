@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react"
 import { Activity, CalendarDays, SquareTerminal } from "lucide-react"
-import { currentFile, definePlugin, getStore, openFile, openView, pageOf, sidebarMode, toggleSidebarMode } from "@vaultite"
+import { Arriving, currentFile, definePlugin, getStore, openFile, openView, pageOf, sidebarMode, toggleSidebarMode } from "@vaultite"
 import { mockLive } from "./mock"
 import { Report } from "./Report"
 import { chooseSession, sessionsHere, SessionsChip } from "./Sessions"
@@ -30,13 +30,13 @@ export default definePlugin({
   },
   files: {
     types: ["recap"], folders: ["Recaps"], icon: CalendarDays, tint: "var(--activity)",
-    page: { render: (ctx) => <Suspense fallback={null}><RecapPage {...ctx} /></Suspense>, series: true },
+    page: { render: (ctx) => <Suspense fallback={<Arriving />}><RecapPage {...ctx} /></Suspense>, series: true },
   },
   sidebar: {
-    feed: { title: "Activity", names: ["activity"], heading: false, needsHeading: true, sort: 32, hidden: true, view: "activity", flyout: { icon: Activity }, render: (ctx) => <Suspense fallback={null}><ActivityPanel {...ctx} /></Suspense> },
+    feed: { title: "Activity", names: ["activity"], heading: false, needsHeading: true, sort: 32, hidden: true, view: "activity", flyout: { icon: Activity }, render: (ctx) => <Suspense fallback={<Arriving />}><ActivityPanel {...ctx} /></Suspense> },
   },
   fileBar: { sessions: { title: "Sessions here", sort: 46, render: (file) => (sessionsHere(file.path) ? <SessionsChip file={file} /> : null) } },
-  views: { activity: { icon: Activity, title: () => "Activity", render: ({ store }) => <Suspense fallback={null}><FeedView store={store} /></Suspense> } },
+  views: { activity: { icon: Activity, title: () => "Activity", render: ({ store }) => <Suspense fallback={<Arriving />}><FeedView store={store} /></Suspense> } },
   commands: [
     {
       id: "activity:open", name: "Open activity",

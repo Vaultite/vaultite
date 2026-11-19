@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from "react"
 import { Share2 } from "lucide-react"
-import { activePane, currentFile, definePlugin, detailPath, fileRowsChanged, getStore, openDetail, openView, share, useStoreWith, type FileRow } from "@vaultite"
+import { Arriving, activePane, currentFile, definePlugin, detailPath, fileRowsChanged, getStore, openDetail, openView, share, useStoreWith, type FileRow } from "@vaultite"
 import type { SharedFolders } from "./types.ts"
 
 const ShareSheet = lazy(() => import("./Sharing").then((m) => ({ default: m.ShareSheet })))
@@ -43,9 +43,9 @@ function Marks() {
 }
 
 export default definePlugin({
-  details: { share: { title: (_s, [folder]) => `Share ${name(folder ?? "")}`, render: (_s, [folder]) => <Suspense fallback={null}><ShareSheet folder={folder ?? ""} /></Suspense> } },
+  details: { share: { title: (_s, [folder]) => `Share ${name(folder ?? "")}`, render: (_s, [folder]) => <Suspense fallback={<Arriving />}><ShareSheet folder={folder ?? ""} /></Suspense> } },
   folderMenu: (path) => (shareable(path) ? [{ label: "Share…", icon: Share2, section: "share", run: () => openShare(path) }] : []),
-  views: { shared: { icon: Share2, title: () => "Shared", render: () => <Suspense fallback={null}><SharedView /></Suspense> } },
+  views: { shared: { icon: Share2, title: () => "Shared", render: () => <Suspense fallback={<Arriving />}><SharedView /></Suspense> } },
   commands: [
     { id: "share:folder", name: "Share folder…", words: "invite link people access guest", icon: Share2, when: () => shareable(folderHere()), run: () => openShare(folderHere()) },
     { id: "share:shared", name: "Open shared folders", words: "sharing guests links people access", icon: Share2, when: () => !share, run: () => openView("shared", { newTab: true }) },

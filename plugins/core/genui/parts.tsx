@@ -1,6 +1,6 @@
 import { createContext, createElement, Fragment, Suspense, useCallback, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { cn, haptic, Markdown, namedIcon, PinMap, Switch } from "@vaultite"
+import { Arriving, cn, haptic, Markdown, namedIcon, PinMap, Switch } from "@vaultite"
 import type { Tree } from "./sandbox"
 import { obj, objs, type Data } from "./dil"
 import { AppFrame } from "./AppFrame"
@@ -851,7 +851,7 @@ const MapWidget: Part = ({ p }) => {
   const search = (q: string) => host.action("openUrl", [`https://www.google.com/maps/search/${encodeURIComponent(q)}`])
   return (
     <div className="flex flex-col gap-3 overflow-hidden rounded-[16px] border-[0.5px] border-border">
-      {pins.length > 0 && !failed && <div className="h-56 w-full"><Suspense fallback={null}><PinMap pins={pins} zoom={14} onOpen={(id) => search(pins.find((x) => x.id === id)?.title ?? "")} onFail={() => setFailed(true)} /></Suspense></div>}
+      {pins.length > 0 && !failed && <div className="h-56 w-full"><Suspense fallback={<Arriving />}><PinMap pins={pins} zoom={14} onOpen={(id) => search(pins.find((x) => x.id === id)?.title ?? "")} onFail={() => setFailed(true)} /></Suspense></div>}
       <div className="flex flex-col gap-3 px-4 pb-4" style={{ paddingTop: pins.length && !failed ? 0 : 16 }}>
         {groups.map((g, gi) => (
           <div key={gi} className="flex flex-col gap-1.5">

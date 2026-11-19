@@ -65,6 +65,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `archivedTabs()`: The archived tabs, the latest first.
 - `archiveTwin(rel)`: The same path archived or not: People/Kai.md <-> People/.archive/Kai.md.
 - `archiveUnseen(title)`: Archive the tabs unseen for longer than the setting says (none while it's Never), named by `title` as their tab is.
+- `Arriving({ className })`: Suspense's fallback for code on its way (`className`: the room it keeps): React shows what came up to 300 ms after it does.
 - `askAbout(question, file?)`: Hand a question about a file to the AI chat a plugin that's on brings (its `ask`); false when there's none.
 - `askedAt(id)`: When the user asked for terminal `id`, if this page made it (for its opening's span).
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).

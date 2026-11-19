@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react"
 import { FileDown, Presentation as PresentationIcon } from "lucide-react"
-import { activeFile, cell, currentFile, definePlugin, notify } from "@vaultite"
+import { Arriving, activeFile, cell, currentFile, definePlugin, notify } from "@vaultite"
 import { exportAsked } from "./asked"
 
 const Presentation = lazy(() => import("./Presentation").then((m) => ({ default: m.Presentation })))
@@ -23,7 +23,7 @@ export function exportHtml(path = shown.get() ?? here()) {
 
 function Shown() {
   const path = shown.use()
-  return path ? <Suspense fallback={null}><Presentation key={path} path={path} onClose={() => show(null)} /></Suspense> : null
+  return path ? <Suspense fallback={<Arriving />}><Presentation key={path} path={path} onClose={() => show(null)} /></Suspense> : null
 }
 
 export default definePlugin({
