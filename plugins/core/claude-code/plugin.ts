@@ -225,14 +225,26 @@ async function alive(pid: number, start: unknown) {
   return same
 }
 
+const sessionsRead = new Map<string, { ms: number; size: number; s: Item | null }>()
+function sessionAt(file: string): Item | null {
+  let st: fs.Stats
+  try { st = fs.statSync(file) } catch { sessionsRead.delete(file); return null }
+  const had = sessionsRead.get(file)
+  if (had?.ms === st.mtimeMs && had.size === st.size) return had.s
+  let s: Item | null
+  try { s = JSON.parse(fs.readFileSync(file, "utf8")) } catch { s = null }
+  sessionsRead.set(file, { ms: st.mtimeMs, size: st.size, s })
+  return s
+}
+
 async function running(accts: Account[]) {
   const found = accts.flatMap((a) => {
     const d = path.join(a.dir, "sessions")
     let names: string[] = []
     try { names = fs.readdirSync(d).filter((n) => n.endsWith(".json")).sort() } catch { return [] }
     return names.flatMap((n) => {
-      let s: Item
-      try { s = JSON.parse(fs.readFileSync(path.join(d, n), "utf8")) } catch { return [] }
+      const s = sessionAt(path.join(d, n))
+      if (!s) return []
       const pid = Math.trunc(Number(s.pid)), cwd = String(s.cwd || "")
       if (!Number.isFinite(pid) || isAsking(cwd)) return []
       return [{ a, s, pid, cwd, sid: typeof s.sessionId === "string" ? s.sessionId : "" }]
