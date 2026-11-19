@@ -15,8 +15,17 @@ async function commandLine(check: VaultTest["check"]) {
 }
 
 async function compileCache(check: VaultTest["check"], tmp: string) {
-  const { trimCompileCache } = await import("../../../electron/storepolicy.ts")
-  const cache = path.join(tmp, "compile-cache")
+  const { policyFor, trimCompileCache } = await import("../../../electron/storepolicy.ts")
+  const cache = path.join(tmp, "compile-cache"), root = path.join(tmp, "root"), runs: { args: string[]; env?: NodeJS.ProcessEnv }[] = []
+  fs.mkdirSync(path.join(root, "tools"), { recursive: true })
+  fs.writeFileSync(path.join(root, "tools", "compilefill.mjs"), "")
+  const ctx = { root, store: "", helpers: "", node: "", env: { PATH: "/bin" }, exec: async (_c: string, args: string[], o: { env?: NodeJS.ProcessEnv }) => {
+    runs.push({ args, env: o.env })
+    throw new Error("stop")
+  } }
+  for (const p of [await policyFor(""), await policyFor("5".repeat(40))]) for (const step of p.recipe.preflight) if (step.name === "main's compile cache") await step.run(ctx).catch(() => {})
+  check("store: an update's checks compile its main process into the root's own cache, so its first launch finds it compiled",
+    runs.length === 2 && runs.every((r) => r.args[0] === "tools/compilefill.mjs" && r.env?.NODE_COMPILE_CACHE === path.join(root, ".compile-cache") && r.env.NODE_COMPILE_CACHE_PORTABLE === "1"), runs)
   fs.mkdirSync(path.join(cache, "v1"), { recursive: true })
   for (let i = 0; i < 4; i++) fs.writeFileSync(path.join(cache, "v1", String(i)), "")
   const kept = await trimCompileCache(cache, 4), held = fs.existsSync(cache), trimmed = await trimCompileCache(cache, 3)
