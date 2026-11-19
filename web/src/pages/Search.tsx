@@ -12,6 +12,7 @@ import { useNearEnd } from "@/core/near"
 import { usePrefs } from "@/core/prefs"
 import { trackSoon } from "@/core/unsaved"
 import { useStateFor } from "@/core/statefor"
+import { useBurst } from "@/core/burst"
 import { useSearchIndex } from "@/core/search"
 import type { Hit } from "@/core/namesearch"
 import { marked } from "@/components/Palette"
@@ -96,27 +97,25 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     const rs = await get<Result[]>(`search?${params}&path=${encodeURIComponent(path)}&lines=${MOST_LINES}`)
     return rs[0]?.matches ?? []
   }, [params])
-  useEffect(() => {
-    if (!params) return
-    const stop = new AbortController(), on = () => !stop.signal.aborted
+  useBurst(params ? (signal) => {
+    const on = () => !signal.aborted
     setBusy(true)
     const same = shownNow.current.of === params
     const n = same ? Math.max(FIRST, shownNow.current.n) : FIRST
     const open = same ? Object.keys(shownNow.current.whole) : []
     if (!same) setWhole({})
-    firstOf(params, n, stop.signal)
+    firstOf(params, n, signal)
       .then(async (rs) => {
         const lines = await Promise.all(open.map(async (p) => [p, await wholeOf(p).catch(() => [])] as const))
         if (!on()) return
         shownNow.current.of = params
         setFound((cur) => (same && cur ? { ...cur, results: rs } : { results: rs, fresh: true })); setFailed(""); setBusy(false)
         if (open.length) setWhole(Object.fromEntries(lines))
-        const total = await totalOf(params, stop.signal)
+        const total = await totalOf(params, signal)
         if (on()) setFound((cur) => cur && { ...cur, ...total })
       })
       .catch((e) => { if (on()) { setFound({ results: [], files: 0, lines: 0 }); setFailed(errorText(e)); setBusy(false) } })
-    return () => stop.abort()
-  }, [params, wholeOf, store, setFound, setFailed, setWhole])
+  } : null, [params, wholeOf, store, setFound, setFailed, setWhole], "the search's request")
   const loading = useRef("")
   const more = () => {
     if (!found || busy || found.results.length >= (found.files ?? 0)) return

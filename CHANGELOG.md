@@ -25,7 +25,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   as that has drawn its file tree and open note, instead of a blank window until the vault has loaded.
 - Search: the search tab shows its first results as you type, with no pause: drawn about 15 ms after a key on a vault of
   15,000 notes, where it took 300 to 800, as the first files found are shown before the rest are counted, and the names
-  are read ahead while the app is idle. The switcher and a note's query blocks don't wait before searching either.
+  are read ahead while the app is idle. Keys typed in a burst ask once, when it pauses; the switcher searches files
+  0.1 s after the last key, as it shows names at once.
 - Search: a word found in most notes answers about 5 times sooner (the search tab, the switcher, query blocks, vau search):
   only the shown files' lines are read out, and a page further down reuses the search.
 - Search: accents don't matter, as in Obsidian: "cafe" finds "café" and "café" finds "cafe"; ø, ł and ß match o, l and ss.

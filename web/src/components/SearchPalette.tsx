@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useState } from "react"
 import { Search, TextSearch } from "lucide-react"
 import { getStore, type Store } from "@/core/data"
 import { get } from "@/core/http"
+import { useBurst } from "@/core/burst"
 import { useOnReconnect } from "@/core/connection"
 import { errorText } from "@/core/notify"
 import { cleanName, createNamed, folderOf, openFile, openNew, openView, stem } from "@/core/files"
@@ -71,15 +72,12 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const [text, setText] = useStateFor<InFiles>([short], () => ({ hits: [], files: 0, for: "", failed: null }))
   const [tries, retry] = useReducer((n: number) => n + 1, 0)
   const asked = `${q.trim()}\0${limit}\0${tries}`
-  useEffect(() => {
-    const query = q.trim()
-    if (!node || short) return
-    const stop = new AbortController(), on = () => !stop.signal.aborted
-    get<{ results: Found[]; files: number }>(`search?q=${encodeURIComponent(query)}&limit=${limit}&total=files`, stop.signal)
+  useBurst(node && !short ? (signal) => {
+    const on = () => !signal.aborted
+    get<{ results: Found[]; files: number }>(`search?q=${encodeURIComponent(q.trim())}&limit=${limit}&total=files`, signal)
       .then((f) => on() && setText({ hits: f.results.map((r) => foundHit(r, node)), files: f.files, for: asked, failed: null }))
       .catch((e) => on() && setText({ hits: [], files: 0, for: asked, failed: e || new Error("Couldn't search") }))
-    return () => stop.abort()
-  }, [q, node, plain, limit, short, setText, asked])
+  } : null, [q, node, plain, limit, short, setText, asked], "the switcher's search", { leading: limit > PAGE })
   const out = !short && !!node && text.for !== asked, failed = !short && !!node && !out ? text.failed : null
   useOnReconnect(retry, !!failed)
   const failedText = useMemo(() => (failed ? errorText(failed, "Couldn't search in files") : null), [failed])
