@@ -8,6 +8,7 @@ import { withKindBlocks } from "./blocks.ts"
 import type { Manifest } from "./contracts/manifest.ts"
 import type { KeptText, StartTexts } from "./fmcache.ts"
 import type { ReadAhead, ReadFile } from "./readahead.ts"
+import { CACHES, type Listed, listVault, NOT_SETTINGS, settingsStats, type Stat, statFrom, statsOf } from "./listing.ts"
 import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
 import { tagsOf } from "./sections.ts"
@@ -25,6 +26,7 @@ import { holdingVault } from "./vaultholder.ts"
 
 const log = logger("vault")
 export { extract, hasTag, tagName, tagsOf } from "./sections.ts"
+export { ms, statFrom } from "./listing.ts"
 export { ARCHIVE_DIR, archiveTwin, effectiveType, inArchive, isArchived, isHiddenPath, unarchived } from "./fileprops.ts"
 export { bodyLine, FM, frontmatter, keepBlocks, loadFm, parseText, prose, renameProperty, renameTagText, setPropertyText } from "./frontmatter.ts"
 
@@ -579,16 +581,12 @@ export function sortBy<T>(xs: T[], key: (x: T) => unknown, reverse = false): T[]
     .sort((p, q) => (reverse ? cmp(q[1], p[1]) : cmp(p[1], q[1])) || p[2] - q[2]).map((p) => p[0])
 }
 
-type Stat = { ns: bigint; size: number; born: number }
-type Listed = { found: Map<string, Stat>; others: Map<string, Stat>; folders: string[]; away: string[]; linkedOut: boolean; seen: string }
 export type Looked = { t0: number; locks: number; heard: number; settingsHeard: number; wrote: number; listed: Listed; texts: Map<string, string | Error>; late: string[]
   parsed?: Map<string, ReadFile> }
-const CACHES = new Set(["node_modules", "__pycache__"])
 const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsWith(".") && (n !== ARCHIVE_DIR || i === all.length - 1)) ||
   n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
 const sameStat = (a: Stat, b: Stat) => a.ns === b.ns && a.size === b.size
 const SETTINGS_FILE = /^\.(vaultite|obsidian)\//
-const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated"])
 const unseen = (rel: string) => NOT_SETTINGS.has(rel.split("/").slice(0, 2).join("/")) ||
   (unscanned(rel) && !/^\.(vaultite|obsidian)(\/|$)/.test(rel) && !rel.endsWith(".icloud"))
 
@@ -653,22 +651,6 @@ function named(k: Kind, item: Item, rel: string, owned: Item): Item {
   return had.includes(title) ? owned : { ...owned, aliases: [title, ...had] }
 }
 
-export const ms = (ns: bigint) => Number(ns / 1000000n)
-
-/** What the index keeps of a file's stat. */
-const STATS_AT_ONCE = 256
-async function statsOf(paths: (string | null)[]): Promise<(fs.BigIntStats | null | undefined)[]> {
-  const out: (fs.BigIntStats | null | undefined)[] = []
-  for (let i = 0; i < paths.length; i += STATS_AT_ONCE) {
-    out.push(...await Promise.all(paths.slice(i, i + STATS_AT_ONCE).map((p) => (p === null ? null : fs.promises.stat(p, { bigint: true }).catch(() => undefined)))))
-  }
-  return out
-}
-
-export function statFrom(st: fs.BigIntStats): Stat {
-  const born = st.birthtimeNs > 0n ? st.birthtimeNs : st.ctimeNs < st.mtimeNs ? st.ctimeNs : st.mtimeNs
-  return { ns: st.mtimeNs, size: Number(st.size), born: ms(born) }
-}
 
 function statOf(p: string): Stat {
   return statFrom(fs.statSync(p, { bigint: true }))
@@ -934,7 +916,7 @@ export class Vault {
     if (!this.settingsStale) return false
     this.settingsStale = false
     try {
-      const away: string[] = [], seen = await this.settingsStats(away), notes = this.evicted.filter((r) => !SETTINGS_FILE.test(r))
+      const away: string[] = [], seen = await settingsStats(this.path, away, evicted), notes = this.evicted.filter((r) => !SETTINGS_FILE.test(r))
       const found = new Map([...this.entries].map(([r, e]) => [r, e.stat]))
       return await this.walk({ t0: Date.now(), locks: this.locks, heard: this.heardCount, settingsHeard: this.settingsHeard, wrote: this.wrote, texts: new Map(), late: this.downloading,
         listed: { found, others: this.others, folders: this.folders, away: [...notes, ...away], linkedOut: this.linkedOut, seen } })
@@ -1007,7 +989,7 @@ export class Vault {
 
   async fetchSettings() {
     const away: string[] = []
-    await this.settingsStats(away)
+    await settingsStats(this.path, away, evicted)
     this.evicted = away
     await this.fetchEvicted(away)
   }
@@ -1339,48 +1321,6 @@ export class Vault {
     return this.folderSet("dashboards") ?? homeFolder(mine, "Dashboards") ?? "Dashboards"
   }
 
-  private async list(): Promise<Listed> {
-    const away: string[] = []
-    let linkedOut = false
-    const found = new Map<string, Stat>()
-    const others = new Map<string, Stat>()
-    const folders: string[] = []
-    const stack = [""]
-    const root = path.join(this.path, "/")
-    const linked = new Set<string>()
-    const top = await fs.promises.stat(root, { bigint: true }).catch(() => null)
-    if (top) linked.add(`${top.dev}:${top.ino}`)
-    while (stack.length) {
-      const sub = stack.pop()!
-      let names: fs.Dirent[]
-      try {
-        names = await fs.promises.readdir(root + sub, { withFileTypes: true })
-      } catch {
-        continue
-      }
-      const listed = names.filter((d) => !((d.name.startsWith(".") && (d.name !== ARCHIVE_DIR || !d.isDirectory())) || d.name.endsWith(".icloud")))
-      const stats = await statsOf(listed.map((d) => (d.isDirectory() ? null : root + (sub ? `${sub}/${d.name}` : d.name))))
-      for (const [i, d] of listed.entries()) {
-        const name = d.name, rel = sub ? `${sub}/${name}` : name, st = stats[i]
-        if (st === undefined) continue
-        if (d.isSymbolicLink()) linkedOut = true
-        if (st === null || st.isDirectory()) {
-          if (CACHES.has(name)) continue
-          if (st) { const key = `${st.dev}:${st.ino}`; if (linked.has(key)) continue; linked.add(key) }
-          folders.push(rel)
-          stack.push(rel)
-          continue
-        }
-        const stat = statFrom(st)
-        if (name.endsWith(".md") && !name.includes(".tmp-")) { found.set(rel, stat); if (evicted(root + rel, st)) away.push(rel) }
-        else others.set(rel, stat)
-      }
-    }
-    const seen = await this.settingsStats(away)
-    folders.sort()
-    return { found, others, folders, away, linkedOut, seen }
-  }
-
   private adopt({ found, others, folders, away, linkedOut, seen }: Listed) {
     if (others.size !== this.others.size || folders.length !== this.folders.length || folders.some((f, i) => f !== this.folders[i]) ||
       [...others].some(([r, st]) => { const was = this.others.get(r); return !was || !sameStat(was, st) })) this.version++
@@ -1393,37 +1333,7 @@ export class Vault {
     return found
   }
 
-  private async settingsStats(away: string[]) {
-    const out: string[] = []
-    const stack = [".vaultite"]
-    while (stack.length) {
-      const sub = stack.pop()!
-      let names: string[]
-      try {
-        names = await fs.promises.readdir(this.abs(sub))
-      } catch {
-        continue
-      }
-      const rels = names.map((name) => `${sub}/${name}`).filter((rel, i) => !(NOT_SETTINGS.has(rel) || CACHES.has(names[i]!) || names[i]!.includes(".tmp-")))
-      const stats = await statsOf(rels.map((rel) => this.abs(rel)))
-      for (const [i, rel] of rels.entries()) {
-        const st = stats[i]
-        if (!st) continue
-        if (st.isDirectory()) { stack.push(rel); continue }
-        const gone = evicted(this.abs(rel), st)
-        if (gone) away.push(rel)
-        out.push(`${rel}:${st.mtimeNs}:${st.size}${gone ? ":evicted" : ""}`)
-      }
-    }
-    const look = async (dir: string, file: (name: string) => string | null) => {
-      try { return (await fs.promises.readdir(this.abs(`.obsidian/${dir}`))).map(file).filter((f): f is string => f !== null) } catch { return [] }
-    }
-    const names = ["app.json", "types.json", "daily-notes.json", "templates.json", "appearance.json", "hotkeys.json", "command-palette.json", "bookmarks.json", "themes", "snippets",
-      ...await look("themes", (n) => `themes/${n}/theme.css`), ...await look("snippets", (n) => (n.endsWith(".css") ? `snippets/${n}` : null))]
-    const stats = await statsOf(names.map((name) => this.abs(`.obsidian/${name}`)))
-    for (const [i, name] of names.entries()) { const st = stats[i]; if (st) out.push(`${name}:${st.mtimeNs}:${st.size}`) }
-    return out.sort().join("\n")
-  }
+
 
   waiting() { return this.missing.size > 0 || this.downloading.length > 0 }
 
@@ -1446,7 +1356,7 @@ export class Vault {
     const t0 = Date.now(), locks = this.locks, heard = this.heardCount, settingsHeard = this.settingsHeard, wrote = this.wrote
     if (!ahead) this.stale = this.settingsStale = false
     if (!ahead) this.doing = "listing the vault's files"
-    const listed = await this.list()
+    const listed = await listVault(this.path, evicted)
     await this.startRead
     const start = this.startTexts, evictedNow = new Set(listed.away)
     const stale = (r: string, st: Stat) => { const e = this.entries.get(r); return !e || !sameStat(e.stat, st) || e.broken }

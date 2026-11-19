@@ -1169,7 +1169,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `sortBy(xs, key, reverse?)`: Sort by a key, like Python's sorted(key=..., reverse=...): stable either way.
 - `splitTags(s)`
 - `stamp(d)`: "YYYY-MM-DD HH:MM:SS" in this machine's time (the vault's times are the user's local ones, as they read them).
-- `statFrom(st)`
+- `statFrom(st)`: What the index keeps of a file's stat.
 - `stemOf(rel)`
 - `str(v)`: A value as text, the way the app always showed it (null is "", booleans True/False as YAML read them).
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.
