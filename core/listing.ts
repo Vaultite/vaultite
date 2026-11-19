@@ -26,7 +26,14 @@ export function statFrom(st: fs.BigIntStats): Stat {
   return { ns: st.mtimeNs, size: Number(st.size), born: ms(born) }
 }
 
-export async function listVault(vaultPath: string, evicted: Evicted): Promise<Listed> {
+export type Stats = typeof statsOf
+
+export const statsNow: Stats = (paths) => Promise.resolve(paths.map((p) => {
+  if (p === null) return null
+  try { return fs.statSync(p, { bigint: true, throwIfNoEntry: false }) } catch { return undefined }
+}))
+
+export async function listVault(vaultPath: string, evicted: Evicted, statAll = statsOf): Promise<Listed> {
   const away: string[] = []
   let linkedOut = false
   const found = new Map<string, Stat>()
@@ -46,7 +53,7 @@ export async function listVault(vaultPath: string, evicted: Evicted): Promise<Li
       continue
     }
     const listed = names.filter((d) => !((d.name.startsWith(".") && (d.name !== ARCHIVE_DIR || !d.isDirectory())) || d.name.endsWith(".icloud")))
-    const stats = await statsOf(listed.map((d) => (d.isDirectory() ? null : root + (sub ? `${sub}/${d.name}` : d.name))))
+    const stats = await statAll(listed.map((d) => (d.isDirectory() ? null : root + (sub ? `${sub}/${d.name}` : d.name))))
     for (const [i, d] of listed.entries()) {
       const name = d.name, rel = sub ? `${sub}/${name}` : name, st = stats[i]
       if (st === undefined) continue
@@ -63,12 +70,12 @@ export async function listVault(vaultPath: string, evicted: Evicted): Promise<Li
       else others.set(rel, stat)
     }
   }
-  const seen = await settingsStats(vaultPath, away, evicted)
+  const seen = await settingsStats(vaultPath, away, evicted, statAll)
   folders.sort()
   return { found, others, folders, away, linkedOut, seen }
 }
 
-export async function settingsStats(vaultPath: string, away: string[], evicted: Evicted) {
+export async function settingsStats(vaultPath: string, away: string[], evicted: Evicted, statAll = statsOf) {
   const out: string[] = [], abs = (rel: string) => path.join(vaultPath, rel)
   const stack = [".vaultite"]
   while (stack.length) {
@@ -80,7 +87,7 @@ export async function settingsStats(vaultPath: string, away: string[], evicted: 
       continue
     }
     const rels = names.map((name) => `${sub}/${name}`).filter((rel, i) => !(NOT_SETTINGS.has(rel) || CACHES.has(names[i]!) || names[i]!.includes(".tmp-")))
-    const stats = await statsOf(rels.map((rel) => abs(rel)))
+    const stats = await statAll(rels.map((rel) => abs(rel)))
     for (const [i, rel] of rels.entries()) {
       const st = stats[i]
       if (!st) continue
@@ -95,7 +102,7 @@ export async function settingsStats(vaultPath: string, away: string[], evicted: 
   }
   const names = ["app.json", "types.json", "daily-notes.json", "templates.json", "appearance.json", "hotkeys.json", "command-palette.json", "bookmarks.json", "themes", "snippets",
     ...await look("themes", (n) => `themes/${n}/theme.css`), ...await look("snippets", (n) => (n.endsWith(".css") ? `snippets/${n}` : null))]
-  const stats = await statsOf(names.map((name) => abs(`.obsidian/${name}`)))
+  const stats = await statAll(names.map((name) => abs(`.obsidian/${name}`)))
   for (const [i, name] of names.entries()) { const st = stats[i]; if (st) out.push(`${name}:${st.mtimeNs}:${st.size}`) }
   return out.sort().join("\n")
 }

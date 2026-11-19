@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { parentPort } from "node:worker_threads"
-import { listVault, placeholderStat } from "./listing.ts"
+import { listVault, placeholderStat, statsNow } from "./listing.ts"
 import type { FromReader, ReadFile } from "./readahead.ts"
 
 const SEND_EVERY = 500, LANES = 16
@@ -31,4 +31,4 @@ async function readAll(rels: string[]) {
 }
 
 parentPort?.once("message", (rels: string) => void readAll(rels.split("\0").filter(Boolean)))
-if (lists === "lists") send({ listed: await listVault(root, (_abs, st) => process.platform === "darwin" && placeholderStat(st)) })
+if (lists === "lists") send({ listed: await listVault(root, (_abs, st) => process.platform === "darwin" && placeholderStat(st), statsNow) })
