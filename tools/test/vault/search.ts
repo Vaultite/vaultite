@@ -7,6 +7,16 @@ const MARKED: [q: string, text: string, marked: string, matchCase?: boolean][] =
   ["aesir oresund", "Æsir, Øresund", "Æsir|Øresund"], ["lodz", "Łódź", "Łódź"], ["Cafe", "café Café", "Café", true],
 ]
 
+async function paging({ api, check }: VaultTest) {
+  for (const name of ["Mossy note", "b", "c", "d"]) await api("POST", "file", { path: `Searchy/Paging/${name}.md`, text: "about moss\n" })
+  const titles = async (more: string) => { const [, r] = await api("GET", `search?q=moss&folder=Searchy/Paging${more}`); return (Array.isArray(r) ? r : r.results).map((x: Any) => x.title).join(",") }
+  const pages = [await titles("&limit=2"), await titles("&limit=2&offset=2")].join(","), all = await titles("&limit=4")
+  check("search: a name that matches comes first; pages in the same order as one", all.startsWith("Mossy note,") && all.split(",").length === 4 && pages === all, [pages, all])
+  const [, total] = await api("GET", "search?q=moss&folder=Searchy/Paging&limit=1&total=1&lines=5")
+  check("search: the total counts past the page", total.files === 4 && total.lines === 4 && total.results.length === 1, total)
+  await api("DELETE", "file?path=Searchy/Paging")
+}
+
 async function folding({ api, check }: VaultTest, paths: (q: string) => Promise<string>) {
   for (const [q, text, want, matchCase] of MARKED) check(`searchquery: accents folded, the text's own letters marked: ${q}${matchCase ? " (match case)" : ""}`, marked(q, text, matchCase) === want, marked(q, text, matchCase))
   const before = await paths("cafe")
@@ -40,6 +50,7 @@ export default async ($: VaultTest) => {
     ["[nope]", ""], ["/l[a-z]+d/", "Budget plan.md"], ["(lisbon OR elsewhere) -[status:seed]", "Other.md"],
   ]) check(`search: ${q}`, (await paths(q)) === want, await paths(q))
   await folding($, paths)
+  await paging($)
   check("search: case=1 matches in case", (await paths("RENT", "&case=1")) === "Other.md", await paths("RENT", "&case=1"))
   check("search: a query it can't read is a 400 saying why", (await paths('"open')).startsWith("400 A quote isn't closed"), await paths('"open'))
   check("search: a bad regex too", (await paths("/(/")).startsWith("400 /(/ isn't a regular expression"), await paths("/(/"))

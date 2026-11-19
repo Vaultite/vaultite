@@ -1,7 +1,7 @@
 import type { SearchDoc } from "@/core/plugins"
 import { excerpt, marksOf, wordRanges } from "../../../core/searchquery.ts"
 import { lowerFolded } from "../../../core/fold.ts"
-import { fuzzy } from "@/core/fuzzy"
+import { fuzzy, mayFind } from "@/core/fuzzy"
 
 export type Hit = SearchDoc & {
   marks: number[]; score: number
@@ -21,24 +21,37 @@ function shown(d: Doc, words: string[], inTitle: boolean) {
   return { meta: lead + ex.text, metaMarks: marksOf(ex.ranges.map(([a, b]) => [a + lead.length, b + lead.length])) }
 }
 
-const hays = new WeakMap<Doc, string>()
-const hayOf = (d: Doc) => { let h = hays.get(d); if (h === undefined) hays.set(d, h = lowerFolded(`${d.title} ${d.text}`)); return h }
+type Prep = { title: string; name: string | null; file: string | null; hay: string }
+const preps = new WeakMap<Doc, Prep>()
+function prepOf(d: Doc): Prep {
+  let p = preps.get(d)
+  if (p) return p
+  const file = d.file?.slice(d.file.lastIndexOf("/") + 1)
+  const name = file && file !== d.title && file.startsWith(d.title) ? file : null
+  preps.set(d, p = { title: lowerFolded(d.title), name: name && lowerFolded(name), file: name, hay: lowerFolded(`${d.title} ${d.text}`) })
+  return p
+}
 
 export function search(docs: Doc[], query: string, limit = 40): Hit[] {
+  return searchNames(docs, query).top(limit)
+}
+
+function foundIn(d: Doc, q: string, words: string[]): Found | null {
+  const p = prepOf(d), last = Number(!!d.archived) + Number(!!d.excluded)
+  const m = mayFind(q, p.title) ? fuzzy(q, d.title) : null
+  if (m) return { d, inTitle: true, marks: m.marks, score: m.score + (d.weight ?? 0), last }
+  const n = p.file && p.name && mayFind(q, p.name) ? fuzzy(q, p.file) : null
+  if (n) return { d, inTitle: true, marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0), last }
+  return words.every((w) => p.hay.includes(w)) ? { d, inTitle: false, marks: [], score: 10 + (d.weight ?? 0) / 2, last } : null
+}
+
+export type Names = { total: number; top: (n: number) => Hit[] }
+export function searchNames(docs: Doc[], query: string): Names {
   const q = query.trim()
-  if (!q) return []
+  if (!q) return { total: 0, top: () => [] }
   const words = lowerFolded(q).split(/\s+/)
   const out: Found[] = []
-  for (const d of docs) {
-    const m = fuzzy(q, d.title)
-    const last = Number(!!d.archived) + Number(!!d.excluded)
-    if (m) { out.push({ d, inTitle: true, marks: m.marks, score: m.score + (d.weight ?? 0), last }); continue }
-    const name = d.file?.slice(d.file.lastIndexOf("/") + 1)
-    const n = name && name !== d.title && name.startsWith(d.title) ? fuzzy(q, name) : null
-    if (n) { out.push({ d, inTitle: true, marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0), last }); continue }
-    const hay = hayOf(d)
-    if (words.every((w) => hay.includes(w))) out.push({ d, inTitle: false, marks: marksOf(wordRanges(d.title, words)), score: 10 + (d.weight ?? 0) / 2, last })
-  }
-  return out.sort((a, b) => a.last - b.last || b.score - a.score || b.d.recent - a.d.recent).slice(0, limit)
-    .map(({ d, inTitle, marks, score }): Hit => ({ ...d, ...shown(d, words, inTitle), marks, score }))
+  for (const d of docs) { const f = foundIn(d, q, words); if (f) out.push(f) }
+  const sorted = out.sort((a, b) => a.last - b.last || b.score - a.score || b.d.recent - a.d.recent)
+  return { total: sorted.length, top: (n) => sorted.slice(0, n).map(({ d, inTitle, marks, score }): Hit => ({ ...d, ...shown(d, words, inTitle), marks: inTitle ? marks : marksOf(wordRanges(d.title, words)), score })) }
 }

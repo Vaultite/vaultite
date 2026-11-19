@@ -85,7 +85,9 @@ function inOrderIn(w: string, ls: string) {
   return true
 }
 const NONE: Name = { ls: "", ws: [] }
-const namedIfMay = (words: Typed[], s: string) => { const ls = lowerFolded(s); return words.every((x) => inOrderIn(x.w, ls) || ls.includes(x.lead)) ? named(s) : NONE }
+const mayIn = (words: Typed[], ls: string) => words.every((x) => inOrderIn(x.w, ls) || ls.includes(x.lead))
+const namedIfMay = (words: Typed[], s: string) => (mayIn(words, lowerFolded(s)) ? named(s) : NONE)
+export const mayFind = (q: string, lowered: string) => mayIn(wordsOf(q), lowered)
 
 export function fuzzy(q: string, s: string): Match | null {
   const words = wordsOf(q)
