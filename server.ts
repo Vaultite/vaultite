@@ -23,10 +23,10 @@ import { codeOf, errnoOf, isObj, messageOf } from "./core/values.ts"
 import { prefetchCode } from "./core/prefetch.ts"
 
 // Node's compile cache must be on before the app's modules load, so they're imported below rather than above.
-module.enableCompileCache?.()
-prefetchCode(import.meta.dirname)
 // Vault files are read on libuv's threads (core/vault.ts, readSoon): one iCloud holds keeps its thread, so have many.
 process.env.UV_THREADPOOL_SIZE ??= "128"
+module.enableCompileCache?.()
+prefetchCode(import.meta.dirname)
 startServerLog()
 const log = logger("vaultite")
 const DESKTOP = process.env.VAULTITE_DESKTOP === "1"

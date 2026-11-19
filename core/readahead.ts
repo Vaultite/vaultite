@@ -1,7 +1,7 @@
 import os from "node:os"
 import { Worker } from "node:worker_threads"
 import type { Listed } from "./listing.ts"
-import type { Item } from "./vault.ts"
+import { READ_WAIT, type Item } from "./vault.ts"
 
 export type ReadFile = [rel: string, text: string, fm: Item, start: number, end: number, line: number, tags: string[]]
 export type FromReader = { listed: Listed } | { files: ReadFile[] }
@@ -24,11 +24,11 @@ export const readAhead: ReadAhead = (root) => {
   let asked = false
   const read = (rels: string[]) => new Promise<Map<string, ReadFile>>((done) => {
     const got = new Map<string, ReadFile>(), size = Math.ceil(rels.length / workers.length)
-    let left = workers.length
-    const finish = () => { clearTimeout(timer); stop(); done(got) }
-    const timer = setTimeout(finish, GIVE_UP)
+    let left = workers.length, heard = Date.now()
+    const finish = () => { clearTimeout(timer); clearInterval(idle); stop(); done(got) }
+    const timer = setTimeout(finish, GIVE_UP), idle = setInterval(() => { if (Date.now() - heard > READ_WAIT) finish() }, 100)
     workers.forEach((w, i) => {
-      w.on("message", (m: FromReader) => { if ("files" in m) for (const f of m.files) got.set(f[0], f) })
+      w.on("message", (m: FromReader) => { heard = Date.now(); if ("files" in m) for (const f of m.files) got.set(f[0], f) })
       w.on("exit", () => { if (--left === 0) finish() })
       w.postMessage(rels.slice(i * size, (i + 1) * size).join("\0"))
     })

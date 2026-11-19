@@ -236,7 +236,7 @@ const stillDownloading = (p: string, cause?: unknown) =>
 
 /** How long a sync waits for a file before going on without it; a read going on SLOW ms is held (iCloud). */
 export const READ_WAIT = 2000
-const SLOW = 1000
+const SLOW = 1000, HELD_AGAIN = 200
 const ARRIVAL = 60_000
 const reading = new Map<string, { since: number; data: Promise<Buffer> }>()
 
@@ -970,9 +970,9 @@ export class Vault {
     return added(this.writes, fn)
   }
 
-  private async readAll(rels: string[]) {
+  private async readAll(rels: string[], wait = READ_WAIT) {
     const texts = new Map<string, string | Error>(), late: string[] = [], was = new Set(this.downloading)
-    const deadline = Date.now() + READ_WAIT
+    const deadline = Date.now() + wait
     let at = 0
     const next = async () => {
       for (let rel = rels[at++]; rel !== undefined; rel = rels[at++]) {
@@ -1374,7 +1374,8 @@ export class Vault {
     }
     if (!ahead) this.doing = `reading ${changed.length - had.size} changed files${listed.away.length ? `, ${listed.away.length} iCloud has yet to bring down` : ""}`
     const parsed = await this.readFirst(changed.filter((r) => !had.has(r) && !evictedNow.has(r)), before)
-    const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r) && !parsed.has(r))), this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
+    const [{ texts, late }, away] = await Promise.all([this.readAll(changed.filter((r) => !had.has(r) && !parsed.has(r)), parsed.size ? HELD_AGAIN : READ_WAIT),
+      this.fetchEvicted(listed.away.filter((r) => !reread.has(r)))])
     return { t0, locks, heard, settingsHeard, wrote, listed, texts: new Map([...had, ...[...parsed].map(([r, f]) => [r, f[1]] as const), ...texts]), late: [...late, ...away], parsed }
   }
 

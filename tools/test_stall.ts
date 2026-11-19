@@ -44,14 +44,15 @@ async function get(p: string, wait = 8000) {
 const t0 = Date.now()
 
 try {
-  // The vault is read once the plugins are loaded, which takes a busy runner half a minute: timed from when the server
-  // starts reading the file (a FIFO opens for writing only once it has a reader), not from its spawn. Held open: no EOF.
+  // A busy runner takes half a minute to load the plugins: timed from when the server starts reading the file (a FIFO
+  // opens for writing only once it has a reader) and its plugins are loaded, not from its spawn. Held open: no EOF.
   let held = -1
   while (held < 0 && Date.now() - t0 < 180_000 && server.exitCode === null) {
     try { held = fs.openSync(path.join(VAULT, "Notes/Slow.md"), fs.constants.O_WRONLY | fs.constants.O_NONBLOCK) } catch { await sleep(100) }
   }
   check("the server starts reading the vault", held >= 0, [Date.now() - t0, log.slice(-500)])
   if (held < 0) throw new Error("the server never read Notes/Slow.md")
+  for (let phase = ""; ["", "imports", "plugins"].includes(phase) && Date.now() - t0 < 180_000;) phase = (await get("health", 30_000)).body?.phase ?? ""
   const early = await get("health", 3000)
   check("health: answers while the vault is being read, saying where the start is", early.status === 200 && Object.keys(early.body ?? {}).join() === "ok,ready,phase,pid,startedAt,readyAt,commit" &&
     early.body.ok === true && early.body.pid === server.pid && early.body.startedAt <= Date.now() && (early.body.ready ? early.body.phase === "ready" : ["plugins", "vault", "opening"].includes(early.body.phase) && early.body.readyAt === null), early)
