@@ -88,9 +88,10 @@ export function launcherRoot(store) {
 }
 
 export async function launch({ checkout }) {
-  module.enableCompileCache?.()
   const at = pick(process.env.VAULTITE_CODE_STORE)
   const root = at?.root ?? checkout
+  const own = await import("../core/codecache.ts").then((c) => c.compileCacheEnv(root, "").NODE_COMPILE_CACHE, () => "")
+  try { module.enableCompileCache?.(own ? { directory: own, portable: true } : undefined) } catch { module.enableCompileCache?.() }
   if (at?.wait) {
     say(`its last starts failed: waits ${at.wait} s before the next`)
     if (process.env.VAULTITE_SERVICE_WAIT !== "off") await new Promise((r) => setTimeout(r, at.wait * 1000))
