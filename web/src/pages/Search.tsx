@@ -129,7 +129,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
       .catch(() => { loading.current = "" })
   }
   const end = useRef<HTMLParagraphElement>(null)
-  useNearEnd(end, more, `${found?.results.length}:${busy}`, "800px")
+  useNearEnd(end, more, `${found?.results.length}:${found?.files}:${busy}`, "800px")
   const showWhole = (path: string) => {
     wholeOf(path).then((ms) => { if (shownNow.current.params === params) setWhole((w) => ({ ...w, [path]: ms })) }, () => {})
   }

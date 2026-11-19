@@ -23,7 +23,7 @@ try {
   const head = await page.textContent('[aria-label="In files"] h2')
   check("the search tab counts every line in every file", head.includes(`${FILES * LINES} lines in ${FILES} files`), head)
   const first = await page.$$eval("[data-search-file]", (es) => es.length)
-  check("it lists a page of files at first", first === 100, first)
+  check("it lists a first page of files, more than fills the screen, not all of them", first >= 10 && first < FILES, first)
   for (let n = 0; n < 40 && (await page.$$eval("[data-search-file]", (es) => es.length)) < FILES; n++) {
     await page.evaluate(() => { const s = document.querySelector("[data-search-view]")?.closest("[data-pane], #main-scroll"); (s ?? document.scrollingElement).scrollTop = 1e9 })
     await wait(500)
