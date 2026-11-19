@@ -866,10 +866,15 @@ export class Vault {
     return (told ? told.every((r) => SETTINGS_FILE.test(r)) : this.settingsStale) && !this.next && this.filesVouched()
   }
 
+  private checking = false
   private trustedNow(): Promise<boolean> | null {
     if (this.settingsOnly()) return this.settleSoon()
     if (this.next || !this.vouched(Infinity)) return null
-    this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => log.error("the walk after a trusted read failed", e)) }, 100)
+    this.rewalk ??= setTimeout(() => {
+      this.rewalk = null
+      this.checking = !this.next
+      this.synced().catch((e) => log.error("the walk after a trusted read failed", e)).finally(() => { this.checking = false })
+    }, 100)
     return Promise.resolve(false)
   }
 
@@ -899,10 +904,12 @@ export class Vault {
   }
 
   synced({ trusting = false, drained = false } = {}): Promise<boolean> {
-    if (trusting && !this.next && this.vouched()) return Promise.resolve(false)
-    if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.undrained(trusting)))
-    const trusted = trusting ? this.trustedNow() : null
+    if (trusting && (!this.next || this.checking) && this.vouched(this.checking ? Infinity : VOUCH)) return Promise.resolve(false)
+    const trusted = trusting && !this.untold?.() ? this.trustedNow() : null
     if (trusted) return trusted
+    if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.undrained(trusting)))
+    const after = trusting ? this.trustedNow() : null
+    if (after) return after
     return this.next ??= turn().then(async () => {
       const pre = await this.looked()
       return this.lock(() => {

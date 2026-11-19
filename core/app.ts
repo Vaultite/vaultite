@@ -155,7 +155,7 @@ export class App {
 
   async syncPlugins({ pages: write = true, trusting = false } = {}) {
     const key = `${this.vault.heardCount}:${this.vault.settingsVersion}:${this.vaultPlugins.trust.version}:${this.index.version}`
-    if (trusting && this.pluginsSynced === key && this.vault.vouched()) return false
+    if (trusting && this.pluginsSynced === key && this.vault.vouched(Infinity)) return false
     let changed: boolean
     try { changed = await this.loadPlugins() } catch (e) {
       if (!notHereYet(e)) throw e
