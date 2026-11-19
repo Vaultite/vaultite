@@ -194,7 +194,9 @@ export async function follow(vault: Vault) {
   const { out: now, gone } = candidates(s, vault)
   const added: string[] = [], changed: string[] = []
   const differs = (m: Meta, st: Stat) => m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)
-  const kept = keptDirs(s, [...now].filter(([rel, st]) => { const m = s.heads.get(rel); return !m || differs(m, st) }).length)
+  const unsure = [...now.keys()].filter((rel) => { const m = s.heads.get(rel); return !m || differs(m, now.get(rel)!) })
+  if (later(vault, s, unsure)) return
+  const kept = keptDirs(s, unsure.length)
   for (const [rel, st] of now) {
     let m = s.heads.get(rel)
     if (!m || differs(m, st)) m = current(s, rel, kept)
@@ -202,7 +204,6 @@ export async function follow(vault: Vault) {
     else if (differs(m, st)) changed.push(rel)
   }
   for (let i = gone.length - 1; i >= 0; i--) if (!current(s, gone[i])) gone.splice(i, 1)
-  added.splice(0, added.length, ...later(vault, s, added))
   if (added.length || changed.length || gone.length) {
     s.saving ??= setTimeout(() => saveIndex(s), 10_000)
     s.saving.unref?.()
@@ -257,13 +258,13 @@ export function prune(vault: Vault, at = Date.now()) {
   }
 }
 
-function later(vault: Vault, s: State, added: string[]) {
+function later(vault: Vault, s: State, unsure: string[]) {
   const wait = s.made + BULK_WAIT - Date.now()
-  if (added.length <= LIST_OVER || wait <= 0) return added
-  for (const rel of added) s.seen.delete(rel)
+  if (unsure.length <= LIST_OVER || wait <= 0) return false
+  for (const rel of unsure) s.seen.delete(rel)
   s.version = -1
   setTimeout(() => followSoon(vault), wait).unref()
-  return []
+  return true
 }
 
 let following: Promise<void> | null = null, again = false
