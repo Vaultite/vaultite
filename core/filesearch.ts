@@ -61,16 +61,26 @@ const docOf = (rel: string, e: Entry): SearchDoc =>
   ({ name: stemOf(rel), file: rel.slice(rel.lastIndexOf("/") + 1), path: rel, text: e.body, tags: e.tags, props: e.fm, get type() { return e.type } })
 
 function namesOf(order: Cand[]) {
-  if (order.some((c) => c.name.includes("\n"))) return { names: null, lows: "" }
-  const names = order.map((c) => c.name).join("\n")
-  return { names, lows: names.toLowerCase() }
+  if (order.some((c) => c.name.includes("\n"))) return { names: null, lows: "", starts: [] }
+  const starts: number[] = []
+  let at = 0
+  for (const c of order) { starts.push(at); at += c.low.length + 1 }
+  return { names: order.map((c) => c.name).join("\n"), lows: order.map((c) => c.low).join("\n"), starts }
+}
+function linesWith(lows: string, starts: number[], s: string): number[] {
+  const out: number[] = []
+  for (let at = lows.indexOf(s), line = 0; at >= 0; at = lows.indexOf(s, at + 1)) {
+    while (line + 1 < starts.length && starts[line + 1] <= at) line++
+    if (out[out.length - 1] !== line) out.push(line)
+  }
+  return out
 }
 function skipper(vault: Vault, opts: SearchOpts) {
   const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
   const excluded = folder && vault.excluded(`${folder}/`) ? () => false : (rel: string) => vault.excluded(rel)
   return (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.only && !opts.only.has(rel)) || (opts.path ? rel !== opts.path : excluded(rel))
 }
-type Order = { key: string; order: Cand[]; names: string | null; lows: string }
+type Order = { key: string; order: Cand[]; names: string | null; lows: string; starts: number[] }
 const orders = new WeakMap<Vault, Order>()
 function orderOf(vault: Vault, opts: SearchOpts, version: string): Order {
   const key = JSON.stringify([opts.folder, opts.path, opts.only && [...opts.only], opts.sort, version])
@@ -92,13 +102,13 @@ function orderOf(vault: Vault, opts: SearchOpts, version: string): Order {
   return made
 }
 
-type Search = { key: string; order: Cand[]; scores: Map<Cand, number>; at: number; found: Found[]; lines?: number }
+type Search = { key: string; walk: Iterator<Cand>; scores: Map<Cand, number>; found: Found[]; lines?: number }
 type Searched = { results: Item[]; files?: number; lines?: number }
 const lastSearch = new WeakMap<Vault, Search>()
 
-function scoresOf({ order, names, lows }: Order, node: Node, whole: string): Map<Cand, number> {
+function scoresOf({ order, names, lows, starts }: Order, node: Node, whole: string): Map<Cand, number> {
   const marks = highlighter(node, "name"), out = new Map<Cand, number>()
-  const near = names === null || lows.includes(whole) ? order.keys() : lineFinder(node, "name").lines(names)
+  const near = names === null ? order.keys() : [...new Set([...lineFinder(node, "name").lines(names), ...linesWith(lows, starts, whole)])].sort((a, b) => a - b)
   for (const i of near) {
     const c = order[i], score = marks(c.name).length * 3 + (c.low.includes(whole) ? 5 : 0)
     if (score) out.set(c, score)
@@ -106,11 +116,13 @@ function scoresOf({ order, names, lows }: Order, node: Node, whole: string): Map
   return out
 }
 
-function bestFirst(order: Cand[], scores: Map<Cand, number>): Cand[] {
-  if (!scores.size) return order
+function* bestFirst(order: Cand[], scores: Map<Cand, number>): Generator<Cand> {
+  if (!scores.size) { yield* order; return }
   const top = [...scores.keys()].sort((a, b) => scores.get(b)! - scores.get(a)!)
-  const rest = order.filter((c) => !scores.has(c))
-  return [...top.filter((c) => !c.archived), ...rest.filter((c) => !c.archived), ...top.filter((c) => c.archived), ...rest.filter((c) => c.archived)]
+  for (const archived of [false, true]) {
+    for (const c of top) if (c.archived === archived) yield c
+    for (const c of order) if (c.archived === archived && !scores.has(c)) yield c
+  }
 }
 
 function searchOf(vault: Vault, q: string, node: Node, opts: SearchOpts): Search {
@@ -119,8 +131,8 @@ function searchOf(vault: Vault, q: string, node: Node, opts: SearchOpts): Search
   const had = lastSearch.get(vault)
   if (had?.key === key) return had
   const base = orderOf(vault, opts, version), scores = scoresOf(base, node, q.trim().toLowerCase())
-  const order = !opts.sort || opts.sort === "relevance" ? bestFirst(base.order, scores) : base.order
-  const search: Search = { key, order, scores, at: 0, found: [] }
+  const walk = !opts.sort || opts.sort === "relevance" ? bestFirst(base.order, scores) : base.order.values()
+  const search: Search = { key, walk, scores, found: [] }
   if (!opts.path) lastSearch.set(vault, search)
   return search
 }
@@ -150,8 +162,8 @@ function found(vault: Vault, c: Cand, score: number | undefined, node: Node, sho
 }
 
 async function scanTo(vault: Vault, s: Search, n: number, node: Node, shown: Shower, opts: SearchOpts) {
-  while (s.found.length < n && s.at < s.order.length) {
-    const c = s.order[s.at++], got = found(vault, c, s.scores.get(c), node, shown, opts)
+  for (let next = s.found.length < n ? s.walk.next() : null; next && !next.done; next = s.found.length < n ? s.walk.next() : null) {
+    const c = next.value, got = found(vault, c, s.scores.get(c), node, shown, opts)
     const f = got instanceof Promise ? await got : got
     if (f) s.found.push(f)
   }
