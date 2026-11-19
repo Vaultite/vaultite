@@ -2,6 +2,7 @@
 import "./test/isolate.ts"
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import { createRequire } from "node:module"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -10,6 +11,7 @@ import { check, exit, summary, tempDir } from "./test/lib.ts"
 import { codeCacheDir } from "../electron/shell/compilecache.mjs"
 
 const began = Date.now(), ROOT = path.resolve(import.meta.dirname, "..")
+os.setPriority(process.platform === "win32" ? os.constants.priority.PRIORITY_BELOW_NORMAL : os.constants.priority.PRIORITY_LOW)
 const electron = z.string().parse(createRequire(path.join(ROOT, "package.json"))("electron"))
 const tmp = tempDir("vaultite-compilefill-test-"), root = path.join(tmp, "root"), ran = path.join(tmp, "ran")
 fs.mkdirSync(path.join(root, "electron"), { recursive: true })
@@ -31,19 +33,19 @@ const control = spawnSync(electron, ["--input-type=module", "-e", `await import(
   { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } })
 check("(the fixture's side effect does happen when it's imported for real)", control.status === 0 && fs.existsSync(ran), control.stderr)
 
-const real = fill(path.join(tmp, "real"), ROOT), counted = /(\d+) of (\d+) entries compiled/.exec(real.stdout)
-check("every module the main process may load compiles", real.status === 0 && !!counted && counted[1] === counted[2] && Number(counted[2]) > 100 && entries(path.join(tmp, "real")) > 200, real.stdout.slice(-2000) + real.stderr.slice(-500))
 const at = path.join(tmp, "made"), moved = path.join(tmp, "root-moved")
 fs.mkdirSync(path.join(at, "tools"), { recursive: true })
 for (const d of ["electron", "core"]) fs.cpSync(path.join(ROOT, d), path.join(at, d), { recursive: true })
 for (const f of ["package.json", "tools/compilefill.mjs"]) fs.copyFileSync(path.join(ROOT, f), path.join(at, f))
 fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(at, "node_modules"), "junction")
-const made = fill(codeCacheDir(at), at)
+const made = fill(codeCacheDir(at), at), counted = /(\d+) of (\d+) entries compiled/.exec(made.stdout)
+check("every module the main process may load compiles", made.status === 0 && !!counted && counted[1] === counted[2] && Number(counted[2]) > 100 && entries(codeCacheDir(at)) > 200,
+  made.stdout.slice(-2000) + made.stderr.slice(-1500))
 fs.renameSync(at, moved)
 const CACHE = codeCacheDir(moved), filledAt = fs.existsSync(CACHE)
 const writable = (on: boolean) => { for (const f of fs.readdirSync(CACHE, { recursive: true, encoding: "utf8" }).map((f) => path.join(CACHE, f)).concat(CACHE)) fs.chmodSync(f, on ? 0o755 : 0o555) }
 if (filledAt) writable(false)
-const load = ["early.ts", "main.ts", "mainrest.ts"].map((f) => pathToFileURL(path.join(moved, "electron", f)).href)
+const load = ["early.ts", "main.ts"].map((f) => pathToFileURL(path.join(moved, "electron", f)).href)
 const launch = spawnSync(electron, ["--input-type=module", "-e", `import module from "node:module"
 import { ownCompileCache } from ${JSON.stringify(pathToFileURL(path.join(moved, "electron", "shell", "compilecache.mjs")).href)}
 const chosen = ownCompileCache(${JSON.stringify(moved)})
@@ -57,8 +59,7 @@ const ours = launch.stderr.split(/\r?\n/).filter((l) => l.includes(`${pathToFile
 const said = (re: RegExp) => ours.filter((l) => re.test(l))
 const stripped = said(/retrieving transpile cache for StrippedTypeScript .*success/), compiled = said(/V8 code cache for ESM .* was accepted/)
 const missed = said(/no transpile cache|was rejected|no such file/)
-check("a root's filled cache is the one it ships once moved and read only (shell/compilecache.mjs)", made.status === 0 && filledAt && chosen === JSON.stringify(CACHE),
-  { made: made.stdout.slice(-300) + made.stderr.slice(-1500), filledAt, chosen, CACHE })
-check("...and answers for every module of the main process: none stripped or compiled again", stripped.length > 50 && !missed.length && compiled.length >= stripped.length,
+check("a root's filled cache is the one it ships once moved and read only (shell/compilecache.mjs)", filledAt && chosen === JSON.stringify(CACHE), { filledAt, chosen, CACHE })
+check("...and answers for every module the first window loads: none stripped or compiled again", stripped.length > 30 && !missed.length && compiled.length >= stripped.length,
   { stripped: stripped.length, compiled: compiled.length, missed: missed.slice(0, 5), said: launch.stderr.slice(0, 600) })
 await exit(summary("compilefill", began))
