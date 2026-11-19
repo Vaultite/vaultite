@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { expandHome, findBin, HOME, isoOf, jsonLines, limitWindow, processes } from "../../../core/agents.ts"
 import type { Plugin } from "../../../core/plugins.ts"
+import { whenReady } from "../../../core/startup.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { SAMPLE_DIR } from "./sample.ts"
 
@@ -25,7 +26,8 @@ const windows = (rl: Item, used: string, resets: (v: unknown) => number | null, 
   return w && typeof w === "object" && typeof w[used] === "number" ? [window(k, m, w[used], resets(w.resets_at), now)] : []
 })
 
-const ASKING_DIR = path.join(os.tmpdir(), "vaultite-claude-limits")
+const ASKING_DIR = path.join(os.tmpdir(), "vaultite-claude-limits"), ASK_AFTER = 3000
+const started = process.env.VAULTITE_TEST === "1" ? Promise.resolve() : whenReady.then(() => new Promise((r) => setTimeout(r, ASK_AFTER).unref()))
 let askingReal = ""
 let sampleReal = ""
 export const isAsking = (cwd: string) => (!!askingReal && cwd === askingReal) || cwd === (sampleReal ||= (() => { try { return fs.realpathSync(SAMPLE_DIR) } catch { return "" } })())
@@ -141,7 +143,10 @@ async function servers(accts: Account[], defaultDir: string) {
 }
 
 export function limitsOf(plugin: Plugin, { defaultDir, accountJson, scanOf }: Needs) {
-  const asked = (dir: string) => plugin.memoStale(120, async function claudeUsage(d: string) { return { at: Date.now() / 1000, got: await askClaude(d) } }, dir)
+  const asked = (dir: string) => plugin.memoStale(120, async function claudeUsage(d: string) {
+    await started
+    return { at: Date.now() / 1000, got: await askClaude(d) }
+  }, dir)
 
   async function accountLimits(now: number, dir: string) {
     const { at: observed, got } = await asked(dir)
