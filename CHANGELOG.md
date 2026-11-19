@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Companion: its page's More menu no longer offers Show its chat beside the page's own Chat button.
 - Folders: switching a folder page to columns (⌥⌘3) keeps the keyboard on the thing you were on, instead of losing it
   now and then while the columns loaded.
 - Vaultite Main: the first launch after an update, and its servers' restart onto it, find the new code already compiled
