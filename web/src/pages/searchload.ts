@@ -9,18 +9,20 @@ export const FIRST = 10, PAGE = 40, LINES = 20, MOST_LINES = 100_000
 const MOST = 500
 
 export type Shown = { results: Result[]; files?: number; lines?: number; fresh?: boolean }
-const SCREEN_ROWS = 60
+const LINE_PX = 18
 function firstScreen(rs: Result[], shut: boolean) {
   let rows = 0, n = 0
-  for (; n < rs.length && rows < SCREEN_ROWS; n++) rows += 1 + (shut ? 0 : rs[n].matches?.length ?? 0)
+  for (const screen = Math.ceil(window.innerHeight / LINE_PX); n < rs.length && rows < screen; n++) rows += 1 + (shut ? 0 : rs[n].matches?.length ?? 0)
   return n === rs.length ? rs : rs.slice(0, n)
 }
 export function useFirstScreen(found: Shown | null, setFound: (f: (cur: Shown | null) => Shown | null) => void, shut: boolean) {
   const fresh = !!found?.fresh
   useEffect(() => {
     if (!fresh) return
-    const t = requestAnimationFrame(() => setFound((cur) => cur && { ...cur, fresh: false }))
-    return () => cancelAnimationFrame(t)
+    const rest = () => setFound((cur) => cur && { ...cur, fresh: false })
+    if (!("requestIdleCallback" in window)) { const t = setTimeout(rest, 50); return () => clearTimeout(t) }
+    const t = requestIdleCallback(rest, { timeout: 200 })
+    return () => cancelIdleCallback(t)
   }, [fresh, setFound])
   return found && fresh ? firstScreen(found.results, shut) : found?.results ?? null
 }

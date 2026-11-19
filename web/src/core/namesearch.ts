@@ -1,7 +1,7 @@
 import type { SearchDoc } from "@/core/plugins"
 import { excerpt, marksOf, wordRanges } from "../../../core/searchquery.ts"
 import { lowerFolded } from "../../../core/fold.ts"
-import { fuzzy, leadsOf, mayFind } from "@/core/fuzzy"
+import { fuzzy, leadsOf, mayFind, warmName } from "@/core/fuzzy"
 
 export type Hit = SearchDoc & {
   marks: number[]; score: number
@@ -43,6 +43,24 @@ function prepsOf(docs: Doc[]): Prep[] {
   return ps
 }
 
+type Left = () => number
+const idle = (fn: (left: Left) => void): (() => void) => {
+  if ("requestIdleCallback" in window) { const t = requestIdleCallback((d) => fn(() => d.timeRemaining())); return () => cancelIdleCallback(t) }
+  const t = setTimeout(() => { const at = performance.now(); fn(() => 5 - (performance.now() - at)) }, 50)
+  return () => clearTimeout(t)
+}
+
+export function warmNames(docs: Doc[]): () => void {
+  let i = 0, cancel = () => {}
+  const step = (left: Left) => {
+    for (; i < docs.length && left() > 1; i++) { const d = docs[i], p = prepOf(d); warmName(d.title); if (p.file) warmName(p.file) }
+    if (i < docs.length) cancel = idle(step)
+    else prepsOf(docs)
+  }
+  cancel = idle(step)
+  return () => cancel()
+}
+
 export function search(docs: Doc[], query: string, limit = 40): Hit[] {
   return searchNames(docs, query).top(limit)
 }
@@ -50,9 +68,9 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
 function foundIn(d: Doc, p: Prep, q: string, words: string[]): Found | null {
   const last = Number(!!d.archived) + Number(!!d.excluded)
   const named = !p.name || mayFind(q, p.name)
-  const m = named && mayFind(q, p.title) ? fuzzy(q, d.title) : null
+  const m = named ? fuzzy(q, d.title, p.title) : null
   if (m) return { d, inTitle: true, marks: m.marks, score: m.score + (d.weight ?? 0), last }
-  const n = named && p.file ? fuzzy(q, p.file) : null
+  const n = named && p.file ? fuzzy(q, p.file, p.name ?? undefined) : null
   if (n) return { d, inTitle: true, marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0), last }
   return words.every((w) => p.hay.includes(w)) ? { d, inTitle: false, marks: [], score: 10 + (d.weight ?? 0) / 2, last } : null
 }

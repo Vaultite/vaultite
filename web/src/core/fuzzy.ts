@@ -36,6 +36,7 @@ function nameOf(s: string): Name {
 }
 const KEEP_NAMES = 100_000, KEEP_UNDER = 256
 const names = new Map<string, Name>()
+export const warmName = (s: string) => { named(s) }
 function named(s: string): Name {
   if (s.length > KEEP_UNDER) return nameOf(s)
   let n = names.get(s)
@@ -86,14 +87,18 @@ function inOrderIn(w: string, ls: string) {
 }
 const NONE: Name = { ls: "", ws: [] }
 const mayIn = (words: Typed[], ls: string) => words.every((x) => inOrderIn(x.w, ls) || (x.lead !== x.w && ls.includes(x.lead)))
-const namedIfMay = (words: Typed[], s: string) => (mayIn(words, lowerFolded(s)) ? named(s) : NONE)
+const inWords = (words: Typed[], ls: string) => words.some((x) => ls.includes(x.w) || (!!x.lead && ls.includes(x.lead)))
+function namedIfMay(words: Typed[], s: string, ls = lowerFolded(s)): Name {
+  if (!mayIn(words, ls)) return NONE
+  return inWords(words, ls) ? named(s) : { ls, ws: [] }
+}
 export const mayFind = (q: string, lowered: string) => mayIn(wordsOf(q), lowered)
 export const leadsOf = (q: string) => wordsOf(q).map((x) => x.lead)
 
-export function fuzzy(q: string, s: string): Match | null {
+export function fuzzy(q: string, s: string, lowered?: string): Match | null {
   const words = wordsOf(q)
   if (!words.length) return { score: 0, marks: [], tier: TIER.NAME }
-  const { ls, ws } = namedIfMay(words, s)
+  const { ls, ws } = namedIfMay(words, s, lowered)
   let sum = 0, tier: number = TIER.WORD, inOrder = true, last = -1
   const marks = new Set<number>(), whole = new Set<number>()
   for (const w of words) {
