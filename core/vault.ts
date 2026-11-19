@@ -630,6 +630,11 @@ export class Entry {
   }
 }
 
+function keptTags(e: Entry, k?: KeptText) {
+  if (k?.[3] && e.text === k[2]) e.tagCache = { fm: e.fm, body: e.body, tags: k[3] }
+  return e
+}
+
 function fill(e: Entry, t: string, pre?: ReadFile) {
   if (pre?.[1] === t) {
     e.fm = pre[2]; e.body = t.slice(pre[3], pre[4]); e.bodyLine = pre[5]
@@ -1434,7 +1439,7 @@ export class Vault {
       if (performance.now() - since > 20) { await turn(); since = performance.now() }
       const st = found.get(rel)!
       const was = this.entries.get(rel)
-      const e = this.read(rel, st, texts.get(rel), at.parsed?.get(rel))
+      const e = keptTags(this.read(rel, st, texts.get(rel), at.parsed?.get(rel)), kept.get(rel))
       if (was && was.broken && e.broken && sameStat(was.stat, st) && same(was.problems, e.problems)) unchanged.add(rel)
     }
     changed = changed.filter((r) => !unchanged.has(r))

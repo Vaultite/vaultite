@@ -24,7 +24,7 @@ export default async ($: VaultTest) => {
     const st = (n: string) => fs.statSync(path.join(dir, `${n}.md`), { bigint: true })
     const v = new Vault(dir)
     v.startTexts = { now: new Map(), had: new Map([
-      ["same.md", [String(st("same").mtimeNs), Number(st("same").size), "---\ntitle: same kept\n---\n\nBody.\n"]],
+      ["same.md", [String(st("same").mtimeNs), Number(st("same").size), "---\ntitle: same kept\n---\n\nBody.\n", ["kept-tag"]]],
       ["changed.md", [String(st("changed").mtimeNs - 1n), Number(st("changed").size), "---\ntitle: changed kept\n---\n\nBody.\n"]]]) }
     await v.sync()
     const kept = v.startTexts.now
@@ -32,6 +32,8 @@ export default async ($: VaultTest) => {
     check("start: an unchanged file's text comes from the last start's, a changed one is read",
       v.entries.get("same.md")?.fm.title === "same kept" && v.entries.get("changed.md")?.fm.title === "changed on disk" &&
       kept.get("changed.md")?.[2].includes("changed on disk") && kept.size === 2, [...v.entries.values()].map((e) => e.fm.title))
+    check("start: ...and its tags from the last start's, not worked out again", v.entries.get("same.md")?.tags.join() === "kept-tag" && !v.entries.get("changed.md")?.tags.length,
+      [...v.entries.values()].map((e) => e.tags))
   }
   {
     const dir = path.join(tmp, "Read ahead")

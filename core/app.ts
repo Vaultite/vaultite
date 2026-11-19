@@ -915,7 +915,7 @@ export async function open(vaultPath: string, { start = true, timing, watch, rea
     await turn()
     await app.vault.lock(async () => app.vault.sync(await looked))
     app.vault.startTexts = app.vault.startRead = app.vault.reading = null
-    kept?.done()
+    kept?.done((rel) => app.vault.entries.get(rel)?.tags)
     timing?.mark("vault read")
     if (fresh) await app.hold(() => setUpNew(app.host()), { trusting: true }).catch((e) => log.error("setting up the new vault failed", e))
     app.moving = migrateMoved({ vault: app.vault, has: (id) => app.app.some((p) => p.id === id),
