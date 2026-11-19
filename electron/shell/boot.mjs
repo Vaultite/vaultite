@@ -4,6 +4,7 @@ import { app, dialog } from "electron"
 import module from "node:module"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { ownCompileCache } from "./compilecache.mjs"
 import { fingerprint } from "./print.mjs"
 import * as roots from "./roots.mjs"
 
@@ -18,8 +19,6 @@ app.setName(shell.productName ?? "Vaultite")
 if (process.platform === "win32" && shell.appId) app.setAppUserModelId(shell.appId)
 if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process.env.VAULTITE_USER_DATA))
 const userData = app.getPath("userData")
-// Node strips the code's types and compiles it once per file, kept here (an ES module can't turn it on for its own imports).
-module.enableCompileCache?.(path.join(userData, "compile-cache"))
 
 const dir = roots.stateDir(userData)
 // (web/qa/update-roots.mjs: a run from source picking as Vaultite Main's shell would, its checkout the bundle; never a
@@ -32,6 +31,8 @@ roots.settle(dir, { bundle })
 const picked = choose()
 for (const p of picked.passed) roots.event(dir, { kind: "passed", root: p.root, commit: roots.commitOf(p.root), why: p.why, ran: picked.root })
 const commit = roots.commitOf(picked.root)
+// (portable: a root's own cache is filled before the root moves; an ES module can't turn it on for its own imports)
+module.enableCompileCache?.({ directory: ownCompileCache(picked.root) ?? path.join(userData, "compile-cache"), portable: true })
 roots.begin(dir, { pid: process.pid, root: picked.root, commit })
 // (a quit, even before it was ready, leaves nothing to settle; app.exit() skips both, so it ends it itself)
 app.on("will-quit", () => roots.ended(dir, process.pid))
@@ -53,7 +54,6 @@ function failed(why, kind = "failed") {
 const late = setTimeout(() => { if (!isReady) failed(`it wasn't ready within ${READY_WITHIN / 1000} s`, "late") }, READY_WITHIN)
 late.unref?.()
 
-/** What the code reads of the shell (electron/identity.ts). */
 globalThis.vaultiteShell = {
   root: picked.root, bundleRoot: bundle, shell, from: picked.from,
   /** Its first window's server answers (or, with none, the launch is done): this root is good. */

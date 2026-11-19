@@ -79,7 +79,7 @@ export const serverBoots: Step = {
   },
 }
 
-const MAIN_FILL = "electron/compilefill.mjs"
+const MAIN_FILL = "tools/compilefill.mjs"
 export const mainCompiles: Step = {
   name: "main's compile cache",
   run: async (c) => {
@@ -97,7 +97,7 @@ export function appRecipe(o: { channel?: string } = {}): Recipe {
       { name: "stamp", run: (c) => c.exec(c.node, ["electron/stamp.ts"], { cwd: c.root, env: { ...c.env, VAULTITE_CHANNEL: o.channel ?? "main" } }).then(() => {}) },
     ],
     keyFiles: ["server.ts", "package.json", "bin/vau", "electron/boot.ts", "electron/main.ts", "electron/build.json", "web/dist/index.html",
-      ...["boot.mjs", "roots.mjs", "vau.mjs", "print.mjs", "inputs.json"].map((f) => `electron/shell/${f}`)],
+      ...["boot.mjs", "roots.mjs", "vau.mjs", "print.mjs", "compilecache.mjs", "inputs.json"].map((f) => `electron/shell/${f}`)],
     preflight: [serverBoots, mainCompiles, { name: "smoke", run: (c) => c.exec(c.node, ["web/qa/boot.mjs"], { cwd: c.root, env: c.env }).then(() => {}) }],
   }
 }
