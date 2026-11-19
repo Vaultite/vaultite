@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process"
+import { execFile, execFileSync } from "node:child_process"
+import { promisify } from "node:util"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -19,6 +20,7 @@ import { cloudSessions } from "./cloud.ts"
 import { FAMILIES, modelId, modelName, notAModel } from "./models.ts"
 import { memoryLines, unsaid } from "./memory.ts"
 import { type Account, isAsking, limitsOf } from "./limits.ts"
+const execFileAsync = promisify(execFile)
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
 
@@ -200,7 +202,7 @@ function lstart(s: string, utc = false) {
 
 const started = new Map<number, [unknown, boolean]>()
 
-function alive(pid: number, start: unknown) {
+async function alive(pid: number, start: unknown) {
   try {
     process.kill(pid, 0)
   } catch (e) {
@@ -212,9 +214,9 @@ function alive(pid: number, start: unknown) {
   if (seen && seen[0] === start) return seen[1]
   let out: string
   try {
-    out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 3000 })
+    out = (await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 3000 })).stdout
   } catch (e) {
-    return !(e instanceof Error && "status" in e && e.status !== undefined)
+    return !(e instanceof Error && "code" in e && typeof e.code === "number")
   }
   if (!out.trim()) return false
   const ran = lstart(out), wrote = lstart(String(start), true)
@@ -223,8 +225,8 @@ function alive(pid: number, start: unknown) {
   return same
 }
 
-function running(accts: Account[]) {
-  return accts.flatMap((a) => {
+async function running(accts: Account[]) {
+  const found = accts.flatMap((a) => {
     const d = path.join(a.dir, "sessions")
     let names: string[] = []
     try { names = fs.readdirSync(d).filter((n) => n.endsWith(".json")).sort() } catch { return [] }
@@ -232,15 +234,17 @@ function running(accts: Account[]) {
       let s: Item
       try { s = JSON.parse(fs.readFileSync(path.join(d, n), "utf8")) } catch { return [] }
       const pid = Math.trunc(Number(s.pid)), cwd = String(s.cwd || "")
-      if (!Number.isFinite(pid) || isAsking(cwd) || !alive(pid, s.procStart)) return []
+      if (!Number.isFinite(pid) || isAsking(cwd)) return []
       return [{ a, s, pid, cwd, sid: typeof s.sessionId === "string" ? s.sessionId : "" }]
     })
   })
+  const up = await Promise.all(found.map((f) => alive(f.pid, f.s.procStart)))
+  return found.filter((_, i) => up[i])
 }
 
 async function live(accts: Account[]): Promise<Live[]> {
   const ms = (v: unknown) => (typeof v === "number" ? v : null)
-  return running(accts).map(({ a, s, pid, cwd, sid }) => ({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "",
+  return (await running(accts)).map(({ a, s, pid, cwd, sid }) => ({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "",
     name: a.private ? "" : s.name || "", status: s.status || "", kind: s.kind || "", cwd: a.private ? "" : cwd, started: ms(s.startedAt),
     since: ms(s.statusUpdatedAt), account: a.id, ...(a.private ? { project: a.label, private: true } : {}) }))
 }
@@ -369,7 +373,7 @@ plugin.provide("agent-account:claude", async (terminal: string, session = ""): P
   const found = session ? sessionFile(session, true) : null
   if (found) return of(found.account)
   if (!terminal) return null
-  for (const { a, s, pid } of running(accts)) {
+  for (const { a, s, pid } of await running(accts)) {
     const key = `${pid}@${s.procStart}`
     const t = terminals.get(key) ?? await terminalOf(plugin, pid)
     if (t) terminals.set(key, t)
@@ -443,7 +447,7 @@ plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[] | 
 async function sessionIn(terminal: string) {
   const sid = parseTerminal(terminal)?.resume || ""
   if (sid || !terminal) return sid
-  for (const { a, s, pid, sid: id } of running(accounts())) {
+  for (const { a, s, pid, sid: id } of await running(accounts())) {
     if (!id || a.private) continue
     const key = `${pid}@${s.procStart}`
     const t = terminals.get(key) ?? await terminalOf(plugin, pid)
@@ -481,7 +485,7 @@ export async function tellWaits() {
   const tell = plugin.service("terminal:agent-waits")
   if (!tell) return
   const now = new Map<string, "permission" | "question">()
-  for (const { s, pid } of running(accounts())) {
+  for (const { s, pid } of await running(accounts())) {
     if (s.status !== "waiting") continue
     const key = `${pid}@${s.procStart}`
     const t = terminals.get(key) ?? await terminalOf(plugin, pid)
@@ -516,7 +520,7 @@ async function tellAwaits() {
   const tell = plugin.service("terminal:agent-awaits")
   if (!tell) return
   const now = new Map<string, Awaits>()
-  for (const { a, s, pid, sid } of running(accounts())) {
+  for (const { a, s, pid, sid } of await running(accounts())) {
     if (s.status !== "idle" || !sid || a.private) continue
     const key = `${pid}@${s.procStart}`
     const t = terminals.get(key) ?? await terminalOf(plugin, pid)
@@ -566,7 +570,7 @@ type Read = { tokens: number; last: number; ttl: number }
 const lastRead = new Map<string, { size: number; meter: Read | null }>()
 plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMeter[]> => {
   const out: AgentMeter[] = []
-  for (const { a, s, pid, sid, cwd } of running(accounts())) {
+  for (const { a, s, pid, sid, cwd } of await running(accounts())) {
     if (!sid) continue
     const key = `${pid}@${s.procStart}`
     let terminal = terminals.get(key)
@@ -706,7 +710,7 @@ const agent = codingAgent(plugin, {
 const chat = chats(plugin, {
   accounts, sessionFile, models, modelName,
   async tuiOf(id) {
-    for (const { a, s, pid, sid } of running(accounts())) {
+    for (const { a, s, pid, sid } of await running(accounts())) {
       if (sid !== id || chat.hosted(id) || String(s.entrypoint ?? "").startsWith("sdk")) continue
       const key = `${pid}@${s.procStart}`
       const t = terminals.get(key) ?? await terminalOf(plugin, pid)
@@ -716,7 +720,7 @@ const chat = chats(plugin, {
     return null
   },
   async inTerminals() {
-    return new Set(running(accounts()).filter(({ s }) => !String(s.entrypoint ?? "").startsWith("sdk")).map(({ sid }) => sid).filter(Boolean))
+    return new Set((await running(accounts())).filter(({ s }) => !String(s.entrypoint ?? "").startsWith("sdk")).map(({ sid }) => sid).filter(Boolean))
   },
   async folders() {
     const u = await summary(30, accounts().filter((a) => !a.private))

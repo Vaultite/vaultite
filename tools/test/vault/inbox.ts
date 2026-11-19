@@ -830,6 +830,7 @@ export default async ($: VaultTest) => {
       const out = await vau("inbox", "report", "Handed off", "--work", "fix", "--tldr", "Did it.", "--summary", "Did it.", "--terminal", "claude-handed1")
       check("handed: its report says the terminal ends with the turn", out.code === 0 && out.out.includes("this terminal ends when this turn does"), out)
       await api("POST", "inbox/hook?agent=claude&terminal=claude-handed1", { hook_event_name: "Stop" })
+      await settled()
       check("handed: the turn that reported ends it", !handedOf().includes("claude-handed1"), handedOf())
       await api("POST", "ops/inbox.report", { title: "Not handed", work: "fix", tldr: "Did it.", summary: "Did it.", terminal: "claude-mine1", agent: "claude" })
       await api("POST", "inbox/hook?agent=claude&terminal=claude-mine1", { hook_event_name: "Stop" })
