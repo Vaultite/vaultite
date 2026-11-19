@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Companion: its page's More menu no longer offers Show its chat beside the page's own Chat button.
 - Folders: switching a folder page to columns (⌥⌘3) keeps the keyboard on the thing you were on, instead of losing it
   now and then while the columns loaded.
 - Desktop app: the first launch after an update or on a new account opens its window about 0.2 s sooner and starts its

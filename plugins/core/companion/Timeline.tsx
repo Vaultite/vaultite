@@ -104,7 +104,7 @@ function Head({ name, agent, c, mode, chat }: { name: string; agent?: Agent; c: 
           <MessageSquare className="size-4 max-md:size-5" strokeWidth={2} /><span className="max-md:hidden">Chat</span>
         </Button>
         {agent && (
-          <button type="button" aria-label="More" onClick={(e) => menuBelow(e, agentMenu(agent).filter((m) => m.label !== "Show its session"))}
+          <button type="button" aria-label="More" onClick={(e) => menuBelow(e, agentMenu(agent, { besideItsChat: true }))}
             className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-11">
             <Ellipsis className="size-4 max-md:size-5" />
           </button>

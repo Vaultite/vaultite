@@ -66,13 +66,13 @@ export const followItems = (name: string): MenuItem[] => getState().follows.filt
   label: `Stop following ${f.title || f.ui || f.pane || f.group}`, icon: EyeOff, sep: i === 0,
   run: () => op("companion.unfollow", { id: f.id }).catch((e) => notifyError(e, "Couldn't stop following it")) }))
 
-export function agentMenu(a: Agent): MenuItem[] {
+export function agentMenu(a: Agent, { besideItsChat = false } = {}): MenuItem[] {
   const how = howText(a), fold = foldable(a)
   return [
     ...(fold ? [{ label: "Fold its answer into a bubble", icon: MessageCircle, run: fold }] : []),
     ...(main(a.name) ? [{ ...modeItem(), sep: !!fold }] : []),
     ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),
-    { label: main(a.name) ? "Show its chat" : "Show its session", icon: (a.runs ?? "").split("_")[0] === "claude" ? MessageSquare : SquareTerminal, run: () => showSession(a.name), sep: main(a.name) && !how },
+    ...(besideItsChat ? [] : [{ label: main(a.name) ? "Show its chat" : "Show its session", icon: (a.runs ?? "").split("_")[0] === "claude" ? MessageSquare : SquareTerminal, run: () => showSession(a.name), sep: main(a.name) && !how }]),
     ...(canUndoEdit(a.name) ? [{ label: "Undo its last edit", icon: Undo2, run: () => undoEdit(a.name) }] : []),
     ...followItems(a.name),
     { label: "Start fresh", icon: RotateCcw, run: () => fresh(a.name), disabled: a.state === "starting", sep: true },
