@@ -193,9 +193,10 @@ export async function follow(vault: Vault) {
   s.version = vault.version
   const { out: now, gone } = candidates(s, vault)
   const unsure = [...now.keys()].filter((rel) => { const m = s.heads.get(rel); return !m || differs(m, now.get(rel)!) })
-  if (later(vault, s, unsure)) return
-  await readHeads(s)
-  const { added, changed } = await sorted(s, now, keptDirs(s, unsure.length))
+  const old = later(vault, s, unsure, now)
+  for (const rel of old ?? []) now.delete(rel)
+  if (!old) await readHeads(s)
+  const { added, changed } = await sorted(s, now, keptDirs(s, unsure.length - (old?.length ?? 0)))
   for (let i = gone.length - 1; i >= 0; i--) if (!current(s, gone[i])) gone.splice(i, 1)
   if (added.length || changed.length || gone.length) {
     s.saving ??= setTimeout(() => saveIndex(s), 10_000)
@@ -278,13 +279,14 @@ async function sorted(s: State, now: Map<string, Stat>, kept?: Set<string>) {
   return { added, changed }
 }
 
-function later(vault: Vault, s: State, unsure: string[]) {
+function later(vault: Vault, s: State, unsure: string[], now: Map<string, Stat>) {
   const wait = s.made + BULK_WAIT - Date.now()
-  if (unsure.length <= LIST_OVER || wait <= 0) return false
-  for (const rel of unsure) s.seen.delete(rel)
+  if (unsure.length <= LIST_OVER || wait <= 0) return null
+  const old = unsure.filter((rel) => now.get(rel)!.mtime < s.made)
+  for (const rel of old) s.seen.delete(rel)
   s.version = -1
   setTimeout(() => followSoon(vault), wait).unref()
-  return true
+  return old
 }
 
 let following: Promise<void> | null = null, again = false
@@ -426,7 +428,7 @@ plugin.route("GET", "history", async (req) => {
     return out.sort((a, b) => b.latest - a.latest)
   }
   const rel = relOf(req.query.path)
-  const head = s.heads.get(rel)
+  const head = s.heads.get(rel) ?? current(s, rel)
   const kept = versions(s, rel).filter((v) => v.t !== head?.mtime)
   const writers = await writersOf(rel, [...kept.map((v) => v.t), ...(head ? [head.mtime] : [])])
   return {
