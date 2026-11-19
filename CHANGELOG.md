@@ -28,6 +28,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   only the shown files' lines are read out, and a page further down reuses the search.
 - Search: accents don't matter, as in Obsidian: "cafe" finds "café" and "café" finds "cafe"; ø, ł and ß match o, l and ss.
   The quick switcher and the search tab's names ignore accents too.
+- File history: catching up on a big vault's files, about 10 s after the server starts, no longer holds every other
+  request for up to a second; it lets them through every few milliseconds.
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: TBD).
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes: the first time 4.5 s to 3.0 s; after, 1.7 s to 1.4 s).
 - Opening a big vault: its files show sooner, the first time and every time after (15,000 notes, the server's start to

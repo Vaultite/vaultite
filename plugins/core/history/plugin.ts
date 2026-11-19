@@ -15,7 +15,7 @@ const HOUR = 3600_000
 /** A file left alone this long before its next change: what it said then is a version, whatever the interval. */
 const PAUSE = 60_000
 const LIST_OVER = 100
-const BULK_WAIT = 10_000, SAVE_EVERY = 1000, SLICE = 20
+const BULK_WAIT = 10_000, SAVE_EVERY = 1000, SLICE = 4
 
 type Stat = { mtime: number; size: number; ns?: string }
 const META = z.object({ mtime: z.number(), size: z.number(), ns: z.string().optional(), path: z.string(), hash: z.string(), last: z.number(), gone: z.boolean().optional() })
