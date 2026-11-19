@@ -435,7 +435,7 @@ await page.keyboard.press("Escape")
 await page.keyboard.press("Escape")
 
 const menu = page.locator('[role="menu"]').filter({ hasText: "Start fresh" })
-const menuRows = ["Show its session", "Quiet", "Pair", "Start fresh", "Stop"]
+const menuRows = ["Show its chat", "Quiet", "Pair", "Start fresh", "Stop"]
 await menuOn()
 await menu.waitFor({ timeout: 2000 })
 let menuText = await menu.innerText()
