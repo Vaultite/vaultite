@@ -20,6 +20,7 @@ export const UpdateStatus = z.object({
   running: Sha.optional(),
   origin: Sha.optional(),
   next: Sha.optional(),
+  held: z.number().optional(),
   blocked: Blocked.optional(),
   ci: z.array(Judged).optional(),
   last: z.object({ from: Sha, to: Sha, at: z.number(), restarted: z.boolean(), elsewhere: z.array(z.string()).optional() }).optional(),

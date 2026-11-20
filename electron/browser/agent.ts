@@ -770,7 +770,7 @@ function failed(name: string, a: unknown[], why: string) {
   } catch {}
 }
 
-handle("agent:busy", (_win, of) => { const why = engineBusy(of === "server" ? "server" : "app"); return { busy: !!why, why } })
+handle("agent:busy", (_win, of) => { const why = engineBusy(of === "server" || of === "gap" ? of : "app"); return { busy: !!why, why } })
 
 serve("agent:tabs", (_win, by) => listOf(BY.parse(by)))
 serve("agent:open", async (win, url, container, by, lines) => {

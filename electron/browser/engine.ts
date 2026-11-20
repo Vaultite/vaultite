@@ -1,6 +1,7 @@
 // The browser engine: each feature adds itself here for every web session and page as they are made.
 import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, UploadData, WebContents, WebRequest, WebRequestFilter } from "electron"
 import { logger, logTo, unlogged, type Logger } from "./enginelog.ts"
+import type { RestartOf } from "./agentbusy.ts"
 export { logger }
 
 export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
@@ -275,13 +276,13 @@ const holders: ((id: number) => boolean)[] = []
 export const holdPage = (fn: (id: number) => boolean) => { holders.push(fn) }
 export const pageHeld = (id: number) => holders.some((fn) => fn(id))
 
-const holds: { fn: (of: "app" | "server") => string | null; appOnly: boolean }[] = []
+const holds: { fn: (of: RestartOf) => string | null; appOnly: boolean }[] = []
 /** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. `appOnly`:
  *  what only the app's restart loses (a pending ask), not its server's (the app attaches again). */
-export const busyWhen = (fn: (of: "app" | "server") => string | null, appOnly = false) => { holds.push({ fn, appOnly }) }
-export function engineBusy(of: "app" | "server" = "app"): string | null {
+export const busyWhen = (fn: (of: RestartOf) => string | null, appOnly = false) => { holds.push({ fn, appOnly }) }
+export function engineBusy(of: RestartOf = "app"): string | null {
   for (const h of holds) {
-    if (of === "server" && h.appOnly) continue
+    if (of !== "app" && h.appOnly) continue
     try { const why = h.fn(of); if (why) return why } catch (e) { log.error("a browser feature couldn't say if it's busy", e) }
   }
   return null

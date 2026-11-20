@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Server: an update no longer waits forever on an agent that keeps browsing (a chat agent polling every few seconds):
+  after 30 minutes it restarts in the next gap between the agent's actions, never mid-call, and `vau version` says how
+  long it has waited.
 - Desktop: a hidden sidebar no longer peeks out while the pointer is mid-page on a pinch-zoomed web page under a
   floating card (the mini player, a toast), and clicks there land where the pointer is.
 - Activity: an action repeated all day (an agent polling a browser tab) updates its one line instead of adding a

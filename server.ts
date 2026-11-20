@@ -687,9 +687,9 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
   const follow = { branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
     // Windows' SIGTERM ends a process at once, its plugins never told; the delay lets vau update's answer go out
     restart: () => setTimeout(() => bye(143), 200),
-    busy: async () => {
+    busy: async ({ gap }: { gap: boolean }) => {
       await ready
-      const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null)
+      const r = await LOADED[0]?.desktop("agent:busy", gap ? "gap" : "server").catch(() => null)
       return isObj(r) && r.busy ? String(r.why || "the browser is busy") : null
     } }
   const store = process.env.VAULTITE_CODE_STORE, checkout = process.env.VAULTITE_SERVICE_CHECKOUT

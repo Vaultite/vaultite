@@ -29,10 +29,11 @@ export type UpdaterOptions = {
   running?: string
   stateFile: string
   /** Why the server shouldn't restart now (an agent at work in the browser), or null: it holds only an update that restarts. */
-  busy: () => Promise<string | null>
+  busy: (o: { gap: boolean }) => Promise<string | null>
   restart: () => void
-  /** How often a built update that restarts asks again whether the browser is quiet (ms). */
+  /** How often a built update that restarts asks again whether the browser is quiet (ms); past longestWait, 4 times as often. */
   quietEvery?: number
+  longestWait?: number
   /** Whether taking these changed files restarts the server (the host's rule; default: it does, not being known). */
   restarts?: (files: string[]) => boolean
   /** Whether CI passed on a commit (default: GitHub Actions, core/update/ci.ts); ok null is not yet. */
@@ -48,7 +49,14 @@ export const errText = (e: unknown) => String((isObj(e) && (e.stderr || e.messag
 
 let status: UpdateStatus = { branch: null, state: "off", why: "not a service install following a branch (vau service install --updates <branch>)", checked: null }
 let looking: Promise<UpdateStatus> | null = null
-export const updateStatus = (): UpdateStatus => ({ ...status, looking: !!looking })
+let heldSince: number | null = null
+export const LONGEST_WAIT = 30 * MINUTE
+const waited = (ms: number) => {
+  const m = Math.floor(ms / MINUTE), h = Math.floor(m / 60)
+  return m < 1 ? "under a minute" : m < 120 ? plural(m, "minute") : h < 48 ? plural(h, "hour") : plural(Math.floor(h / 24), "day")
+}
+const shown = (s: UpdateStatus): UpdateStatus => (s.held ? { ...s, why: `${s.why} (waiting ${waited(Date.now() - s.held)} so far)` } : s)
+export const updateStatus = (): UpdateStatus => ({ ...shown(status), looking: !!looking })
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
 type Commits = { count: number; list: string[] }
@@ -94,6 +102,27 @@ export function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
   return looking ??= lookOnce(o).finally(() => { looking = null }).then(updateStatus)
 }
 
+type Held = { why: string; gap: boolean }
+function restartHold(o: UpdaterOptions) {
+  let holding = false
+  const longest = o.longestWait ?? LONGEST_WAIT, every = o.quietEvery ?? 2000
+  const past = waited(longest)
+  return {
+    holding: () => holding,
+    keep: () => { holding = heldSince !== null },
+    async ask(): Promise<Held | null> {
+      const gap = heldSince !== null && Date.now() - heldSince >= longest, why = await o.busy({ gap })
+      holding = !!why
+      if (why) heldSince ??= Date.now()
+      return why ? { why, gap } : null
+    },
+    waiting: (h: Held) => `busy: ${h.why}; the update restarts the server${h.gap ? `, in the next gap between agents' actions (it has waited its longest, ${past})` : ""}`,
+    built: (next: string, h: Held) => h.gap ? `${short(next)} is built; the server restarts in the next gap between agents' actions, having waited its longest (${past}) for the browser to be quiet (${h.why})`
+      : `${short(next)} is built; the server restarts once the browser is quiet (${h.why})`,
+    pause: (h: Held) => new Promise((r) => setTimeout(r, h.gap ? every / 4 : every)),
+  }
+}
+
 async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
   const git = gitIn(o.root), log = o.log ?? toLog
   let kept = keptIn(o.stateFile)
@@ -102,14 +131,16 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
   const set = (state: UpdateState, why: string, more: { next?: string; blocked?: Blocked; ci?: Judged[]; error?: unknown } = {}) => {
     status = { branch: o.branch, state, why, checked: Date.now(), ...(o.running ? { running: o.running } : {}), ...(origin ? { origin } : {}),
       ...(more.next ? { next: more.next } : {}), ...(more.blocked ? { blocked: more.blocked } : {}), ...(more.ci ? { ci: more.ci } : {}), ...(kept.last ? { last: kept.last } : {}), ...(kept.error ? { error: kept.error } : {}) }
+    if (hold.holding() && heldSince) status.held = heldSince
     note(status, log, more.error)
-    return status
+    return shown(status)
   }
   const fail = (commit: string, message: string, e?: unknown, blocked?: Blocked) => {
     kept.error = { at: Date.now(), commit, message }
     keep()
     return set("failed", message, { next: commit, blocked, error: e ?? message })
   }
+  const hold = restartHold(o)
   try {
     const on = o.bare ? o.branch : await currentBranch(git)
     if (on !== o.branch) return set("waiting", `the checkout is on ${on || "a detached commit"}, not ${o.branch}: it updates once ${o.branch} is checked out again`, { blocked: { by: "branch" } })
@@ -135,16 +166,17 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     const next = target.to
     // (busy holds only a restart: an update of the web app alone goes through while agents browse)
     const files = await changedFiles(git, running, next), restarts = o.restarts?.(files) ?? true
-    const busy = await o.busy()
-    if (busy && restarts) return set("waiting", `busy: ${busy}; the update restarts the server`, { next })
+    const held = restarts ? await hold.ask() : null
+    if (held) return set("waiting", hold.waiting(held), { next })
+    const busy = restarts ? null : await o.busy({ gap: false })
     set("updating", `updating to ${short(next)} (${plural(files.length, "file")})`, { next })
     const applied = await o.apply({ head, running, to: next, files })
     if ("failed" in applied) return fail(next, applied.failed, applied.cause ?? applied.failed)
     const { restart } = applied
     // (an agent may have begun while it built: the restart waits till the browser is quiet again, the build kept)
-    for (let b = restart ? await o.busy() : null; b; b = await o.busy()) {
-      set("updating", `${short(next)} is built; the server restarts once the browser is quiet (${b})`, { next })
-      await new Promise((r) => setTimeout(r, o.quietEvery ?? 2000))
+    for (let b = restart ? await hold.ask() : null; b; b = await hold.ask()) {
+      set("updating", hold.built(next, b), { next })
+      await hold.pause(b)
     }
     const elsewhere = target.ci.elsewhere ?? []
     kept = { last: { from: running, to: next, at: Date.now(), restarted: restart, ...(elsewhere.length ? { elsewhere } : {}) } }
@@ -156,7 +188,10 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     return status
   } catch (e) {
     // (a fetch or GitHub not answering: tried again next time, not an error to keep)
+    hold.keep()
     return set("waiting", `couldn't check: ${errText(e)}`)
+  } finally {
+    if (!hold.holding()) heldSince = null
   }
 }
 

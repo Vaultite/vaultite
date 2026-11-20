@@ -5,7 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { check, exit, section, summary, tempDir } from "./test/lib.ts"
 import type { CiResult } from "../core/update/ci.ts"
-import { checkForUpdate } from "../core/update/updater.ts"
+import { checkForUpdate, updateStatus } from "../core/update/updater.ts"
 import { backendChanged, inPlace, shadow } from "../core/selfupdate.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { giveGraph } from "../core/update/graph.ts"
@@ -95,7 +95,7 @@ await section("a backend update with new dependencies restarts", async () => {
   busy = "an agent acted in a page in the last 10 minutes"
   const held = await look()
   busy = null
-  check("an update that restarts waits while the browser is busy, saying why", held.state === "waiting" && held.why === "busy: an agent acted in a page in the last 10 minutes; the update restarts the server"
+  check("an update that restarts waits while the browser is busy, saying why", held.state === "waiting" && held.why === "busy: an agent acted in a page in the last 10 minutes; the update restarts the server (waiting under a minute so far)"
     && held.next === next && !npmCalls.length && restarts === r0, held)
   // (an agent's call begins while it builds: the restart waits for the browser to be quiet, the build kept)
   let asks = 0
@@ -109,6 +109,37 @@ await section("a backend update with new dependencies restarts", async () => {
   check("installs (the lock changed), then builds", JSON.stringify(npmCalls) === '["install --no-audit --no-fund","run build"]', npmCalls)
   check("restarts for a backend change", restarts === r0 + 1 && u.last?.restarted === true && head() === next, u)
   check("what it did lasts across a restart", JSON.parse(fs.readFileSync(o.stateFile, "utf8")).last?.to === next)
+})
+
+await section("an agent that never stops: the restart takes a gap between actions after the longest wait", async () => {
+  const r0 = restarts
+  const next = commit({ "core/z.ts": "5" }, "feat(server): five")
+  const asked: boolean[] = []
+  o.busy = async ({ gap }) => { asked.push(gap); return "an agent acted in a page in the last minute" }
+  o.longestWait = 60_000
+  const held = await look()
+  check("held while the agent acts, saying for how long", held.state === "waiting" && held.next === next && restarts === r0 && (held.held ?? 0) > 0
+    && held.why === "busy: an agent acted in a page in the last minute; the update restarts the server (waiting under a minute so far)", held)
+  check("…and vau version says it too", updateStatus().why.endsWith("(waiting under a minute so far)") && updateStatus().held === held.held)
+  check("…for as long as the longest wait, the agent's recent action holding it", (await look()).state === "waiting" && !asked.includes(true) && restarts === r0, asked)
+  o.longestWait = 0
+})
+
+await section("…past it, only the user's browsing and a call under way hold it", async () => {
+  const r0 = restarts, next = git(dev, "rev-parse", "HEAD"), before = updateStatus().held
+  let inGap: (string | null)[] = ["the user is watching a tab live"]
+  o.busy = async ({ gap }) => (gap ? inGap.shift() ?? null : "an agent acted in a page in the last minute")
+  const watched = await look()
+  check("past it, the user's own browsing still holds it", watched.state === "waiting" && /the user is watching a tab live; the update restarts the server, in the next gap/.test(watched.why)
+    && restarts === r0 && watched.held === before, watched)
+  inGap = [null, "an agent's call is under way", null]
+  logged.length = 0
+  const u = await look()
+  o.busy = async () => busy
+  delete o.longestWait
+  check("then built, and a call under way isn't cut: it restarts in the gap after it", restarts === r0 + 1 && u.state === "current" && head() === next && inGap.length === 0
+    && logged.some((l) => /is built; the server restarts in the next gap between agents' actions, having waited its longest .*\(an agent's call is under way\)/.test(l.line)), { u, logged })
+  check("…and the wait is over", u.held === undefined && updateStatus().held === undefined && !updateStatus().why.includes("so far"), u)
 })
 
 await section("never half-updated", async () => {

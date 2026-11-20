@@ -10,6 +10,8 @@ await section("agents hold restarts", async () => {
   check("…then let through (it keeps nothing an agent loses)", QUIET_AFTER.server === 60_000 && agentBusy("server", { inFlight: 0, lastStep: now - 60_000, now }) === null)
   check("the app's (its pages reload): held for 10 minutes", agentBusy("app", { inFlight: 0, lastStep: now - 9 * 60_000, now }) === "an agent acted in a page in the last 10 minutes"
     && agentBusy("app", { inFlight: 0, lastStep: now - 10 * 60_000, now }) === null)
+  check("the server's past its longest wait: only a call under way, or an action this second, holds it", agentBusy("gap", { inFlight: 1, lastStep: 0, now }) === "an agent's call is under way"
+    && agentBusy("gap", { inFlight: 0, lastStep: now - 500, now }) !== null && agentBusy("gap", { inFlight: 0, lastStep: now - 1_000, now }) === null)
 })
 
 // ---------- Browser: Google's sign-in sees Firefox (electron/browser/googleagent.ts) ----------
