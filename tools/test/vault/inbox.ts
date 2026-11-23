@@ -25,6 +25,29 @@ async function browserSessionMuted({ api, check }: VaultTest) {
   await api("DELETE", `inbox/events/${open.event.id}`)
 }
 
+async function browserSessionReply({ api, check, CLAUDE_DIR }: VaultTest) {
+  const acct = { id: "org-reply-1", label: "alice@example.com" }, url = "https://claude.ai/code/session_01LighthouseReply"
+  const [, made] = await api("POST", "inbox/events", { source: "claude.ai", kind: "waiting", title: "Claude Code needs you", body: "Which folder?", session: url, account: acct })
+  const id = made.event.id
+  let [st, b] = await api("POST", "ops/inbox.reply", { to: id, text: "The second one" })
+  check("inbox reply: claude.ai's session with no account signed in to it here is a 409 saying to answer it there",
+    st === 409 && /claude\.ai/.test(b.error) && b.error.includes(url) && !/terminal id/.test(b.error), [st, b])
+  ;[st, b] = await api("POST", "ops/inbox.answer", { id, answer: "reply", text: "The second one" })
+  check("inbox answer reply: the same for claude.ai's session", st === 409 && b.error.includes(url) && !/terminal id/.test(b.error), [st, b])
+  const json = path.join(CLAUDE_DIR, ".claude.json")
+  fs.writeFileSync(json, JSON.stringify({ oauthAccount: { organizationUuid: acct.id } }))
+  try {
+    ;[st, b] = await api("POST", "ops/inbox.reply", { to: id, text: "The second one" })
+    check("inbox reply: claude.ai's session goes to Claude Code's cloud session in the account signed in to it",
+      st === 409 && /Claude Code isn't installed here/.test(b.error), [st, b])
+    const [, plan] = await api("POST", "ops/inbox.reply-plan", { to: id })
+    check("inbox reply-plan: claude.ai's session is answered by its host", plan.how === "host", plan)
+  } finally {
+    fs.rmSync(json, { force: true })
+    await api("DELETE", `inbox/events/${id}`)
+  }
+}
+
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, write } = $
   const { vau } = $.vars
@@ -170,6 +193,7 @@ export default async ($: VaultTest) => {
       for (const e of [...mine, ...theirs]) await api("DELETE", `inbox/events/${e.id}`)
     }
     await browserSessionMuted($)
+    await browserSessionReply($)
     {
       // One of a kind (a key): a new one takes the place of its source's event with that key; inbox:drop takes it away.
       await api("POST", "inbox/events", { source: "lessons", kind: "info", title: "3 cards to review", key: "cards-due" })

@@ -59,8 +59,18 @@ export async function worktreeFor(checkout: string, session: string, branch: str
   return real(dir)
 }
 
-export function teleports(plugin: Plugin, o: { accounts: () => Account[]; json: (a: Account) => string; roots: () => Promise<string[]> }) {
+export function teleports(plugin: Plugin, o: { accounts: () => Account[]; json: (a: Account) => string; roots: () => Promise<string[]>; tell: (account: string, session: string, text: string) => Promise<{ submitted: boolean }> }) {
   plugin.route("GET", "claude-code/organizations", () => o.accounts().map((a) => ({ account: a.id, org: orgOf(a, o.json) })).filter((x) => x.org))
+
+  plugin.provide("agent-reply:claude.ai", async (session: string, text: string, account?: { id: string; label: string }) => {
+    const sid = /session_\w{4,80}/.exec(session)?.[0] ?? ""
+    if (!SESSION.test(sid)) throw new OpError(`its session isn't a cloud session's address: answer it on claude.ai (${session})`, 409)
+    const a = account?.id ? o.accounts().find((x) => orgOf(x, o.json) === account.id) : undefined
+    if (!a) throw new OpError(`no Claude Code account on this machine is signed in to ${account?.label ? `${account.label}'s` : "its"} claude.ai account: ` +
+      `answer it on claude.ai (${session}), or sign in to that account with /login in one`, 409)
+    await o.tell(a.id, sid, text)
+    return true
+  })
 
   plugin.op({
     id: "claude-code.teleport", cli: "teleport", owner: "Claude Code on this machine", kind: "write", lock: false,

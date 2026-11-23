@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Inbox: replying to a Claude Code on the web session (vau inbox reply, or answer's reply) sends it to that session through
+  the Claude Code account signed in to its claude.ai account, or says to answer it on claude.ai, rather than a terminal id error.
 - Android: an Android app, like the iPhone's: its first screen lists your servers on the tailnet and opens one's app in
   place, with haptics, the tab list's pictures, Switch server, and files saved to Downloads. Each release has its APK.
 - Companion: the app's chat agents (the companion, its chat tabs) find the programs a terminal does (Homebrew's,

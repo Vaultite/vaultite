@@ -209,6 +209,7 @@ by its path.
 - `agent-models:codex` (codex): The models its picker lists ($CODEX_HOME/models_cache.json) and the efforts they take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices`, or "chat": a digit picks (toggles in a multi-select, then Tab).
 - `agent-reply:claude` (claude-code)
+- `agent-reply:claude.ai` (claude-code)
 - `agent-said:claude` (claude-code): The user's own latest message in a session, not a notice or another session's message.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts: an hour when it wrote 1 h cache, else five minutes.
 - `agent-session-in:claude` (claude-code)

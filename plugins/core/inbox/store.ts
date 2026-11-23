@@ -5,7 +5,7 @@ import { WebSocket } from "ws"
 import { z } from "zod"
 import { HTTPError, logger } from "../../../core/plugins.ts"
 import { archiveTwin, type Item, str, writeAtomic } from "../../../core/vault.ts"
-import { asThreads, BLOCKED, byThread, clip, doneAs, type InboxEvent, pinnedAs, previewOf, readThere, snoozedAs, type State, TERMINAL, unreadThere } from "./model.ts"
+import { asThreads, BLOCKED, byThread, clip, doneAs, type InboxEvent, pinnedAs, previewOf, readThere, sessionAtAddress, snoozedAs, type State, TERMINAL, unreadThere } from "./model.ts"
 import { pushed, refreshWidgets } from "./phone.ts"
 import { DAY, dir, FOLDER, holdNow, MAX, MERGE, plugin, settings } from "./server.ts"
 import { snoozed } from "./snooze.ts"
@@ -107,7 +107,7 @@ export const newId = (now: number) => `${now.toString(36)}-${crypto.randomBytes(
 export function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
   const now = Date.now()
   const es = list().filter((e) => !given.key || !sameKey(e, given.source, given.key))
-  if (given.session && /^https?:/.test(given.session) && (given.kind === "done" || given.kind === "waiting") && !given.gate) {
+  if (sessionAtAddress(given.session) && (given.kind === "done" || given.kind === "waiting") && !given.gate) {
     const was = es.find((e) => !e.gate && e.source === given.source && e.session === given.session && (e.kind === "done" || e.kind === "waiting")) ?? null
     const quiet = given.kind === "done"
     const e: InboxEvent = { ...(was ?? {}), ...given, id: was?.id ?? newId(now), t: now, state: quiet ? "done" : "open", read: quiet, body: given.body ?? was?.body, link: given.link ?? was?.link }

@@ -127,7 +127,9 @@ terminal, or an app on the public MCP asking to run code here.
   started; done or error, a turn ended (`text` its final message, `prompt` the user's last): judged as a hook's. A
   thread's id is its own: `thread` (its event id) names it when the session's id changed (a fork, a resume), and the
   thread follows the new one. Without a terminal its thread is `host: true`: its host answers it, a service
-  `agent-reply:<agent>` `(session, text) => Promise<boolean>` taking replies, `agent-answer:<agent>` `(session, {answer:
+  `agent-reply:<agent>` `(session, text, account?) => Promise<boolean>` taking replies (a browser's session too:
+  `agent-reply:claude.ai` sends one to Claude Code on the web's session, by the Claude Code account signed in to its claude.ai
+  account; else it's answered on claude.ai, a 409 saying so), `agent-answer:<agent>` `(session, {answer:
   "approve" | "deny"} | {picks: Choice[]} | {chat: true}) => Promise<boolean>` Approve, Deny, picks and Chat about this (true: it took it), and
   `agent-chat-new:<agent>` `({prompt, account?, by?}) => Promise<{id} | null>` starting a new session where a reply
   would start a terminal (its cache gone) or a voice note is dispatched. A permission it asks can't be snoozed.

@@ -741,7 +741,7 @@ const chat = chats(plugin, {
 })
 plugin.exports.chat = chat.api
 
-cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" ? null : findBin("claude")), trust: (a, dir) => trustClaudeProject(accountJson(a), dir),
+const cloud = cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" ? null : findBin("claude")), trust: (a, dir) => trustClaudeProject(accountJson(a), dir),
   envOf: (a) => {
     const env: NodeJS.ProcessEnv = { ...process.env }
     if (a.dir === path.join(HOME, ".claude")) delete env.CLAUDE_CONFIG_DIR
@@ -749,7 +749,7 @@ cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" 
     return env
   } })
 
-teleports(plugin, { accounts, json: accountJson, roots: async () => {
+teleports(plugin, { accounts, json: accountJson, tell: cloud.tell, roots: async () => {
   const u = await summary(30, accounts())
   return sortBy(u.projects.filter((p) => typeof p.root === "string" && p.root), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
 } })

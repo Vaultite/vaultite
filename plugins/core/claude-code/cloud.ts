@@ -129,6 +129,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
   plugin.provide("cloud-start:claude", start)
   plugin.provide("cloud-tell:claude", tell)
   plugin.provide("cloud-read:claude", read)
+  return { tell }
 }
 
 const sh = (s: string) => `'${s.replace(/'/g, "'\\''")}'`

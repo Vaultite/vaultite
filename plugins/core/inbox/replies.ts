@@ -3,14 +3,14 @@ import { agentIn, type Choice, choiceOf, newTerminalId, parseTerminal, type Ques
 import { defineOp, localDate, localTime, type Machine, MACHINE_CLIENT, NOT_THE_USER, type OpCtx, OpError, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { hand, keepHanded } from "./handed.ts"
-import { clip, type InboxEvent } from "./model.ts"
+import { clip, type InboxEvent, sessionAtAddress } from "./model.ts"
 import { REPLY_BLOCK } from "./reports.ts"
 import { editBody, resultAt } from "./results.ts"
 import { agentOfTerminal, plugin, selfMachine } from "./server.ts"
 import { fileOf, list, moveOn, resolve } from "./store.ts"
 import { Captured, Event, Events, type Live, Passed, Saved, Sessions } from "./wire.ts"
 
-type AgentReply = (session: string, text: string) => Promise<boolean>
+type AgentReply = (session: string, text: string, account?: InboxEvent["account"]) => Promise<boolean>
 
 /** Never a shell at its prompt, which would run the line: a report names its terminal, and anyone who writes the vault
  *  can write a report. */
@@ -94,6 +94,7 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   const line = text.trim().replace(/\s*\n\s*/g, " ")
   if (!line) throw new OpError("`text`: the reply")
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
+  if (!e.terminal && sessionAtAddress(e.session)) return replyAtAddress(e, line)
   const { sessions } = Sessions.parse(await ctx.api("GET", "terminals/sessions"))
   const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
   const one = e.questions?.length === 1 && !e.questions[0].multi ? e.questions[0] : null
@@ -123,6 +124,13 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
     `Its last answer:\n\n${clip(e.body, 3000) || "(not kept)"}\n\nThe user's reply:) ${line}`)
   moveOn(list().filter((x) => x.id === e.id), "working", started ?? { terminal: plan.to })
   return { how: plan.how, terminal: started ? started.terminal ?? null : plan.to }
+}
+
+async function replyAtAddress(e: InboxEvent, line: string) {
+  const host: AgentReply | null = plugin.service(`agent-reply:${e.source}`)
+  if (!host || !(await host(e.session!, line, e.account))) throw new OpError(`it's a session on ${e.source}, answered there: ${e.session}`, 409)
+  moveOn(list().filter((x) => x.id === e.id), "working")
+  return { how: "host", terminal: null }
 }
 
 export async function startNew(ctx: OpCtx, agent: string, plan: Plan, prompt: string): Promise<Pick<InboxEvent, "terminal" | "session" | "host">> {
@@ -206,6 +214,7 @@ const replyPlanOp = defineOp({
     if (EVENT_ID.test(to)) {
       const e = await eventFor(ctx, to)
       if (e.machine) return Planned.parse(await onOwner(ctx, e, "inbox.reply-plan", { to: splitMachine(e.id)[0] }))
+      if (!e.terminal && sessionAtAddress(e.session)) return { how: plugin.service(`agent-reply:${e.source}`) ? "host" : null, ago: null, ttl: null }
       plan = await replyPlan(sessionOfRow(e), typable(sessions))
     } else {
       const r = resultAt(to)
@@ -218,7 +227,8 @@ const replyPlanOp = defineOp({
   },
   text: (r) => r.how === "type" ? "Typed into its terminal, still running." : r.how === "resume" ? "Its session resumed" +
     (r.ago !== null && r.ttl ? ` (its context is cached for ${Math.max(0, Math.round((r.ttl - r.ago) / 60))} min more).` : ".")
-    : r.how === "new" ? "A new session, told what it's about (its old context is no longer cached)." : "Nowhere: it names no session.",
+    : r.how === "new" ? "A new session, told what it's about (its old context is no longer cached)."
+    : r.how === "host" ? "Sent to its session where it runs (claude.ai's, for Claude Code on the web)." : "Nowhere: it names no session.",
 })
 
 const replyOp = defineOp({

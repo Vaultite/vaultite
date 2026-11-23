@@ -82,10 +82,12 @@ export function byThread(es: InboxEvent[]): InboxEvent[] {
   return out
 }
 
+export const sessionAtAddress = (session?: string) => /^https?:/.test(session ?? "")
+
 export function asThreads(es: (Omit<InboxEvent, "state"> & { state?: State })[]): InboxEvent[] {
   return es.map((e): InboxEvent => {
     if (e.state && STATES.includes(e.state)) return { ...e, state: e.state }
-    const session = !e.gate && (e.kind === "waiting" || e.kind === "done") && !!(e.terminal || e.session) && !/^https?:/.test(e.session ?? "")
+    const session = !e.gate && (e.kind === "waiting" || e.kind === "done") && !!(e.terminal || e.session) && !sessionAtAddress(e.session)
     const open = e.gate ? !e.answer : !!e.snoozed || (!e.read && !(session && e.kind === "done"))
     const { kept, ...rest } = e
     return { ...rest, kind: session ? "session" : e.kind, state: open ? "open" : "done", ...(open && kept ? { kept } : {}) }
