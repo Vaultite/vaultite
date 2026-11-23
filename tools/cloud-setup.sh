@@ -3,7 +3,7 @@
 # .claude/settings.json's SessionStart hook; outside the cloud it does nothing.
 [ "$CLAUDE_CODE_REMOTE" = true ] || exit 0
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || exit 1
-# (the repo's hooks, as npm's prepare sets them outside the cloud)
+# (the repo's hooks, as npm's prepare sets them outside the cloud; pre-push sends a push to main to tools/land.sh)
 git config core.hooksPath .githooks
 major=$(sed -n 's/.*node-version: *\([0-9]*\).*/\1/p' .github/workflows/ci.yml | head -1)
 dir=/opt/node${major:-26}

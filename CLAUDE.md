@@ -64,7 +64,7 @@ is its point.
   says so) is tried there before it lands: commit, then `npm run verify -- --try` (it starts HEAD's try on the three
   OSes, each on an idle machine of the Machines with it, else GitHub's runners: about 6 min, 11 with Windows' vau and
   installer checks, always GitHub's; it waits within 8.5 min in all). Exit 3 is "still
-  running": `node tools/try.ts --wait` again until it says PASSED or FAILED. pre-push refuses one untried;
+  running": `node tools/try.ts --wait` again until it says PASSED or FAILED. main's gate (pre-push, `tools/land.sh`) refuses one untried;
   `VAULTITE_TRY=skip` only while GitHub's runners are down.
 - A command that fits in the shell tool's 10-minute limit runs in the foreground with its timeout set (`npm run verify`
   does: a few minutes). One that can't is started detached, then waited on with the bounded wait its tool offers, run
@@ -77,7 +77,9 @@ is its point.
   command is the check: don't watch CI, as a queued run is dropped when newer pushes arrive and may never finish.
   `vau update` there looks now instead of at its next 3-minute look.
 - A cloud session (Claude Code on the web, a cloud job) sets itself up at its start: `tools/cloud-setup.sh`
-  (`.claude/settings.json`'s hook) installs CI's Node and rsync, runs `npm ci` and points QA at the VM's Chrome.
+  (`.claude/settings.json`'s hook) installs CI's Node and rsync, runs `npm ci` and points QA at the VM's Chrome. It
+  lands with `tools/land.sh`, never a push to main (pre-push refuses one): its commits are signed by Anthropic's key,
+  which GitHub can't verify as the user's, so GitHub squash-merges a PR and signs that commit (Verified, the user's).
 - Try a branch in the desktop app: `npm run app:dev` in its worktree (Vaultite Dev beside Main, its windows behind until
   you switch to it; it follows the worktree's changes). An agent: `npm run app:dev -- --headless` (quiet, its pid,
   debug port and server printed), then `npm run app:dev -- --stop`.
@@ -98,7 +100,8 @@ is its point.
 - Work in a git worktree, never the main checkout: several sessions run at once (check `git worktree list` first).
   `git worktree add ../vaultite-<task> -b <task>`, symlink `node_modules` (a real `npm install` in the worktree once you
   add a package, never into the checkout's), commit after each working step. Land from the worktree, never by merging
-  in a checkout: rebase onto `origin/main`, squash to one commit, `git push origin HEAD:main`; then `git pull --ff-only`
+  in a checkout: rebase onto `origin/main`, squash to one commit, `git push origin HEAD:main` (a cloud session:
+  `tools/land.sh`, the same gate then its PR's squash merge, printing `Merged: <sha>`); then `git pull --ff-only`
   a checkout that isn't a live server's, check it's live, remove the worktree and its branch. Park work in commits:
   `git stash` is shared by every worktree.
 - A live server's checkout is its updater's alone, even on that machine: never edit, commit, pull or cherry-pick
@@ -119,14 +122,15 @@ error names what to use instead, and a line here last, only for judgment calls. 
 | Rule | Enforced by |
 | --- | --- |
 | Code patterns: no `as` casts, `any`, `console.*` in shipped code, JSON typed by hand, sleeps in `web/qa`, `title=` tooltips, git without `gitEnv()`, lint disables without a reason, comments over 2 lines or more of them; new files over 300 lines, functions over 50 or complexity 15; anti-slop | the lint ratchet: `.oxlintrc.json`, `tools/ratchet.ts` fails a change that adds more than its files had; in `npm run check` and CI |
-| Strict, erasable TypeScript | `tsc -b` (`strict`, `erasableSyntaxOnly`), in pre-push and the build |
+| Strict, erasable TypeScript | `tsc -b` (`strict`, `erasableSyntaxOnly`), in main's gate and the build |
 | Every TypeScript file in a tsconfig project | `npm run check` |
 | The core never imports a plugin; the app imports only `dependencies` | `npm run check` |
 | npm: no install scripts unless reviewed, week-old versions, registry only, hashes | `.npmrc`, `npm run check` |
 | Code loaded by a computed path is declared in `core/update/sites.ts` | `tools/test_closure.ts` |
 | Ops, blocks, manifests, bundles, skills follow their rules | `npm run check` |
 | Commit subjects: conventional, at most 72 chars | `.githooks/commit-msg` |
-| Main passes tsc and check; an OS-sensitive change was tried on 3 OSes | `.githooks/pre-push` |
-| The desktop main process's launch budget | `.githooks/pre-push` (`tools/perf/startup.ts --main`) |
+| Main passes tsc and check; an OS-sensitive change was tried on 3 OSes | `tools/maingate.sh`, in `.githooks/pre-push` and `tools/land.sh` |
+| The desktop main process's launch budget | `tools/maingate.sh` (`tools/perf/startup.ts --main`) |
+| A cloud session lands by a PR GitHub squash-merges, never a push to main | `.githooks/pre-push` |
 | No vault icon but the stone | `tools/test/web/vault-icon.ts`, `tools/menu_icons.ts` |
 | Comments say only what code can't; no shims; secrets only in `data/config.json`; agents never take focus; UI text sentence case; work in a worktree | judgment: nothing fails |

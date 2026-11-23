@@ -6,13 +6,14 @@ name: Transfer
 on:
   push:
     branches: [main]
-  pull_request:
+  pull_request: # (outside contributors' only, as ci.yml's)
 # (as ci.yml's: a pull request's newer push cancels its older run, main's finish)
 concurrency:
   group: transfer-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   transfer:
+    if: github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:

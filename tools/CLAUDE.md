@@ -20,7 +20,7 @@
   test job in a fresh worktree (`~/.vaultite-try`), its runner apart, one at a time, only with 5 GB free (the user's app
   runs there too: `VAULTITE_TRY_FREE_GB`), else on GitHub's runners. Not what a machine can't run as CI does: surfaces
   (a clean image), Swift on macOS (CI's older Xcode), a change to CI. Off: `VAULTITE_TRY_MACHINES=off`.
-- The desktop main process's launch budget (`tools/perf/startup.ts --main`, from the sources) runs in pre-push: over
+- The desktop main process's launch budget (`tools/perf/startup.ts --main`, from the sources) runs in main's gate (`tools/maingate.sh`, before any push to main or landing): over
   it, import the new code lazily; raise its limit in `startup.json` (in the same commit) only for growth you meant.
 - A QA script's sandbox is a copy of a template (`tools/qa_template.ts`: the sample, Vaultite's own plugins installed
   and allowed, the made-up repositories), made once in `sharedTmp()` under a hash of what makes it (the app's code, the

@@ -1,17 +1,10 @@
 #!/bin/sh
-# A push to main runs what CI fails on fastest: the types, `npm run check` (CLAUDE.md's rules) and the desktop main
-# process's launch budget (tools/perf/startup.ts, no build), a few seconds; and an OS-sensitive change (tools/osrisk.ts)
-# must have passed a try run (tools/try.ts). Meanwhile it asks whether main's CI is red and says so, never blocking
-# (tools/mainci.ts). Skip with `git push --no-verify` only to land a fix for main itself; only the try, VAULTITE_TRY=skip.
+# A push to main passes main's gate (tools/maingate.sh). A cloud session doesn't push to main: it lands by a PR GitHub
+# squash-merges (tools/land.sh). Skip with `git push --no-verify` only to land a fix for main itself.
 while read -r _ sha ref old; do [ "$ref" = refs/heads/main ] && main=1 && to=$sha && from=$old; done
-[ -n "$main" ] && [ -d node_modules ] || exit 0
-said=$(mktemp) || exit 1
-node tools/mainci.ts --notice >"$said" 2>/dev/null &
-# (tries nobody came back to are ended apart, never waited for here)
-( node tools/try.ts --sweep >/dev/null 2>&1 & )
-notice() { wait; cat "$said" >&2; rm -f "$said"; }
-fail() { [ -n "$1" ] && echo "$1" >&2; notice; exit 1; }
-npx tsc -b && npm run -s check >/dev/null || fail "pre-push: main must pass tsc and npm run check (see above)"
-out=$(node tools/perf/startup.ts --main) || { echo "$out" | grep FAIL >&2; fail "pre-push: the desktop main process is over its launch budget (tools/perf/startup.json): import it lazily, or raise the limit in the same commit"; }
-[ "$VAULTITE_TRY" = skip ] || node tools/try.ts --check "$from" "$to" || fail
-notice
+[ -n "$main" ] || exit 0
+if [ "$CLAUDE_CODE_REMOTE" = true ]; then
+  echo "pre-push: a cloud session lands by PR, not a push to main: tools/land.sh (CLAUDE.md, Working here)" >&2
+  exit 1
+fi
+exec sh tools/maingate.sh "$from" "$to"

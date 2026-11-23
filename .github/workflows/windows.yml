@@ -5,7 +5,7 @@ name: Windows
 on:
   push:
     branches: [main, "try/*-surfaces"]
-  pull_request:
+  pull_request: # (outside contributors' only, by each job's if, as ci.yml's)
   workflow_dispatch:
 # As ci.yml: only a pull request's (or try's) older run is cancelled, so main's Windows runs finish rather than each next push
 # cancelling the last (a 13-minute run under a busy main was rarely finished).
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/try/') }}
 jobs:
   arm64:
-    if: ${{ !startsWith(github.ref, 'refs/heads/try/') }}
+    if: ${{ !startsWith(github.ref, 'refs/heads/try/') && github.event.pull_request.head.repo.full_name != github.repository }}
     runs-on: windows-11-arm
     timeout-minutes: 60
     defaults:
@@ -42,6 +42,7 @@ jobs:
       - if: ${{ !cancelled() }}
         run: npm run smoke
   surfaces:
+    if: github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-2025
     # (a try's, tools/try.ts SURFACES_JOB_MIN)
     timeout-minutes: ${{ startsWith(github.ref, 'refs/heads/try/') && 20 || 60 }}
