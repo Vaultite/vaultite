@@ -2,7 +2,7 @@
 // network: the host's path end to end is test_selfupdate. In npm test.
 import { check, exit, section, summary } from "./test/lib.ts"
 import type { CiJob, CiResult, CiRun } from "../core/update/ci.ts"
-import { CI_CALLS_PER_HOUR, CI_CALLS_SIGNED_IN, CI_WORKFLOW, LOGIN_RECHECK, callBudget, redRecheck, ciCallsPerHour, ciOf, githubCi, githubClient, githubRepo, osGate, type RunGh } from "../core/update/ci.ts"
+import { CI_CALLS_PER_HOUR, CI_CALLS_SIGNED_IN, CI_WORKFLOW, LOGIN_RECHECK, SIGNED_IN, callBudget, redRecheck, ciCallsPerHour, ciOf, githubCi, githubClient, githubRepo, osGate, type RunGh } from "../core/update/ci.ts"
 import { capped, pickTarget, redRoute } from "../core/update/git.ts"
 import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
@@ -176,6 +176,7 @@ await section("ci.ts: whether gh is signed in is gh's to say, never an API error
   const fail = (o: object) => Object.assign(new Error("Command failed: gh"), o)
   const NOT_FOUND = fail({ code: 1, stderr: "gh: Not Found (HTTP 404)\n" }), TIMED_OUT = fail({ code: null, killed: true, signal: "SIGTERM", stderr: "" })
   const SIGNED_OUT = fail({ code: 1, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" }), NO_GH = fail({ code: "ENOENT", stderr: "" })
+  const asksLogin = (args: string[]) => args.join(" ") === SIGNED_IN.join(" ")
   const make = (answer: (args: string[]) => unknown) => {
     let clock = 0, fetched = 0
     const gh: RunGh = async (args) => { const a = answer(args); if (a instanceof Error) throw a; return { stdout: JSON.stringify(a) } }
@@ -184,22 +185,25 @@ await section("ci.ts: whether gh is signed in is gh's to say, never an API error
     return { c, tick: (ms: number) => { clock += ms }, fetched: () => fetched, clock: () => clock }
   }
   for (const [name, err, why] of [["answers 404", NOT_FOUND, /answered 404/], ["times out", TIMED_OUT, /no answer in 30 s/]] as const) {
-    const t = make((args) => args[0] === "auth" ? "" : err)
+    const t = make((args) => asksLogin(args) ? "" : err)
     const got = await t.c.api("repos/Alice/lighthouse/actions/runs?head_sha=abc")
     check(`a signed-in gh that ${name}: says so, still signed in, not asked again anonymously`,
       typeof got === "string" && why.test(got) && t.c.signedIn() === true && t.fetched() === 0 && ciCallsPerHour(t.c.signedIn()) === CI_CALLS_SIGNED_IN, [got, t.c.signedIn()])
   }
   {
-    const t = make((args) => args[0] === "auth" ? SIGNED_OUT : {})
+    const t = make((args) => asksLogin(args) ? SIGNED_OUT : {})
     await t.c.api("x")
     check("a gh that says it isn't signed in: anonymously", t.c.signedIn() === false && t.fetched() === 1)
+    const proxied = make((args) => args[0] === "auth" ? fail({ code: 1, stderr: "The token in GH_TOKEN is invalid.\n" }) : asksLogin(args) ? "alice" : { ok: 1 })
+    await proxied.c.api("x")
+    check("a gh whose token a proxy holds (auth status fails there, its calls work): signed in, by asking the API", proxied.c.signedIn() === true && proxied.fetched() === 0)
     const n = make(() => NO_GH)
     await n.c.api("x")
     check("no gh at all: anonymously", n.c.signedIn() === false && n.fetched() === 1)
   }
   {
     let revoked = false
-    const t = make((args) => args[0] === "auth" ? "" : revoked ? fail({ code: 1, stderr: "gh: Bad credentials (HTTP 401)" }) : { ok: 1 })
+    const t = make((args) => asksLogin(args) ? "" : revoked ? fail({ code: 1, stderr: "gh: Bad credentials (HTTP 401)" }) : { ok: 1 })
     await t.c.api("x")
     revoked = true
     await t.c.api("x")
@@ -208,7 +212,7 @@ await section("ci.ts: whether gh is signed in is gh's to say, never an API error
   // The stall of 2026-11-11: an hour's budget used anonymously, then signed in; a refused call must not keep it at 20.
   {
     let signedIn = false, calls = 0
-    const t = make((args) => args[0] === "auth" ? (signedIn ? "" : SIGNED_OUT) : (calls++, NOT_FOUND))
+    const t = make((args) => asksLogin(args) ? (signedIn ? "" : SIGNED_OUT) : (calls++, NOT_FOUND))
     const ci = githubCi("main", (api) => t.c.api(api), { budget: callBudget(() => ciCallsPerHour(t.c.signedIn()), t.clock), now: t.clock, gate: null, login: t.c.login })
     for (let i = 0; i < CI_CALLS_PER_HOUR + 5; i++) { t.tick(LIST_GONE); await ci("Alice/lighthouse", `a${i}`) }
     check("signed out: the budget holds it at the anonymous calls", t.fetched() === CI_CALLS_PER_HOUR, t.fetched())

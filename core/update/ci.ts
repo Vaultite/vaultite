@@ -43,6 +43,7 @@ function ghWhy(e: unknown, timeout: number): string {
 }
 
 export const LOGIN_RECHECK = 10 * 60_000
+export const SIGNED_IN = ["api", "user", "--jq", ".login"]
 
 export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => number } = {}) {
   const gh = o.gh ?? runGh, get = o.fetch ?? fetch, now = o.now ?? Date.now
@@ -51,7 +52,7 @@ export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => 
   const set = (signedIn: boolean | null) => { state = { signedIn, at: now() }; return signedIn }
   const login = (): Promise<boolean | null> => {
     if (state.signedIn === true || now() - state.at < LOGIN_RECHECK) return Promise.resolve(state.signedIn)
-    return asking ??= gh(["auth", "status", "--hostname", "github.com"], 15_000)
+    return asking ??= gh(SIGNED_IN, 15_000)
       .then(() => set(true), (e) => set(ghUnusable(e) || typeof (e as { code?: unknown })?.code === "number" ? false : state.signedIn))
       .finally(() => { asking = null })
   }
