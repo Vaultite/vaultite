@@ -3,15 +3,13 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import net from "node:net"
 import type { Duplex } from "node:stream"
 import { z } from "zod"
-import { CONNECT_HEADER } from "../../../core/plugins.ts"
+import { CONNECT_HEADER, ownerPathRefusal } from "../../../core/plugins.ts"
 
 export const SIGNED_HEADER = "x-vaultite-cloud"
 const ConnectClaims = z.looseObject({ handle: z.string(), role: z.string(), exp: z.number() })
 export type ConnectClaims = z.infer<typeof ConnectClaims>
 
 export const MCP_PATHS = /^\/(mcp|register|token|authorize(\/status)?|\.well-known\/oauth-[a-z-]+(\/mcp)?|upload\/.*|icon\.svg|icon\.png|favicon\.ico)\/?$/
-const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|ui|file\/open|vaultite-cloud\/export|web-viewer\/(tabs|live))(\/|$)/
-const OWNER_OPS = /^(plugin|bundle|terminal|dispatch|screens|herdr|schedule|machines|vault-plugin|vaultite-cloud|settings)\.|^ui\.command$/
 const MARK = crypto.randomBytes(24).toString("base64url")
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate", "host", "forwarded", "x-real-ip"])
 const OURS = /^(x-vaultite-|tailscale-|x-forwarded-|cf-)/
@@ -29,12 +27,6 @@ export function verifyConnect(key: string | null, token: unknown, handle: string
   } catch { return null }
 }
 
-export function ownerOnly(pathname: string): string {
-  const parts = pathname.split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x) } catch { return x } })
-  if (OWNER_PATHS.test(`/${parts.join("/")}`)) return "this only answers on this Mac (turn on owner tools over Connect in Connections)"
-  if (parts[0] === "api" && parts[1] === "ops" && OWNER_OPS.test(parts[2] ?? "")) return "this only runs on this Mac (turn on owner tools over Connect in Connections)"
-  return ""
-}
 
 export function viaConnect(req: IncomingMessage) {
   const v = req.headers[CONNECT_HEADER]
@@ -59,7 +51,7 @@ function refused(req: IncomingMessage, o: ConnectOptions, pathname: string, sock
     try { host = new URL(String(origin)).host.toLowerCase() } catch {}
     if (!host || host !== o.publicHost()) return [403, "the page asking isn't this vault's"]
   }
-  const why = o.ownerTools() ? "" : ownerOnly(pathname)
+  const why = o.ownerTools() ? "" : ownerPathRefusal(pathname)
   return why ? [403, why] : null
 }
 

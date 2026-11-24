@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/agenttabs-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const vault = (await (await fetch(new URL("/api/vault", B))).json()).path
@@ -28,8 +29,8 @@ const shell = { id: `${id}5`, agent: null, process: "zsh", busy: false, clients:
 const LIST = JSON.stringify({ t: "sessions", list: [working, blocked, unseen, seen, failed, shell] })
 let sock = null
 async function standIn(page) {
-  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { sock = ws; ws.send(LIST) })
-  await page.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
+  await routeSocket(page, /\/api\/terminals(\?.*)?$/, (ws) => { sock = ws; ws.send(LIST) })
+  await routeSocket(page, /\/api\/terminal\/[^/?]+/, (ws) => {
     ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
     ws.send(JSON.stringify({ t: "size", cols: 80, rows: 24 }))
   })

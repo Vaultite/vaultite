@@ -1,6 +1,6 @@
 import type { RawData, WebSocket } from "ws"
 import { z } from "zod"
-import { type Machine, machineSocket, type Plugin } from "../../../core/plugins.ts"
+import { type Machine, machineSocket, type Plugin, type ServedSocket } from "../../../core/plugins.ts"
 import { type Message, messageFrom } from "./rooms.ts"
 
 export type Host = { m: Machine; folders: string[] }
@@ -9,11 +9,11 @@ type Up = { ws: WebSocket; early: string[] }
 
 const REFRESH_MS = 30_000, DOWN_MS = 15_000
 
-export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Message, path: string) => void,
+export function bridges(plugin: Plugin, local: (ws: ServedSocket, m: Message, path: string) => void,
   opts: { hosts?: () => Promise<Host[]>; connect?: (m: Machine) => WebSocket; downMs?: number } = {}) {
   let hosts: Host[] = [], asked = 0
   const down = new Map<string, number>()
-  const wins = new Map<WebSocket, Win>()
+  const wins = new Map<ServedSocket, Win>()
   const connect = opts.connect ?? ((m: Machine) => machineSocket(m, "companion/live", { rooms: "1" }, { handshakeTimeout: 8000 }))
 
   function hostFor(path: string) {
@@ -23,14 +23,14 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Message, path:
     return hosts.find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some(inside)) ?? null
   }
 
-  const json = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
-  function toUp(w: Win, ws: WebSocket, h: Host, m: Message) {
+  const json = (ws: ServedSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
+  function toUp(w: Win, ws: ServedSocket, h: Host, m: Message) {
     const up = w.ups.get(h.m.id) ?? open(w, ws, h), text = JSON.stringify(m)
     if (up.ws.readyState === up.ws.OPEN) up.ws.send(text)
     else up.early.push(text)
   }
 
-  function open(w: Win, ws: WebSocket, h: Host): Up {
+  function open(w: Win, ws: ServedSocket, h: Host): Up {
     const id = h.m.id, up: Up = { ws: connect(h.m), early: [] }
     w.ups.set(id, up)
     up.ws.on("open", () => { for (const t of up.early.splice(0)) up.ws.send(t) })
@@ -88,13 +88,13 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Message, path:
   timer?.unref()
 
   return {
-    add(ws: WebSocket) {
+    add(ws: ServedSocket) {
       const w: Win = { open: new Set(), routed: new Map(), ups: new Map() }
       wins.set(ws, w)
       ws.on("close", () => { wins.delete(ws); const ups = [...w.ups.values()]; w.ups.clear(); ups.forEach(end) })
     },
 
-    heard(ws: WebSocket, m: Message, path: string) {
+    heard(ws: ServedSocket, m: Message, path: string) {
       const w = wins.get(ws)
       if (!w) return false
       if (m.t === "y-open") {

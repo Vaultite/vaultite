@@ -5,6 +5,7 @@ import { notify } from "@/core/notify"
 import { forgetUntoldLoss, lostServer, reachedServer, setServerCheck } from "@/core/connection"
 import { share } from "@/core/share"
 import { askerOf } from "@/core/askers"
+import { openSocket, type Socket } from "@/core/sockets"
 import { liveMessageOf, uiActionOf, type UiAction, type UiDone, type UiDoneMessage } from "@/core/liveMessage"
 import { isNumber, isObj, isText } from "../../../core/values.ts"
 
@@ -12,7 +13,7 @@ export type Paths = string[] | null
 type Fn = (paths: Paths) => void
 
 const subs = new Set<Fn>()
-const PING = 25_000, POLL = 10_000, HEARD = 5_000
+const POLL = 10_000, HEARD = 5_000
 
 export function onVaultChange(fn: Fn) {
   subs.add(fn)
@@ -105,7 +106,7 @@ let windowState: () => Record<string, unknown> = () => ({})
 export const setWindowState = (fn: () => Record<string, unknown>) => { windowState = fn }
 export const sayWindowState = () => { if (document.hasFocus()) { said = 0; sayActive() } }
 
-let ws: WebSocket | null = null
+let ws: Socket | null = null
 let seen: string | null = null
 let heard: string | null = null
 let lastHeard = 0
@@ -119,11 +120,10 @@ const startPoll = () => { poll ??= setInterval(() => document.visibilityState ==
 function connect() {
   if (retry) { clearTimeout(retry); retry = null }
   if (ws) return
-  const url = new URL("api/events", location.href)
-  if (heard) url.searchParams.set("at", heard)
-  if (DEVICE) url.searchParams.set("device", DEVICE)
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-  const s = new WebSocket(url)
+  const q = new URLSearchParams()
+  if (heard) q.set("at", heard)
+  if (DEVICE) q.set("device", DEVICE)
+  const qs = q.toString(), s = openSocket(qs ? `events?${qs}` : "events")
   ws = s
   lastHeard = Date.now()
   s.onmessage = (e) => {
@@ -203,12 +203,6 @@ function reconnect() {
   connect()
 }
 
-// A phone waking up keeps a dead WebSocket "open".
-function revive() {
-  if (ws && Date.now() - lastHeard < PING + 10_000) return
-  reconnect()
-}
-
 function recheck() {
   if (ws?.readyState === WebSocket.CONNECTING || (ws?.readyState === WebSocket.OPEN && Date.now() - lastHeard < HEARD)) return
   reconnect()
@@ -222,15 +216,12 @@ export function startLive(from?: { at?: unknown; kept?: unknown; state?: unknown
   setServerCheck(recheck)
   connect()
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") { if (!ws || ws.readyState !== WebSocket.OPEN) lostServer(); release(); revive() }
+    if (document.visibilityState === "visible") { if (!ws || ws.readyState !== WebSocket.OPEN) lostServer(); release() }
     else forgetUntoldLoss()
   })
-  addEventListener("online", revive)
   addEventListener("offline", recheck)
-  addEventListener("pageshow", revive)
   addEventListener("focus", sayActive)
   addEventListener("pointerdown", sayActive, { capture: true, passive: true })
-  setInterval(() => document.visibilityState === "visible" && revive(), PING)
 }
 
 let writing = 0

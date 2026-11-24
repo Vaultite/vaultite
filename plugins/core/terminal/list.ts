@@ -2,7 +2,7 @@ import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type Awaits, repoName } from "../../../core/agents.ts"
-import { machineSocket, processTable, span } from "../../../core/plugins.ts"
+import { machineSocket, processTable, span, type ServedSocket } from "../../../core/plugins.ts"
 import type { Listed as Shell } from "./backend.ts"
 import { progName } from "./shells.ts"
 import type { Kind, SessionState } from "./osc7501.ts"
@@ -67,8 +67,8 @@ function stateOf(now: Now, since: number) {
   return s
 }
 
-const watchers = new Map<WebSocket, boolean>()
-const sent = new WeakMap<WebSocket, string>()
+const watchers = new Map<ServedSocket, boolean>()
+const sent = new WeakMap<ServedSocket, string>()
 let listTimer: ReturnType<typeof setTimeout> | null = null
 let poll: ReturnType<typeof setInterval> | null = null
 let follow: ReturnType<typeof setInterval> | null = null
@@ -235,7 +235,7 @@ async function sendOnce() {
   }
 }
 const sessionsText = async (local: boolean) => JSON.stringify({ t: "sessions", list: (await list(local)).map(({ activity: _, ...x }) => x) })
-const send = (ws: WebSocket, text: string) => { if (ws.readyState === ws.OPEN && sent.get(ws) !== text) { sent.set(ws, text); ws.send(text) } }
+const send = (ws: ServedSocket, text: string) => { if (ws.readyState === ws.OPEN && sent.get(ws) !== text) { sent.set(ws, text); ws.send(text) } }
 
 export function listChanged() {
   lastLocal = null

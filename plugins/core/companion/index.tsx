@@ -1,6 +1,6 @@
 import { lazy, useEffect, useSyncExternalStore } from "react"
 import { Crosshair, Play, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, Undo2 } from "lucide-react"
-import { answerPlaceAt, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, share, useAgentChoices, useFocusedFile, type MenuItem } from "@vaultite"
+import { answerPlaceAt, cn, openSocket, currentEditor, definePlugin, menuAbove, notify, notifyError, op, share, useAgentChoices, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
@@ -102,7 +102,7 @@ function useOffer() {
 }
 
 function Background() {
-  useEffect(() => connect(), [])
+  useEffect(() => connect(openSocket), [])
   useEffect(() => watchCanvases(), [])
   useEffect(() => (share ? undefined : watchPanes()), [])
   useOffer()

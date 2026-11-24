@@ -247,8 +247,8 @@ export default async ($: VaultTest) => {
     }
     {
       // Connect (plugins/core/mcp/connect.ts): Vaultite Cloud's signed header for the handle's owner.
-      const { MCP_PATHS, ownerOnly, verifyConnect } = await import("../../../plugins/core/mcp/connect.ts")
-      const { refusal: ownerRefusal } = await import("../../../core/owner.ts")
+      const { MCP_PATHS, verifyConnect } = await import("../../../plugins/core/mcp/connect.ts")
+      const { ownerPathRefusal: ownerOnly, refusal: ownerRefusal } = await import("../../../core/owner.ts")
       const crypto = await import("node:crypto")
       const sign = (c: Record<string, unknown>, key = "k1") => { const b = Buffer.from(JSON.stringify(c)).toString("base64url"); return `${b}.${crypto.createHmac("sha256", key).update(b).digest("base64url")}` }
       const t0 = 1_800_000_000, claims = { sub: "u1", handle: "alice", role: "owner", exp: t0 + 300 }

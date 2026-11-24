@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/terminalsfold-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a], { encoding: "utf8" })
@@ -30,8 +31,8 @@ const shell = { id: `${id}9`, agent: null, process: "zsh", busy: false, clients:
 const LIST = JSON.stringify({ t: "sessions", list: [...Object.values(S), shell] })
 
 const D = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
-await D.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => ws.send(LIST))
-await D.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
+await routeSocket(D, /\/api\/terminals(\?.*)?$/, (ws) => ws.send(LIST))
+await routeSocket(D, /\/api\/terminal\/[^/?]+/, (ws) => {
   ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
   ws.send(JSON.stringify({ t: "size", cols: 80, rows: 24 }))
 })
@@ -71,7 +72,7 @@ await D.close()
 const setFold = (fold) => fetch(new URL("/api/config/plugin/agents", B), { method: "PATCH", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify({ fold }) })
 await setFold("never")
 const N = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
-await N.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => ws.send(LIST))
+await routeSocket(N, /\/api\/terminals(\?.*)?$/, (ws) => ws.send(LIST))
 await N.goto(B)
 await N.waitForSelector("[role=tree]", { timeout: 60000 })
 // (the quiet one's tab closed: a new page has none)

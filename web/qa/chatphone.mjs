@@ -3,6 +3,7 @@
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, , OUT = "/tmp/chatphone-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const at = (s) => new Date(Date.now() - 600_000 + s * 1000).toISOString()
@@ -48,7 +49,7 @@ await ctx.close()
 async function open(context, id = "qa-chat") {
   const page = watch(await context.newPage(), { ignore: IGNORE }), ui = app(page)
   const ops = [], socks = new Map()
-  await page.routeWebSocket(/\/api\/claude-code\/chat\/[^/]+$/, (ws) => {
+  await routeSocket(page, /\/api\/claude-code\/chat\/[^/]+$/, (ws) => {
     const sid = decodeURIComponent(new URL(ws.url()).pathname.split("/").pop())
     socks.set(sid, ws)
     ws.send(hello(S(sid, "idle"), sid === "qa-chat" ? FIRST : []))
@@ -152,7 +153,7 @@ await c1.close()
   const page = watch(await c2.newPage(), { ignore: IGNORE }), ui = app(page)
   let release = () => {}
   const code = new Promise((r) => { release = r })
-  await page.routeWebSocket(/\/api\/claude-code\/chat\/[^/]+$/, (ws) => ws.send(hello(S("qa-chat", "idle"), FIRST)))
+  await routeSocket(page, /\/api\/claude-code\/chat\/[^/]+$/, (ws) => ws.send(hello(S("qa-chat", "idle"), FIRST)))
   await page.route(/\/assets\/ChatTab-[^/]+\.js$/, async (r) => { await code; await r.continue() })
   await page.goto(`${B}#view/claude-session%2Fqa-chat`)
   await page.locator("[data-chat-loading]").waitFor({ timeout: 30_000 })

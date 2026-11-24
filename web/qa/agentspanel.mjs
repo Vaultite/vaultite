@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process"
 import path from "node:path"
 import { qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/agentspanel-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a], { encoding: "utf8" })
@@ -38,12 +39,12 @@ const ASKS = JSON.stringify({ t: "sessions", list: [T.asks, T.works, { ...T.rest
 
 async function standIn(page) {
   const socks = new Set()
-  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { socks.add(ws); ws.send(LIST) })
-  await page.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
+  await routeSocket(page, /\/api\/terminals(\?.*)?$/, (ws) => { socks.add(ws); ws.send(LIST) })
+  await routeSocket(page, /\/api\/terminal\/[^/?]+/, (ws) => {
     ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
     ws.send(JSON.stringify({ t: "size", cols: 80, rows: 24 }))
   })
-  await page.routeWebSocket(/\/api\/claude-code\/chat\/[^/?]+$/, (ws) => ws.send(JSON.stringify({ t: "hello", found: true, s: C.works, title: C.works.title,
+  await routeSocket(page, /\/api\/claude-code\/chat\/[^/?]+$/, (ws) => ws.send(JSON.stringify({ t: "hello", found: true, s: C.works, title: C.works.title,
     cwd: C.works.cwd, account: "default", model: "", effort: "", tui: null, driven: "", history: { entries: [], start: 0 }, live: [] })))
   await page.route(/\/api\/claude-code\/chats(\?.*)?$/, (r) => r.fulfill({ json: { sessions: Object.values(C) } }))
   await page.route(/\/api\/machines(\?.*)?$/, (r) => r.fulfill({ json: MACHINES }))

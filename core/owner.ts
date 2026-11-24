@@ -88,6 +88,16 @@ export const fromInternet = (req: IncomingMessage) => { internet.add(req) }
 /** Set by Connect (plugins/core/mcp/connect.ts) on what it hands the app while the owner's tools are off over it. */
 export const CONNECT_HEADER = "x-vaultite-connect"
 
+const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|ui|file\/open|vaultite-cloud\/export|web-viewer\/(tabs|live))(\/|$)/
+const OWNER_OPS = /^(plugin|bundle|terminal|dispatch|screens|herdr|schedule|machines|vault-plugin|vaultite-cloud|settings)\.|^ui\.command$/
+
+export function ownerPathRefusal(pathname: string): string {
+  const parts = pathname.split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x) } catch { return x } })
+  if (OWNER_PATHS.test(`/${parts.join("/")}`)) return "this only answers on this Mac (turn on owner tools over Connect in Connections)"
+  if (parts[0] === "api" && parts[1] === "ops" && OWNER_OPS.test(parts[2] ?? "")) return "this only runs on this Mac (turn on owner tools over Connect in Connections)"
+  return ""
+}
+
 /** Set by a machine passing a request on (Machines) for someone who isn't its owner: it only takes rights away. */
 export const GUEST_HEADER = "x-vaultite-guest"
 
