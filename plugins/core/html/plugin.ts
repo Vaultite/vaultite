@@ -1,14 +1,14 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { pathToFileURL } from "node:url"
-import { contentType, HTTPError, isOutside, type Machine, machineSocket, OpError, outsidePath, pipeSockets, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
+import { contentType, HTTPError, isOutside, type Machine, machineSocket, OpError, outsidePath, pipeSockets, Plugin, reply, Text, vaultPath, type ServedSocket } from "../../../core/plugins.ts"
 import { type Item, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { z } from "zod"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat, WRAP_CSP, wrapper } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
 import { MOST, pictures } from "./picture.ts"
 import { sharedPages } from "./shared.ts"
-import type { RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -91,7 +91,7 @@ plugin.onUnload(() => shared.flush())
 const DEVICES: [RegExp, string][] = [[/iPhone/, "iPhone"], [/iPad/, "iPad"], [/Android/, "Android"], [/Macintosh/, "Mac"], [/Windows/, "Windows"], [/Linux|CrOS/, "Linux"]]
 const deviceOf = (ua: string) => DEVICES.find(([re]) => re.test(ua))?.[1]
 /** A shared folder's guest joins a page's shared state (plugins/core/share's gateway: the page in their folder, as them). */
-plugin.provide("html:shared", (ws: WebSocket, rel: string, v: { shown: string; id: string; name: string; ua: string; watch?: string }) =>
+plugin.provide("html:shared", (ws: ServedSocket, rel: string, v: { shown: string; id: string; name: string; ua: string; watch?: string }) =>
   shared.join(ws, artifactIn(plugin.vault, rel), { shown: v.shown, person: { id: v.id, name: v.name, device: deviceOf(v.ua) }, watch: v.watch }))
 type Host = { m: Machine; folders: string[] }
 const sharedFolders = () => z.array(z.string()).parse(plugin.service("share:folders")?.() ?? [])

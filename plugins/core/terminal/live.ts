@@ -1,4 +1,4 @@
-import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, linkClick, mintedHere, offerPicture, onLook, openWebLink, pastedFiles, span, textSize, trackSoon } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, linkClick, mintedHere, offerPicture, onLook, openWebLink, pastedFiles, span, textSize, trackSoon, openSocket, type Socket } from "@vaultite"
 import type { FindOptions } from "@plugins/find/tools"
 import { copy, flushCopy, pasteClipboard } from "./clipboard"
 import { fileLinks } from "./fileLinks"
@@ -121,7 +121,7 @@ function create(id: string): Live {
   })
   const offSettings = settings.onChange(() => t.setCursor(cursor()))
 
-  let ws: WebSocket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
+  let ws: Socket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
   let attachOnly = !mintedHere(id), sessionGone = false
   let away: { label: string; reason: string; in?: boolean } | null = null
   const enc = new TextEncoder()
@@ -139,8 +139,8 @@ function create(id: string): Live {
 
   const connect = () => {
     exited = false; refused = false; sessionGone = false; away = null; l.ended = false
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}&cw=${t.cellPixels.cw}&ch=${t.cellPixels.ch}&dark=${document.documentElement.classList.contains("dark") ? 1 : 0}${attachOnly ? "&attach=1" : ""}`
-    const sock = new WebSocket(url)
+    const path = `terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}&cw=${t.cellPixels.cw}&ch=${t.cellPixels.ch}&dark=${document.documentElement.classList.contains("dark") ? 1 : 0}${attachOnly ? "&attach=1" : ""}`
+    const sock = openSocket(path)
     sock.binaryType = "arraybuffer"
     ws = sock
     sock.onopen = () => opening.mark("socket")

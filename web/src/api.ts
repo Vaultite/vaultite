@@ -10,6 +10,9 @@ export {
 } from "@/core/data"
 export { statusOf, type Live } from "@/core/liveread"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
+/** A WebSocket to the server's `/api/<path>`, as the browser's, but a channel of the window's one (Vaultite Cloud relays
+ *  only a few dozen at once). */
+export { openSocket, type Socket } from "@/core/sockets"
 export { whenIdle } from "@/core/firstscreen"
 /** A shared folder's guest (plugins/core/share), when this app is theirs: their name, role and folder; else null. */
 export { guestEdits, share, type Share } from "@/core/share"

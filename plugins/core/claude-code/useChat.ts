@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { announceAgent, get, type AgentPhase } from "@vaultite"
+import { announceAgent, get, type AgentPhase, openSocket, type Socket } from "@vaultite"
 import type { Entry } from "./chatlog"
 import { Page, type State, type Summary, TabMessage } from "./chatprotocol"
 import { nameTab, NEW } from "./titles"
@@ -24,14 +24,14 @@ export function useChat(id: string) {
     ? { ...e, images: e.images.map((i) => ({ src: /^(api\/|\/|https?:)/.test(i.src) ? i.src : `api/claude-code/chat/${encodeURIComponent(id)}/${i.src}` })) } : e)
   useEffect(() => {
     if (!id || id === NEW) return
-    let ws: WebSocket | null = null, timer: ReturnType<typeof setTimeout> | null = null, frame = 0, retry = 0, failures = 0, closed = false, last = 0
+    let ws: Socket | null = null, timer: ReturnType<typeof setTimeout> | null = null, frame = 0, retry = 0, failures = 0, closed = false, last = 0
     const draw = () => { frame ||= requestAnimationFrame(() => { frame = 0; setLive({ ...meta.current, entries: [...map.current.values()] }) }) }
     const again = () => { if (!closed && !meta.current.refused && !timer) timer = setTimeout(open, Math.min(15_000, 500 * 2 ** retry++)) }
     const heard = () => { const { unreachable: _u, failed: _f, ...rest } = meta.current; meta.current = rest }
     const open = () => {
       timer = null
       last = Date.now()
-      const s = ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/claude-code/chat/${encodeURIComponent(id)}`)
+      const s = ws = openSocket(`claude-code/chat/${encodeURIComponent(id)}`)
       s.onmessage = (ev) => {
         last = Date.now()
         let raw: unknown

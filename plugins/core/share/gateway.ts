@@ -5,7 +5,7 @@ import path from "node:path"
 import { type Duplex, Readable, Writable } from "node:stream"
 import { WebSocket, WebSocketServer } from "ws"
 import { z } from "zod"
-import { contentType, guestRefusal, HTTPError, logger, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, linkTargets } from "../../../core/plugins.ts"
+import { contentType, guestRefusal, HTTPError, logger, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, linkTargets, type ServedSocket } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 const log = logger("share")
 
@@ -104,7 +104,7 @@ export class Gateway {
   secret = crypto.randomBytes(32)
   hits = new Map<string, { n: number; until: number }>()
   wss = new WebSocketServer({ noServer: true, maxPayload: 64 << 10 })
-  sockets = new Map<WebSocket, { g: Guest; kind: "events" | "threads" | "page" }>()
+  sockets = new Map<ServedSocket, { g: Guest; kind: "events" | "threads" | "page" }>()
   keeper: (x: string) => Promise<Machine | null>
   passed = new WeakMap<IncomingMessage, string>()
   addresses: () => string[]
@@ -178,7 +178,7 @@ export class Gateway {
     return { g, page, kind: m![2] === "events" ? "events" as const : m![2] === "artifact/shared" ? "page" as const : "threads" as const }
   }
 
-  attach(ws: WebSocket, req: IncomingMessage, { g, page, kind }: NonNullable<ReturnType<Gateway["admit"]>>) {
+  attach(ws: ServedSocket, req: IncomingMessage, { g, page, kind }: NonNullable<ReturnType<Gateway["admit"]>>) {
     const join = this.plugin.service("html:shared")
     this.sockets.set(ws, { g, kind })
     ws.on("close", () => this.sockets.delete(ws))
@@ -253,7 +253,7 @@ export class Gateway {
     const req = this.unwrap(http, true)
     return !!req && !!this.admit(req)
   }
-  attachRelayed(ws: WebSocket, http: IncomingMessage) {
+  attachRelayed(ws: ServedSocket, http: IncomingMessage) {
     const req = this.unwrap(http, true), a = req ? this.admit(req) : null
     if (!req || !a) return ws.close(1008, "refused")
     this.attach(ws, req, a)

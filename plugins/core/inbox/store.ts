@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { WebSocket } from "ws"
 import { z } from "zod"
-import { HTTPError, logger } from "../../../core/plugins.ts"
+import { HTTPError, logger, type ServedSocket } from "../../../core/plugins.ts"
 import { archiveTwin, type Item, str, writeAtomic } from "../../../core/vault.ts"
 import { asThreads, BLOCKED, byThread, clip, doneAs, type InboxEvent, pinnedAs, previewOf, readThere, sessionAtAddress, snoozedAs, type State, TERMINAL, unreadThere } from "./model.ts"
 import { pushed, refreshWidgets } from "./phone.ts"
@@ -220,7 +220,7 @@ export function resolve(terminal: string, session: string, user = false, to: Sta
     ((terminal && e.terminal === terminal) || (session && e.session === session))), to, { questions: undefined })
 }
 
-export const watchers = new Map<WebSocket, boolean>() // socket -> this machine's events only
+export const watchers = new Map<ServedSocket, boolean>() // socket -> this machine's events only
 let sendTimer: ReturnType<typeof setTimeout> | null = null
 
 export const message = (local: boolean) => JSON.stringify({ t: "events", events: shown(local), unread: unread(local), needs: needing(local), hold: holdNow() })

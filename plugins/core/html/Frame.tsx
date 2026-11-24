@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { askBeforeOpening, outsideVault } from "./links.ts"
 import { joinShared, type SharedLink } from "./sharing.ts"
-import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange } from "@vaultite"
+import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange, openSocket, type Socket } from "@vaultite"
 
 type Peer = (m: Record<string, unknown>) => void
 const peers = new Map<string, Set<Peer>>()
@@ -53,7 +53,7 @@ export function ArtifactFrame({ path, page, height, className }: {
   const growth = useRef<number[]>([])
   const declined = useRef(false)
   const opened = useRef(new Set<string>())
-  const asking = useRef(new Map<number, WebSocket>())
+  const asking = useRef(new Map<number, Socket>())
   const shared = useRef<SharedLink | null>(null)
   useEffect(() => () => { shared.current?.close(); shared.current = null }, [url])
   useEffect(() => { declined.current = false; scope.current = null }, [path])
@@ -150,7 +150,7 @@ export function ArtifactFrame({ path, page, height, className }: {
           if (!r?.ok) { notifyError(new Error((await (r ? failed(r) : {})).error ?? "offline"), "Couldn't allow it"); return reply(false) }
           reply(true)
         } else if (d.op === "sample") {
-          const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${new URL("api/artifact/sample", location.href).pathname}`)
+          const ws = openSocket("artifact/sample")
           let done = false
           asking.current.set(d.id, ws)
           ws.onopen = () => ws.send(JSON.stringify({ ...args, path }))

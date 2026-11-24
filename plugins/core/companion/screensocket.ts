@@ -1,6 +1,6 @@
 import { screens, takeover, tours, screenDrawing, YOU } from "./windows.ts"
 import type { IncomingMessage } from "node:http"
-import { type RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 import { z } from "zod"
 import { type Message, messageFrom } from "./rooms.ts"
 import { PLACE_KEYS } from "../../../core/desktop/places.ts"
@@ -17,12 +17,12 @@ import { stopStreams } from "./edits.ts"
 import { messageOf } from "./errors.ts"
 import { lane } from "./lane.ts"
 import { jobs, knocks } from "./wiring.ts"
-import { logger } from "../../../core/plugins.ts"
+import { logger, type ServedSocket } from "../../../core/plugins.ts"
 
 const log = logger("companion")
 
 export const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush", "voice"])
-export let lastScreen: WebSocket | null = null
+export let lastScreen: ServedSocket | null = null
 export const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
 const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+|close-\d+-\d+)\.png$/
 const Box = z.object({ x: z.coerce.number(), y: z.coerce.number(), width: z.coerce.number(), height: z.coerce.number() })
@@ -83,10 +83,10 @@ export function screenMoment(m: ScreenAsk, req?: IncomingMessage) {
   }
   return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, ...asked }, req)
 }
-export const realtimePaused = new Map<WebSocket, { account: string; why: string; until: number } | null>()
+export const realtimePaused = new Map<ServedSocket, { account: string; why: string; until: number } | null>()
 export const pausedNow = () => [...realtimePaused.values()].find((p) => p && p.until > Date.now()) ?? null
-export const mics = new Map<WebSocket, string>()
-export const calls = new Map<WebSocket, string>()
+export const mics = new Map<ServedSocket, string>()
+export const calls = new Map<ServedSocket, string>()
 function screenAnswered(m: Message) {
   const name = str(m.agent) || ownName(), heard = str(m.heard).trim().slice(0, 2000), words = str(m.said).trim().slice(0, 2000)
   if (!words || mode() === "off") return
@@ -102,7 +102,7 @@ function screenAnswered(m: Message) {
   keepSaid(putNote({ kind: "say", agent: name, text: words, seen: true, answers: { t, realtime: true } }, sayMs(words)))
 }
 const Paused = z.object({ account: z.unknown().optional(), why: z.unknown().optional(), until: z.unknown().optional() })
-export function screenSocket(ws: WebSocket, req: IncomingMessage) {
+export function screenSocket(ws: ServedSocket, req: IncomingMessage) {
   screens.add(ws)
   send(ws, snapshot())
   for (const m of screenDrawing.messages()) send(ws, m)
@@ -138,9 +138,9 @@ function bargeIn(press: boolean) {
   stopStreams(name)
   void lane().interrupt(press ? "press" : "esc").then((ok) => { if (ok) did(name, "stopped", undefined, press ? "by a new press" : undefined) }, () => {})
 }
-const ridingBy = new Map<WebSocket, string>()
+const ridingBy = new Map<ServedSocket, string>()
 export const riding = () => [...ridingBy.values()].find(Boolean) ?? ""
-function ride(ws: WebSocket, agent: string) {
+function ride(ws: ServedSocket, agent: string) {
   const was = riding()
   if (agent) ridingBy.set(ws, agent); else ridingBy.delete(ws)
   if (riding() === was) return
