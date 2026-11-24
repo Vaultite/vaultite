@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Updates: a server restarting onto new code no longer hangs for minutes when a file read is stuck (one iCloud is
+  still downloading): it's killed 15 s after deciding to restart, and its service manager starts the new code.
 - Vaultite Cloud: when AI apps tried to reach your Mac while it was asleep or offline, it tells you once it's back ("Claude
   tried to reach this Mac 40 times while it was asleep or offline (02:10–07:45)"), in a notification and in Connections,
   with a switch there to keep it awake while plugged in (macOS; Linux machines without a battery).

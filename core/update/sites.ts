@@ -41,6 +41,7 @@ export const SITES: Site[] = [
   // ---------- the server
   { file: "server.ts", why: "a test's server ends with its test, from a thread of code given as text; its own file: the code root it holds from the store's gc", at: ["new Worker(`const pid"], anchors: true },
   { file: "core/prefetch.ts", why: "the server's code read ahead into the OS's file cache as it starts, from a thread of code given as text", at: ["new Worker(READER_JS"] },
+  { file: "core/exitdeadline.ts", why: "a restart's exit deadline: this Node, its code given as text (-e), no file", spawns: [] },
   { file: "core/watchdog.ts", why: "a service's server is killed when its main thread stalls, from a thread of code given as text", at: ["new Worker(WATCHER_JS"] },
   { file: "core/local.ts", why: "the app's folder (ROOT), from its own place, and this machine's files in it by default (data/)", anchors: true },
   { file: "core/plugins.ts", why: "the server imports every built-in plugin's plugin.ts (load); a Plugin reads its folder (PLUGIN_READS)",
