@@ -1,6 +1,7 @@
 // The web demo's start (npm run build:demo), main.tsx's first import: the server runs in a worker (worker.ts), reached
 // through a service worker (sw.ts) for what the page fetches and a port for the live socket; then the app starts.
 import { forgetLocal, SPACE } from "./space.ts"
+import { directSockets } from "@/core/sockets"
 import { SHOWN } from "./machine.ts"
 import { NEEDS_APP } from "./node/stub.ts"
 import { SITES } from "./sites.ts"
@@ -83,6 +84,7 @@ class DemoSocket extends EventTarget {
   }
 }
 globalThis.WebSocket = DemoSocket as unknown as typeof WebSocket
+directSockets()
 
 /** What needs a machine but is drawn here (machine.ts SHOWN): reads are answered in the page with its preview's made-up
  *  data (`mockLive`); writes need the app. */

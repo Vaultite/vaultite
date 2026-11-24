@@ -35,7 +35,7 @@ async function open(opts) {
   // (live: its events socket has said hello, so a change made from outside reaches it)
   page.live = false
   pages.push(page)
-  page.on("websocket", (ws) => { if (ws.url().includes("/api/events")) { ws.on("framesent", () => { page.live = true }); ws.on("close", () => { page.live = false }) } })
+  page.on("websocket", (ws) => { if (ws.url().includes("/api/mux")) { ws.on("framesent", () => { page.live = true }); ws.on("close", () => { page.live = false }) } })
   return page
 }
 const shot = (page, name) => page.screenshot({ path: `${OUT}${name}.png` })

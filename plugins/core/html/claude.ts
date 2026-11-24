@@ -1,9 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { WebSocket } from "ws"
 import { z } from "zod"
 import type { SampleAsk } from "../../../core/agents.ts"
-import { HTTPError, type Plugin, reply } from "../../../core/plugins.ts"
+import { HTTPError, type Plugin, reply, type ServedSocket } from "../../../core/plugins.ts"
 import { type Item, readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 const ARTIFACT = /\.html?$/i
@@ -75,7 +74,7 @@ export async function publish(vault: Vault, body: Item) {
 const Sampled = z.looseObject({ text: z.string(), truncated: z.boolean(), model: z.string().optional() })
 export const sampleGrant = (rel: string) => `sample ${rel}`
 
-export function sampleSocket(plugin: Plugin, ws: WebSocket) {
+export function sampleSocket(plugin: Plugin, ws: ServedSocket) {
   const ctl = new AbortController()
   const send = (m: Item) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
   ws.on("close", () => ctl.abort())

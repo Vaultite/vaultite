@@ -18,6 +18,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Browser: agents and the companion read the whole of a long text field, and a change far into one is no longer reported
   as nothing changed; the companion looks for a fact of yours (a profile link, a handle) in your notes, signed-in sites
   and the likely page before asking you.
+- Connect: each window of the app opens one WebSocket, its terminals, chats, inbox and live updates carried as channels of
+  it, so several tabs and devices no longer run into Vaultite Cloud's limit of sockets at once.
 - Player: an agent can set where a video or sound in the vault picks up (player.place, vau player place <file> 4:50), so a
   video handed over from another screen plays from where you stopped, on every device.
 - Inbox: replying to a Claude Code on the web session (vau inbox reply, or answer's reply) sends it to that session through

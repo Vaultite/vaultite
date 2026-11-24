@@ -1,10 +1,10 @@
-import { DEVICE } from "@vaultite"
+import { DEVICE, openSocket, type Socket } from "@vaultite"
 
 type Values = Record<string, unknown>
 export type SharedLink = { set: (values: Values) => void; close: () => void }
 
 export function joinShared(path: string, tell: (m: Record<string, unknown>) => void): SharedLink {
-  let ws: WebSocket | null = null, n = 0, tries = 0, closed = false, retry: ReturnType<typeof setTimeout> | null = null
+  let ws: Socket | null = null, n = 0, tries = 0, closed = false, retry: ReturnType<typeof setTimeout> | null = null
   const sent = new Map<number, Values>()
   let unsent: Values = {}
   const mine = () => new Set([...sent.values(), unsent].flatMap((v) => Object.keys(v)))
@@ -16,11 +16,9 @@ export function joinShared(path: string, tell: (m: Record<string, unknown>) => v
 
   function open() {
     retry = null
-    const url = new URL("api/artifact/shared", location.href)
-    url.searchParams.set("path", path)
-    if (DEVICE) url.searchParams.set("device", DEVICE)
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-    const s = new WebSocket(url)
+    const q = new URLSearchParams({ path })
+    if (DEVICE) q.set("device", DEVICE)
+    const s = openSocket(`artifact/shared?${q}`)
     ws = s
     s.onmessage = (e) => {
       let m: Record<string, any>

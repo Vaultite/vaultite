@@ -1,11 +1,11 @@
 import * as decoding from "lib0/decoding"
 import * as encoding from "lib0/encoding"
 import { fromBase64, toBase64 } from "lib0/buffer"
-import type { RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 import * as Y from "yjs"
 import { z } from "zod"
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness"
-import { logger, merge3, type Plugin, type Who } from "../../../core/plugins.ts"
+import { logger, merge3, type Plugin, type Who, type ServedSocket } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 import { parseJson } from "../../../core/agents.ts"
 import { span } from "./text.ts"
@@ -17,10 +17,10 @@ export const messageFrom = (data: RawData) => parseJson(String(data), Message)
 
 export type Peer = { who: Who; name: string; tint: string; edits: boolean; see: (rel: string) => string | null
   may?: (rel: string, before: string, after: string) => string; slow?: () => boolean }
-type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; peers: Map<WebSocket, Set<number>>; disk: string
+type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; peers: Map<ServedSocket, Set<number>>; disk: string
   pending: { peer: Peer; timer: ReturnType<typeof setTimeout>; since: number } | null; turn: Promise<void>
-  queued: Map<WebSocket, { updates: Uint8Array[]; bytes: number; timer: ReturnType<typeof setTimeout> }>
-  clients: Map<number, WebSocket>
+  queued: Map<ServedSocket, { updates: Uint8Array[]; bytes: number; timer: ReturnType<typeof setTimeout> }>
+  clients: Map<number, ServedSocket>
   worn: boolean }
 
 const WRITE_MS = 400, WRITE_MAX_MS = 1500, MAX_UPDATE = 400_000, CHECK_MS = 250
@@ -30,7 +30,7 @@ const GUEST_LIVE_MAX = 64_000
 const OPENS = 30, CARETS = 1200, REFUSALS = 30, BACKLOG = 32 << 20
 const ROOM_MAX = 2 << 20
 const WORN = "this note has been typed in too much to go on together: reopen it"
-const send = (ws: WebSocket, m: object) => {
+const send = (ws: ServedSocket, m: object) => {
   if (ws.readyState !== ws.OPEN) return
   if (ws.bufferedAmount > BACKLOG) return void ws.close()
   ws.send(JSON.stringify(m))
@@ -46,16 +46,16 @@ const Written = z.object({ text: z.string() })
 
 export function rooms(plugin: Plugin) {
   const all = new Map<string, Room>(), log = logger("companion")
-  const peers = new Map<WebSocket, Peer>()
-  const hits = new WeakMap<WebSocket, Map<string, { n: number; until: number }>>()
-  const over = (ws: WebSocket, kind: string, n: number) => {
+  const peers = new Map<ServedSocket, Peer>()
+  const hits = new WeakMap<ServedSocket, Map<string, { n: number; until: number }>>()
+  const over = (ws: ServedSocket, kind: string, n: number) => {
     const mine = hits.get(ws) ?? new Map(), t = Date.now(), h = mine.get(kind)
     hits.set(ws, mine)
     if (!h || h.until < t) { mine.set(kind, { n: 1, until: t + 60_000 }); return false }
     return ++h.n > n
   }
 
-  const tell = (r: Room, from: WebSocket | null, m: Message) => {
+  const tell = (r: Room, from: ServedSocket | null, m: Message) => {
     for (const ws of r.peers.keys()) {
       if (ws === from) continue
       const p = peers.get(ws)?.see(r.path)
@@ -132,7 +132,7 @@ export function rooms(plugin: Plugin) {
     return r
   }
 
-  function leave(ws: WebSocket, path: string) {
+  function leave(ws: ServedSocket, path: string) {
     const r = all.get(path), ids = r?.peers.get(ws)
     if (!r || !ids) return
     const q = r.queued.get(ws), peer = peers.get(ws)
@@ -150,13 +150,13 @@ export function rooms(plugin: Plugin) {
     void r.turn.then(() => { if (!r.peers.size && all.get(path) === r) { all.delete(path); r.aw.destroy(); r.doc.destroy() } })
   }
 
-  function refuse(r: Room, ws: WebSocket, peer: Peer, why = "") {
+  function refuse(r: Room, ws: ServedSocket, peer: Peer, why = "") {
     if (over(ws, "refused", REFUSALS)) return
     send(ws, { t: "y-reject", path: peer.see(r.path) ?? undefined, why })
     sendState(r, ws, peer)
   }
 
-  function sendState(r: Room, ws: WebSocket, peer: Peer, bare = false) {
+  function sendState(r: Room, ws: ServedSocket, peer: Peer, bare = false) {
     const p = peer.see(r.path)
     if (!r.peers.has(ws) || p === null) return
     const others = r.peers.size - 1, alone = !!peer.may && r.text.length > GUEST_LIVE_MAX
@@ -165,7 +165,7 @@ export function rooms(plugin: Plugin) {
       edits: peer.edits, alone, others })
   }
 
-  function ownStates(r: Room, ws: WebSocket, peer: Peer, u: Uint8Array): Uint8Array | null {
+  function ownStates(r: Room, ws: ServedSocket, peer: Peer, u: Uint8Array): Uint8Array | null {
     const d = decoding.createDecoder(u), e = encoding.createEncoder(), mine = r.peers.get(ws)!
     const n = decoding.readVarUint(d)
     if (n > 2) return null
@@ -185,9 +185,9 @@ export function rooms(plugin: Plugin) {
     return encoding.toUint8Array(e)
   }
 
-  const taken = (r: Room, ws: WebSocket, id: number) =>
+  const taken = (r: Room, ws: ServedSocket, id: number) =>
     id === r.doc.clientID || (r.clients.get(id) ?? ws) !== ws || [...r.peers].some(([other, ids]) => other !== ws && ids.has(id))
-  function ownClients(r: Room, ws: WebSocket, u: Uint8Array) {
+  function ownClients(r: Room, ws: ServedSocket, u: Uint8Array) {
     return !Y.decodeUpdate(u).structs.some((s) => taken(r, ws, s.id.client))
   }
   const onlyText = (t: Y.Text) => {
@@ -195,7 +195,7 @@ export function rooms(plugin: Plugin) {
     return t.length === t.toString().length
   }
 
-  function land(r: Room, ws: WebSocket, peer: Peer, u: Uint8Array) {
+  function land(r: Room, ws: ServedSocket, peer: Peer, u: Uint8Array) {
     if (r.pending && r.pending.peer !== peer) flush(r)
     const was = r.text.toString()
     Y.applyUpdate(r.doc, u, ws)
@@ -206,7 +206,7 @@ export function rooms(plugin: Plugin) {
     r.pending = { peer, since, timer: setTimeout(() => flush(r), Date.now() - since > WRITE_MAX_MS ? 0 : WRITE_MS) }
   }
 
-  function check(r: Room, ws: WebSocket, peer: Peer) {
+  function check(r: Room, ws: ServedSocket, peer: Peer) {
     const q = r.queued.get(ws)
     r.queued.delete(ws)
     if (!q || !r.peers.has(ws)) return
@@ -232,12 +232,12 @@ export function rooms(plugin: Plugin) {
   }
 
   return {
-    add(ws: WebSocket, peer: Peer) {
+    add(ws: ServedSocket, peer: Peer) {
       peers.set(ws, peer)
       ws.on("close", () => { for (const [path, r] of all) if (r.peers.has(ws)) leave(ws, path); peers.delete(ws) })
     },
 
-    heard(ws: WebSocket, m: Message, path: string | null) {
+    heard(ws: ServedSocket, m: Message, path: string | null) {
       const peer = peers.get(ws)
       if (!peer || !m.t.startsWith("y") && m.t !== "aw") return false
       if (!path || !/\.md$/i.test(path)) return true

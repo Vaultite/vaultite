@@ -1,8 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import { type RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 import type { AgentHow } from "../../../core/agents.ts"
-import { logger, readableImage, span } from "../../../core/plugins.ts"
+import { logger, readableImage, span, type ServedSocket } from "../../../core/plugins.ts"
 import type { BackendEvent, AgentRun, Backend, Cell, Listed as Shell, Made, Spec } from "./backend.ts"
 import { runScript, wslPath } from "./launch.ts"
 import { kindOf, progName } from "./shells.ts"
@@ -20,7 +20,7 @@ const log = logger("terminal")
 const DROP_BEHIND = 16 << 20
 const HOLD_BEHIND = 1 << 20, RESUME_BEHIND = 256 << 10, STALL_MS = 3000
 
-const sent = (s: Session, ws: WebSocket, n: number) => s.owed.set(ws, (s.owed.get(ws) ?? 0) + n)
+const sent = (s: Session, ws: ServedSocket, n: number) => s.owed.set(ws, (s.owed.get(ws) ?? 0) + n)
 
 function pace(s: Session) {
   let least = Infinity
@@ -235,7 +235,7 @@ export function resize(s: Session, cols: number, rows: number, cell?: Cell) {
   for (const ws of s.clients) if (ws.readyState === ws.OPEN) ws.send(msg)
 }
 
-export function attach(s: Session, ws: WebSocket, fresh: boolean) {
+export function attach(s: Session, ws: ServedSocket, fresh: boolean) {
   flush(s); clearTimeout(s.unwatched)
   s.clients.add(ws)
   listChanged()

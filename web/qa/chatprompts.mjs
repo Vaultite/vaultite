@@ -2,6 +2,7 @@
 // A made-up session over its socket and the ops caught: no session runs.
 //   node web/qa/chatprompts.mjs <base url>
 import { qa, until, wait } from "./lib/qa.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 
 const at = (s) => new Date(Date.now() - 600_000 + s * 1000).toISOString()
@@ -20,7 +21,7 @@ async function open(first) {
   const page = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ })
   const sent = []
   let sock = null
-  await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; ws.send(first) })
+  await routeSocket(page, /\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; ws.send(first) })
   await page.route("**/api/ops/claude-code.chat-*", (r) => {
     const op = r.request().url().split("/").pop()
     sent.push({ op, body: r.request().postDataJSON() })
@@ -147,7 +148,7 @@ const answers = (sent) => sent.filter((s) => s.op === "claude-code.chat-answer")
   const { page } = await open(hello(S("idle"), [user("u1", "Do it", 1), words[0]]))
   await page.close()
   const p2 = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ })
-  await p2.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => { for (let n = 0; n < 3; n++) ws.send(JSON.stringify({ t: "error", reason: "no" })) })
+  await routeSocket(p2, /\/api\/claude-code\/chat\/qa-chat$/, (ws) => { for (let n = 0; n < 3; n++) ws.send(JSON.stringify({ t: "error", reason: "no" })) })
   await p2.goto("about:blank")
   await p2.goto(`${B}#view/claude-session%2Fqa-chat`)
   await until(() => p2.locator("[data-chat-unread]").count(), 10000)

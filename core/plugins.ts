@@ -11,6 +11,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
+import type { ServedSocket } from "./mux.ts"
 import { type Manifest, manifestOf } from "./contracts/manifest.ts"
 import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
@@ -25,7 +26,7 @@ export { gitEnv } from "./gitenv.ts"
 export { logger } from "./log.ts"
 export { readableImage } from "./heic.ts"
 export { pageFiles } from "./pagefiles.ts"
-export { CONNECT_HEADER, fromInternet, GUEST_HEADER, onTailnet, servedAt } from "./owner.ts"
+export { CONNECT_HEADER, fromInternet, GUEST_HEADER, onTailnet, ownerPathRefusal, servedAt } from "./owner.ts"
 export { outliving, runtimeDir, whenListening } from "./runtime.ts"
 export { vauDir, vauEntry } from "./appentry.ts"
 export { vauShims } from "./vaushims.ts"
@@ -326,7 +327,7 @@ const bytes = (data: RawData) => (Array.isArray(data) ? Buffer.concat(data) : Bu
 const sendable = (code: number) => (code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code) ? code : 1011)
 /** Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its
  *  close comes back; `failed` when it can't be reached. */
-export function pipeSockets(ws: WebSocket, up: WebSocket, failed: () => void) {
+export function pipeSockets(ws: ServedSocket, up: WebSocket, failed: () => void) {
   const early: [Buffer, boolean][] = []
   ws.on("message", (data: RawData, binary: boolean) => {
     if (up.readyState === up.OPEN) up.send(bytes(data), { binary })
@@ -341,8 +342,10 @@ export function pipeSockets(ws: WebSocket, up: WebSocket, failed: () => void) {
 export type TextBlock = (ctx: BlockCtx) => Awaitable<string | null | undefined>
 /** A socket's request: the wildcard segments of its pattern (URL-decoded) and the query string. */
 export type SocketParams = { wild: string[]; query: Record<string, string> }
-/** Runs once the socket is open. `req` is the HTTP upgrade request (headers, remote address). */
-export type SocketHandler = (ws: WebSocket, req: IncomingMessage, params: SocketParams) => void
+/** Runs once the socket is open: a WebSocket of its own, or a channel of the app window's one (core/mux.ts), the same
+ *  to it. `req` is the HTTP upgrade request (headers, remote address). */
+export type SocketHandler = (ws: ServedSocket, req: IncomingMessage, params: SocketParams) => void
+export type { ServedSocket }
 /** Runs before the upgrade: throw an HTTPError to refuse it. */
 export type SocketAccept = (req: IncomingMessage, params: SocketParams) => Awaitable<void>
 export type Socket = { pattern: string[]; fn: SocketHandler; accept?: SocketAccept }

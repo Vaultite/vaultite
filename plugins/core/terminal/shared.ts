@@ -1,6 +1,5 @@
 import path from "node:path"
-import type { WebSocket } from "ws"
-import { Plugin, runtimeDir } from "../../../core/plugins.ts"
+import { Plugin, runtimeDir, type ServedSocket } from "../../../core/plugins.ts"
 import { backendName, limits, type Backend, type Cell, type Link } from "./backend.ts"
 import { defaultShell, kindOf } from "./shells.ts"
 export const plugin = new Plugin(import.meta.url)
@@ -11,13 +10,13 @@ export const WIN = process.platform === "win32"
 export const BLOCKED = JSON.stringify({ t: "blocked" })
 
 export type Session = {
-  id: string; backend: Backend; link: Link; clients: Set<WebSocket>; started: number
-  pending: Set<WebSocket>
+  id: string; backend: Backend; link: Link; clients: Set<ServedSocket>; started: number
+  pending: Set<ServedSocket>
   opened?: string
   blocked?: boolean // macOS keeps its shell from the folder its agent runs in: its tabs say so
   queued: string
-  owed: Map<WebSocket, number>
-  acks: Set<WebSocket>
+  owed: Map<ServedSocket, number>
+  acks: Set<ServedSocket>
   cell?: Cell
   held: boolean
   stall?: ReturnType<typeof setTimeout>

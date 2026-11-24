@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
-import { WebSocket } from "ws"
-import { type OpCtx, OpError, readFile } from "../../../core/plugins.ts"
+import { type OpCtx, OpError, readFile, type ServedSocket } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, linesIn } from "./proposals.ts"
@@ -35,7 +34,7 @@ export function inTurn<T>(path: string, fn: () => Promise<T>): Promise<T> {
   return run
 }
 
-export async function askWindow(ws: WebSocket, m: object, wait: number, reply: Record<string, unknown> = {}, rid = `e${++nid}`) {
+export async function askWindow(ws: ServedSocket, m: object, wait: number, reply: Record<string, unknown> = {}, rid = `e${++nid}`) {
   const ok = await new Promise<boolean | string | null>((resolve) => {
     const timer = setTimeout(() => { asked.delete(rid); resolve(null) }, wait)
     asked.set(rid, { ws, done: (ok, error, r) => { clearTimeout(timer); asked.delete(rid); Object.assign(reply, r); resolve(ok || error || false) } })
@@ -114,7 +113,7 @@ export function endOf(cur: string, e: Omit<Edit, "path">): { line: number; find?
 }
 
 type Streamed = { use: string; agent: string; tool: Streaming; ended?: "done" | "stop"; whole?: boolean; note?: string; reply?: { id: string; at: number }; again?: boolean
-  edit?: { ws: WebSocket; rid: string; e: Edit; text: string; sent: number; open: boolean; final: boolean; was: string | null; job: Promise<"typed" | "stopped" | "unshown"> } }
+  edit?: { ws: ServedSocket; rid: string; e: Edit; text: string; sent: number; open: boolean; final: boolean; was: string | null; job: Promise<"typed" | "stopped" | "unshown"> } }
 export const streams = new Map<string, Streamed>()
 export const toolUse = new AsyncLocalStorage<string | undefined>()
 const STREAM_MS = 5 * 60_000
