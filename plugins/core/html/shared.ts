@@ -1,24 +1,24 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { WebSocket } from "ws"
+import type { ServedSocket } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 export type Person = { id: string; name: string; device?: string }
 export type Viewer = { person: Person; shown: string; watch?: string }
-type Room = { rel: string; state: Map<string, unknown>; sizes: Map<string, number>; bytes: number; views: Map<WebSocket, Viewer & { tint: string }>; timer: ReturnType<typeof setTimeout> | null }
+type Room = { rel: string; state: Map<string, unknown>; sizes: Map<string, number>; bytes: number; views: Map<ServedSocket, Viewer & { tint: string }>; timer: ReturnType<typeof setTimeout> | null }
 
 export const sharedPath = (rel: string) => `.vaultite/artifacts/${rel}.shared.json`
 
 const KEY_MAX = 200, KEYS_MAX = 256, VALUE_MAX = 64 << 10, STATE_MAX = 1 << 20, SETS = 1200, SAVE_MS = 250
 const TINTS = ["blue", "orange", "green", "purple", "pink", "teal", "red", "indigo", "yellow"]
 
-const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
+const send = (ws: ServedSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 
 const isValues = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 export function sharedPages(vaultOf: () => Vault) {
   const rooms = new Map<string, Room>()
-  const hits = new WeakMap<WebSocket, { n: number; until: number }>()
+  const hits = new WeakMap<ServedSocket, { n: number; until: number }>()
 
   function roomOf(rel: string): Room {
     let r = rooms.get(rel)
@@ -48,7 +48,7 @@ export function sharedPages(vaultOf: () => Vault) {
   }
   const later = (r: Room) => { r.timer ??= setTimeout(() => save(r), SAVE_MS) }
 
-  function people(r: Room, to?: WebSocket) {
+  function people(r: Room, to?: ServedSocket) {
     const out = new Map<string, Person & { tint: string; me: boolean }>()
     const me = to && r.views.get(to)?.person.id
     for (const v of r.views.values()) if (!out.has(v.person.id)) out.set(v.person.id, { ...v.person, tint: v.tint, me: v.person.id === me })
@@ -70,13 +70,13 @@ export function sharedPages(vaultOf: () => Vault) {
     return bytes > STATE_MAX ? "the page's shared state is over 1 MiB" : ""
   }
 
-  function apply(r: Room, values: Record<string, unknown>, by: string, from: WebSocket | null) {
+  function apply(r: Room, values: Record<string, unknown>, by: string, from: ServedSocket | null) {
     for (const [k, v] of Object.entries(values)) put(r, k, v)
     for (const ws of r.views.keys()) if (ws !== from) send(ws, { t: "set", values, by })
     later(r)
   }
 
-  function leave(ws: WebSocket, r: Room) {
+  function leave(ws: ServedSocket, r: Room) {
     if (!r.views.delete(ws)) return
     tellPeople(r)
     if (r.views.size) return
@@ -85,7 +85,7 @@ export function sharedPages(vaultOf: () => Vault) {
   }
 
   return {
-    join(ws: WebSocket, rel: string, viewer: Viewer) {
+    join(ws: ServedSocket, rel: string, viewer: Viewer) {
       const r = roomOf(rel), taken = new Set([...r.views.values()].map((v) => v.tint))
       const same = [...r.views.values()].find((v) => v.person.id === viewer.person.id)
       r.views.set(ws, { ...viewer, tint: same?.tint ?? TINTS.find((t) => !taken.has(t)) ?? TINTS[r.views.size % TINTS.length] })

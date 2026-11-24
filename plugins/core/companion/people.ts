@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
-import { type RawData, WebSocket } from "ws"
-import { liveMarkdown } from "../../../core/plugins.ts"
+import type { RawData } from "ws"
+import { liveMarkdown, type ServedSocket } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 import { profileOf } from "./profiles.ts"
 import "./sync.ts"
@@ -58,7 +58,7 @@ function forGuest(n: Note, g: Guest): Note | null {
   const { anchor: _a, share: _s, ...rest } = n
   return { ...rest, path: p, replies: (n.replies ?? []).filter((r) => r.by !== "agent") }
 }
-export function toGuest(ws: WebSocket, g: Guest, m: { t: string; note?: Note; id?: string }) {
+export function toGuest(ws: ServedSocket, g: Guest, m: { t: string; note?: Note; id?: string }) {
   if (m.t === "note" && m.note) {
     const n = forGuest(m.note, g)
     send(ws, n ? { t: "note", note: n } : { t: "drop", id: m.note.id })
@@ -66,7 +66,7 @@ export function toGuest(ws: WebSocket, g: Guest, m: { t: string; note?: Note; id
 }
 
 /** A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them. */
-plugin.provide("companion:guest", (ws: WebSocket, g: Guest) => {
+plugin.provide("companion:guest", (ws: ServedSocket, g: Guest) => {
   guests.set(ws, g)
   co.add(ws, { who: g.who, name: g.name, tint: tintFor(g.name), edits: g.role === "edit", see: g.see, may: g.may, slow: g.slow })
   send(ws, { t: "state", mode: "quiet", name: "", agents: [], notes: [...notes.values()].map((n) => forGuest(n, g)).filter(Boolean), said: [] })

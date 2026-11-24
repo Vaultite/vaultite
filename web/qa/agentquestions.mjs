@@ -4,6 +4,7 @@
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/agentquestions-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -111,7 +112,7 @@ check("phone: its send button answers with what's typed", JSON.stringify(p.sent[
   const asked = { k: "ask", id: "ask1", kind: "question", tool: "AskUserQuestion", title: "Which toppings?", at: new Date().toISOString(),
     questions: [{ question: "Which toppings?", multi: true, options: [{ label: "Cheese" }, { label: "Basil" }, { label: "Olive" }] }] }
   const s = { id: "qa-chat", state: "waiting", cwd: "/tmp", account: "default", by: "app", model: "sonnet", effort: "medium", mode: "default", started: Date.now(), at: Date.now(), asks: ["ask1"], seq: 1, told: 0, turn: null, background: 0 }
-  await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => ws.send(JSON.stringify({ t: "hello", id: "qa-chat", found: true, s, title: "Pizza", cwd: "/tmp", account: "default",
+  await routeSocket(page, /\/api\/claude-code\/chat\/qa-chat$/, (ws) => ws.send(JSON.stringify({ t: "hello", id: "qa-chat", found: true, s, title: "Pizza", cwd: "/tmp", account: "default",
     model: "sonnet", effort: "medium", tui: null, driven: "", history: { entries: [asked], start: 0, total: 1 } })))
   await page.goto(`${B}#view/claude-session%2Fqa-chat`)
   const card = page.locator("[data-entry=ask][data-ask=question]")

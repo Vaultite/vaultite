@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http"
-import type { RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 import { z } from "zod"
-import { HTTPError, inDesktop, machineSocket, pipeSockets, splitMachine, type Machine, type Plugin } from "../../../core/plugins.ts"
+import { HTTPError, inDesktop, machineSocket, pipeSockets, splitMachine, type Machine, type Plugin, type ServedSocket } from "../../../core/plugins.ts"
 import { askThere, desktopOf, JSON_ANSWER, machineOf, otherBrowsers } from "./machinecalls.ts"
 import type { LiveStep, LiveTab } from "./livetabs.ts"
 
@@ -65,12 +65,12 @@ export function liveView(plugin: Plugin) {
   }, { lock: false, sync: false })
 
 
-  const watchers = new Map<number, Set<WebSocket>>()
-  const sharp = new Set<WebSocket>()
+  const watchers = new Map<number, Set<ServedSocket>>()
+  const sharp = new Set<ServedSocket>()
   const sharpen = (tab: number) => void desktop("agent:live:sharp", tab, [...watchers.get(tab) ?? []].some((ws) => sharp.has(ws))).catch(() => {})
   let renew: ReturnType<typeof setInterval> | null = null
-  const each = (tab: number, fn: (ws: WebSocket) => void) => { for (const ws of watchers.get(tab) ?? []) if (ws.readyState === ws.OPEN) fn(ws) }
-  const json = (ws: WebSocket, m: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
+  const each = (tab: number, fn: (ws: ServedSocket) => void) => { for (const ws of watchers.get(tab) ?? []) if (ws.readyState === ws.OPEN) fn(ws) }
+  const json = (ws: ServedSocket, m: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 
   plugin.onDesktopEvent((name, data) => {
     const d = FRAME.safeParse(data).data
@@ -83,13 +83,13 @@ export function liveView(plugin: Plugin) {
     else if (name === "live:gone") each(d.tab, (ws) => { json(ws, { t: "gone" }); ws.close(1000, "closed") })
   })
 
-  async function watch(tab: number, ws: WebSocket) {
+  async function watch(tab: number, ws: ServedSocket) {
     const r = await desktop<LiveTab & { frame: string }>("agent:live:watch", tab)
     const { frame, ...state } = r
     json(ws, { t: "state", ...state })
     if (frame && ws.readyState === ws.OPEN) ws.send(Buffer.from(frame, "base64"))
   }
-  function leave(tab: number, ws: WebSocket) {
+  function leave(tab: number, ws: ServedSocket) {
     const set = watchers.get(tab)
     const was = sharp.delete(ws)
     if (!set?.delete(ws)) return

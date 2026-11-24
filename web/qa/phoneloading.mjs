@@ -5,6 +5,7 @@
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/phoneloading-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -78,7 +79,7 @@ const header = (page) => page.locator("[data-phone-header]")
 async function phone() {
   const ctx = await browser.newContext(PHONE)
   const s = { ctx, down: false, events: null, asked: 0 }
-  await ctx.routeWebSocket(/\/api\/events/, (ws) => {
+  await routeSocket(ctx, /\/api\/events/, (ws) => {
     if (s.down) return ws.close()
     s.events = ws
     ws.connectToServer()

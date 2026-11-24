@@ -1,6 +1,7 @@
 // The iPhone app's offline app (vaultite-local://app/offline.html, App/LocalScheme.swift), main.tsx's first import: the
 // phone's copy of the vault loaded into Vaultite's server in a worker (worker.ts), which answers what the shell passes on.
 import { phoneLocal } from "@/core/phoneapp"
+import { directSockets } from "@/core/sockets"
 import { previewPath } from "@/core/phonesync"
 import { kindOf } from "../../core/syncengine.ts"
 
@@ -105,6 +106,7 @@ class LocalSocket extends EventTarget {
   }
 }
 globalThis.WebSocket = LocalSocket as unknown as typeof WebSocket
+directSockets()
 
 /** Says it's the phone's copy, and goes back to the servers once the hub answers again. */
 function badge() {

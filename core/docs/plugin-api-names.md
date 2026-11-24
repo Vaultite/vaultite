@@ -491,6 +491,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).
+- `openSocket(path)`
 - `openTab(to, { background, from, id, trail }?)`: `to` in a new tab though another may show it, after pane `from`'s tab (default: the one on screen) and those it opened, in its group; `background`: the user stays (agents').
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
@@ -704,6 +705,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Slider({ value, min, max, step, label, onInput, onChange, className })`: A value along a track, in the accent colour (index.css .slider).
 - `slotAt(box, items, x, y, axis)`: Where a drag at (x, y) lands among `items` (in order, `box` their offset parent) as laid out, not as slid: before which (its index; `items.length`, the end).
 - `snippet(md)`: Markdown as one line of plain text: a preview in a row, a card or a search result.
+- `Socket`
 - `SortableList({ ids, onMove, className, lift, children })`: Rows the user reorders by dragging (5px to start; a held finger on touch); `onMove(from, to)` with their ids.
 - `span(name, tags?, t0?)`: A span from `t0` (a performance.now(), default now): `mark` ends a part, `end` sends it all.
 - `Span`
@@ -1062,7 +1064,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `sha256hex(b)`
 - `Socket`
 - `SocketAccept`: Runs before the upgrade: throw an HTTPError to refuse it.
-- `SocketHandler`: Runs once the socket is open.
+- `SocketHandler`: Runs once the socket is open: a WebSocket of its own, or a channel of the app window's one (core/mux.ts), the same to it.
 - `SocketParams`: A socket's request: the wildcard segments of its pattern (URL-decoded) and the query string.
 - `source(...things)`: The files a block shows, named by the block (ctx.source; outside one, `source` from core/plugins.ts): items (by their id) or vault paths, lists of them too.
 - `span(name, tags?, t0?)`: A span starting now (or at `t0`, a performance.now()): `mark` ends a part, `end` records it all.

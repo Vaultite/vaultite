@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, onReconnect, op, openView, parseTerminal, type Agent, type AgentPhase, type AgentRun, type Dot } from "@vaultite"
+import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, onReconnect, op, openView, parseTerminal, type Agent, type AgentPhase, type AgentRun, type Dot, openSocket, type Socket } from "@vaultite"
 import { agentTint } from "../../../core/agenttint.ts"
 import { type Awaits, awaitsLine, hasNews, waitsOnUser } from "../../../core/attention.ts"
 import { resumeTerminalId } from "../../../core/terminalids.ts"
@@ -70,7 +70,7 @@ export const busy = (s: Session) => s.busy ?? (!!s.process && !SHELLS.has(s.proc
 
 function fetchSessions(ms = 1500): Promise<Session[] | null> {
   return new Promise((resolve) => {
-    const sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminals`)
+    const sock = openSocket("terminals")
     const done = (v: Session[] | null) => { clearTimeout(timer); sock.close(); resolve(v) }
     const timer = setTimeout(() => done(null), ms)
     sock.onmessage = (e) => {
@@ -104,14 +104,13 @@ async function confirmEnd(ids: string[]) {
   }
 }
 
-const socketFor = (id: string, q = "") => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}${q}`
 const ending = new Set<string>()
 function endSession(id: string) {
   letGo(id)
   ending.add(id)
   setTimeout(() => ending.delete(id), 5000)
   if (now.list?.some((s) => s.id === id)) put({ list: now.list })
-  const sock = new WebSocket(socketFor(id, "?end=1"))
+  const sock = openSocket(`terminal/${encodeURIComponent(id)}?end=1`)
   sock.onerror = () => sock.close()
 }
 
@@ -175,7 +174,7 @@ export function runOf(s: Session, a = agentIn(s)): AgentRun | null {
 type Sessions = { list: Session[] | null; refused: string; lost: boolean }
 let now: Sessions = { list: null, refused: "", lost: false }
 const listeners = new Set<() => void>()
-let ws: WebSocket | null = null, timer = 0, tries = 0
+let ws: Socket | null = null, timer = 0, tries = 0
 const LOST_AFTER = 2
 const put = (next: Partial<Sessions>) => {
   if (next.list && ending.size) next = { ...next, list: next.list.filter((s) => !ending.has(s.id)) }
@@ -202,7 +201,7 @@ function tick() {
 }
 
 function connect() {
-  const sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminals`)
+  const sock = openSocket("terminals")
   ws = sock
   sock.onmessage = (e) => {
     if (typeof e.data !== "string") return

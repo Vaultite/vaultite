@@ -1,3 +1,4 @@
+import { channelData } from "./sockets.mjs"
 const POLL = 40
 
 function requestsOut(page) {
@@ -24,9 +25,10 @@ function framesHeard(page) {
 }
 
 function changedPaths(url, payload) {
-  if (!/\/api\/events\b/.test(url)) return undefined
+  const text = /\/api\/mux\b/.test(url) ? channelData(payload) : /\/api\/events\b/.test(url) ? payload : undefined
+  if (text === undefined) return undefined
   let m
-  try { m = JSON.parse(payload) } catch { return undefined }
+  try { m = JSON.parse(text) } catch { return undefined }
   return m.type === "change" || (m.type === "hello" && m.paths !== undefined) ? m.paths ?? null : undefined
 }
 

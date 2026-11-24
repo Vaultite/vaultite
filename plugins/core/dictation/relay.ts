@@ -1,8 +1,8 @@
 import crypto from "node:crypto"
 import type { IncomingMessage } from "node:http"
-import type { RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 import { z } from "zod"
-import { HTTPError, type Plugin } from "../../../core/plugins.ts"
+import { HTTPError, type Plugin, type ServedSocket } from "../../../core/plugins.ts"
 import type { Heard, Provider, Stream } from "./providers/provider.ts"
 
 export const RELAY = "/api/dictation/live"
@@ -54,7 +54,7 @@ type Flush = { at: number; end: boolean; answered: boolean; timer?: ReturnType<t
 const settled = (text: string, endMs?: number): Token => (endMs === undefined ? { text, is_final: true } : { text, is_final: true, end_ms: endMs })
 
 class Relay {
-  ws: WebSocket
+  ws: ServedSocket
   g: Grant
   stream: Stream | null = null
   over = false
@@ -64,7 +64,7 @@ class Relay {
   heardSinceFlush = false
   promoted: string[] = []
   flushes: Flush[] = []
-  constructor(ws: WebSocket, g: Grant) { this.ws = ws; this.g = g }
+  constructor(ws: ServedSocket, g: Grant) { this.ws = ws; this.g = g }
 
   send(m: Out) { if (this.ws.readyState === this.ws.OPEN) this.ws.send(JSON.stringify(m)) }
   tokens(finals: Token[], finished = false) {
