@@ -2,12 +2,13 @@
 // WRITES nothing.
 //   node web/qa/coldload.mjs <base url>
 import { qa, until, wait } from "./lib/qa.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B0], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, extraHTTPHeaders: { "X-Forwarded-For": "100.64.0.2" } })
 let otherBuild = false, socket = null
-await ctx.routeWebSocket(/\/api\/events/, (ws) => {
+await routeSocket(ctx, /\/api\/events/, (ws) => {
   socket = ws
   const server = ws.connectToServer()
   server.onMessage((m) => {

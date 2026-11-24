@@ -1,7 +1,7 @@
 import { type ComponentType } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Bot, Code, HardDrive, Terminal, User } from "lucide-react"
-import { clickOpening, dateText, isViewOpen, iso, notify, numberText, openTab, openView, useAgents } from "@vaultite"
+import { clickOpening, dateText, isViewOpen, iso, notify, numberText, openTab, openView, useAgents, openSocket } from "@vaultite"
 import type { Actor, ActorKind } from "./model"
 
 type Look = { icon: LucideIcon | ComponentType<{ className?: string; strokeWidth?: number }>; tint: string }
@@ -44,8 +44,7 @@ export const count = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(n >= 10
 
 function terminalRuns(id: string): Promise<boolean> {
   return new Promise((resolve) => {
-    let sock: WebSocket
-    try { sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminals`) } catch { return resolve(false) }
+    const sock = openSocket("terminals")
     const done = (v: boolean) => { clearTimeout(timer); try { sock.close() } catch {} resolve(v) }
     const timer = setTimeout(() => done(false), 1500)
     sock.onmessage = (e) => {

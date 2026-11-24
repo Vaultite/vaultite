@@ -1,4 +1,4 @@
-import type { WebSocket } from "ws"
+import type { ServedSocket } from "../../../core/plugins.ts"
 import { z } from "zod"
 import type { Message } from "./rooms.ts"
 import { stepEffect, thingText, type Thing } from "../../../core/desktop/uimodel.ts"
@@ -76,14 +76,14 @@ export function doneText(r: Done): string {
 
 const STEP_MS = 120_000
 
-export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent: string, sx: number, sy: number) => void) {
-  const waiting = new Map<string, { ws: WebSocket; done: (r: Done) => void; wait: (ms: number) => void }>()
-  const offering = new Map<WebSocket, Set<string>>()
-  const up = (ws: WebSocket) => (offering.get(ws)?.size ?? 0) > 0
-  const drop = (ws: WebSocket, id?: string) => { const o = offering.get(ws); if (!o) return; if (id) o.delete(id); else o.clear(); if (!o.size) offering.delete(ws) }
-  let from: WebSocket | null = null, n = 0
+export function takeovers(send: (ws: ServedSocket, m: object) => void, fly: (agent: string, sx: number, sy: number) => void) {
+  const waiting = new Map<string, { ws: ServedSocket; done: (r: Done) => void; wait: (ms: number) => void }>()
+  const offering = new Map<ServedSocket, Set<string>>()
+  const up = (ws: ServedSocket) => (offering.get(ws)?.size ?? 0) > 0
+  const drop = (ws: ServedSocket, id?: string) => { const o = offering.get(ws); if (!o) return; if (id) o.delete(id); else o.clear(); if (!o.size) offering.delete(ws) }
+  let from: ServedSocket | null = null, n = 0
   return {
-    heard(ws: WebSocket, msg: Message): boolean {
+    heard(ws: ServedSocket, msg: Message): boolean {
       from = ws
       const m = Heard.safeParse(msg).data
       if (!up(ws) || !m) return false
@@ -93,7 +93,7 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
       return yes !== null
     },
     offering: up,
-    message(ws: WebSocket, msg: Message): boolean {
+    message(ws: ServedSocket, msg: Message): boolean {
       const m = FromHelper.safeParse(msg).data
       if (m?.t === "takeover-asking") { if (m.id !== undefined) offering.set(ws, (offering.get(ws) ?? new Set()).add(m.id)); if (m.id !== undefined && m.ms !== undefined) waiting.get(m.id)?.wait(m.ms + STEP_MS); return true }
       if (m?.t === "takeover-at") { if (m.agent !== undefined && m.sx !== undefined && m.sy !== undefined) fly(m.agent, m.sx, m.sy); return true }
@@ -103,7 +103,7 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
       if (w?.ws === ws) { waiting.delete(m.id); w.done(m) }
       return true
     },
-    closed(ws: WebSocket) {
+    closed(ws: ServedSocket) {
       offering.delete(ws)
       if (from === ws) from = null
       for (const [id, w] of waiting) if (w.ws === ws) { waiting.delete(id); w.done({ ok: false, why: "gone", text: "the helper went away (the app quit or restarted)" }) }

@@ -1,7 +1,6 @@
 import fs from "node:fs"
-import type { WebSocket } from "ws"
 import { HOME } from "../../../core/agents.ts"
-import { logger, type Machine, MACHINE_CLIENT, machineSocket, OpError, pipeSockets, type Plugin, splitMachine, Text } from "../../../core/plugins.ts"
+import { logger, type Machine, MACHINE_CLIENT, machineSocket, OpError, pipeSockets, type Plugin, splitMachine, Text, type ServedSocket } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
 import { PAGE } from "./chatentries.ts"
 import { type Entry, imageType } from "./chatlog.ts"
@@ -13,15 +12,15 @@ const log = logger("chat")
 export const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
   dontAsk: "Don't ask", bypassPermissions: "Bypass permissions" }
 const PING_MS = 20_000, PING = JSON.stringify({ t: "ping" } satisfies TabMessage)
-const say = (ws: WebSocket, m: TabMessage) => ws.send(JSON.stringify(m))
+const say = (ws: ServedSocket, m: TabMessage) => ws.send(JSON.stringify(m))
 
 type Needs = Pick<ChatCore, "watching" | "holding" | "hosted" | "readTitle" | "hello" | "conversation" | "page" | "modelDefault" | "effortDefault" | "modeDefault" | "d">
 
 export function chatTab(plugin: Plugin, c: Needs) {
   const { watching, holding, hosted, readTitle, hello, conversation, page, modelDefault, effortDefault, modeDefault, d } = c
   // A phone back from the background has a socket that went quiet: each is pinged, one that stops answering ended.
-  const answered = new Map<WebSocket, boolean>(), told = new WeakSet<WebSocket>()
-  function alive(ws: WebSocket, tell: boolean) {
+  const answered = new Map<ServedSocket, boolean>(), told = new WeakSet<ServedSocket>()
+  function alive(ws: ServedSocket, tell: boolean) {
     answered.set(ws, true)
     ws.on("pong", () => { if (answered.has(ws)) answered.set(ws, true) })
     ws.on("close", () => answered.delete(ws))

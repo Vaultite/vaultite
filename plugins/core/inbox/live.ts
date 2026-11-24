@@ -1,5 +1,5 @@
 import { type RawData, WebSocket } from "ws"
-import { HTTPError, type Machine, MACHINE_CLIENT, machineSocket, splitMachine } from "../../../core/plugins.ts"
+import { HTTPError, type Machine, MACHINE_CLIENT, machineSocket, splitMachine, type ServedSocket } from "../../../core/plugins.ts"
 import { str } from "../../../core/vault.ts"
 import { type InboxEvent } from "./model.ts"
 import { machineList, plugin } from "./server.ts"
@@ -8,12 +8,12 @@ import { broadcast, message, remotes, watchers } from "./store.ts"
 /** Sockets that stopped answering are ended: a laptop that slept, or a network that changed, leaves its connection open
  *  on the other end, silent (no close comes). Each is pinged every PING; one that didn't answer the last is dead. */
 const PING = 15_000
-const answered = new WeakMap<WebSocket, boolean>()
-function alive(ws: WebSocket) {
+const answered = new WeakMap<ServedSocket, boolean>()
+function alive(ws: ServedSocket) {
   answered.set(ws, true)
   ws.on("pong", () => answered.set(ws, true))
 }
-function pingAll(socks: Iterable<WebSocket>) {
+function pingAll(socks: Iterable<ServedSocket>) {
   for (const ws of socks) {
     if (ws.readyState !== ws.OPEN) continue
     if (!answered.get(ws)) { ws.terminate(); continue }

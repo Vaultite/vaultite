@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http"
-import { type RawData, WebSocket } from "ws"
-import { HTTPError, logger, machineSocket, pipeSockets, splitMachine, type Machine } from "../../../core/plugins.ts"
+import type { RawData } from "ws"
+import { HTTPError, logger, machineSocket, pipeSockets, splitMachine, type Machine, type ServedSocket } from "../../../core/plugins.ts"
 import { CLOSE } from "./closes.ts"
 import { type Session, TERMINAL_ID, clamp, plugin, sessions, shell } from "./shared.ts"
 import { LOCAL, PATH, agentOf, backendOf, context, env, fromReq, ownerOf, pluginBackend, runsHere } from "./backends.ts"
@@ -13,7 +13,7 @@ const log = logger("terminal")
 const machineOf = (id: string) => plugin.ask<Machine | null>("machines:machine", null, id)
 export const terminalMachines = async () => (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("terminal"))
 
-function joinRemote(ws: WebSocket, m: Machine | null, id: string, path: string, query: Record<string, string>) {
+function joinRemote(ws: ServedSocket, m: Machine | null, id: string, path: string, query: Record<string, string>) {
   if (!m || !m.online || !m.plugins?.includes("terminal")) {
     if (!m) { ws.send(JSON.stringify({ t: "refused", reason: `this terminal runs on '${id}', which isn't one of this vault's machines` })); return ws.close(CLOSE.refused, "refused") }
     ws.send(JSON.stringify({ t: "unreachable", machine: m.id, label: m.label, reason: !m.online ? "isn't answering" : "has its terminal turned off" }))
@@ -65,7 +65,7 @@ export const starting = new Map<string, Promise<{ s: Session; fresh: boolean }>>
 
 /** Refuse this socket if its request may not have a shell (in the socket, not before it: a refused upgrade reaches the
  *  page only as "closed", so it would retry forever). True when it may go on. */
-export async function allowed(ws: WebSocket, req: IncomingMessage) {
+export async function allowed(ws: ServedSocket, req: IncomingMessage) {
   const why = await plugin.refusal(req, "the terminal")
   if (why) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "refused", reason: why }))

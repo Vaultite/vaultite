@@ -3,6 +3,7 @@
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/phone-chat-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -13,13 +14,13 @@ await api("POST", "inbox/events", { source: "browser", kind: "waiting", title: T
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 let refuse = true, inbox = null, events = null
 const tries = []
-await ctx.routeWebSocket(/\/api\/inbox\/live/, (ws) => {
+await routeSocket(ctx, /\/api\/inbox\/live/, (ws) => {
   tries.push(Date.now())
   if (refuse) return ws.close()
   inbox = ws
   ws.connectToServer()
 })
-await ctx.routeWebSocket(/\/api\/events/, (ws) => { events = ws; ws.connectToServer() })
+await routeSocket(ctx, /\/api\/events/, (ws) => { events = ws; ws.connectToServer() })
 const page = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
 const down = page.locator("[data-inbox-down]"), stale = page.locator("[data-inbox-stale]"), row = page.locator("[data-inbox-view]").getByText(TITLE)
 

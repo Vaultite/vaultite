@@ -1,7 +1,7 @@
 import path from "node:path"
-import { type RawData, WebSocket } from "ws"
+import type { RawData } from "ws"
 import { z } from "zod"
-import { LOCAL, logger, vaultPath, type Who } from "../../../core/plugins.ts"
+import { LOCAL, logger, vaultPath, type Who, type ServedSocket } from "../../../core/plugins.ts"
 import { bridges } from "./bridge.ts"
 import { type Message, messageFrom, rooms } from "./rooms.ts"
 import { paneSource } from "../../../core/desktop/places.ts"
@@ -42,7 +42,7 @@ const there = bridges(plugin, (ws, m, path) => void co.heard(ws, m, path))
 plugin.onUnload(() => there.stop())
 const roomMessage = (m: Message) => m.t.startsWith("y") || m.t === "aw"
 
-export const screens = new Set<WebSocket>()
+export const screens = new Set<ServedSocket>()
 export const takeover = takeovers(send, (name, sx, sy) => void resolve(target({ sx, sy }, true), name).then((t) => wroteAt(name, { ...t, pointed: Date.now() }), () => {}))
 export const screenDrawing = screenDrawings(plugin, {
   send: (m) => { for (const ws of screens) send(ws, m) },

@@ -1,7 +1,6 @@
 import fs from "node:fs"
-import { WebSocket } from "ws"
 import { z } from "zod"
-import { type Who } from "../../../core/plugins.ts"
+import { type Who, type ServedSocket } from "../../../core/plugins.ts"
 import { profileOf } from "./profiles.ts"
 import { type Pane, PLACE_KEYS, type Target } from "../../../core/desktop/places.ts"
 import { inSummoned } from "./summoned.ts"
@@ -74,16 +73,16 @@ export const showed = (as: string, add: ShownMark[]) => { if (add.length) shownB
 
 type Win = { open: string[]; shown: string[]; focus: Target | null; at: number; was?: string
   panes: Pane[]; pane?: string; told?: string }
-export const windows = new Map<WebSocket, Win>()
+export const windows = new Map<ServedSocket, Win>()
 export type Guest = { id: string; name: string; who: Who; role: "read" | "comment" | "edit"; see: (rel: string) => string | null; at: (p: string) => string; said: () => boolean
   holds: () => boolean
   may: (rel: string, before: string, after: string) => string; slow: () => boolean
   since: number }
-export const guests = new Map<WebSocket, Guest>()
+export const guests = new Map<ServedSocket, Guest>()
 export const MAX_TEXT = 4000, MAX_THREADS = 100, MAX_REPLIES = 100
-export const asked = new Map<string, { ws: WebSocket; done: (ok: boolean, error?: string, reply?: Record<string, unknown>) => void }>()
+export const asked = new Map<string, { ws: ServedSocket; done: (ok: boolean, error?: string, reply?: Record<string, unknown>) => void }>()
 
-export const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
+export const send = (ws: ServedSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 export const broadcast = <M extends { t: string; note?: Note; id?: string }>(m: M) => {
   const t = m.t
   if (t === "note" || t === "state" || t === "voice") m = { ...m, voice: setting("voice") }

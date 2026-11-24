@@ -145,13 +145,16 @@ export const canUndoEdit = (agent?: string) => !!undoer?.can(agent)
 export const undoEdit = (agent?: string) => !!undoer?.undo(agent)
 
 
-let ws: WebSocket | null = null
+type Open = (path: string) => Pick<WebSocket, "readyState" | "send" | "close" | "onopen" | "onclose" | "onmessage">
+let ws: ReturnType<Open> | null = null
+let openSocket: Open | null = null
 let retry: ReturnType<typeof setTimeout> | null = null
 let tries = 0
 let users = 0
 
-export function connect() {
+export function connect(opener: Open) {
   users++
+  openSocket = opener
   if (!ws && !retry) open()
   return () => {
     if (--users > 0) return
@@ -162,9 +165,8 @@ export function connect() {
 
 function open() {
   retry = null
-  const url = new URL("api/companion/live", location.href)
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-  const s = new WebSocket(url)
+  if (!openSocket) return
+  const s = openSocket("companion/live")
   ws = s
   s.onopen = () => { tries = 0; saidWhere = ""; set({ connected: true }); sayWhere(true) }
   s.onclose = () => {

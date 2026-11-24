@@ -8,6 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
+import { routeSocket } from "./lib/sockets.mjs"
 const { check, done, watch } = await qa(import.meta.url, { chrome: false })
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vau-livestart-"))
@@ -39,7 +40,7 @@ try {
   let letGo = null, up = null
   const held = () => new Promise((r) => { letGo = r })
   let gate = held()
-  await page.routeWebSocket(/\/api\/events(\?.*)?$/, async (ws) => {
+  await routeSocket(page, /\/api\/events(\?.*)?$/, async (ws) => {
     await gate
     up = ws.connectToServer()
   })

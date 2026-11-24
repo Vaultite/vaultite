@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs"
 import { deflateSync } from "node:zlib"
 import { qa } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
+import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/chatshots/", ONLY = "", SIZES_ONLY = ""], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -150,7 +151,7 @@ for (const size of SIZES) {
     if (ONLY && !ONLY.split(",").includes(name)) continue
     const page = watch(await ctx.newPage(), { label: `${size.name} ${name}`, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
     let sock = null
-    await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; if (!sc.silent) ws.send(hello(sc.hello)) })
+    await routeSocket(page, /\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; if (!sc.silent) ws.send(hello(sc.hello)) })
     await page.route("**/api/ops/claude-code.chat-*", (r) => r.fulfill({ json: { id: "qa-chat", state: "working" } }))
     await page.route("**/api/claude-code/chat/qa-chat/image/**", (r) => r.fulfill({ contentType: "image/png", body: PICTURES[Number(r.request().url().split("/").pop())] ?? PICTURES[0] }))
     await page.goto("about:blank")
@@ -195,7 +196,7 @@ if (!ONLY || ONLY.split(",").includes("motion")) {
     // (Playwright's video starts as the page is made: marks count from then)
     const t0 = Date.now()
     let sock = null
-    await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; ws.send(hello({ s: S("idle"), live: [{ ...DONE[0], at: new Date(Date.now() - 2000).toISOString() }] })) })
+    await routeSocket(page, /\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; ws.send(hello({ s: S("idle"), live: [{ ...DONE[0], at: new Date(Date.now() - 2000).toISOString() }] })) })
     await page.route("**/api/ops/claude-code.chat-*", (r) => r.fulfill({ json: { id: "qa-chat", state: "working" } }))
     await page.goto(`${B}#view/claude-session%2Fqa-chat`)
     await page.locator("[data-chat=qa-chat] [data-entries]").waitFor({ timeout: 20000 })

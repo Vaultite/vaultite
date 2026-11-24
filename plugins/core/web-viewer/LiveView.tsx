@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, ClipboardPaste, Copy, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
-import { Button, closePane, cn, copyText, errorText, get, haptic, keysText, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useGiveKeys, useScopedState, webPages, coarse, type BarKey, type FieldKeys } from "@vaultite"
+import { Button, closePane, cn, copyText, errorText, get, haptic, keysText, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useGiveKeys, useScopedState, webPages, coarse, type BarKey, type FieldKeys, openSocket, type Socket } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -150,7 +150,7 @@ function Watch({ tab: asked, machine, back }: { tab: number; machine: string; ba
   useLayoutEffect(() => { onText.current = heardText })
   const img = useRef<HTMLImageElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
-  const sock = useRef<WebSocket | null>(null)
+  const sock = useRef<Socket | null>(null)
   const bar = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const pointer = useRef<HTMLDivElement>(null)
@@ -171,7 +171,7 @@ function Watch({ tab: asked, machine, back }: { tab: number; machine: string; ba
     let stop = false, retry = 0, timer = 0
     const connect = () => {
       if (stop) return
-      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/web-viewer/live/${id}`)
+      const ws = openSocket(`web-viewer/live/${id}`)
       ws.binaryType = "blob"
       sock.current = ws
       sharpSent.current = false

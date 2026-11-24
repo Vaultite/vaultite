@@ -4,10 +4,9 @@ import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import type { WebSocket } from "ws"
 import { z } from "zod"
 import { type Asking, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
-import { agentLines, logger, OpError, outliving, type Plugin, whenListening } from "../../../core/plugins.ts"
+import { agentLines, logger, OpError, outliving, type Plugin, whenListening, type ServedSocket } from "../../../core/plugins.ts"
 import { byUser as asUser } from "../../../core/writegate.ts"
 import { merge, PAGE } from "./chatentries.ts"
 import { chatInbox } from "./chatinbox.ts"
@@ -91,7 +90,7 @@ export type ChatCore = ReturnType<typeof chatCore>["core"]
 function chatCore(plugin: Plugin, d: ChatDeps) {
   const hosted = new Map<string, Summary>()
   const asking = new Map<string, Map<string, Extract<Entry, { k: "ask" }>>>()
-  const watching = new Map<string, Set<WebSocket>>()
+  const watching = new Map<string, Set<ServedSocket>>()
   const owned = new Map<string, ChatStart>()
   const listeners = new Set<(id: string, s: Summary | null) => void>()
   const inform = (id: string, s: Summary | null) => { for (const fn of listeners) try { fn(id, s) } catch (e) { log.error("a listener failed", e, { id }) } }
@@ -421,7 +420,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
   }
 
 
-  const holding = new WeakMap<WebSocket, string[]>()
+  const holding = new WeakMap<ServedSocket, string[]>()
   function toTabs(id: string, m: TabMessage) {
     const tabs = watching.get(id)
     if (!tabs?.size) return

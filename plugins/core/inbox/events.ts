@@ -1,4 +1,4 @@
-import { agentsOn, canRunAgents, cell, onReconnect, clickOpening, del, detailPath, focusedPane, getTabLayout, haptic, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openDetail, openFile, openOutside, openView, openWebLink, parseTerminal, post, type Agent, type TabLayout, openAgentSession } from "@vaultite"
+import { agentsOn, canRunAgents, cell, onReconnect, clickOpening, del, detailPath, focusedPane, getTabLayout, haptic, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openDetail, openFile, openOutside, openView, openWebLink, parseTerminal, post, type Agent, type TabLayout, openAgentSession, openSocket, type Socket } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent, InboxItem } from "./types"
@@ -21,7 +21,7 @@ function set(events: InboxEvent[], hold = state.get().hold) {
   state.set({ events, unread: events.filter((e) => !e.read).length, needs: events.filter((e) => waitsOnYou(e) && !snoozed(e.snoozed)).length, ready: true, hold })
 }
 
-let sock: WebSocket | null = null
+let sock: Socket | null = null
 let users = 0
 let retry = 0
 let timer: ReturnType<typeof setTimeout> | null = null
@@ -36,7 +36,7 @@ export const useInboxDown = down.use
 
 function open() {
   if (timer) { clearTimeout(timer); timer = null }
-  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/inbox/live`)
+  const ws = openSocket("inbox/live")
   sock = ws
   openedAt = Date.now()
   const late = setTimeout(() => { if (sock === ws) ws.close() }, OPEN_WAIT)

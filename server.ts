@@ -18,6 +18,8 @@ import type { App } from "./core/app.ts"
 import type { FileAnswer as Answered } from "./core/plugins.ts"
 import type { Live as LiveType } from "./core/live.ts"
 import type { Encoding } from "./core/precompressed.ts"
+import type { ServedSocket } from "./core/mux.ts"
+import type { WebSocket } from "ws"
 import type { Vault } from "./core/vault.ts"
 import { codeOf, errnoOf, isObj, messageOf } from "./core/values.ts"
 import { prefetchCode } from "./core/prefetch.ts"
@@ -46,6 +48,8 @@ const starting = span("server.start", {}, askedAt - performance.timeOrigin)
 const timing = { mark: (part: string) => { starting.mark(part); startup.markPassed(part) } }
 timing.mark("spawn")
 const { WebSocketServer } = await import("ws")
+const { serveMux } = await import("./core/mux.ts")
+const { MUX_PATH } = await import("./core/muxwire.ts")
 const { decodePart: decode, jsonOf, open, queryOf } = await import("./core/app.ts")
 ;(await import("./core/update/graph.ts")).giveGraph(() => import("./core/update/closure.ts"))
 const { Live } = await import("./core/live.ts")
@@ -641,6 +645,24 @@ function refuse(socket: Duplex, status: number, message: string) {
     `Connection: close\r\n\r\n${message}`)
 }
 
+async function socketAt(req: http.IncomingMessage, url: URL): Promise<(ws: ServedSocket) => void> {
+  if (url.pathname === "/api/events") return (ws) => live.client(ws, url.searchParams.get("at") ?? undefined, url.searchParams.get("device") ?? undefined)
+  const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)
+  const trusting = fromApp(req)
+  await app.syncPlugins({ trusting })
+  await vault.synced({ trusting })
+  const hit = url.pathname.startsWith("/api/") ? matchSocket(app.plugins, parts) : null
+  if (!hit) throw new HTTPError(404, "not found")
+  const [plugin, sock, wild] = hit
+  if (vault.switchedOff().has(plugin.id)) throw new HTTPError(404, `${plugin.manifest.name} is off`)
+  const params = { wild, query: queryOf(url.searchParams) }
+  await sock.accept?.(req, params)
+  return (ws) => {
+    process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
+    errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { log.error(`WS ${url.pathname}`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
+  }
+}
+
 server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
   // Like a request: "//api/events" (a page opened at "//") would parse as a host
   const url = new URL((req.url ?? "/").replace(/^\/+/, "/"), "http://localhost")
@@ -657,28 +679,12 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
       }
       return sockets.handleUpgrade(req, socket, head, (ws) => { ws.on("error", () => ws.terminate()); attach(ws) })
     }
-    if (url.pathname === "/api/events") {
-      return socketsFor(req).handleUpgrade(req, socket, head, (ws) => {
-        ws.on("error", () => ws.terminate())
-        live.client(ws, url.searchParams.get("at") ?? undefined, url.searchParams.get("device") ?? undefined)
-      })
-    }
-    const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)
-    const trusting = fromApp(req)
-    await app.syncPlugins({ trusting })
-    await vault.synced({ trusting })
-    const hit = matchSocket(app.plugins, parts)
-    if (!hit) return refuse(socket, 404, "not found")
-    const [plugin, sock, wild] = hit
-    if (vault.switchedOff().has(plugin.id)) return refuse(socket, 404, `${plugin.manifest.name} is off`)
-    const query = queryOf(url.searchParams)
-    const params = { wild, query }
-    await sock.accept?.(req, params)
+    const serve = url.pathname === `/api/${MUX_PATH}` ? (ws: WebSocket) => serveMux(ws, (at) => socketAt(req, new URL(`/api/${at.replace(/^\/+/, "")}`, "http://localhost")))
+      : await socketAt(req, url)
     socketsFor(req).handleUpgrade(req, socket, head, (ws) => {
       // A bad frame (one over maxPayload) closes this socket, not the server: unheard, ws's error event throws.
       ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${e.message}\n`); ws.terminate() })
-      process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
-      errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { log.error(`WS ${url.pathname}`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
+      serve(ws)
     })
   } catch (e) {
     if (e instanceof HTTPError) return refuse(socket, e.status, e.message)
