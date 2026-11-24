@@ -1,9 +1,10 @@
 // A service install following a branch (core/selfupdate.ts on core/update/): on throwaway git repos, with CI, npm, the
 // browser and the restart stood in for. In npm test.
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { check, exit, section, summary, tempDir } from "./test/lib.ts"
+import { pathToFileURL } from "node:url"
+import { check, exit, section, skip, summary, tempDir, waitFor } from "./test/lib.ts"
 import type { CiResult } from "../core/update/ci.ts"
 import { type Busy, checkForUpdate } from "../core/update/updater.ts"
 import { backendChanged, inPlace, shadow } from "../core/selfupdate.ts"
@@ -268,6 +269,27 @@ await section("the module graph's answer beside it, said when they differ", asyn
   await shadow(dir, ["core/docs/new.md"], true, log)
   check("both ways when they don't, with the files", lines.length === 2 && /would restart \(core\/a\.ts; server\.ts > core\/a\.ts\)/.test(lines[0])
     && /would not restart \(the server reaches none of core\/docs\/new\.md\)/.test(lines[1]), lines)
+})
+
+await section("a restart decided is bounded: what holds the exit is killed past its deadline", async () => {
+  const at = pathToFileURL(path.resolve(import.meta.dirname, "../core/exitdeadline.ts")).href
+  const run = (body: string) => new Promise<{ code: number | null; signal: string | null; ms: number; err: string; out: string }>((done) => {
+    const t = Date.now(), c = spawn(process.execPath, ["--input-type=module", "-e", `import { killUnlessExitedWithin } from ${JSON.stringify(at)}\n${body}`], { stdio: ["ignore", "pipe", "pipe"] })
+    let err = "", out = ""
+    c.stderr.on("data", (d) => { err += d }); c.stdout.on("data", (d) => { out += d })
+    c.on("close", (code, signal) => done({ code, signal, ms: Date.now() - t, err, out }))
+  })
+  const blocked = await run(`killUnlessExitedWithin(800, "test: blocked")\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0)`)
+  check("a main thread that never turns again is killed at the deadline, saying why", blocked.signal === "SIGKILL" && blocked.ms < 10_000
+    && /test: blocked: the server hadn't exited 1 s after it decided to/.test(blocked.err), blocked)
+  if (process.platform === "win32") skip("process.exit held by an fs call stuck in the kernel", "no FIFOs on Windows")
+  else { const fifo = path.join(tmp, "stuck.fifo")
+    execFileSync("mkfifo", [fifo])
+    const held = await run(`import fs from "node:fs"\nfs.open(${JSON.stringify(fifo)}, "r", () => {})\nkillUnlessExitedWithin(800, "test: held")\nsetTimeout(() => process.exit(0), 100)`)
+    check("process.exit held by an fs call stuck in the kernel is killed at the deadline", held.signal === "SIGKILL" && held.ms < 10_000 && /test: held/.test(held.err), held) }
+  const clean = await run(`const g = killUnlessExitedWithin(60_000, "test: clean")\nprocess.stdout.write(String(g))\nprocess.exit(0)`)
+  const gone = await waitFor(() => { try { process.kill(Number(clean.out), 0); return null } catch { return true } }, 3000, 100)
+  check("an exit in time is left alone, and its guard goes with it", clean.code === 0 && !clean.err && Number(clean.out) > 0 && gone, clean)
 })
 
 section("an inherited GIT_DIR")
