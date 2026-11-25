@@ -90,3 +90,29 @@ export async function routeSocket(target, re, fn) {
 }
 
 export const channelData = (payload) => { const f = frameOf(String(payload)); return f ? textOf(f) : undefined }
+
+export function channelPaths(ws) {
+  const paths = new Map()
+  ws.on("framesent", ({ payload }) => { const f = frameOf(payload); if (f?.kind === "o") paths.set(f.ch, `/api/${f.rest}`) })
+  return (payload) => paths.get(frameOf(payload)?.ch)
+}
+
+export const tapChannel = (target, path) => target.addInitScript((path) => {
+  const W = window.WebSocket, tap = { open: false, sent: [], ws: null, ch: "" }
+  const frame = (text) => tap.ws.dispatchEvent(new MessageEvent("message", { data: text }))
+  window.qaTap = { open: () => tap.open, sent: tap.sent, play: (m) => frame(`t${tap.ch} ${JSON.stringify(m)}`), cut: () => frame(`c${tap.ch} 1006 `) }
+  window.WebSocket = class extends W {
+    constructor(...a) {
+      super(...a)
+      if (!/\/api\/mux\b/.test(String(a[0]))) return
+      const send = this.send.bind(this)
+      this.send = (d) => {
+        const sp = String(d).indexOf(" "), ch = String(d).slice(1, sp), rest = String(d).slice(sp + 1)
+        if (d[0] === "o" && rest.split("?")[0] === path) Object.assign(tap, { ws: this, ch, open: false })
+        else if (d[0] === "t" && this === tap.ws && ch === tap.ch) try { tap.sent.push(JSON.parse(rest)) } catch {}
+        send(d)
+      }
+      this.addEventListener("message", (e) => { if (this === tap.ws && String(e.data).trim() === `k${tap.ch}`) tap.open = true })
+    }
+  }
+}, path)

@@ -1,4 +1,4 @@
-import { channelData } from "./sockets.mjs"
+import { channelData, channelPaths } from "./sockets.mjs"
 const POLL = 40
 
 function requestsOut(page) {
@@ -20,7 +20,10 @@ const pageBusy = (page, saves) => page.evaluate((saves) => new Promise((done) =>
 
 function framesHeard(page) {
   const waiters = new Set()
-  page.on("websocket", (ws) => ws.on("framereceived", ({ payload }) => { for (const w of waiters) w(ws.url(), String(payload)) }))
+  page.on("websocket", (ws) => {
+    const pathOf = channelPaths(ws)
+    ws.on("framereceived", ({ payload }) => { for (const w of waiters) w(ws.url(), String(payload), pathOf(payload) ?? "") })
+  })
   return waiters
 }
 
@@ -52,7 +55,7 @@ export function app(page) {
 
   async function hearing(match, act, timeout, missed) {
     let hit
-    const got = new Promise((resolve) => { hit = (url, payload) => { if (match(url, payload)) resolve() }; heard.add(hit) })
+    const got = new Promise((resolve) => { hit = (url, payload, channel) => { if (match(url, payload, channel)) resolve() }; heard.add(hit) })
     try {
       await act()
       let timer
@@ -69,7 +72,7 @@ export function app(page) {
   /** idle, and the debounced saves done (trackSoon's `save`): before a reload or reading localStorage. */
   const saved = (o = {}) => idle({ timeout: 15_000, ...o, saves: true })
 
-  const hears = (socket, act, { timeout = 10_000 } = {}) => hearing((url) => socket.test(url), act, timeout, `the page heard nothing on ${socket}`)
+  const hears = (socket, act, { timeout = 10_000 } = {}) => hearing((url, _payload, channel) => socket.test(url) || socket.test(channel), act, timeout, `the page heard nothing on ${socket}`)
 
   const menus = () => page.locator("[role=menu]")
   const ROLES = ["menuitem", "menuitemcheckbox", "menuitemradio"], ITEM = ROLES.map((r) => `[role=${r}]`).join(", ")

@@ -3,6 +3,7 @@
 //   node web/qa/companion-phone.mjs <base url> <vault path>
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until } from "./lib/qa.mjs"
+import { tapChannel } from "./lib/sockets.mjs"
 import { app } from "./lib/app.mjs"
 const { args: [BASE, VAULT], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const B = BASE.replace(/\/+$/, ""), OUT = "/tmp/companion-phone-"
@@ -23,15 +24,11 @@ await op("companion.clear")
 
 async function open(o) {
   const ctx = await browser.newContext(o)
-  await ctx.addInitScript(() => {
-    const W = window.WebSocket
-    window.WebSocket = class extends W { constructor(...a) { super(...a); if (String(a[0]).includes("companion/live")) window.__companion = this } }
-    window.__play = (m) => window.__companion.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(m) }))
-  })
+  await tapChannel(ctx, "companion/live")
   const page = watch(await ctx.newPage(), { label: o.label })
   await page.goto(`${B}/#file/${enc(NOTE)}`)
   await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 15000 })
-  await until(() => page.evaluate(() => window.__companion?.readyState === 1), 10000)
+  await until(() => page.evaluate(() => window.qaTap.open()), 10000)
   await page.addStyleTag({ content: "[data-sonner-toaster] { display: none !important; }" })
   const ui = app(page)
   await ui.idle()
@@ -129,7 +126,7 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
   s = await until(async () => { const x = await seen(page); return !x.card ? x : null }, 2000)
   check("phone: a card swiped down goes", !!s, await seen(page))
-  await page.evaluate(() => window.__play({ t: "said", said: [{ id: "qunseen", kind: "say", agent: "Claude", text: "Swipe me away, or read me later.", t: Date.now() }] }))
+  await page.evaluate(() => window.qaTap.play({ t: "said", said: [{ id: "qunseen", kind: "say", agent: "Claude", text: "Swipe me away, or read me later.", t: Date.now() }] }))
   const face = page.locator('[data-companion-presence]:visible button[data-agent="Claude"]')
   check("phone: what it said unseen, a dot on its face", await until(() => face.locator("[data-companion-unread]").count(), 3000) > 0)
   await face.dispatchEvent("click")
@@ -140,13 +137,13 @@ const near = (caret, box) => !!caret && !!box && caret.y >= box.y - 4 && caret.y
   check("phone: a tap outside closes its conversation", await until(async () => (await seen(page)).card === null, 2000), await seen(page))
 
   const base = { name: "Claude", tint: "orange", path: NOTE, line: 5, find: "Basil", t: Date.now() - 20_000 }
-  await page.evaluate((a) => window.__play({ t: "agent", agent: a }), { ...base, state: "thinking", asks: { event: "chat:q", text: "Run vau tabs to see what's open?" } })
+  await page.evaluate((a) => window.qaTap.play({ t: "agent", agent: a }), { ...base, state: "thinking", asks: { event: "chat:q", text: "Run vau tabs to see what's open?" } })
   s = await until(async () => { const x = await seen(page); return x.card?.kind === "ask" ? x : null }, 3000)
   const approve = await page.locator("[data-companion-card='ask'] [data-gate='approve']").boundingBox()
   check("phone: asking leave, a card with Deny and Approve by the thumb, no caret for it", !!s && /needs you/.test(s.card.text) && (approve?.height ?? 0) >= 44 && s.carets === 0, { s, approve })
   await arrived(page, "[data-companion-card]")
   await page.screenshot({ path: `${OUT}ask.png` })
-  await page.evaluate((a) => window.__play({ t: "agent", agent: a }), { ...base, state: "watching", seen: true, why: "not for me" })
+  await page.evaluate((a) => window.qaTap.play({ t: "agent", agent: a }), { ...base, state: "watching", seen: true, why: "not for me" })
   s = await until(async () => { const x = await seen(page); return x.carets === 0 && !x.card ? x : null }, 4000) ?? await seen(page)
   check("phone: at rest again, nothing of it (no cursor, caret, chip or card), however it was left", s.cursors === 0 && s.carets === 0 && !s.chip && !s.card, s)
   await ctx.close()

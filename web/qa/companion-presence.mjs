@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { app as appOf } from "./lib/app.mjs"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { tapChannel } from "./lib/sockets.mjs"
 const { args: [BASE, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
 const file = (rel) => `${VAULT}/${rel}`
@@ -40,18 +41,12 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
   await op("companion.next", { timeout: 0 })
   await op("companion.clear")
   const ctx = await browser.newContext({ viewport: { width: 1300, height: 850 } })
-  await ctx.addInitScript(() => {
-    const W = window.WebSocket
-    window.WebSocket = class extends W {
-      constructor(...a) { super(...a); if (String(a[0]).includes("companion/live")) window.__companion = this }
-    }
-    window.__play = (m) => window.__companion.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(m) }))
-  })
+  await tapChannel(ctx, "companion/live")
   const page = watch(await ctx.newPage(), { label: L }), ui = appOf(page)
   await page.goto(`${B}/#file/${enc(NOTE)}`)
   const editor = page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`)
   await editor.waitFor({ timeout: 15000 })
-  await until(() => page.evaluate(() => window.__companion?.readyState === 1), 10000)
+  await until(() => page.evaluate(() => window.qaTap.open()), 10000)
   await ui.idle()
   const away = () => page.mouse.move(2, 2)
   const at = (text) => editor.locator(".cm-line", { hasText: text }).click({ position: { x: 2, y: 4 } })
@@ -86,7 +81,7 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
   await op("companion.clear")
 
   const base = { name: "Claude", tint: "orange", path: NOTE, line: 5, find: "Basil", t: Date.now() - 20_000 }
-  const played = async (a) => { await page.evaluate((x) => window.__play({ t: "agent", agent: x }), { ...base, ...a }); await ui.idle(); return cursorOf(page) }
+  const played = async (a) => { await page.evaluate((x) => window.qaTap.play({ t: "agent", agent: x }), { ...base, ...a }); await ui.idle(); return cursorOf(page) }
   c = await played({ state: "starting" })
   check(`${L}: starting, its flag, word and dots show`, shows(c, "dots") && c.words.includes("starting"), c)
   c = await played({ state: "listening" })
@@ -98,15 +93,15 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
   c = await played({ state: "watching", seen: true, why: "not for me" })
   check(`${L}: watching a while, it goes home: nothing of it in the note`, !!c && c.docked, c)
 
-  await page.evaluate((p) => window.__play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: " ", path: p, line: 5, t: Date.now() } }), NOTE)
+  await page.evaluate((p) => window.qaTap.play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: " ", path: p, line: 5, t: Date.now() } }), NOTE)
   await ui.idle()
   c = await cursorOf(page)
   check(`${L}: a say with no words draws no bubble`, c?.bubbles === 0, c)
-  await page.evaluate((p) => window.__play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: "Here.", path: p, line: 5, t: Date.now() } }), NOTE)
+  await page.evaluate((p) => window.qaTap.play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: "Here.", path: p, line: 5, t: Date.now() } }), NOTE)
   c = await until(async () => { const x = await cursorOf(page); return x?.bubble ? x : null }, 3000).then(async (x) => (x ? (await ui.idle(), cursorOf(page)) : x))
   check(`${L}: its words come, the bubble shows them`, c?.bubble === "Here." && shows(c, "tick"), c)
   await page.screenshot({ path: `/tmp/companion-presence-${L}-said.png` })
-  await page.evaluate(() => window.__play({ t: "drop", id: "qempty" }))
+  await page.evaluate(() => window.qaTap.play({ t: "drop", id: "qempty" }))
   await ctx.close()
 }
 await op("companion.next", { timeout: 0 })

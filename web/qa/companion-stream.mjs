@@ -4,6 +4,7 @@
 //   node web/qa/companion-stream.mjs <base url> <vault path>
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
+import { tapChannel } from "./lib/sockets.mjs"
 const { args: [BASE, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
 const file = (rel) => `${VAULT}/${rel}`
@@ -15,29 +16,16 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
 await api("PUT", "file", { path: NOTE, text: TEXT })
 
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 850 } })
-await ctx.addInitScript(() => {
-  const W = window.WebSocket
-  window.__sent = []
-  window.WebSocket = class extends W {
-    constructor(...a) {
-      super(...a)
-      if (!String(a[0]).includes("companion/live")) return
-      window.__companion = this
-      const send = this.send.bind(this)
-      this.send = (d) => { try { window.__sent.push(JSON.parse(d)) } catch {} send(d) }
-    }
-  }
-  window.__play = (m) => window.__companion.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(m) }))
-})
+await tapChannel(ctx, "companion/live")
 const page = watch(await ctx.newPage(), { label: "desktop" })
 await page.goto(`${B}/#file/${encodeURIComponent(NOTE)}`)
 const editor = page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`)
 await editor.waitFor({ timeout: 15000 })
-await until(() => page.evaluate(() => window.__companion?.readyState === 1), 10000)
+await until(() => page.evaluate(() => window.qaTap.open()), 10000)
 await wait(1200)
 const doc = () => page.evaluate((p) => { const el = document.querySelector(`.file-view[data-path="${p}"] .cm-content`); return (el.cmView?.view ?? el.cmTile?.view).state.doc.toString() }, NOTE).then((t) => t.replace(/^---\n[\s\S]*?\n---\n\n?/, ""))
-const play = (m) => page.evaluate((x) => window.__play(x), m)
-const sent = () => page.evaluate(() => window.__sent)
+const play = (m) => page.evaluate((x) => window.qaTap.play(x), m)
+const sent = () => page.evaluate(() => window.qaTap.sent)
 const atTitle = () => page.evaluate((p) => {
   const el = document.querySelector(`.file-view[data-path="${p}"] .cm-content`), v = el.cmView?.view ?? el.cmTile?.view, d = v.state.doc
   for (let i = 1; i <= d.lines; i++) if (d.line(i).text.startsWith("# Stream")) { v.focus(); v.dispatch({ selection: { anchor: d.line(i).to } }); return i }
@@ -140,7 +128,7 @@ check("hidden tab: shown again, it says so", !!(await until(async () => (await w
 
 await play({ t: "stream", rid: "q8", agent: "Claude", path: NOTE, after: "Line 1.", text: "Cut short" })
 await until(async () => (await doc()).includes("Line 1.\nCut short"), 3000)
-await page.evaluate(() => window.__companion.close())
+await page.evaluate(() => window.qaTap.cut())
 await wait(200)
 await play({ t: "stream-more", rid: "q8", at: 9, add: " past the cut" })
 await wait(200)
