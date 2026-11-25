@@ -88,7 +88,8 @@ What it says, as Markdown.
   on in the same file (one file per exchange).
 
 **Threads**: each coding agent's session is one thread, its event (kept on the machine it runs on, not in the vault),
-with a `state`:
+with a `state`. The Inbox lists them (its lists, count, `vau inbox` and its block) only with the setting `showSessions`
+on; off (the default), they're the Agents panel's, told still, and an answer never stays open as `answers: inbox` would:
 - `open`, it needs the user: it asks (a permission, a question, any dialog it shows, to sign in, a plan to approve), its
   turn ended with something for them (a question or a failure: `reply`; judged from its last message, by a small model
   when its words don't settle it), or its report is one the inbox keeps (a failure, public, the digest). It's told then

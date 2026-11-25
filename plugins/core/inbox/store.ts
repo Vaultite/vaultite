@@ -9,7 +9,7 @@ import { asThreads, BLOCKED, byThread, clip, doneAs, type InboxEvent, pinnedAs, 
 import { pushed, refreshWidgets } from "./phone.ts"
 import { DAY, dir, FOLDER, holdNow, MAX, MERGE, plugin, settings } from "./server.ts"
 import { snoozed } from "./snooze.ts"
-import { waitsOnYou } from "./threads.ts"
+import { inInbox, waitsOnYou } from "./threads.ts"
 
 const log = logger("inbox")
 
@@ -62,8 +62,9 @@ function current(es: InboxEvent[]): InboxEvent[] {
 
 export const threadOf = (r: Item) => shown().find((e) => e.state !== "done" && fileOf(e.link) === `${r.id}.md`) ?? null
 
-export const unread = (local = false) => shown(local).filter((e) => !e.read).length
-export const needing = (local = false) => shown(local).filter((e) => waitsOnYou(e) && !snoozed(e.snoozed)).length
+const listed = (local: boolean) => shown(local).filter(inInbox(settings().sessions))
+export const unread = (local = false) => listed(local).filter((e) => !e.read).length
+export const needing = (local = false) => listed(local).filter((e) => waitsOnYou(e) && !snoozed(e.snoozed)).length
 
 export function changed(next: InboxEvent[]) {
   events = prune(next)

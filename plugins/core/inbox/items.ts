@@ -3,14 +3,17 @@ import { activePane, askMove, closePane, getStore, isViewOpen, notify, openFile,
 import { fixEvent, getEvents, markEventsDone, pinEvents, unsettle, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { snoozed, snoozeMs } from "./snooze"
-import { countOf, lists, reviewing } from "./threads"
+import { countOf, inInbox, lists, reviewing } from "./threads"
+import { settings } from "./settings"
 
 export const waiting = (r: InboxItem) => reviewing(r) && !snoozed(r.snoozed)
-export const listsOf = (store: Store | null | undefined, events = getEvents().events, fresh?: ReadonlySet<string>) => lists(events, store?.inbox ?? [], fresh)
+export const listsOf = (store: Store | null | undefined, events = getEvents().events, fresh?: ReadonlySet<string>) =>
+  lists(events.filter(inInbox(settings.get().showSessions === true)), store?.inbox ?? [], fresh)
 export const toReview = (store: Store | null | undefined): InboxItem[] => { const l = listsOf(store); return [...l.pinned.results, ...l.review] }
 
 export function useBack(store: Store | null | undefined) {
   const { events } = useEvents()
+  settings.use()
   const [, redraw] = useState(0)
   const now = Date.now()
   const next = Math.min(...[...(store?.inbox ?? []).filter(reviewing).map((r) => snoozeMs(r.snoozed)), ...events.map((e) => e.snoozed ?? 0)].filter((t) => t > now))

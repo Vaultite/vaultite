@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Agents panel: sessions sit on shelves (Pinned, Needs you, Working, then Snoozed and Settled folded), with a chip per
+  repository to filter by, Pin (⌘⇧P), Snooze, and Settle and next (⌘⇧S), which refuses a session still working or waiting
+  on you. Plain shells can be listed too (Plain shells). New Code workspace makes a workspace with the Agents panel alone
+  and no tab list, where a clicked session takes the pane instead of opening a tab (⌘-click still opens one). Agents'
+  sessions leave the Inbox unless Show agent sessions in Inbox is on; their toasts and notifications stay.
 - Terminals: a terminal shows as the agent that runs in it now, not the one it was started with: quit Claude Code and run
   Antigravity there, and its tab, row, state and Agents panel say Antigravity. Antigravity, Gemini, Copilot, Amp, Aider and
   other agents' programs are known by name and logo without a plugin, and a reply to an earlier agent's session is never

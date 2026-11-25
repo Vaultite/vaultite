@@ -13,6 +13,7 @@ const { args: [B, OUT = "/tmp/inbox-shots/"], browser, check, watch, done } = aw
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
 const api = apiAt(B)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 const sidebars = read(".vaultite/sidebars.json")
 const vau = (...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args], { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: "" }, encoding: "utf8" })

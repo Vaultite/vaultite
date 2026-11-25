@@ -18,6 +18,10 @@ changes either. `1.json`:
 and what's kept with it, `{"layout": {"tabs": [{"id": "t1", "root": {"id": "p1", "to": "file:Notes/Idea.md"}, "focus":
 "p1"}], "active": "t1"}, "state": {"files:open": ["Notes"]}}`. A `layout` or `state` written into the file (by
 hand, or by an older app) is taken in and leaves the file.
+A Code workspace (the switcher's New Code workspace, or the palette's) is one with the Agents panel alone on the left
+and no tab list: `{"name": "Code", "icon": "bot", "sidebars": {"left": ["agents:agents"], "right": [], "collapsed": []}}`.
+With no tab list on screen (no tab bar, no Tabs panel), a session clicked in the Agents panel takes the focused pane's place
+instead of opening a tab; ⌘-click or a middle click still opens one, and ⌘D or a drag to a pane's edge splits.
 - `name`: optional (the number's tooltip).
 - `icon`, `tint`, `container`: optional: an icon (a Lucide name or an emoji) shown for its number, in
   its tint (blue, orange, green, red, purple, pink, yellow, teal, indigo, gray), which the sidebars take a little of;

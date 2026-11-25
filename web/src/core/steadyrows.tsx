@@ -108,12 +108,12 @@ export function useEarlier(key: string) {
 }
 
 /** A list's fold: "Earlier" and how many it holds, its chevron turned while open. */
-export function EarlierRow({ count, open, className, ...rest }: { count: number; open: boolean } & ButtonHTMLAttributes<HTMLButtonElement>) {
+export function EarlierRow({ count, open, label = "Earlier", className, ...rest }: { count: number; open: boolean; label?: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button type="button" data-keyrow data-glide="earlier" aria-expanded={open} {...rest}
+    <button type="button" data-keyrow data-glide={label === "Earlier" ? "earlier" : `fold:${label}`} aria-expanded={open} {...rest}
       className={cn("flex h-7 min-w-0 cursor-pointer items-center gap-2 truncate rounded-[5px] pl-1.5 text-left text-[12px] whitespace-nowrap text-tertiary hover:text-muted-foreground max-md:min-h-11 max-md:text-[15px]", className)}>
       <ChevronRight aria-hidden className={cn("size-4 shrink-0 p-0.5 transition-transform duration-(--motion-fast)", open && "rotate-90")} strokeWidth={2} />
-      <span>Earlier</span><span className="tabular-nums">{count}</span>
+      <span>{label}</span><span className="tabular-nums">{count}</span>
     </button>
   )
 }

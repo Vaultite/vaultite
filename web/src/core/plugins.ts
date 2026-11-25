@@ -548,6 +548,10 @@ export function tabsInSidebar(prefs = getPrefs()) {
   const key = tabListPanel(prefs)
   return !prefs.tabBar && !!key && !!sideIn(sidebars(prefs), key)
 }
+export function stagesViews(prefs = getPrefs()) {
+  const key = tabListPanel(prefs)
+  return isDesktop() && !prefs.tabBar && !(key && sideIn(sidebars(prefs), key))
+}
 export function showTabsIn(where: "sidebar" | "top") {
   const key = tabListPanel()
   if (!key) return

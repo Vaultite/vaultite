@@ -7,6 +7,8 @@ import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OWNER, OWNER_URL, OUT = "/tmp/inbox-machines-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B), there = apiAt(OWNER_URL)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
+await there("PATCH", "config/plugin/inbox", { showSessions: true })
 const owner = (await api("GET", "machines")).find((m) => m.id === OWNER)
 if (!owner?.online) { console.error(`the owner '${OWNER}' isn't listed or doesn't answer`); process.exit(2) }
 await api("DELETE", "inbox/events")

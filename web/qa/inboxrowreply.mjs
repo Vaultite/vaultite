@@ -7,6 +7,7 @@ import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/inboxrowreply-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
 await api("DELETE", "inbox/events")
 await api("POST", `inbox/hook?agent=claude&terminal=qr${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: "/tmp/lighthouse",
   last_assistant_message: "The release needs a **version bump** first.\n\n- Bump to 0.6.1\n- Or keep 0.6.0 and retag\n\nWhich should I do?" })

@@ -6,6 +6,9 @@ type Result = { id: string; status: string; archived?: unknown; snoozed?: string
 
 export const isMessage = (e: Pick<Ev, "kind">) => e.kind !== "session" && e.kind !== "waiting"
 export const waitsOnYou = (e: Pick<Ev, "kind" | "state">) => e.state === "open" && !isMessage(e)
+type Told = Pick<Ev, "kind"> & { session?: string; gate?: boolean }
+const fromAgentSession = (e: Told) => e.kind === "session" || (!e.gate && /^https?:/.test(e.session ?? ""))
+export const inInbox = (sessions: boolean) => (e: Told) => sessions || !fromAgentSession(e)
 
 export const reviewing = (r: Result) => r.status === "new" && r.archived !== true
 export const latestOf = (r: Result, now = Date.now()) => Math.max(snoozeMs(r.updated || r.created || ""), snoozed(r.snoozed, now) ? 0 : snoozeMs(r.snoozed))

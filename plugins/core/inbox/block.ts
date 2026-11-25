@@ -3,9 +3,9 @@ import { str } from "../../../core/vault.ts"
 import { decisionLine, decisionsIn } from "./asked.ts"
 import { clip } from "./model.ts"
 import { asResults, latest, resultAt } from "./results.ts"
-import { plugin } from "./server.ts"
+import { plugin, settings } from "./server.ts"
 import { shown } from "./store.ts"
-import { lists, waitsOnYou } from "./threads.ts"
+import { inInbox, lists, waitsOnYou } from "./threads.ts"
 
 const stampAt = (s: unknown) => stampMs(str(s)) || 0
 
@@ -13,7 +13,7 @@ export function register() {
   plugin.block("inbox", (ctx) => {
     const o = ctx.options
     const nr = Number(o.results ?? 10), ne = Number(o.events ?? 5)
-    const l = lists(plugin.isOff() ? [] : shown(), asResults(plugin.vault.items("inbox")))
+    const l = lists(plugin.isOff() ? [] : shown().filter(inInbox(settings().sessions)), asResults(plugin.vault.items("inbox")))
     const results = [...l.pinned.results, ...l.review].slice(0, nr)
     const es = [...l.pinned.events, ...l.needs, ...l.messages].slice(0, ne)
     ctx.source([...l.decisions, ...(nr > 0 ? results : [])])

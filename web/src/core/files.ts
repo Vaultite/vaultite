@@ -14,11 +14,11 @@ import { allPanes, tabPath, type Pane } from "../../../core/layout.ts"
 import { splitSide, type SplitTo } from "../../../core/splitto.ts"
 import { isDesktop } from "@/core/platform"
 import { guestEdits, share } from "@/core/share"
-import { clickOpening, closePane, setClickOpens, dropTabs, findOpen, go, guarded, here, keepsTab, openInPane, openTab, panes, activePane, retarget, selectPane, setFocusedPane, targetOf } from "@/core/workspace"
+import { activeTab, clickOpening, closePane, setClickOpens, dropTabs, findOpen, go, goHere, guarded, here, keepsTab, openInPane, openTab, panes, activePane, retarget, selectPane, setFocusedPane, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
-import { filesMoved, resolveView, webContainers } from "@/core/plugins"
+import { filesMoved, resolveView, stagesViews, webContainers } from "@/core/plugins"
 import { paneNamed } from "@/core/tabgroups"
 import { elementOf } from "@/core/dom"
 
@@ -185,11 +185,12 @@ onUiAction((m) => {
   if (m.action === "open" && m.path) { const path = m.path; return import("@/core/openable").then((o) => o.openChecked({ ...m, path }, openAsked)) }
 })
 
-/** Open a plugin's view, shown once: a pane that has it shows it (no two terminal panes fighting over its size), else a
- *  new tab or the pane to the right. `another`: a tab of its own anyway (a blank web page). */
-export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean; another?: boolean } = {}) {
+/** Open a plugin's view, shown once: a pane that has it shows it, else a new tab or the pane to the right. `another`: a
+ *  tab of its own anyway (a blank web page); `stage`: in the focused pane while no tab list shows (stagesViews). */
+export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean; another?: boolean; stage?: boolean } = {}) {
   const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
   if (opts.another) return void openTab(target)
+  if (opts.stage && !opts.split && stagesViews()) return findOpen(target) || activeTab().pinned ? go(target) : goHere(target)
   if (findOpen(target)) {
     const how = clickOpening()
     if (opts.focus === false || (how && !how.front)) return

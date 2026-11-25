@@ -1,6 +1,6 @@
-import { ArrowDown, ArrowUp, Box, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Settings2, Smile, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Bot, Box, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Settings2, Smile, Trash2 } from "lucide-react"
 import {
-  askText, cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openPluginSettings, openView, placePin, post, put, readSidebars,
+  askText, cell, colorItems, runCommandById, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openPluginSettings, openView, placePin, post, put, readSidebars,
   sameSidebars, WORKSPACES as MAX, DEVICE, get, plural, viewInfo, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
   allPanes, cleanTabLayout as clean, focusedPane, placesIn as placesOfTab, selectTab, shownTab, withMyTabs, withoutPanes, withoutTabs, type Sidebars, type Tab, type TabLayout, type TabList, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
@@ -148,7 +148,7 @@ export const host: WorkspaceHost = {
     const n = current() || 1, free = SLOTS.find((m) => m !== n && !now(m))
     return [
       ...SLOTS.filter((m) => m === n || now(m)).map((m) => ({ label: label(m), icon: markIcon(m, lookOf(m)), checked: m === n, run: () => switchTo(m) })),
-      ...(free ? [{ label: "New workspace", icon: Plus, run: () => switchTo(free) }] : []),
+      ...(free ? [{ label: "New workspace", icon: Plus, run: () => switchTo(free) }, { label: "New Code workspace", icon: Bot, run: () => runCommandById("workspace:new-code") }] : []),
       ...slotMenu(n, () => askName(n)).map((it, i) => (i ? it : { ...it, sep: true })),
     ]
   },

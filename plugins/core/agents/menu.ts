@@ -21,13 +21,12 @@ export async function viewMenu(r: DOMRect, kinds: { kind: AgentRun["kind"]; labe
       ...SORTS.map((o) => ({ label: o.label, checked: o.id === sort, run: () => save(settings.set({ sort: o.id === "status" ? null : o.id })) })),
     ]
     const listed = kinds.filter((k) => kinds.length > 1 || hide.includes(k.kind))
-    if (listed.length) {
-      out.push({ label: "Show", caption: true, sep: true, run: () => {} },
-        ...listed.map((k) => ({ label: k.label, checked: !hide.includes(k.kind), keep: true, run: () => {
-          const next = hide.includes(k.kind) ? hide.filter((x) => x !== k.kind) : [...hide, k.kind]
-          save(settings.set({ hide: next.length ? next : null }))
-        } })))
-    }
+    out.push({ label: "Show", caption: true, sep: true, run: () => {} },
+      ...listed.map((k) => ({ label: k.label, checked: !hide.includes(k.kind), keep: true, run: () => {
+        const next = hide.includes(k.kind) ? hide.filter((x) => x !== k.kind) : [...hide, k.kind]
+        save(settings.set({ hide: next.length ? next : null }))
+      } })),
+      { label: "Plain shells", checked: s.shells === true, keep: true, run: () => save(settings.set({ shells: s.shells === true ? null : true })) })
     const mutedElsewhere = (inbox.get()?.muted ?? []).filter((m) => !accounts.some((a) => [a.id, a.label].some((x) => x.toLowerCase() === m.toLowerCase())))
       .map((m) => ({ id: m, label: m }))
     if (accounts.length > 1 || mutedElsewhere.length) {

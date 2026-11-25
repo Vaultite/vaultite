@@ -3,7 +3,7 @@ import { pluginSettings, type AgentRun } from "@vaultite"
 
 export type Group = "none" | "state" | "project" | "machine" | "account"
 export type Sort = "status" | "recent"
-type Settings = { group?: Group; sort?: Sort; hide?: AgentRun["kind"][]; fold?: string }
+type Settings = { group?: Group; sort?: Sort; hide?: AgentRun["kind"][]; fold?: string; shells?: boolean }
 export const settings = pluginSettings<Settings>("agents")
 export const inbox = pluginSettings<{ muted?: string[] }>("inbox")
 
@@ -15,7 +15,7 @@ export const SORTS: { id: Sort; label: string }[] = [{ id: "status", label: "Sta
 export function useView() {
   const s = settings.use()
   const group: Group = GROUPS.some((g) => g.id === s.group) ? s.group! : "none", sort: Sort = s.sort === "recent" ? "recent" : "status"
-  return { group, sort, hide: s.hide ?? [] }
+  return { group, sort, hide: s.hide ?? [], shells: s.shells === true }
 }
 
 export const viewMenu = (e: MouseEvent<HTMLElement>, kinds: { kind: AgentRun["kind"]; label: string }[]) => {

@@ -95,7 +95,7 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   const sample: ((a: SampleAsk) => Promise<{ text: string; truncated: boolean }>) | null = plugin.service("sample")
   const v = await judge({ prompt: words.prompt, text: words.text, error: h.state === "error", auto: words.auto }, sample)
   const row = list().find(rowOf(who))
-  const change = afterTurn(row, v, { body, prompt: words.prompt, auto: words.auto, quietAnswers: settings().answers === "quiet" })
+  const change = afterTurn(row, v, { body, prompt: words.prompt, auto: words.auto, quietAnswers: settings().answers === "quiet" || !settings().sessions })
   if (change) await sessionRow(who, change.patch, change.news, h.cwd)
   else if (row) told(row)
   endHanded(who.terminal)

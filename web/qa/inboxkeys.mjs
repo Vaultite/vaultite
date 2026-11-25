@@ -6,6 +6,7 @@ import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/inboxkeys-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
 await api("DELETE", "inbox/events")
 for (const r of await api("GET", "inbox")) await api("DELETE", `inbox/${encodeURIComponent(r.id)}`).catch(() => {})
 

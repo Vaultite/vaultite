@@ -9,6 +9,7 @@ import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/inboxtabs-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
 const VAULT = (await api("GET", "vault")).path
 const conf = path.join(VAULT, ".vaultite/sidebars.json")
 let kept = null

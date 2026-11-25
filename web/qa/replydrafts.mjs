@@ -9,6 +9,7 @@ const { args: [B, OUT = "/tmp/replydrafts-shots/"], browser, check, watch, done 
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
 const api = apiAt(B)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
 const SIDEBARS = path.join(VAULT, ".vaultite/sidebars.json")
 let sidebars = ""
 try { sidebars = readFileSync(SIDEBARS, "utf8") } catch { /* none */ }

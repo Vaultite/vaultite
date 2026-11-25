@@ -6,10 +6,10 @@ import { clip, type InboxEvent } from "./model.ts"
 import { others } from "./live.ts"
 import { shown } from "./store.ts"
 import { asResults, withTldr } from "./results.ts"
-import { plugin } from "./server.ts"
+import { plugin, settings } from "./server.ts"
 import { NEEDS } from "./rows.ts"
 import { stampOf } from "./snooze.ts"
-import { latestOf, lists } from "./threads.ts"
+import { inInbox, latestOf, lists } from "./threads.ts"
 import { Saved } from "./wire.ts"
 
 const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
@@ -35,7 +35,7 @@ inbox.snooze take it). done: the latest settled ones too, events and results.
   },
   run: async ({ limit, done }, ctx) => {
     const [, items] = await Promise.all([others(), ctx.api("GET", "inbox").then((v) => z.array(Saved).parse(v))])
-    const l = lists(shown(), asResults(items))
+    const l = lists(shown().filter(inInbox(settings().sessions)), asResults(items))
     const cut = <T>(xs: T[]) => xs.slice(0, limit)
     return { decisions: cut(l.decisions.map(decisionRow)), pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
       snoozed: [...l.snoozed.results.map((r) => ({ ...row(r), until: str(r.snoozed) })),

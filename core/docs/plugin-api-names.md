@@ -209,7 +209,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `drawnLink(el)`: The link drawn at `el` in rendered Markdown (a note's, a sheet's) and its text, or null.
 - `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
 - `dropTab(item, d)`: Drop `item` there: a tab, a pane or a group moves, a file opens (a tab of its own in the list, or in a pane).
-- `EarlierRow({ count, open, className, … })`: A list's fold: "Earlier" and how many it holds, its chevron turned while open.
+- `EarlierRow({ count, open, label, className, … })`: A list's fold: "Earlier" and how many it holds, its chevron turned while open.
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
 - `Editable({ value, set, placeholder, className, children })`: A value a block shows that can be changed in place (a person's context): click, type, Enter.
 - `editAt(path, line, opts?)`: Open a file in editing (its view may be on its way), the cursor at a 0-based line counting frontmatter (`col` in it, or `find` selected there), scrolled to; `from`: a line (numbered the same) on…
@@ -497,7 +497,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openTab(to, { background, from, id, trail }?)`: `to` in a new tab though another may show it, after pane `from`'s tab (default: the one on screen) and those it opened, in its group; `background`: the user stays (agents').
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
-- `openView(to, opts?)`: Open a plugin's view, shown once: a pane that has it shows it (no two terminal panes fighting over its size), else a new tab or the pane to the right.
+- `openView(to, opts?)`: Open a plugin's view, shown once: a pane that has it shows it, else a new tab or the pane to the right.
 - `openWebLink(url, how?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `orderRuns(list)`: The panel's order: needs you, then working, then at rest; the ones at rest newest first, the others oldest first (as they started: a new one doesn't push the rest down).

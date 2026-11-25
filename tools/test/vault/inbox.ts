@@ -48,6 +48,27 @@ async function browserSessionReply({ api, check, CLAUDE_DIR }: VaultTest) {
   }
 }
 
+async function sessionsOutOfInbox({ api, check, write, vars }: VaultTest, settled: () => Promise<void>) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../../../plugins/core/inbox/manifest.json"), "utf8"))
+  write("Dashboards/Qa sessions.md", "---\ntype: dashboard\n---\n\n```block-inbox\nevents: 50\n```\n")
+  const [st] = await api("POST", "inbox/sessions", { agent: "sdk", session: "sdk-off-1", state: "waiting", ask: "permission", text: "Run the Beacon migration?", title: "Beacon migration" })
+  await settled()
+  const look = async () => {
+    const [, l] = await api("GET", "inbox/events"), [, block] = await api("GET", "render?path=Dashboards/Qa sessions.md"), cli = await vars.vau("inbox")
+    return { needs: l.needs, row: l.events.find((e: Any) => e.session === "sdk-off-1"), block: String(block), cli: String(cli.out) }
+  }
+  const listed = (l: Awaited<ReturnType<typeof look>>) => l.block.includes("Beacon migration") && l.cli.includes("Beacon migration")
+  const on = await waitFor(async () => { const l = await look(); return l.row?.state === "open" && listed(l) ? l : null }, 10_000, 200)
+  await api("PATCH", "config/plugin/inbox", { showSessions: null })
+  const off = await waitFor(async () => { const l = await look(); return !l.block.includes("Beacon migration") && !l.cli.includes("Beacon migration") ? l : null }, 10_000, 200)
+  check("showSessions: off by default; on, a session that needs you is in the Inbox's count, block and vau inbox",
+    manifest.settings.showSessions.default === false && st === 202 && !!on, [st, on])
+  check("showSessions off: the session's thread is still kept (the Agents panel's), out of the Inbox's count, block and vau inbox",
+    !!on && !!off && off.row?.state === "open" && off.needs < on.needs, [on?.needs, off])
+  await api("PATCH", "config/plugin/inbox", { showSessions: true })
+  if (on?.row) await api("DELETE", `inbox/events/${on.row.id}`)
+}
+
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, write } = $
   const { vau } = $.vars
@@ -55,6 +76,7 @@ export default async ($: VaultTest) => {
   /** A request from the app on this machine: only the user's surfaces approve or deny what waits on them. */
   const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
+  await api("PATCH", "config/plugin/inbox", { showSessions: true })
   {
     const { asThreads, byThread, categoryOf, findEvent, previewOf, prune, settled } = await import("../../../plugins/core/inbox/plugin.ts")
     const { fromHook, stillOpen } = await import("../../../plugins/core/inbox/rows.ts")
@@ -194,6 +216,7 @@ export default async ($: VaultTest) => {
     }
     await browserSessionMuted($)
     await browserSessionReply($)
+    await sessionsOutOfInbox($, settled)
     {
       // One of a kind (a key): a new one takes the place of its source's event with that key; inbox:drop takes it away.
       await api("POST", "inbox/events", { source: "lessons", kind: "info", title: "3 cards to review", key: "cards-due" })

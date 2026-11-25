@@ -1,7 +1,8 @@
-import { LayoutGrid } from "lucide-react"
+import { Bot, LayoutGrid } from "lucide-react"
 import { definePlugin, isMac, isPopout, vaultSidebars } from "@vaultite"
 import { AllTabs, WorkspaceSettings } from "./later"
 import { Background, Workspaces } from "./Numbers"
+import { newCodeWorkspace } from "./preset"
 import { ALL_TABS, current, currentTab, cycle, host, lit, moveTab, openElsewhere, patch, showAllTabs, slots, SLOTS, switchTo, used } from "./state"
 
 export default definePlugin({
@@ -32,6 +33,7 @@ export default definePlugin({
   commands: [
     ...SLOTS.map((n) => ({ id: `workspace:${n}`, name: `Switch to workspace ${n}`, keys: [isMac ? `Ctrl+${n}` : `Alt+${n}`], run: () => switchTo(n) })),
     { id: "workspace:all-tabs", name: "Show workspaces", keys: [isMac ? "Ctrl+0" : "Alt+0"], icon: LayoutGrid, run: showAllTabs },
+    { id: "workspace:new-code", name: "New Code workspace", words: "coding agents sessions", run: newCodeWorkspace, icon: Bot },
     { id: "workspace:next", name: "Switch to next workspace", when: () => used().length > 1, run: () => cycle(1) },
     { id: "workspace:previous", name: "Switch to previous workspace", when: () => used().length > 1, run: () => cycle(-1) },
     ...SLOTS.map((n) => ({ id: `workspace:move-tab-${n}`, name: `Move current tab to workspace ${n}`, when: () => lit() !== n && !!currentTab(),

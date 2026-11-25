@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { Check, LayoutGrid, Plus } from "lucide-react"
+import { Bot, Check, LayoutGrid, Plus } from "lucide-react"
 import { cn, colorVar, commandKeys, menuFor, reorder as reorderKeys, slotAt, startDrag, useDropHit, useDropTarget, useSlide } from "@vaultite"
 import { Mark as Look } from "./Mark"
 import { NameField } from "./Name"
+import { newCodeWorkspace } from "./preset"
 import { moved } from "./order"
 import { getRenaming, label, lookOf, markOf, renamed, reorder, showAllTabs, slotMenu, slots, SLOTS, switchTo } from "./state"
 import { tintWash } from "./tint"
@@ -67,6 +68,12 @@ export default function List({ lit, over, focus, close }: { lit: number; over: n
           : <Row key={m} m={m} on={m === lit} over={over === m} pick={() => go(m)} />))}
       </div>
       {free && <NewRow n={free} over={over === free} pick={() => go(free)} />}
+      {free && (
+        <button type="button" data-workspace-new-code onClick={() => { close(); newCodeWorkspace() }} className={cn(ROW, "text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground")}>
+          <Bot aria-hidden className="size-[18px] shrink-0 p-px" strokeWidth={2} />
+          <span className="min-w-0 flex-1 truncate">New Code workspace</span>
+        </button>
+      )}
     </>
   )
 }

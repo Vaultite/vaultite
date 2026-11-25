@@ -202,8 +202,8 @@ export type AgentRun = {
    *  alone for what isn't a machine ("Cloud"). */
   machine?: string
   where?: string
-  /** Its agent ("Claude Code") and the agent's colour. */
-  agent?: string; tint?: string
+  /** Its agent ("Claude Code") and the agent's colour; `shell`: a terminal with no agent in it, listed only when asked. */
+  agent?: string; tint?: string; shell?: boolean
   /** The account it runs in, by name ("Personal"), when its agent has several; the repository or folder it works in
    *  ("vaultite"). The panel groups by them. */
   account?: string; project?: string

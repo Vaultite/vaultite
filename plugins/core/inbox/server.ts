@@ -16,7 +16,7 @@ export const dir = () => plugin.localDir(false)
 export function settings() {
   const s = plugin.loaded ? plugin.settings({}) : {}
   return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "waiting",
-    audio: s.voice_audio !== false, answers: s.answers === "inbox" ? "inbox" : "quiet",
+    audio: s.voice_audio !== false, answers: s.answers === "inbox" ? "inbox" : "quiet", sessions: s.showSessions === true,
     muted: (Array.isArray(s.muted) ? s.muted : []).map((x: unknown) => str(x).trim().toLowerCase()).filter(Boolean),
     dispatch: TERMINAL_AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }

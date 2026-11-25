@@ -8,6 +8,7 @@ import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/agentquestions-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
+await api("PATCH", "config/plugin/inbox", { showSessions: true })
 await api("DELETE", "inbox/events")
 
 const ask = (session, title, questions) => api("POST", "inbox/sessions", { agent: "claude", session, state: "waiting", ask: "question", title, questions })
