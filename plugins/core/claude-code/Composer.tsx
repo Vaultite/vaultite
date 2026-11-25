@@ -9,10 +9,12 @@ import { useChat } from "./useChat"
 import { type Ask, type Options, STRONG, home, modelLabel, folderName, EFFORT, MODE_SHORT } from "./chatbits"
 import { AskCard, type AskKeys } from "./Asks"
 import { type Picture, MAX_PICTURES, draftPictures, keepPictures, picturesIn, readPicture, takePictures } from "./images"
+import { ContextChips } from "./ContextChips"
+import { useChips, withChips } from "./chips"
 import { type Out, deliver, draftKey, draftOf, keepDraft, onBack, sent, settle, useOutbox, wordsIn } from "./outbox"
 
 type UserEntry = Extract<Entry, { k: "user" }>
-type Picks = { model?: string; effort?: string; mode?: Mode; account?: string; cwd?: string }
+type Picks = { model?: string; effort?: string; mode?: Mode; account?: string; cwd?: string; checkout?: "current" }
 export type Queued = { id: string; text: string }
 
 export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSend, onQueued }: { id: string; fresh: boolean; c: ReturnType<typeof useChat>; o: Options | null
@@ -23,7 +25,7 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
   const [text, setText] = useState(() => draftOf(chat))
   const [pics, setPics] = useState<Picture[]>(() => draftPictures(DRAFT))
   const [reading, setReading] = useState(0)
-  const outs = useOutbox(chat)
+  const outs = useOutbox(chat), chips = useChips(chat)
   const [dropping, setDropping] = useState(false)
   const [saved, save] = useScopedState<Picks>("claude-code:chat", {}, "workspace")
   const [next, setNext] = useState<Picks>({})
@@ -82,24 +84,24 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
   const blocked = !fresh && c.ready && (c.tui !== null || !c.found)
   const said = text.trim()
   const away = !fresh && !!c.unreachable
-  const ready = (!!said || pics.length > 0) && !blocked && !reading && !away && !(fresh && outs.length)
+  const ready = said.length + pics.length + chips.length > 0 && !blocked && !reading && !away && !(fresh && outs.length)
   const send = () => {
     if (!ready) return
-    const out: Out = { key: crypto.randomUUID(), text: said, pictures: takePictures(DRAFT), docked: !fresh && (working || !!pending), wordsBefore: wordsIn(chat, c.entries, said) }
+    const words = withChips(chat, said), out: Out = { key: crypto.randomUUID(), text: words, pictures: takePictures(DRAFT), docked: !fresh && (working || !!pending), wordsBefore: wordsIn(chat, c.entries, words) }
     const images = out.pictures.map((p) => ({ data: p.data, type: p.type })), picked = next
     keep(""); setPics([]); setNext({})
     onSend()
     field.current?.focus({ preventScroll: true })
     if (fresh) {
-      void deliver(chat, out, () => op<{ id: string }>("claude-code.chat-start", { prompt: said, ...(images.length ? { images } : {}), ...(saved.cwd ? { cwd: saved.cwd } : {}), ...(saved.account ? { account: saved.account } : {}),
+      void deliver(chat, out, () => op<{ id: string }>("claude-code.chat-start", { prompt: words, ...(images.length ? { images } : {}), ...(saved.cwd ? { cwd: saved.cwd, worktree: saved.checkout !== "current" } : {}), ...(saved.account ? { account: saved.account } : {}),
         ...(saved.model ? { model: saved.model } : {}), ...(saved.effort ? { effort: saved.effort } : {}), ...(saved.mode ? { mode: saved.mode } : {}) }), "Couldn't start the chat")
         .then((r) => { if (r) { setArg(r.id); sent(chat, out.key, "", r.id) } })
       return
     }
-    void deliver(chat, out, () => op<{ uuid?: string; answered?: string }>("claude-code.chat-send", { id, text: said, ...(images.length ? { images } : {}), ...picked }), "Couldn't send it")
+    void deliver(chat, out, () => op<{ uuid?: string; answered?: string }>("claude-code.chat-send", { id, text: words, ...(images.length ? { images } : {}), ...picked }), "Couldn't send it")
       .then((r) => {
         if (!r) return
-        if (r.uuid !== "" && (working || r.answered)) onQueued({ id: r.uuid ?? "", text: said })
+        if (r.uuid !== "" && (working || r.answered)) onQueued({ id: r.uuid ?? "", text: words })
         if (out.docked || r.answered) settle(chat, out.key); else sent(chat, out.key, r.uuid ?? "")
       })
   }
@@ -175,7 +177,7 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
               {reading > 0 && <div aria-label="Adding a picture" className="chat-pic shrink-0 animate-pulse rounded-control bg-muted" />}
             </div>
           )}
-          <textarea ref={field} value={text} rows={1} disabled={blocked} onChange={(e) => keep(e.target.value)} onKeyDown={onKey} onPaste={onPaste} enterKeyHint="send"
+          <ContextChips chat={chat} /><textarea ref={field} value={text} rows={1} disabled={blocked} onChange={(e) => keep(e.target.value)} onKeyDown={onKey} onPaste={onPaste} enterKeyHint="send"
             placeholder={placeholder} aria-label="Message Claude" data-fresh={fresh || undefined}
             className="chat-field resize-none overflow-y-auto bg-transparent outline-none placeholder:text-muted-foreground" />
           <div className="chat-foot">
@@ -194,7 +196,7 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
                   </span>
                 </Chip>
                 {fresh && account && <Chip label="Account" onClick={(e) => menu(e, (o?.accounts ?? []).map((a) => ({ label: a.label, checked: a.label === account, run: () => choose({ account: a.id }) })))}>{account}</Chip>}
-                {fresh && <Chip label="Folder" tip={folder ? home(folder, o?.home) : undefined} onClick={(e) => menu(e, folderItems(o, folder, (cwd) => choose({ cwd })))}>
+                {fresh && <Chip label="Folder" tip={folder ? home(folder, o?.home) : undefined} onClick={(e) => menu(e, folderItems(o, folder, (cwd) => choose({ cwd }), { on: saved.checkout === "current", set: (on) => choose({ checkout: on ? "current" : undefined }) }))}>
                   <Folder className="size-3.5 shrink-0" strokeWidth={2} />{folder ? folderName(folder, o) : "Folder"}</Chip>}
                 <span className="ml-auto" />
                 <Chip label="Model and effort" onClick={(e) => menu(e, modelItems)}>
@@ -254,10 +256,11 @@ function Thumb({ p, remove }: { p: Picture; remove: () => void }) {
   )
 }
 
-function folderItems(o: Options | null, at: string, pick: (cwd: string) => void): MenuItem[] {
+function folderItems(o: Options | null, at: string, pick: (cwd: string) => void, current: { on: boolean; set: (on: boolean) => void }): MenuItem[] {
   if (!o) return []
   const list = [o.vault, ...o.folders.filter((f) => f !== o.vault)]
-  return list.map((f, n) => ({ label: folderName(f, o), hint: home(f, o.home), checked: f === (at || o.vault), sep: n === 1, run: () => pick(f) }))
+  return [...list.map((f, n) => ({ label: folderName(f, o), hint: home(f, o.home), checked: f === (at || o.vault), sep: n === 1, run: () => pick(f) })),
+    { label: "Run in current checkout", sep: true, checked: current.on, run: () => current.set(!current.on) }]
 }
 
 function ChipSkeleton({ w }: { w: string }) {

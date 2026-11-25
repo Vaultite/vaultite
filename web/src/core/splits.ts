@@ -1,6 +1,6 @@
 import {
   beside, bare, evened, evenedAll, floated, groupAt, inGroup, isBlank, isBlankTab, isSplit, isStacked, layout, leaves, mapPanes, mapPlaces, mapTab, moveOn, neighbourOf, newPaneId, nudged, panesOf,
-  paneWith, placesIn, placesOf, replaced, resized, swapped, tabOf, tabOfPane, tabWith, tabWithout, tabWithoutPanes, tidy, withoutTabs, withPlace, type Layout, type Pane, type Rect, type Side, type Tab, type TabList,
+  paneWith, placesIn, placesOf, replaced, resized, showingPlace, swapped, tabOf, tabOfPane, tabWith, tabWithout, tabWithoutPanes, tidy, withoutTabs, withPlace, type Layout, type Pane, type Rect, type Side, type Tab, type TabList,
 } from "../../../core/layout.ts"
 import { focusPane } from "@/core/focus"
 import { activePane, activeTab, setFocusedPane, here, keepsTab, onWorkspaceChange, paneById, panes, paneTab, quietly, set, show, showActive, showActiveUnder, tabById, tabsByRecent, withTab } from "@/core/workspace"
@@ -289,6 +289,22 @@ export function openInSplit(to: string, side: Side = "right", focusIt = true, pa
   set(withTab(t.id, (x) => ({ ...x, root, focus: focusIt ? id : focus })))
   if (focusIt) show(to, true)
   return id
+}
+
+export function openAside(to: string, from: string, kin: (to: string) => boolean): string {
+  const t = paneTab(from), home = t && paneWith(t.root, from)
+  if (!t || !home) return openInSplit(to)
+  const others = leaves(t.root).filter((p) => p.id !== home.id)
+  const had = others.flatMap(placesOf).find((x) => x.to === to)
+  if (had) { set(withTab(t.id, (x) => ({ ...showingPlace(x, had.id), focus: had.id }), { active: t.id })); show(to, true); return had.id }
+  const near = others.find((p) => placesOf(p).some((x) => kin(x.to))), p: Pane = { id: newPaneId(), to }
+  set(withTab(t.id, (x) => (near ? { ...withPlace(x, near.id, p), focus: p.id } : { ...x, root: beside(x.root, home.id, p, "right"), focus: p.id }), { active: t.id }))
+  show(to, true)
+  return p.id
+}
+export function shownAside(to: string, from: string): boolean {
+  const t = paneTab(from), home = t && paneWith(t.root, from)
+  return !!t && !!home && leaves(t.root).some((p) => p.id !== home.id && p.to === to)
 }
 
 const neighbour = (side: Side) => { const t = activeTab(); return neighbourOf(t.root, t.focus, side) }

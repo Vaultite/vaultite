@@ -71,6 +71,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "clipper", deps: ["pages"] },
   { name: "claude-chat", deps: ["pages","cli"] },
   { name: "delegate", deps: ["pages","cli"] },
+  { name: "code-threads", deps: ["pages","cli"] },
   { name: "jobs", deps: ["pages","cli"] },
   { name: "jobs-e2e", deps: ["pages","cli"] },
   { name: "jobs-remote", deps: ["pages","cli"] },

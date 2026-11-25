@@ -12,6 +12,7 @@ import { merge, PAGE } from "./chatentries.ts"
 import { chatInbox } from "./chatinbox.ts"
 import { type Entry, Reader } from "./chatlog.ts"
 import { chatOps } from "./chatops.ts"
+import { codeThreads } from "./threadops.ts"
 import { codeOf } from "./chatprotocol.ts"
 import { type Answer, type Effort, effortOf, type Event, type Mode, modeOf, type Op, type Params, type Spec, type Summary, type TabMessage, type ToolDef, type ToolResult, type Uuid } from "./chatprotocol.ts"
 import { chatTab } from "./chatsocket.ts"
@@ -81,7 +82,10 @@ class Talk {
 export function chats(plugin: Plugin, d: ChatDeps) {
   const { core, chat } = chatCore(plugin, d)
   chatTab(plugin, core)
-  chatOps(plugin, core)
+  const threads = codeThreads(plugin, { cwdOf: async (id) => core.hosted.get(id)?.cwd || (await core.readTitle(id))?.cwd || "", vault: () => plugin.vault.path,
+    busy: (id) => { const s = core.hosted.get(id); return !!s && s.state !== "idle" && s.state !== "error" } })
+  chat.api.on(threads.heard)
+  chatOps(plugin, core, threads)
   return chat
 }
 
