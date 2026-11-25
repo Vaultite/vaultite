@@ -720,6 +720,10 @@ html[data-window-inactive] .vau-editor .cm-content ::selection {
   overflow: hidden; overflow-wrap: anywhere;
 }
 [data-sonner-toaster] .vau-toast[data-styled=true] [data-content] { min-width: 0; }
+/* Hovering changes no toast's height. Sonner measures it as drawn and sets it once hovered: so the ones behind narrow but
+   don't shrink (theirs came out 5% short), and the front one keeps its own (a rewrap leaves the measure behind). */
+[data-sonner-toaster] .vau-toast[data-expanded=false][data-front=false] { --y: translateY(calc(var(--lift-amount) * var(--toasts-before))) scaleX(calc(1 - var(--toasts-before) * 0.05)); }
+[data-sonner-toaster] .vau-toast[data-mounted=true][data-front=true] { height: auto; }
 /* sonner grows a leaving toast's hit area to twice its height: what's under it gets the taps meant for it */
 [data-sonner-toaster] .vau-toast[data-removed=true] { pointer-events: none; }
 [data-sonner-toaster] .vau-toast[data-styled=true]:not(:has([data-button])) { padding-right: 12px; }

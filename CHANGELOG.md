@@ -114,6 +114,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Activity: an action repeated all day (an agent polling a browser tab) updates its one line instead of adding a
   copy every few seconds, so its log no longer fills the disk; it starts a new line each day and no longer lists files
   something else wrote while it ran.
+- Toasts: hovering one no longer changes its size. One that had waited behind another shrank a little, and one the window
+  had rewrapped went back to its old height.
 - Linux: Arch gets Vaultite from the AUR (`vaultite-bin`, each release's .deb repackaged), updated by pacman rather
   than by the app.
 
