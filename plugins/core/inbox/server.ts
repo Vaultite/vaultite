@@ -44,6 +44,6 @@ export async function firstMachine() {
   return !self || !(await machineList()).some((m) => !m.self && m.online && m.plugins?.includes(plugin.id) && m.id < self)
 }
 
-export const agentOfTerminal = (t: string) => parseTerminal(t)?.agent ?? ""
+export const agentOfTerminal = (t: string) => (t ? String(plugin.service("terminal:agent")?.(t) ?? "") || (parseTerminal(t)?.agent ?? "") : "")
 
 export const selfMachine = async () => str(await plugin.ask("machines:self", "")) || null

@@ -1069,12 +1069,12 @@ export default async ($: VaultTest) => {
   {
     const { fresh, step, nowOf } = await import("../../../plugins/core/terminal/state.ts")
     const run = (evs: Parameters<typeof step>[1][]) => evs.reduce((t, ev, i) => step(t, ev, 1000 + i * 1000), fresh("claude"))
-    const gone = run([{ type: "hooks", text: "working", at: 1 }, { type: "front", program: true, seen: 1500 }, { type: "front", program: false, seen: 2500 }])
-    const spoke = run([{ type: "front", program: true, seen: 500 }, { type: "hooks", text: "working", at: 1 }, { type: "front", program: false, seen: 1500 }])
+    const gone = run([{ type: "hooks", text: "working", at: 1 }, { type: "front", program: true, agent: null, seen: 1500 }, { type: "front", program: false, agent: null, seen: 2500 }])
+    const spoke = run([{ type: "front", program: true, agent: null, seen: 500 }, { type: "hooks", text: "working", at: 1 }, { type: "front", program: false, agent: null, seen: 1500 }])
     check("terminal state: its program gone back to its shell is idle, whatever its hooks said; seen before it last spoke, it still works",
       nowOf(gone)?.state === "idle" && nowOf(gone)?.from === "shell" && nowOf(spoke)?.state === "working", [nowOf(gone), nowOf(spoke)])
-    const starting = run([{ type: "start" }, { type: "front", program: false, seen: 1500 }])
-    const spoken = step(starting, { type: "hooks", text: "working", at: 1 }, 5000), back = step(spoken, { type: "front", program: false, seen: 6000 }, 6000)
+    const starting = run([{ type: "start" }, { type: "front", program: false, agent: null, seen: 1500 }])
+    const spoken = step(starting, { type: "hooks", text: "working", at: 1 }, 5000), back = step(spoken, { type: "front", program: false, agent: null, seen: 6000 }, 6000)
     check("terminal state: while its agent starts, its shell's prompt is its own; once it spoke, its program gone ends it",
       starting.starting && nowOf(starting) === null && !spoken.starting && nowOf(back)?.state === "idle", [starting, back])
     const early = run([{ type: "hooks", text: "working", at: 1 }, { type: "start" }])
@@ -1086,7 +1086,7 @@ export default async ($: VaultTest) => {
     const task = { on: "sleep 600", since: 1500, n: 1 }
     const resting = run([{ type: "hooks", text: "working", at: 1 }, { type: "awaits", awaits: task }, { type: "hooks", text: "idle", at: 2 }])
     const again = step(resting, { type: "hooks", text: "working", at: 3 }, 9000), woke = step(step(again, { type: "awaits", awaits: null }, 9500), { type: "hooks", text: "idle", at: 4 }, 9600)
-    const quit = step(resting, { type: "front", program: false, seen: 9000 }, 9000)
+    const quit = step(resting, { type: "front", program: false, agent: null, seen: 9000 }, 9000)
     check("terminal state: at rest with a background task it waits on that, since its start; working again, or the task done, it doesn't; its program gone, neither",
       nowOf(resting)?.state === "idle" && nowOf(resting)?.awaits?.on === "sleep 600" && nowOf(resting)?.awaits?.since === 1500 &&
       nowOf(again)?.state === "working" && nowOf(again)?.awaits === undefined && nowOf(woke)?.state === "idle" && nowOf(woke)?.awaits === undefined &&

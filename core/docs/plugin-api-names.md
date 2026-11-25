@@ -26,6 +26,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentLiveSession`
 - `AgentMock`: Made-up usage for the demo, times in minutes ago: `daily`, ten days' value repeated over 30 days and growing, each dollar `per` so many tokens and minutes working, a session per so many dollars;…
 - `AgentModels(ctx)`
+- `agentNamed(name, list?)`: The agent a terminal names ("antigravity"): its plugin's, else its name and icon only; null: none, or Use AI is off.
 - `agentOfTerminal(id, list?)`: The agent a terminal runs, by its id ("codex-<id>", "claude_<account>-<id>", "resume-<name>-<session>", "@<machine>" suffixes), or null for a plain shell (core/terminalids.ts).
 - `AgentPhase`: Where a coding agent is in its turn, in every agent's words: a terminal's state, a chat's.
 - `agentPlugin(src, o)`: A coding agent plugin's definition: its blocks, a session's view, its agent in Terminal, the commands opening it (literal: the server reads them), demo usage.
@@ -1201,6 +1202,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentModel`: What an agent's service "agent-model-id:<name>" answers for a model as people say it ("Fable 5.2"): its id as its --model takes it and the name it reads as ("" for none), or why it names none of…
 - `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), its efforts, least first, and the permission modes it's held to…
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
+- `agentOfCommand(command)`: The agent a process is, by its command line ("node /usr/local/bin/gemini"), as a terminal names it, or null.
+- `agentOfProcess(args)`
 - `agentRefusal(text)`: What a terminal shows instead of running its agent (`text`, why not), then a plain shell.
 - `agentSession(k, v?)`: Whether variable `k` (=`v`) is a coding agent's own session's, which nothing it starts should inherit (Claude Code's tools also get GIT_EDITOR=true, so git never waits on an editor).
 - `agentSite(id)`: Where to get a coding agent, by its id or its name in a terminal, or null.
@@ -1232,7 +1235,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isoOf(ms)`: Epoch ms -> ISO time, or null.
 - `jsonLines(bin, args, o)`: Talks to `bin` in JSON lines over stdio: `first` sent, then `hear` gets each message read (`send` more, `done` with the answer).
 - `JsonlScan`: An agent's JSONL transcripts under `dirs`, read as they grow (at most every 5 s; all again once asked for older days): `line` hears each new line with its file's state (`fresh`, again when the…
-- `KNOWN_AGENTS`: The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its writes say they came from (default its id), how it calls itself (an MCP…
+- `KNOWN_AGENTS`: The AI agents Vaultite tells apart (`said`: their MCP clients' names), the first match winning.
 - `lastTurn(entries)`: A conversation's latest turn (what "agent-turn:<agent>" answers): the user's last message, the agent's last answer after it ("" while none), when (ms, else 0), if it's final (no tool call after…
 - `limitRows(windows)`: A plan's limits, one line each: how much is used and when it renews.
 - `Limits`: A plan's limits as an agent reads them: where from, when, and each window.
@@ -1256,6 +1259,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readLines(file, offset, line, chunk?)`: Calls `line` with each whole line of `file` from byte `offset`; returns where the last one ended.
 - `repoName(cwd)`: The repository a folder is: a git worktree's own (its .git a file naming <repo>/.git/worktrees/<name>), an agent's worktree under .claude/worktrees/ its repository's, else the folder's name.
 - `resumeTerminalId(name, session, profile?)`: The id of a terminal resuming agent `name`'s session `session` (in account `profile`: one only it can reach, a cloud session's).
+- `runsOthers(program)`
 - `Said`
 - `sameAwaits(a, b)`
 - `SampleAnswer`
@@ -1270,6 +1274,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `startAgent(ctx, id, prompt?, how?, home?)`
 - `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
 - `TERMINAL_AGENT`: An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal").
+- `terminalAgent(name)`
 - `terminalOf(plugin, pid)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.
 - `Tool`: A conversation's entries (a session's view tab): a tool call, what was said, and its head.
 - `toolSummary(input, keys, where?)`: One line saying what a tool call did: the first of `keys` it has ("git status", "src/app.ts"), else its first text; a search as "<pattern> in <the first of `where`>".

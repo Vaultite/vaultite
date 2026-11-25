@@ -1,4 +1,4 @@
-import { agentsOn, canRunAgents, cell, onReconnect, clickOpening, del, detailPath, focusedPane, getTabLayout, haptic, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openDetail, openFile, openOutside, openView, openWebLink, parseTerminal, post, type Agent, type TabLayout, openAgentSession, openSocket, type Socket } from "@vaultite"
+import { agentNamed, agentsOn, canRunAgents, cell, onReconnect, clickOpening, del, detailPath, focusedPane, getTabLayout, haptic, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openDetail, openFile, openOutside, openView, openWebLink, parseTerminal, post, type Agent, type TabLayout, openAgentSession, openSocket, type Socket } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent, InboxItem } from "./types"
@@ -196,7 +196,7 @@ export function forget(id?: string) {
 
 const undo = (before: InboxEvent[], what: string) => (e: unknown) => { set(before); notifyError(e, what) }
 
-export const agentOf = (e: InboxEvent, agents: Agent[] = agentsOn()) => agents.find((a) => a.name === e.source) ?? null
+export const agentOf = (e: InboxEvent, agents: Agent[] = agentsOn()) => (e.source ? agentNamed(e.source, agents) : null)
 
 export function targetOf(e: InboxEvent): string | null {
   if (e.gate) return `detail:${detailPath(GATE_DETAIL, e.id)}`

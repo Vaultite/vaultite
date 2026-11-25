@@ -14,11 +14,13 @@ export const cut = (s: string, n: number) => { const t = s.replace(/\s+/g, " ").
 export const BY_THEIR_WORD = { ...whoOf("app/companion", null), label: "the user, through their companion" }
 const theirs = (by: string) => by === "the user" || by.startsWith("app/") || by.startsWith("machine/") || by === "iphone" || by === "watch"
 
+const agentNamedBy = (terminal: string, ctx: OpCtx) => parseTerminal(terminal)?.agent ?? KNOWN_AGENTS.find((k) => k.id === ctx.who.agent)?.terminal ?? ""
+
 export function wordsOf(plugin: Plugin) {
   async function typedTo(ctx: OpCtx): Promise<{ text: string; at: number; sentBy: string } | null> {
     const w = requestWriter.getStore(), terminal = w?.terminal ?? "", session = w?.session ?? ""
     if (!terminal && !session) return null
-    const agent = parseTerminal(terminal)?.agent ?? KNOWN_AGENTS.find((k) => k.id === ctx.who.agent)?.terminal ?? ""
+    const agent = await plugin.ask<string>("terminal:agent", "", terminal) || agentNamedBy(terminal, ctx)
     const said = agent ? await plugin.ask<{ text: string; at: number } | null>(`agent-said:${agent}`, null, terminal, session).catch(() => null) : null
     if (!said?.text) return null
     const sq = (s: string) => s.replace(/…$/, "").replace(/\s+/g, " ").trim().slice(0, 120)

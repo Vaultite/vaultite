@@ -34,18 +34,28 @@ export function newTerminalId(agent?: string | null) {
  *  cloud session's). */
 export const resumeTerminalId = (name: string, session: string, profile?: string | null) => `resume-${agentIn(name, profile)}-${session}`
 
-/** The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its
- *  writes say they came from (default its id), how it calls itself (an MCP client's name), its command and its site. */
-export const KNOWN_AGENTS: { id: string; name: string; terminal?: string; source?: string; said: RegExp; runs?: RegExp; site?: string }[] = [
-  { id: "claude-code", name: "Claude Code", terminal: "claude", source: "claude", said: /claude[-_ ]?code/i, runs: /(^|\/)claude(\s|$)|@anthropic-ai\/claude-code|claude-code/, site: "https://claude.com/claude-code" },
-  { id: "claude-app", name: "Claude", source: "claude", said: /claude/i, runs: /Claude\.app\/Contents\/MacOS\/Claude/ },
-  { id: "codex", name: "Codex", said: /codex/i, runs: /(^|\/)codex(\s|$)|@openai\/codex/, site: "https://developers.openai.com/codex/cli" },
+/** The AI agents Vaultite tells apart (`said`: their MCP clients' names), the first match winning. */
+export const KNOWN_AGENTS: { id: string; name: string; terminal?: string; source?: string; said?: RegExp; site?: string }[] = [
+  { id: "claude-code", name: "Claude Code", terminal: "claude", source: "claude", said: /claude[-_ ]?code/i, site: "https://claude.com/claude-code" },
+  { id: "claude-app", name: "Claude", source: "claude", said: /claude/i },
+  { id: "codex", name: "Codex", said: /codex/i, site: "https://developers.openai.com/codex/cli" },
   { id: "chatgpt", name: "ChatGPT", said: /chatgpt|openai/i },
-  { id: "cursor", name: "Cursor", said: /cursor/i, runs: /(^|\/)cursor-agent(\s|$)|Cursor\.app/, site: "https://cursor.com/cli" },
-  { id: "opencode", name: "OpenCode", said: /opencode/i, runs: /(^|\/)opencode(\s|$)/, site: "https://opencode.ai" },
-  { id: "openclaw", name: "OpenClaw", said: /openclaw/i, runs: /(^|\/)openclaw(\s|$)/, site: "https://openclaw.ai" },
-  { id: "hermes", name: "Hermes", said: /hermes/i, runs: /(^|\/)hermes(\s|$)/, site: "https://github.com/NousResearch/hermes-agent" },
-  { id: "gemini", name: "Gemini", said: /gemini/i, runs: /(^|\/)gemini(\s|$)|@google\/gemini-cli/ },
+  { id: "cursor", name: "Cursor", said: /cursor/i, site: "https://cursor.com/cli" },
+  { id: "opencode", name: "OpenCode", said: /opencode/i, site: "https://opencode.ai" },
+  { id: "openclaw", name: "OpenClaw", said: /openclaw/i, site: "https://openclaw.ai" },
+  { id: "hermes", name: "Hermes", said: /hermes/i, site: "https://github.com/NousResearch/hermes-agent" },
+  { id: "antigravity", name: "Antigravity", said: /antigravity|^agy\b/i, site: "https://antigravity.google" },
+  { id: "gemini", name: "Gemini", said: /gemini/i },
+  { id: "copilot", name: "GitHub Copilot", said: /github[-_ ]?copilot|^copilot\b/i },
+  { id: "amp", name: "Amp" },
+  { id: "aider", name: "Aider" },
+  { id: "goose", name: "Goose" },
+  { id: "qwen", name: "Qwen Code" },
+  { id: "kimi", name: "Kimi" },
+  { id: "droid", name: "Droid" },
+  { id: "crush", name: "Crush" },
+  { id: "kiro", name: "Kiro" },
+  { id: "auggie", name: "Auggie" },
 ]
 
 const known = (id: string) => KNOWN_AGENTS.find((a) => a.id === id || a.terminal === id)

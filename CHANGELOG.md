@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Terminals: a terminal shows as the agent that runs in it now, not the one it was started with: quit Claude Code and run
+  Antigravity there, and its tab, row, state and Agents panel say Antigravity. Antigravity, Gemini, Copilot, Amp, Aider and
+  other agents' programs are known by name and logo without a plugin, and a reply to an earlier agent's session is never
+  typed to the one that runs there since.
 - Coding agents: a plan limits block reads only the plan's limits (`GET /api/<agent>/limits`), not a month of usage, so
   it shows sooner, and a plugin whose sessions aren't read here (a chat app's plan) can draw one.
 - Passwords: your KeePass file opens only in a process of its own, which locking ends with every key it held, and it locks

@@ -1,19 +1,20 @@
 import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
-import { type AgentAsk, type AgentCommand, askLabel, type Awaits, sameAwaits, type AgentHow, type AgentStart, type AgentState, agentName, agentSite, shellQuote } from "../../../core/agents.ts"
-import { logger, serverUrl, span } from "../../../core/plugins.ts"
+import { type AgentAsk, type AgentCommand, askLabel, type Awaits, sameAwaits, type AgentHow, type AgentStart, type AgentState, agentName, agentSite, parseTerminal, shellQuote, terminalAgent } from "../../../core/agents.ts"
+import { logger, processTable, serverUrl, span } from "../../../core/plugins.ts"
 import type { AgentRun, Backend, Listed as Shell } from "./backend.ts"
 import { psQuote, wslPath } from "./launch.ts"
 import { gitBash, kindOf, progName, type ShellKind } from "./shells.ts"
 import type { Kind, Said, SessionState } from "./osc7501.ts"
-import { closes, fresh, label, moved, nowOf, step, type Event, type From as Source, type Now, type Term } from "./state.ts"
+import { closes, fresh, label, moved, nowOf, speaks, step, type Event, type From as Source, type Now, type Term } from "./state.ts"
 import type { Job } from "./starter.ts"
 import { SPARE, STATES, TERMINAL_ID, TMP, WIN, plugin, shell } from "./shared.ts"
-import { agentContext, agentOf, backendOf, backends, hooksFile, hooksText, oscMark, runsHere, stateFile, tell } from "./backends.ts"
+import { agentContext, agentOf, backendOf, backends, findShell, hooksFile, hooksText, oscMark, runsHere, stateFile, tell } from "./backends.ts"
 import { closedEarlier, keepClosed, reopened } from "./start.ts"
 import { lastSession } from "./lastsession.ts"
-import { byName, inFront, listChanged } from "./list.ts"
+import { byName, type Front, frontOf } from "./front.ts"
+import { listChanged } from "./list.ts"
 
 export const progressOf = (id: string): string | null => { try { const p: unknown = plugin.service("inbox:progress")?.(id); return typeof p === "string" ? p : null } catch { return null } }
 
@@ -23,6 +24,7 @@ export type StateChange = { terminal: string; agent: string; state: SessionState
 
 export const terms = new Map<string, Term>()
 export const sighted = new Set<string>()
+export const agentHere = (id: string) => terms.get(id)?.here || agentOf(id)?.name || null
 export const current = (id: string) => { const t = terms.get(id); return t ? nowOf(t) : null }
 export function endOf(id: string) {
   const t = terms.get(id), p = t?.phase
@@ -102,11 +104,25 @@ export const held = new Map<string, Said>()
 export function oscSaid(id: string, said: Said) {
   if (!TERMINAL_ID.test(id) || id.startsWith(SPARE)) return
   if (said.seen && !terms.get(id)?.osc?.seen) try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(oscMark(id), "") } catch {}
-  const st = said.status, agent = agentOf(id)?.name
+  const st = said.status, agent = agentHere(id)
   held.delete(id)
+  if (st && startedUnseen(id, st.app)) {
+    held.set(id, said)
+    void lookAt(id).finally(() => { if (held.get(id) === said) oscSaid(id, said) })
+    return
+  }
   if (st?.state !== "blocked" || st.kind || !agent) return apply(id, { type: "osc", said })
   held.set(id, said)
   void askShown(id, agent, said).finally(() => { if (held.get(id) !== said) return; held.delete(id); apply(id, { type: "osc", said }) })
+}
+
+const startedUnseen = (id: string, app = "") => terms.get(id)?.front === false && !terminalAgent(app) && !looks.has(id)
+const looks = new Set<string>()
+async function lookAt(id: string) {
+  looks.add(id)
+  setTimeout(() => looks.delete(id), LOOK).unref?.()
+  const [f] = await Promise.all([findShell(id), processTable(0)])
+  if (f) frontSeen(f.b, id, await frontOf(byName(f.x)), Date.now())
 }
 
 async function askShown(id: string, agent: string, said: Said) {
@@ -159,7 +175,8 @@ async function watchFor(id: string, agent: string) {
   const asks = await asksOf(agent)
   if (!asks.length) return
   const said = () => { const t = terms.get(id); return !!t && (!!t.hooks || !!t.osc?.status) }
-  for (let b = await backendOf(id); b && !said(); b = await backendOf(id)) {
+  const gone = () => { const t = terms.get(id); return !!t && ((!!t.here && t.here !== agent) || (t.front === false && !t.starting)) }
+  for (let b = await backendOf(id); b && !said() && !gone(); b = await backendOf(id)) {
     const hit = await askOn(b, id, asks)
     if (hit?.id !== terms.get(id)?.ask?.id) apply(id, { type: "ask", ask: hit ? { id: hit.id, says: hit.says } : null })
     await new Promise((r) => setTimeout(r, 1000))
@@ -168,7 +185,7 @@ async function watchFor(id: string, agent: string) {
 }
 
 export async function askIn(id: string, agent = "") {
-  const b = await backendOf(id), name = agentOf(id)?.name ?? agent
+  const b = await backendOf(id), name = agentHere(id) || agent
   return b && /^[\w-]{1,40}$/.test(name) ? { b, hit: await askOn(b, id, await asksOf(name)) } : { b, hit: null }
 }
 
@@ -198,6 +215,8 @@ plugin.provide("terminal:ask", async (id: string, agent = "") => {
 })
 /** Whether terminal `id` waits on the user now: a question on its screen, or its state says so. */
 plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || current(id)?.state === "blocked")
+/** The agent in terminal `id` now, as a terminal names it ("claude"), whichever its id says it was started with, or "". */
+plugin.provide("terminal:agent", (id: string) => (TERMINAL_ID.test(id) ? agentHere(id) : null) ?? parseTerminal(id)?.agent ?? "")
 /** Terminal `id`'s state now (StateChange without its time), or null when nothing says. */
 plugin.provide("terminal:state", (id: string) => (TERMINAL_ID.test(id) ? current(id) : null))
 /** How terminal `id` ended (its exit code, signal; `lost`: unknown), while it's kept here; null while it runs. */
@@ -232,11 +251,13 @@ try {
 plugin.onUnload(() => hooksWatch?.close())
 
 export const FRONT_AGE = 1000
-export function frontSeen(b: Backend, id: string, program: boolean, seen: number) {
+export function frontSeen(b: Backend, id: string, front: Front, seen: number) {
   // (Windows has no foreground groups, only a guess by the newest child: seeing none there never ends an agent's turn)
+  const program = front.program !== null
   if (WIN && !program) return
-  const had = terms.get(id)?.osc?.status
-  apply(id, { type: "front", program, seen })
+  const t = terms.get(id), had = t?.osc?.status
+  if (t?.agent && front.agent && front.agent !== t.agent && !speaks(t, front.agent)) apply(id, { type: "front", program: false, agent: null, seen })
+  apply(id, { type: "front", program, agent: front.agent, seen })
   if (had && !terms.get(id)?.osc?.status) void b.dropStatus?.(id)
 }
 export function sight(x: Shell) {
@@ -262,7 +283,7 @@ async function lookAtBusy() {
       for (const x of (await b.list().catch((): Shell[] => [])).map(byName)) {
         if (x.spare || x.id.startsWith(SPARE)) continue
         sight(x)
-        if (busy(x.id)) frontSeen(b, x.id, (await inFront(x)) !== null, seen)
+        if (busy(x.id)) frontSeen(b, x.id, await frontOf(x), seen)
       }
     }
     looked = true

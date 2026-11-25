@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Bot, Check, CircleSlash, MessageSquareText, SquareTerminal } from "lucide-react"
-import { Button, cn, fmtAgo, notifyError, openAgentSession, useAgents, useMachines, type Machine } from "@vaultite"
+import { agentNamed, Button, cn, fmtAgo, notifyError, openAgentSession, useAgents, useMachines, type Machine } from "@vaultite"
 import { machineOf, type Outcome } from "./askstate"
 import type { LiveAsk } from "./livetabs"
 
@@ -10,7 +10,7 @@ const there = (a: LiveAsk, ms: Machine[] | null) => {
 }
 
 function useAsker(ask: LiveAsk) {
-  const agent = useAgents().find((a) => a.name === ask.agent)
+  const agent = agentNamed(ask.agent ?? "", useAgents())
   const m = there(ask, useMachines())
   const where = ask.where || (ask.terminal ? "its terminal" : ask.session ? "its session" : "")
   return { name: agent?.label ?? ask.by, Icon: agent?.icon ?? Bot, tint: agent?.tint ?? "var(--purple)", where, on: m?.label ?? "" }

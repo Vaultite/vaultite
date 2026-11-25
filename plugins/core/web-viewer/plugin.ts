@@ -35,7 +35,7 @@ const by = async (ctx: OpCtx, p: { terminal?: string; task?: string; summary?: s
   task: p.task ?? "", summary: p.summary ?? "", remote: !!(await ctx.refusal?.("the browser's pages on this machine")) })
 async function askerOf(p: { terminal?: string; session?: string; agent?: string }) {
   const terminal = /^[\w.@-]{1,120}$/.test(p.terminal ?? "") ? p.terminal ?? "" : "", session = String(p.session ?? "").slice(0, 120)
-  const agent = String(p.agent ?? "").toLowerCase().slice(0, 40) || parseTerminal(terminal)?.agent || ""
+  const agent = String(p.agent ?? "").toLowerCase().slice(0, 40) || await plugin.ask<string>("terminal:agent", "", terminal) || parseTerminal(terminal)?.agent || ""
   const info = terminal ? await plugin.ask<{ title?: string } | null>("terminal:info", null, terminal).catch(() => null) : null
   const where = String(info?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim().slice(0, 120)
   const machine = terminal.includes("@") ? "" : String(await plugin.ask<string | null>("machines:self", null).catch(() => null) ?? "")

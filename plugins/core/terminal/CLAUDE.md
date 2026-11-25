@@ -65,6 +65,10 @@
 - Terminal ids: `<name>-<id>` starts agent `<name>`, `<name>_<account>-<id>` in an account, `resume-<name>-<session>`
   resumes, through the service `agent:<name>` of the plugin that brings it. Ops name a terminal by id, name or the end
   of its id (`target` in targets.ts), `@<machine>` passing the op on to that machine.
+- A terminal's id names the agent it was started with, never the one it runs: that's `frontOf` (front.ts: the program in
+  front, its package, what it says in OSC 7501, else its own agent while that hasn't left), the list's `agent` and the
+  service "terminal:agent". Its own agent's line shows in its shell's arguments till it ends, except in a spare shell. An
+  agent with no plugin is only a name and a logo: `KNOWN_AGENTS`, its programs in `core/agentprograms.ts`, the web's `agentNamed`.
 - A command alone (`terminal.start --command`, Spec `only`) is the terminal's program: it ends with it, its exit code
   the terminal's. A command typed into a shell (terminal.run's) leaves the shell.
 - A tab opened from outside only attaches (a page starts only ids it minted), so `vau terminal open` starts the session

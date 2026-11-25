@@ -1,4 +1,5 @@
 import { type Awaits, sameAwaits } from "../../../core/agents.ts"
+import { terminalAgent } from "../../../core/agentprograms.ts"
 import { shown, type Kind, type Said, type SessionState } from "./osc7501.ts"
 
 export type From = "osc7501" | "hooks" | "screen" | "agent" | "backend" | "shell"
@@ -16,7 +17,11 @@ export type Hooks = { state: "working" | "idle" | "missing" } | { state: "blocke
 export type Ask = { id: string; says?: string }
 
 export type Term = {
+  own: string
   agent: string
+  here: string | null
+  frontAt: number
+  left: boolean
   osc: Said | null
   hooks: Hooks | null
   wrote: { text: string | null; at: number } | null
@@ -43,15 +48,13 @@ export type Event =
   | { type: "waits"; kind: Kind | null }
   | { type: "awaits"; awaits: Awaits | null }
   | { type: "backend"; state: string | undefined }
-  | { type: "front"; program: boolean; seen: number }
+  | { type: "front"; program: boolean; agent: string | null; seen: number }
   | { type: "end"; keep: boolean }
   | { type: "exit"; code: number; signal: number; lost: boolean }
 
 export type Now = { agent: string; state: SessionState; kind?: Kind; msg?: string; from: From; awaits?: Awaits }
 
-const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
-
-export const fresh = (agent: string): Term => ({ agent, osc: null, hooks: null, wrote: null, ask: null, waits: null, awaits: null, backend: null, front: null, starting: false, heard: 0,
+export const fresh = (agent: string): Term => ({ own: agent, agent, here: null, frontAt: 0, left: false, osc: null, hooks: null, wrote: null, ask: null, waits: null, awaits: null, backend: null, front: null, starting: false, heard: 0,
   phase: { state: "quiet" }, ending: null, at: 0, since: 0 })
 
 const isWord = (p: Phase): p is Word => "from" in p
@@ -113,20 +116,45 @@ function left(n: Term, was: Term, now: number): Term {
   n.ask = null
   n.waits = null
   n.awaits = null
+  n.left = true
   const p = was.phase
   const gone = isWord(p) ? p.state !== "idle" : p.state === "quiet" && was.front === true && !!n.agent
   return settle(n, was, now, gone)
 }
 
+export function speaks(t: Term, name: string) {
+  const st = t.osc?.status, by = st?.app ? terminalAgent(st.app) : null
+  return !!st && (by ? by === name : !t.frontAt || t.heard > t.frontAt)
+}
+
+function inFrontNow(n: Term, was: Term, agent: string | null, seen: number, now: number): Term {
+  n.starting = false
+  n.front = true
+  n.here = agent
+  if (!agent) return n
+  n.frontAt = seen
+  if (agent !== n.own) n.left = true
+  if (agent === was.agent) return n
+  n.agent = agent
+  if (!was.agent) return n
+  if (n.osc && !speaks(was, agent)) n.osc = { seen: n.osc.seen, status: null }
+  n.hooks = null
+  n.ask = null
+  n.waits = null
+  n.awaits = null
+  return settle(n, was, now)
+}
+
+const another = (t: Term) => !!t.own && t.agent !== t.own
 const readBefore = (t: Term, ev: { text: string | null; at: number }) => !!ev.at && ev.at === t.wrote?.at && ev.text === t.wrote.text
 
 export function step(t: Term, ev: Event, now: number): Term {
   if (t.phase.state === "ended") return t
-  if (ev.type === "hooks" && readBefore(t, ev)) return t
+  if (ev.type === "hooks" && (readBefore(t, ev) || another(t))) return t
   const n: Term = { ...t }
   if (ev.type === "osc" || (ev.type === "hooks" && hooksOf(ev.text)) || (ev.type === "ask" && ev.ask) || (ev.type === "waits" && ev.kind)) n.starting = false
   switch (ev.type) {
-    case "start": n.starting = !n.hooks && !n.osc?.status && !n.osc?.seen; break
+    case "start": n.left = false; n.starting = !n.hooks && !n.osc?.status && !n.osc?.seen; break
     case "late": n.starting = false; break
     case "seen":
       n.osc ??= ev.osc
@@ -153,8 +181,9 @@ export function step(t: Term, ev: Event, now: number): Term {
       break
     }
     case "front":
-      n.front = ev.program
-      if (ev.program) { n.starting = false; return n }
+      if (ev.program) return inFrontNow(n, t, ev.agent, ev.seen, now)
+      n.front = false
+      n.here = null
       return n.starting || ev.seen < n.heard ? n : left(n, t, now)
     case "end": return { ...n, ending: { keep: ev.keep } }
     case "exit": {
@@ -169,8 +198,9 @@ export function step(t: Term, ev: Event, now: number): Term {
 export function nowOf(t: Term): Now | null {
   const p = t.phase
   if (!isWord(p)) return null
-  const app = p.from === "osc7501" ? t.osc?.status?.app : undefined
-  const now: Now = { agent: t.agent || (app ? AGENT_APPS[app] ?? app : ""), state: p.state, ...("kind" in p && p.kind ? { kind: p.kind } : {}), ...(p.msg ? { msg: p.msg } : {}), from: p.from }
+  const app = (p.from === "osc7501" && t.osc?.status?.app) || "", by = terminalAgent(app) ?? ""
+  const agent = t.front === false ? by || t.agent : t.agent || by
+  const now: Now = { agent: agent || app, state: p.state, ...("kind" in p && p.kind ? { kind: p.kind } : {}), ...(p.msg ? { msg: p.msg } : {}), from: p.from }
   if (p.awaits) now.awaits = p.awaits
   return now
 }

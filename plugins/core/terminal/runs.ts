@@ -13,7 +13,8 @@ export function useTerminalRuns(): AgentFeed {
     return list.flatMap((s): AgentRun[] => {
       const a = agentIn(s, agents), run = runOf(s, a)
       if (!run || (s.external && !s.clients)) return []
-      const account = accountName(a!.name, s.machine ?? "", s.account ?? parseTerminal(s.id)?.profile ?? undefined)
+      const t = parseTerminal(s.id)
+      const account = accountName(a!.name, s.machine ?? "", s.account ?? (t?.agent === a!.name ? t.profile : null) ?? undefined)
       return [{ ...run, ...(account ? { account } : {}), menu: () => menuOf(s, a) }]
     })
   }, [list, refused, lost, agents, accountName])

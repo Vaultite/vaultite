@@ -301,7 +301,7 @@ by its path.
 - `sync:hub` (sync): The hub this vault's settings name (vau sync hub), or null: Machines' first then.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them: a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
-- `terminal:<…>` (meters, of, of-pids, info, locate, agent-env, wait, trouble, ask, waits, state, ended, agent-waits, agent-awaits, screen, access, runs): agent-meters; terminal
+- `terminal:<…>` (meters, of, of-pids, info, locate, agent-env, wait, trouble, ask, waits, agent, state, ended, agent-waits, agent-awaits, screen, access, runs): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
 - `versions:icloud` (sync-conflicts)
 - `voice:asks` (companion): What the user said to it aloud in the last `days` days (a Talk key's asks), newest first, with its answer: the Dictations list shows them beside dictation's, from this log, never copied.

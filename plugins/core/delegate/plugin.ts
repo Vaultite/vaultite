@@ -175,13 +175,15 @@ plugin.provide("delegate:lineage", (agent: string, terminal = "", session = ""):
 })
 
 
+const agentIn = (terminal: string) => String(plugin.service("terminal:agent")?.(terminal) ?? "") || parseTerminal(terminal)?.agent
+
 function callerOf(p: Item, ctx: OpCtx): Party | null {
   if (byUser(ctx.who) || userSurface(ctx.who)) return null
   const t = str(p.terminal).trim(), s = str(p.session).trim()
   const terminal = /^[\w-]{1,64}$/.test(t) && parseTerminal(t) ? t : ""
   const session = /^[\w.-]{4,120}$/.test(s) ? s : ""
   const own = KNOWN_AGENTS.find((a) => a.id === ctx.who.agent)
-  const agent = (/^[a-z][a-z0-9]{0,31}$/.test(str(p.from)) ? str(p.from) : "") || (terminal && parseTerminal(terminal)?.agent) || own?.terminal || own?.id || ctx.who.agent || "agent"
+  const agent = (/^[a-z][a-z0-9]{0,31}$/.test(str(p.from)) ? str(p.from) : "") || (terminal && agentIn(terminal)) || own?.terminal || own?.id || ctx.who.agent || "agent"
   return { agent, ...(terminal ? { terminal } : {}), ...(session ? { session } : {}) }
 }
 

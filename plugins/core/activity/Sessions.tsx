@@ -1,6 +1,6 @@
 import { SquareTerminal } from "lucide-react"
 import {
-  agentsOn, choose, cn, currentFile, fmtAgo, get, isHidden, isViewOpen, menuBelow, notify, notifyError, openAgent, openView, plural,
+  agentNamed, choose, cn, currentFile, fmtAgo, get, isHidden, isViewOpen, menuBelow, notify, notifyError, openAgent, openView, plural,
   useLive, type FileHead, type MenuItem,
 } from "@vaultite"
 import type { FileSession } from "./model"
@@ -9,7 +9,7 @@ const url = (path: string) => `activity/sessions?path=${encodeURIComponent(path)
 export const sessionsHere = (path: string) => !!path && !isHidden(path) && !path.startsWith("/")
 
 const nameOf = (s: FileSession) => s.title || `${s.agent} session`
-const iconOf = (s: FileSession) => agentsOn().find((a) => a.name === s.runs)?.icon ?? SquareTerminal
+const iconOf = (s: FileSession) => (s.runs ? agentNamed(s.runs)?.icon : null) ?? SquareTerminal
 const when = (s: FileSession) => (s.live ? "Running" : fmtAgo(s.last))
 
 function reopen(s: FileSession) {

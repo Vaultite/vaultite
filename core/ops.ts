@@ -326,7 +326,7 @@ export function nearest(s: string, names: string[]): string | null {
 /** Who asked, from the request's X-Vaultite-Client and -Agent (or an MCP client's own name, given as the agent). */
 export function whoOf(client: string | null, agent: string | null): Who {
   const n = (agent ?? "").trim()
-  const hit = KNOWN_AGENTS.find((a) => a.said.test(n))
+  const hit = KNOWN_AGENTS.find((a) => a.said?.test(n) || a.name === n)
   if (hit) return { client, agent: hit.id, label: hit.name, source: hit.source ?? hit.id }
   const slug = n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)
   if (slug) return { client, agent: slug, label: n.slice(0, 60), source: slug }

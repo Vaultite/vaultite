@@ -36,7 +36,8 @@ const waited = (r: Waited) => r.met === "exit" ? `${r.id} ended (${how(r.exit)})
   : r.exit ? `${r.id} ended (${how(r.exit)}) before it was ${(r.for ?? []).join(" or ")}.`
   : `Still not ${(r.for ?? []).join(" or ")} after ${r.waited} s: ${r.id} is ${r.state ?? "running"}.`
 const ago = (t: number) => { const a = fmtAgo(t, { short: true }); return a === "now" ? "just now" : `${a} ago` }
-const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.state !== "blocked" && s.needs ? ", unread" : ""}${s.awaits ? `, ${awaitsText(s.awaits).replace(/^W/, "w")} (started ${ago(s.awaits.since)}): its end wakes it` : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}${s.via ? ` (held by the older terminal server, pid ${s.via}, which ends after its last)` : ""}`
+const runs = (s: Session) => (s.agent && s.agent !== s.process ? `${s.agent}, ` : "") + (s.process || "-")
+const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${runs(s)}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.state !== "blocked" && s.needs ? ", unread" : ""}${s.awaits ? `, ${awaitsText(s.awaits).replace(/^W/, "w")} (started ${ago(s.awaits.since)}): its end wakes it` : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}${s.via ? ` (held by the older terminal server, pid ${s.via}, which ends after its last)` : ""}`
 const Exit = z.looseObject({ code: z.number(), signal: z.number(), lost: z.boolean().optional() })
 const Waited = z.looseObject({ id: z.string().optional(), met: z.string().nullish(), matched: z.string().optional(), timedOut: z.boolean().optional(),
   waited: z.number().optional(), for: z.array(z.string()).optional(), state: z.string().optional(), kind: z.string().optional(), msg: z.string().optional(), exit: Exit.nullish() })
@@ -56,7 +57,7 @@ export function terminalOps(plugin: Plugin) {
     summary: "The app's terminals: each session (what runs in it, its state, title and tabs), then tabs whose session is gone; machine all: every machine's.",
     help: `The Terminal plugin's sessions on the machine the server runs on: shells, commands and coding agents (Claude Code,
 Codex...), kept by Vaultite's terminal server apart from the app's server, so they outlive it (or by another plugin's
-backend, herdr's). A terminal's id names what it runs: <agent>-<id> a new session of that agent, resume-<agent>-<session
+backend, herdr's). A terminal's id names what it was started with: <agent>-<id> a new session of that agent, resume-<agent>-<session
 id> an agent's session resumed in its folder, anything else a shell or a command. "session <id>": the agent's own
 session id (what it resumes; Claude Code's names its transcript), when the agent says. machine names another of the
 Machines (its terminals are <id>@<machine>), all every machine's; ended adds the ones that ended in the last hour, with

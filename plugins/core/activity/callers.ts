@@ -2,7 +2,7 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { processTable, type Proc, type RequestStart } from "../../../core/plugins.ts"
-import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
+import { agentName, agentOfProcess, parseTerminal } from "../../../core/agents.ts"
 import type { Actor } from "./model.ts"
 import { MINUTE, plugin } from "./store.ts"
 
@@ -58,7 +58,7 @@ async function name(pid: number, table: Table): Promise<Caller | null> {
   const first = table.get(pid)?.args ?? ""
   const prog = path.basename(first.split(/\s+/)[0] || "")
   for (const p of chain) {
-    const hit = KNOWN_AGENTS.find((a) => a.runs?.test(table.get(p)!.args))
+    const hit = agentOfProcess(table.get(p)!.args)
     if (hit) return { agent: hit.id, name: hit.name, ...(await terminalOf(chain)) }
   }
   if (/(^|\/)vau(\s|$)|core\/cli\.ts/.test(first)) return { agent: null, name: "vau CLI", ...(await terminalOf(chain)) }

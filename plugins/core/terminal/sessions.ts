@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, onReconnect, op, openView, parseTerminal, type Agent, type AgentPhase, type AgentRun, type Dot, openSocket, type Socket } from "@vaultite"
+import { agentNamed, agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, onReconnect, op, openView, parseTerminal, type Agent, type AgentPhase, type AgentRun, type Dot, openSocket, type Socket } from "@vaultite"
 import { agentTint } from "../../../core/agenttint.ts"
 import { type Awaits, awaitsLine, hasNews, waitsOnUser } from "../../../core/attention.ts"
 import { resumeTerminalId } from "../../../core/terminalids.ts"
@@ -47,9 +47,7 @@ export type Meter = { context?: { tokens: number; window: number; as: "bar" | "p
 
 export const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl"])
 export function agentIn(s: Session, agents: Agent[] = agentsOn()): Agent | null {
-  const own = s.agent ? agents.find((a) => a.name === s.agent) : undefined
-  if (own && s.busy !== undefined) return s.busy || s.starting ? own : null
-  if (own && (!s.process || s.process === "node" || SHELLS.has(s.process) || own.process?.includes(s.process))) return own
+  if (s.agent) return s.busy !== false || s.starting ? agentNamed(s.agent, agents) : null
   return agents.find((a) => a.process?.includes(s.process)) ?? null
 }
 export const labelOf = (s: Session, a = agentIn(s)) => s.name || autoLabel(s, a)
@@ -250,10 +248,11 @@ export function subscribeSessions(fn: () => void) {
 export const getSessions = () => now
 export const sessionById = (id: string) => now.list?.find((s) => s.id === id) ?? null
 
+const ownResume = (t: ReturnType<typeof parseTerminal>, a: Agent | null) => (t && t.agent === a?.name ? t.resume : null)
 export function pinOfTerminal(id: string): string | null {
   const s = sessionById(id), t = parseTerminal(id)
   const a = s ? agentIn(s) : agentOfTerminal(id)
-  const session = s?.session ?? t?.resume
+  const session = s?.session ?? ownResume(t, a)
   if (!a?.session || !session) return null
   const machine = s?.machine ?? t?.machine
   return `${resumeTerminalId(a.name, session, t?.agent === a.name ? t.profile : null)}${machine ? `@${machine}` : ""}`

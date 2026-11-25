@@ -40,6 +40,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "claude-code", deps: ["pages"] },
   { name: "terminal", deps: ["pages","cli"] },
   { name: "terminal-life", deps: ["pages","cli"] },
+  { name: "terminal-agents", deps: ["pages","cli"] },
   { name: "machines", deps: ["pages"] },
   { name: "codex", deps: ["pages"] },
   { name: "backlinks", deps: ["pages"] },

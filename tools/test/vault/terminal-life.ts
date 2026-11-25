@@ -107,7 +107,7 @@ async function lifeProperties(check: VaultTest["check"]) {
     () => ({ type: "start" }), () => ({ type: "late" }), () => ({ type: "osc", said: said() }),
     () => ({ type: "hooks", text: pick(["working", "idle", "waiting:permission", "missing", null, "junk"]), at: pick([0, 1, 2]) }),
     () => ({ type: "ask", ask: pick([null, { id: "trust", says: "Trust?" }]) }), () => ({ type: "waits", kind: pick([null, "permission" as const, "question" as const]) }),
-    () => ({ type: "backend", state: pick(["working", "idle", "waiting", undefined]) }), () => ({ type: "front", program: rand(2) === 0, seen: rand(40) * 100 }),
+    () => ({ type: "backend", state: pick(["working", "idle", "waiting", undefined]) }), () => ({ type: "front", program: rand(2) === 0, agent: pick([null, "claude", "codex"]), seen: rand(40) * 100 }),
     () => ({ type: "seen", osc: rand(2) ? said() : null, hooks: pick([null, "working"]) }),
     () => ({ type: "end", keep: rand(2) === 0 }), () => ({ type: "exit", code: pick([0, 0, 3]), signal: pick([0, 0, 15]), lost: rand(4) === 0 }),
   ]

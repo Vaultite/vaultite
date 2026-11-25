@@ -1,7 +1,7 @@
 import { type ComponentType } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Bot, Code, HardDrive, Terminal, User } from "lucide-react"
-import { clickOpening, dateText, isViewOpen, iso, notify, numberText, openTab, openView, useAgents, openSocket } from "@vaultite"
+import { agentNamed, clickOpening, dateText, isViewOpen, iso, notify, numberText, openTab, openView, useAgents, openSocket } from "@vaultite"
 import type { Actor, ActorKind } from "./model"
 
 type Look = { icon: LucideIcon | ComponentType<{ className?: string; strokeWidth?: number }>; tint: string }
@@ -19,7 +19,7 @@ export function useLook() {
   return (a: Pick<Actor, "kind" | "name">): Look => {
     if (a.kind === "agent") {
       const n = a.name.toLowerCase()
-      const ag = agents.find((x) => x.label.toLowerCase() === n || x.name === n)
+      const ag = agents.find((x) => x.label.toLowerCase() === n || x.name === n) ?? agentNamed(n, agents)
       if (ag) return { icon: ag.icon, tint: ag.tint ?? KINDS.agent.tint }
     }
     return KINDS[a.kind] ?? KINDS.script

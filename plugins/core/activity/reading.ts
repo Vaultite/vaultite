@@ -1,4 +1,4 @@
-import { KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
+import { KNOWN_AGENTS, parseTerminal, terminalAgent } from "../../../core/agents.ts"
 import { str, strip } from "./describe.ts"
 import { between, changedPaths, changes, isChange, naming } from "./events.ts"
 import { actionsOf, type ActivityEvent, type ActivityList, type ActivitySummary, type FileSession } from "./model.ts"
@@ -27,7 +27,7 @@ export function sessionsOf(events: ActivityEvent[], p: string): FileSession[] {
 export async function fileSessions(p: string, days: number): Promise<FileSession[]> {
   return Promise.all(sessionsOf(await changes(Date.now() - days * DAY), p).map(async (s) => {
     const t = await plugin.ask<{ session?: string; busy?: boolean } | null>("terminal:info", null, s.terminal).catch(() => null)
-    const runs = parseTerminal(s.terminal ?? "")?.agent ?? KNOWN_AGENTS.find((a) => a.name === s.agent)?.terminal
+    const runs = (terminalAgent(KNOWN_AGENTS.find((a) => a.name === s.agent)?.id ?? "") ?? parseTerminal(s.terminal ?? "")?.agent)
     return { ...s, ...(runs ? { runs } : {}), live: !!t?.busy && (!s.sessionId || !t.session || t.session === s.sessionId) }
   }))
 }

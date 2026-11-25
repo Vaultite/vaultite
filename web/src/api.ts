@@ -64,6 +64,7 @@ export { moves } from "@/core/animation"
 export { slideFrom } from "@/core/animation"
 export { pickIcon } from "@/core/iconask"
 export { BrandIcon, GitHubIcon } from "@/core/icons"
+export { agentNamed } from "@/core/knownagents"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).
 export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout, mineInto as withMyTabs, panesClosed, tabsInWorkspace } from "@/core/workspace"
 export { type Workspace as TabLayout } from "../../core/layout.ts"

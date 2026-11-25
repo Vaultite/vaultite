@@ -1,24 +1,27 @@
 import { z } from "zod"
-import { agentIn, type Choice, choiceOf, newTerminalId, parseTerminal, type Question, resumeTerminalId, startAgent } from "../../../core/agents.ts"
+import { agentIn, type Choice, choiceOf, newTerminalId, parseTerminal, type Question, resumeTerminalId, startAgent, terminalAgent } from "../../../core/agents.ts"
 import { defineOp, localDate, localTime, type Machine, MACHINE_CLIENT, NOT_THE_USER, type OpCtx, OpError, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { hand, keepHanded } from "./handed.ts"
 import { clip, type InboxEvent, sessionAtAddress } from "./model.ts"
 import { REPLY_BLOCK } from "./reports.ts"
 import { editBody, resultAt } from "./results.ts"
-import { agentOfTerminal, plugin, selfMachine } from "./server.ts"
+import { plugin, selfMachine } from "./server.ts"
 import { fileOf, list, moveOn, resolve } from "./store.ts"
 import { Captured, Event, Events, type Live, Passed, Saved, Sessions } from "./wire.ts"
 
 type AgentReply = (session: string, text: string, account?: InboxEvent["account"]) => Promise<boolean>
 
-/** Never a shell at its prompt, which would run the line: a report names its terminal, and anyone who writes the vault
- *  can write a report. */
-export const typable = (sessions: Live[]) => (id: string) => !!id && sessions.some((s) => s.id === id && !!s.agent && s.busy === true)
+const idsAgent = (terminal: string) => parseTerminal(terminal)?.agent ?? ""
+const runs = (agent: string) => { const name = agent.split("_")[0]; return terminalAgent(name) ?? name }
+/** Never a shell at its prompt, which would run the line (anyone who writes the vault can write a report, which names
+ *  its terminal), nor another agent run there since (`agent`: whose session it is). */
+export const typable = (sessions: Live[], agent = "") => (id: string) =>
+  !!id && sessions.some((s) => s.id === id && !!s.agent && s.busy === true && (!agent || s.agent === runs(agent)))
 
 type Plan = { how: "type" | "resume" | "new" | "host"; to: string; ago: number | null; ttl: number | null; transcript: string; account?: string }
 async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Promise<Plan | null> {
-  const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
+  const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || idsAgent(terminal)
   const resume = session && agent ? resumeTerminalId(agent, session) : ""
   const none = { ago: null, ttl: null, transcript: "" }
   if (want !== "new") for (const to of [terminal, resume]) if (to && live(to)) return { how: "type", to, ...none }
@@ -108,7 +111,7 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
     return { how: "host", terminal: e.terminal ?? null }
   }
   if (e.terminal) keepHanded(e.terminal)
-  const plan = await replyPlan(sessionOfRow(e), typable(sessions), how)
+  const plan = await replyPlan(sessionOfRow(e), typable(sessions, e.source), how)
   if (!plan) throw new OpError(`its terminal ${e.terminal} has ended and it names no session to resume`, 409)
   keepHanded(plan.to)
   if (plan.how === "type" && asks && (e.questions || e.ask === "question")) {
@@ -215,13 +218,13 @@ const replyPlanOp = defineOp({
       const e = await eventFor(ctx, to)
       if (e.machine) return Planned.parse(await onOwner(ctx, e, "inbox.reply-plan", { to: splitMachine(e.id)[0] }))
       if (!e.terminal && sessionAtAddress(e.session)) return { how: plugin.service(`agent-reply:${e.source}`) ? "host" : null, ago: null, ttl: null }
-      plan = await replyPlan(sessionOfRow(e), typable(sessions))
+      plan = await replyPlan(sessionOfRow(e), typable(sessions, e.source))
     } else {
       const r = resultAt(to)
       if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
       const at = await elsewhere(r, alive)
       if (at) return Planned.parse(await onSessionMachine(ctx, at, "inbox.reply-plan", { to: `${r.id}.md` }))
-      plan = await replyPlan(r, typable(sessions))
+      plan = await replyPlan(r, typable(sessions, str(r.agent)))
     }
     return { how: plan?.how ?? null, ago: plan?.ago ?? null, ttl: plan?.ttl ?? null }
   },
@@ -273,7 +276,7 @@ same way. A session on another of the Machines gets it through the app there.
     await plugin.vault.sync()
     const r = resultAt(to)
     if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
-    const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
+    const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || idsAgent(terminal)
     if (!terminal && !(session && agent)) throw new OpError("this result doesn't say which session wrote it (only inbox.report's do)", 409)
     if (terminal) keepHanded(terminal)
     const { sessions } = Sessions.parse(await ctx.api("GET", "terminals/sessions"))
@@ -281,9 +284,9 @@ same way. A session on another of the Machines gets it through the app there.
     const at = await elsewhere(r, alive)
     if (at) return onSessionMachine(ctx, at, "inbox.reply", { to: `${r.id}.md`, text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
     const again = "when it's done, report again with vau inbox report"
-    const host: AgentReply | null = session && !how && !typable(sessions)(terminal) ? plugin.service(`agent-reply:${agent}`) : null
+    const host: AgentReply | null = session && !how && !typable(sessions, agent)(terminal) ? plugin.service(`agent-reply:${agent}`) : null
     const hosted = !!host && await host(session, `(A reply to your report ${r.id}.md; ${again}) ${text}`)
-    const plan: Plan | null = hosted ? { how: "host", to: terminal, ago: null, ttl: null, transcript: "" } : await replyPlan(r, typable(sessions), how)
+    const plan: Plan | null = hosted ? { how: "host", to: terminal, ago: null, ttl: null, transcript: "" } : await replyPlan(r, typable(sessions, agent), how)
     if (!plan) throw new OpError(`its terminal ${terminal} has ended and the report has no session to resume`, 409)
     let started: Pick<InboxEvent, "terminal" | "session" | "host"> | null = null
     if (plan.how === "type") {

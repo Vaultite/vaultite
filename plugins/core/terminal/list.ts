@@ -1,63 +1,22 @@
 import os from "node:os"
-import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type Awaits, repoName } from "../../../core/agents.ts"
 import { machineSocket, processTable, span, type ServedSocket } from "../../../core/plugins.ts"
 import type { Listed as Shell } from "./backend.ts"
-import { progName } from "./shells.ts"
+import { atPrompt, byName, type Front, frontOf, tableAhead } from "./front.ts"
 import type { Kind, SessionState } from "./osc7501.ts"
-import { type Now, nowOf } from "./state.ts"
+import { type Now, nowOf, type Term } from "./state.ts"
 import { SPARE, WIN, plugin, sessions } from "./shared.ts"
 import { agentOf, backends, findShell, fromReq, ours, ownedBy } from "./backends.ts"
 import { FRONT_AGE, frontSeen, metas, nameOf, noteOf, oldMeta, progressOf, sight, terms, watchAsks, watching } from "./terms.ts"
 import { makeSpare } from "./start.ts"
 import { allowed, starting, terminalMachines } from "./machines.ts"
 import { lastInput, pageInput } from "./routes.ts"
-const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl", ""])
-const VERSION = /^\d+(\.\d+)+$/
-/** A shell's process by its name: on Linux node-pty says the path it was started by ("/bin/bash"). */
-export const byName = (x: Shell): Shell => (x.process?.includes("/") ? { ...x, process: path.basename(x.process) } : x)
-/** What runs in front in a shell, or null at its prompt. A script reads as its interpreter (`mo` as "bash"), so a
- *  shell's name is checked against the foreground group: not the shell itself, something runs. */
-let readsTable = false
-export async function inFront(x: Shell): Promise<string | null> {
-  if (WIN) return frontOnWindows(x)
-  // A program whose binary is named for its version (Claude Code's native install runs
-  // ~/.local/share/claude/versions/2.1.290) reads by the name it was started as ("claude").
-  if (!SHELLS.has(x.process) && !VERSION.test(x.process)) return x.process
-  if (!x.pid) return SHELLS.has(x.process) ? null : x.process
-  readsTable = true
-  const all = await processTable()
-  const fg = all.get(x.pid)?.tpgid ?? 0
-  if (fg <= 0 || fg === x.pid) return SHELLS.has(x.process) ? null : x.process
-  const [bin = "", ...rest] = (all.get(fg)?.args ?? "").split(/\s+/)
-  const name = path.basename(bin).replace(/^-/, "")
-  const script = SHELLS.has(name) ? rest.find((a) => !a.startsWith("-")) : undefined
-  return (script && !rest.includes("-c") ? path.basename(script) : name) || x.process || "shell"
-}
 export async function agentLeft(id: string) {
   if (WIN || !agentOf(id) || starting.has(id) || terms.get(id)?.starting) return false
-  const [f, table] = await Promise.all([findShell(id), processTable(0)])
-  if (!f?.x.pid || f.x.spare || (await inFront(byName(f.x))) !== null) return false
-  const args = table.get(f.x.pid)?.args
-  return !!args && !runsAgentLine(args)
+  const f = await findShell(id)
+  return !!f?.x.pid && !f.x.spare && await atPrompt(f.x)
 }
-const runsAgentLine = (args: string) => / -c /.test(` ${args} `)
-/** Windows has no foreground groups: the newest program the shell started (an agent the starter runs, by its own name).
- *  A WSL distro's programs can't be seen from here: an agent's terminal reads as running its agent. */
-async function frontOnWindows(x: Shell): Promise<string | null> {
-  if (x.process === "wsl") return agentOf(x.id)?.name ?? null
-  if (!x.pid) return null
-  readsTable = true
-  const all = [...await processTable()]
-  const kids = (pid: number) => all.filter(([, p]) => p.ppid === pid && !/^(conhost|openconsole)$/.test(progName(argv0(p.args)))).sort((a, b) => b[1].started - a[1].started)
-  const kid = kids(x.pid)[0]
-  if (!kid) return null
-  if (!/[\\/]starter\.ts\b/.test(kid[1].args)) return progName(argv0(kid[1].args)) || "program"
-  const agent = kids(kid[0])[0]
-  return agent ? progName(argv0(agent[1].args)) : agentOf(x.id)?.name ?? "agent"
-}
-const argv0 = (line: string) => (line.startsWith('"') ? line.slice(1, line.indexOf('"', 1) >>> 0) : line.split(" ")[0])
 
 function stateOf(now: Now, since: number) {
   const s: Pick<Listed, "state" | "since" | "kind" | "msg" | "awaits"> = { state: now.state, since }
@@ -94,7 +53,15 @@ const HOST = os.hostname().replace(/\.local$/, "")
 /** A pane's title as a name: without Claude Code's leading status glyph (✳, a spinner), and none for a shell's default. */
 function titleOf(raw: string) {
   const t = raw.replace(/^[^\p{L}\p{N}]+/u, "").trim()
-  return !t || t === HOST || t === os.hostname() ? undefined : t.slice(0, 120)
+  return !t || t === HOST || t === os.hostname() || PROMPT_TITLE.test(t) ? undefined : t.slice(0, 120)
+}
+const PROMPT_TITLE = /^[\w.-]+@[\w.-]+: ?[~/]/
+
+const titled = new Map<string, { title?: string; by: string | null }>()
+function titleBy(id: string, agent: string | null, title: string | undefined) {
+  const was = titled.get(id), by = was && was.title === title ? was.by : agent
+  titled.set(id, { title, by })
+  return !by || !agent || by === agent ? title : undefined
 }
 
 const ECHO = 3000
@@ -116,10 +83,18 @@ export function localList(): Promise<Listed[]> {
 export let lastLocal: { at: number; list: Promise<Listed[]> } | null = null
 const LIST_FRESH = 1900
 
+function shownOf(x: Shell, { program, agent }: Front, starting: boolean): Pick<Listed, "agent" | "process" | "busy" | "title"> {
+  const said = titleOf(x.title ?? ""), title = titleBy(x.id, agent, agent && said === program ? undefined : said)
+  const busy = program !== null
+  return { agent: agent ?? (starting ? agentOf(x.id)?.name ?? null : null), process: program ?? x.process, busy, title: busy ? title : undefined }
+}
+function watchFront(id: string, agent: string | null, t?: Term) {
+  if (agent && !watching.has(id) && !t?.osc?.status && !t?.hooks) void watchAsks(id, agent)
+}
+
 async function readList(): Promise<Listed[]> {
   const out = new Map<string, Listed>(), timing = span("terminal.list"), seen = Date.now() - FRONT_AGE
-  if (readsTable) void processTable()
-  readsTable = false
+  tableAhead()
   const all = backends(), lists = await Promise.all(all.map((b) => b.list().catch((): Shell[] => [])))
   timing.mark("backends")
   for (const [i, b] of all.entries()) {
@@ -132,13 +107,11 @@ async function readList(): Promise<Listed[]> {
       const s = sessions.get(x.id)
       const clients = s ? s.clients.size + Math.max(0, x.attached - 1) : x.attached
       sight(x)
-      const front = await inFront(x)
-      frontSeen(b, x.id, front !== null, seen)
+      const front = await frontOf(x)
+      frontSeen(b, x.id, front, seen)
       const t = terms.get(x.id), now = t ? nowOf(t) : null
-      const agent = agentOf(x.id)?.name
-      if (agent && front !== null && !watching.has(x.id) && !t?.osc?.status && !t?.hooks) void watchAsks(x.id, agent)
-      out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
-        title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
+      watchFront(x.id, front.agent, t)
+      out.set(x.id, { id: x.id, ...shownOf(x, front, !!t?.starting), clients, started: x.created || s?.started || 0, backend: b.name,
         ...(x.cwd ? { cwd: x.cwd, project: repoName(x.cwd) } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
         ...(now ? stateOf(now, t!.at) : {}),
         ...(progressOf(x.id) ? { progress: progressOf(x.id)! } : {}),
@@ -150,7 +123,7 @@ async function readList(): Promise<Listed[]> {
     }
   }
   timing.mark("in front")
-  for (const id of outputs.keys()) if (!out.has(id)) outputs.delete(id)
+  for (const kept of [outputs, titled]) for (const id of kept.keys()) if (!out.has(id)) kept.delete(id)
   const meters = plugin.service("terminal:meters"), agents = [...new Set([...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : [])))]
   const live = (await Promise.all(agents.map((a) => liveOf(a, typeof meters === "function")))).flat().filter((m) => out.get(m.terminal)?.busy)
   for (const m of live) {
@@ -293,7 +266,7 @@ plugin.provide("terminal:of-pids", async (pids: number[]) => {
  *  typed into in a tab (`typed`) and for how long its program drew nothing (`quiet`, ms), or null when it isn't running. */
 plugin.provide("terminal:info", async (id: string) => {
   const s = (await localList()).find((x) => x.id === id), typed = pageInput.get(id), out = outputs.get(id)?.out
-  const t = terms.get(id), left = !!s?.agent && (!s.busy || (!!t && nowOf(t)?.from === "shell")) && await agentLeft(id)
+  const t = terms.get(id), left = !!agentOf(id) && !!s && (!s.busy || (!!t && nowOf(t)?.from === "shell")) && await agentLeft(id)
   return s ? { id: s.id, title: s.name ?? s.title, busy: s.busy && !left, left, ...(s.session ? { session: s.session } : {}), ...(typed ? { typed } : {}),
     quiet: out ? Math.max(0, Date.now() - out) : undefined } : null
 })
