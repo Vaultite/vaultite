@@ -470,6 +470,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openAgent(name, opts?)`: Open agent `name` in a terminal tab, new or `resume` (a session id, in the tab that has it, its account's id with `profile`).
 - `openAgentSession({ terminal, session, agent, machine, host })`
 - `openAround(r)`: Open the closed <details> a range is in, so what was found shows.
+- `openAside(to, from, kin)`
 - `openAt(path, anchor, opts?)`: Open a file at a heading ("Heading", "Parent#Child") or a block ("^id"); no anchor: just open it.
 - `OpenCanvas`
 - `openDetail(path)`
@@ -685,6 +686,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `showAnchorIn(within, path, anchor)`: Scroll a file shown inside `within` (a glance's sheet) to a heading or block, once its editor is there.
 - `showInTree(path)`: A file or folder in the file tree, flashed (hidden files turned on first when it's in a dot folder).
 - `showLabel`: The same for a toast's action, on something just saved.
+- `shownAside(to, from)`
 - `shownName(path)`: A file or folder as the app names it: a note without .md, other files with their extension.
 - `shownTab(l)`: The tab on screen in a list.
 - `showPanel(key)`: Bring panel `key` into sight (revealPanel), leaving the left sidebar's mode when another panel fills it.

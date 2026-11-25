@@ -5,6 +5,8 @@ import { chatTitle, NEW } from "./titles"
 import { useChatRuns } from "./runs"
 import { chatMenu } from "./chatmenu"
 import { ChatLoading } from "./skeleton"
+import { GitCompare } from "lucide-react"
+import { DiffTab } from "./DiffTab"
 
 // Not React.lazy: React holds back what suspended for ~300 ms.
 type ChatViewType = typeof import("./ChatTab").ChatView
@@ -33,7 +35,7 @@ const SRC: AgentSource = {
   noLimits: "No limits yet. They come from Claude Code, signed in on this machine, or else its status line or the Claude app.",
 }
 
-export default definePlugin(agentPlugin(SRC, {
+const def = agentPlugin(SRC, {
   icons: { claude: ClaudeIcon },
   background: () => preload,
   ambient: { limits: { title: "Claude limits", sort: 40, render: () => <AgentLimitsChip src={SRC} open={() => { const p = pageOf(getStore(), "claude-code", "Claude"); if (p) openFile(p.path) }} /> } },
@@ -68,7 +70,10 @@ export default definePlugin(agentPlugin(SRC, {
       { id: "e", title: "New post layout", project: "blog", root: "/blog", at: [1800, 1790], cost: 1.2, tokens: 1.4e6, active_min: 12, model: "Sonnet 5" },
     ],
   },
-}))
+})
+
+export default definePlugin({ ...def, views: { ...def.views,
+  diff: { icon: GitCompare, full: true, title: () => "Diff", render: ({ arg }) => <DiffTab key={arg} id={arg} /> } } })
 
 const newChat = () => openView(`${SRC.view}/${NEW}`, { newTab: true })
 

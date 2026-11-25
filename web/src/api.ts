@@ -40,7 +40,7 @@ export { closeView, createFile, createNamed, folderOf, folderTarget, freeName, h
 export { chooseFolder } from "@/components/FolderPicker"
 export { seenArea } from "@/components/FileTree"
 export { clickOpening, currentFile, panesShowing, useFocusedFile, type FocusedFile } from "@/core/workspace"
-export { openInSplit } from "@/core/splits"
+export { openAside, openInSplit, shownAside } from "@/core/splits"
 /** CSV, the vault's tables, parsed the same way everywhere (core/csv.ts, shared with the server). */
 export { csvRecords, parseCsv } from "../../core/csv.ts"
 /** Moment.js-style dates (core/dates.ts, shared with the server). */

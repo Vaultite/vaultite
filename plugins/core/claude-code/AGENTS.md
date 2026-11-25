@@ -15,4 +15,6 @@ It starts in auto mode unless `--mode` or the account's `permissions.defaultMode
 mode it had. Each is a normal session (`claude --resume <id>` opens it in a terminal, except a plugin's that runs now with
 the tools it serves, the companion's), drawn in `view:claude-session/<id>`; what it
 asks (a permission, questions, a plan) waits in its tab and the inbox for the user, never for an agent (`vau chat answer`
-is theirs).
+is theirs). A chat the app starts in a git repository runs in its own worktree (`~/.vaultite/worktrees/<repo>/<name>`,
+branch `agents/<name>`; `vau chat start --worktree` for an agent's), checkpointed after each turn: `vau chat diff <id>
+--source all|latest|turn:N|uncommitted`, `vau chat git <id> commit|push|pr`, `vau chat thread <id>`, `vau chat tidy`.
