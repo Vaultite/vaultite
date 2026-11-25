@@ -153,8 +153,31 @@ async function inPlace(c: Ctx) {
 
 const IDENT = { GIT_AUTHOR_NAME: "Alice Park", GIT_AUTHOR_EMAIL: "alice@example.com", GIT_COMMITTER_NAME: "Alice Park", GIT_COMMITTER_EMAIL: "alice@example.com" }
 
+async function previewAndChips($: VaultTest) {
+  const { check } = $
+  const { previewUrlFrom, isWebView } = await import("../../../plugins/core/claude-code/preview.ts")
+  const { addChip, addPageChip, withChips } = await import("../../../plugins/core/claude-code/chips.ts")
+  const at = "2026-11-25T12:00:00.000Z"
+  const found = previewUrlFrom([
+    { k: "text", id: "1", text: "Docs at https://example.com/guide", at },
+    { k: "tool", id: "2", name: "Bash", summary: "npm run dev", input: {}, result: "Local: http://localhost:5173/app.", at },
+    { k: "text", id: "3", text: "Preview ready at https://home.tail824f01.ts.net:8453/dash!", at },
+  ])
+  check("preview: finds latest localhost or tailnet URL and ignores plain web links",
+    found === "https://home.tail824f01.ts.net:8453/dash" &&
+    previewUrlFrom([{ k: "text", id: "1", text: "See https://example.com", at }]) === "" &&
+    isWebView("view:web") && isWebView("view:web/http://localhost:3000") && !isWebView("view:diff/a"), found)
+  addChip("c-mix", { path: "src/a.ts", line: 4, text: "const x = 1", comment: "rename" })
+  addPageChip("c-mix", { url: "http://localhost:5173/app", title: "App" })
+  const out = withChips("c-mix", "Fix both")
+  check("chips: formats both diff lines and preview pages cleanly",
+    out.includes("About these lines:\n- src/a.ts:4 (`const x = 1`): rename") &&
+    out.includes("About these pages:\n- App (http://localhost:5173/app)") && out.endsWith("Fix both"), out)
+}
+
 export default async ($: VaultTest) => {
   await units($)
+  await previewAndChips($)
   const { turnsOf } = await import("../../../plugins/core/claude-code/threads.ts")
   const { gitEnv } = await import("../../../core/plugins.ts")
   const { Host, listen } = await import("../../../plugins/core/claude-code/chathost.ts")

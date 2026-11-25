@@ -291,21 +291,23 @@ export function openInSplit(to: string, side: Side = "right", focusIt = true, pa
   return id
 }
 
-export function openAside(to: string, from: string, kin: (to: string) => boolean): string {
+export function openAside(to: string, from: string, kin: (to: string) => boolean, same?: (to: string) => boolean): string {
   const t = paneTab(from), home = t && paneWith(t.root, from)
   if (!t || !home) return openInSplit(to)
   const others = leaves(t.root).filter((p) => p.id !== home.id)
-  const had = others.flatMap(placesOf).find((x) => x.to === to)
-  if (had) { set(withTab(t.id, (x) => ({ ...showingPlace(x, had.id), focus: had.id }), { active: t.id })); show(to, true); return had.id }
+  const match = same ?? ((x: string) => x === to)
+  const had = others.flatMap(placesOf).find((x) => match(x.to))
+  if (had) { set(withTab(t.id, (x) => ({ ...showingPlace(x, had.id), focus: had.id }), { active: t.id })); show(had.to, true); return had.id }
   const near = others.find((p) => placesOf(p).some((x) => kin(x.to))), p: Pane = { id: newPaneId(), to }
   set(withTab(t.id, (x) => (near ? { ...withPlace(x, near.id, p), focus: p.id } : { ...x, root: beside(x.root, home.id, p, "right"), focus: p.id }), { active: t.id }))
   show(to, true)
   return p.id
 }
-export function shownAside(to: string, from: string): boolean {
+export function shownAsideMatch(match: (to: string) => boolean, from: string): boolean {
   const t = paneTab(from), home = t && paneWith(t.root, from)
-  return !!t && !!home && leaves(t.root).some((p) => p.id !== home.id && p.to === to)
+  return !!t && !!home && leaves(t.root).some((p) => p.id !== home.id && match(p.to))
 }
+export const shownAside = (to: string, from: string): boolean => shownAsideMatch((x) => x === to, from)
 
 const neighbour = (side: Side) => { const t = activeTab(); return neighbourOf(t.root, t.focus, side) }
 export const hasNeighbour = (side: Side) => !!neighbour(side)

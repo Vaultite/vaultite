@@ -1,5 +1,5 @@
 // oxlint-disable-next-line vaultite/comment-lines -- qa() reads its arguments from this usage line
-//   node web/qa/codediff.mjs <base url> (claude-code DiffView.tsx DiffFile.tsx ThreadButtons.tsx aside.ts chips.ts, core/splits.ts)
+//   node web/qa/codediff.mjs <base url> (claude-code DiffView.tsx DiffFile.tsx ThreadButtons.tsx aside.ts chips.ts preview.ts ContextChips.tsx, core/splits.ts)
 import { qa, until } from "./lib/qa.mjs"
 import { routeSocket } from "./lib/sockets.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
@@ -7,7 +7,7 @@ const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const S = { id: "qa-chat", state: "idle", cwd: "/Users/alice/.vaultite/worktrees/lighthouse/fix-the-launch-date-1a2b", account: "default", by: "app", model: "claude-opus-5-5",
   effort: "high", mode: "auto", started: Date.now() - 600_000, at: Date.now() - 5000, asks: [], seq: 1, told: 0, turn: null, background: 0 }
 const entries = [{ k: "user", id: "u1", text: "Fix the launch date", at: new Date(Date.now() - 500_000).toISOString() },
-  { k: "text", id: "m1:0", text: "Done: the date comes from the front matter now.", at: new Date(Date.now() - 400_000).toISOString() }]
+  { k: "text", id: "m1:0", text: "Done: the date comes from the front matter now. Running at http://localhost:5173/launch.", at: new Date(Date.now() - 400_000).toISOString() }]
 const hello = JSON.stringify({ t: "hello", id: S.id, found: true, s: S, title: "Fix the launch date", cwd: S.cwd, account: "default", model: S.model, effort: "high", tui: null, driven: "",
   history: { entries, start: 0, total: entries.length } })
 const THREAD = { id: "qa-chat", git: true, repo: "/Users/alice/lighthouse", dir: S.cwd, cwd: S.cwd, branch: "agents/fix-the-launch-date-1a2b", worktree: true, turns: [1, 2] }
@@ -97,6 +97,11 @@ const diffPane = page.locator("section[data-pane-frame]:not([data-away])").nth(1
 check("shell: a terminal in its worktree, stacked with the diff in the same pane", of("terminal.start")[0]?.cwd === THREAD.dir && await frames() === 2 &&
   await diffPane.locator("[data-place]").count() === 2, { start: of("terminal.start"), frames: await frames() })
 check("shell: the Shell button shows it's open", await page.locator("[data-thread-shell]").getAttribute("aria-pressed") === "true")
+await page.locator("[data-thread-preview]").click()
+await until(async () => await page.locator("[data-thread-preview]").getAttribute("aria-pressed") === "true", 5000)
+check("preview: opens the detected preview URL stacked beside Diff and Shell in the same pane", await frames() === 2 &&
+  await diffPane.locator("[data-place]").count() === 3 && await page.locator("[data-thread-preview]").getAttribute("aria-pressed") === "true",
+  { frames: await frames(), places: await diffPane.locator("[data-place]").count() })
 await page.screenshot({ path: new URL("./shots/codediff-shell.png", import.meta.url).pathname })
 
 await page.goto(`${B}#view/claude-session%2Fnew`)

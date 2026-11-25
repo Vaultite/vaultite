@@ -1,12 +1,14 @@
 import { useEffect, useState, type ComponentProps } from "react"
-import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource, whenIdle } from "@vaultite"
+import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notify, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource, whenIdle } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { chatTitle, NEW } from "./titles"
 import { useChatRuns } from "./runs"
 import { chatMenu } from "./chatmenu"
 import { ChatLoading } from "./skeleton"
-import { GitCompare } from "lucide-react"
+import { GitCompare, MessageSquarePlus } from "lucide-react"
 import { DiffTab } from "./DiffTab"
+import { activeChatInTab } from "./aside"
+import { addPageChip } from "./chips"
 
 // Not React.lazy: React holds back what suspended for ~300 ms.
 type ChatViewType = typeof import("./ChatTab").ChatView
@@ -72,8 +74,13 @@ const def = agentPlugin(SRC, {
   },
 })
 
-export default definePlugin({ ...def, views: { ...def.views,
-  diff: { icon: GitCompare, full: true, title: () => "Diff", render: ({ arg }) => <DiffTab key={arg} id={arg} /> } } })
+export default definePlugin({ ...def,
+  webPageActions: ({ url, title }) => {
+    const chat = activeChatInTab()
+    return chat ? [{ label: "Send page to thread", icon: MessageSquarePlus, run: () => { addPageChip(chat, { url, title }); notify("Added page to the thread") } }] : []
+  },
+  views: { ...def.views,
+    diff: { icon: GitCompare, full: true, title: () => "Diff", render: ({ arg }) => <DiffTab key={arg} id={arg} /> } } })
 
 const newChat = () => openView(`${SRC.view}/${NEW}`, { newTab: true })
 

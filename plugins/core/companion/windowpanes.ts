@@ -43,7 +43,8 @@ export function privatePane(p: Pane) {
 export const paneFocus = () => { const w = [...windows.values()].sort((a, b) => b.at - a.at)[0], p = w && paneById(w.pane); return p && !privatePane(p) ? p : null }
 function awareness() {
   const p = paneFocus(), x = p && paneSource(p.to), front = Front.safeParse(plugin.service("screen:front")?.()).data
-  return [x && x.kind !== "note" ? `They're looking at "${p.title}" (pane ${p.id}, ${x.kind === "site" ? `a web page, ${x.url}` : x.kind === "terminal" ? "a terminal" : "a view"}).` : "",
+  const kind = x?.kind === "site" ? `a web page, ${x.url}` : x?.kind === "terminal" ? "a terminal" : x?.kind === "chat" ? `a coding thread (${x.chat})` : "a view"
+  return [x && x.kind !== "note" ? `They're looking at "${p.title}" (pane ${p.id}, ${kind}).` : "",
     front?.name ? `The app in front: ${front.name}${front.title ? `, "${front.title}"` : ""}.` : ""].filter(Boolean).join(" ")
 }
 
@@ -136,7 +137,7 @@ export const followed = follows(plugin, {
   told: () => broadcast({ t: "follows", follows: followed.list() }),
 })
 plugin.onUnload(() => followed.stop())
-export const sourceOf = (p: Pane) => { const x = paneSource(p.to); return x.kind === "note" ? `note:${x.path}` : x.kind === "terminal" ? `terminal:${x.terminal}` : x.kind === "site" ? `site:${x.url}` : null }
+export const sourceOf = (p: Pane) => { const x = paneSource(p.to); return x.kind === "note" ? `note:${x.path}` : x.kind === "terminal" ? `terminal:${x.terminal}` : x.kind === "site" ? `site:${x.url}` : x.kind === "chat" ? `chat:${x.chat}` : null }
 /** The panes the windows show (but private ones): each one's id, title, tab group and what it shows (note:, terminal:, site:). */
 plugin.provide("companion:panes", () => allPanes().filter((p) => !privatePane(p)).map((p) => ({ id: p.id, title: p.title, ...(p.group ? { group: p.group } : {}), source: sourceOf(p) })))
 /** Whether a web page (its address, its container) is private: the companion never sees it, nor do watches. */

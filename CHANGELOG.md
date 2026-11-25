@@ -16,9 +16,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   workspace named Code, when you have one.
 - Claude Code chat: a thread started in a git repository runs in a worktree of its own (`~/.vaultite/worktrees`, branch
   `agents/<name>`), taken away once its branch is merged and nothing in it is uncommitted; Run in current checkout, in
-  the Folder menu, keeps it in place. Diff and Shell in its header open its changes (all, by turn, uncommitted; stacked
-  or side by side) and a terminal in its checkout in a pane beside it; a comment on a line goes with your next message,
-  and Commit, Push, Create pull request and Copy branch act on its branch (`vau chat diff`, `vau chat git`).
+  the Folder menu, keeps it in place. Diff, Preview and Shell in its header open its changes (all, by turn, uncommitted;
+  stacked or side by side), a live preview of its localhost or tailnet URL (with Send page to thread in the page bar),
+  and a terminal in its checkout stacked in one pane beside it; line comments and pages attach as chips in your next
+  message, Commit, Push, Create pull request and Copy branch act on its branch (`vau chat diff`, `vau chat git`), and
+  holding the Talk key over a thread steers or approves it directly instead of starting a new job.
 - Coding agents: a plan limits block reads only the plan's limits (`GET /api/<agent>/limits`), not a month of usage, so
   it shows sooner, and a plugin whose sessions aren't read here (a chat app's plan) can draw one.
 - Passwords: your KeePass file opens only in a process of its own, which locking ends with every key it held, and it locks

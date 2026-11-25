@@ -79,7 +79,7 @@ function Bar({ id, title, c, o, where, scrolled, back, blank }: { id: string; ti
               <ListTree className="size-4" strokeWidth={2} />{back.name}
             </Button>
           )}
-          <ThreadButtons id={id} s={c.s} hidden={blank} />
+          <ThreadButtons id={id} s={c.s} entries={c.entries} hidden={blank} />
           {terminalOk(id) && (
             <button type="button" disabled={!c.ready} onClick={() => void toTerminal(id)} aria-label={c.tui ? "Show its terminal" : "Open in terminal"} data-open-terminal
               data-tip={c.tui ? "It runs in a terminal: show it" : "Resume it in Claude Code in a terminal"}

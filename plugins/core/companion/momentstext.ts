@@ -109,6 +109,12 @@ function reviewedLine(id: string) {
   return `  just after they watched ${name}'s change (Show me) and read its choice card: these words are about that job, not the note, page or app behind them, unless they plainly name something else. What to change (or any feedback on it) goes to it: handoff --job ${id}, their words go with it; a question about it you answer (companion job ${id})`
 }
 
+function threadLine(pane: string | undefined) {
+  const p = pane ? paneById(pane) : undefined, x = p && paneSource(p.to)
+  if (!p || x?.kind !== "chat" || !x.chat) return ""
+  return `  over coding thread ${x.chat}${p.title ? ` "${cut(p.title, 60)}"` : ""}: steering or feedback goes straight to it (claude-code.chat-send --id ${x.chat}) and approvals answer it (claude-code.chat-answer --id ${x.chat} --allow true), rather than starting a new job`
+}
+
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
   const guided = new Set<string>()
   const note = f?.path ? `${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}` : "", away = awayIn(ms)
@@ -157,6 +163,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
     if (m.pageJob) out.push(pageJobLine(m.pageJob))
     if (m.reviewed) out.push(reviewedLine(m.reviewed))
+    if (m.kind === "ask" && !m.pageJob && !m.reviewed) { const tl = threadLine(m.pane); if (tl) out.push(tl) }
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}${m.chrome ? ` (Vaultite's own ${m.chrome}, not what the pane shows)` : ""}: ${m.under}`)
     else if (m.chrome) out.push(`  under their pointer: Vaultite's own ${m.chrome}, not what the pane shows`)

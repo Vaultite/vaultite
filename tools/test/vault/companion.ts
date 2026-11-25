@@ -865,7 +865,8 @@ export default async ($: VaultTest) => {
     // Places beyond notes (panes, the app's UI), what it follows and its watches, as moments.
     const pl = await import("../../../core/desktop/places.ts"), tx = await import("../../../plugins/core/companion/text.ts")
     check("companion: a pane says what it shows", pl.paneSource("view:terminal/claude-k3").terminal === "claude-k3" && pl.paneSource("view:web/https://a.com/x").url === "https://a.com/x" &&
-      pl.paneSource("file:N.md").path === "N.md" && pl.paneSource("settings").kind === "view")
+      pl.paneSource("view:claude-session/chat-7").chat === "chat-7" && pl.paneSource("view:diff/chat-7").chat === "chat-7" &&
+      pl.paneSource("view:claude-session/new").kind === "view" && pl.paneSource("file:N.md").path === "N.md" && pl.paneSource("settings").kind === "view")
     check("companion: private sites cover their subdomains; the setting's lines are folders, sites, containers and apps",
       pl.siteIn("www.secure.chase.com", ["chase.com"]) && !pl.siteIn("notchase.com", ["chase.com"]) && !tx.isPrivate("bank.com/a.md", "", ["site: bank.com"]) &&
       JSON.stringify(tx.privateOf(["Journal", "site: bank.com", "container: work", "app: com.x"])) === JSON.stringify({ folders: ["Journal"], sites: ["bank.com"], containers: ["work"], apps: ["com.x"] }))

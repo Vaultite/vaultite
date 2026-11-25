@@ -10,17 +10,20 @@ export type Target = { path?: string; line?: number; find?: string; x?: number; 
 /** The keys of a place: an agent's place is all of them, each set or cleared together. */
 export const PLACE_KEYS = ["path", "line", "find", "x", "y", "pane", "ui", "row", "el", "app", "window", "sx", "sy", "display", "frame"] as const
 
-/** What a pane shows, as the window says (a tab's target): a note, a drawing, a terminal, a web page, another view. */
-export type PaneKind = "note" | "terminal" | "site" | "view"
+/** What a pane shows, as the window says (a tab's target): a note, a drawing, a terminal, a web page, a chat, another view. */
+export type PaneKind = "note" | "terminal" | "site" | "chat" | "view"
+export type PaneSource = { kind: PaneKind; path?: string; terminal?: string; url?: string; chat?: string }
 /** A pane the window has: its id (today's tab id), what it shows (`to`, as a tab's: file:<path>, view:terminal/<id>,
  *  view:web/<url>), its title, and its tab group (a tab set's id). */
 export type Pane = { id: string; to: string; title: string; tab?: string; group?: string }
 
-/** A pane's kind and what it names: the file, the terminal, the address. */
-export function paneSource(to: string): { kind: PaneKind; path?: string; terminal?: string; url?: string } {
+/** A pane's kind and what it names: the file, the terminal, the address, the coding thread. */
+export function paneSource(to: string): PaneSource {
   if (to.startsWith("file:") && !to.startsWith("file:/")) return { kind: "note", path: to.slice(5) }
   if (to.startsWith("view:terminal/")) return { kind: "terminal", terminal: to.slice(14) }
   if (to.startsWith("view:web/")) return { kind: "site", url: to.slice(9) }
+  if (to.startsWith("view:claude-session/") && to !== "view:claude-session/new") return { kind: "chat", chat: to.slice(20) }
+  if (to.startsWith("view:diff/")) return { kind: "chat", chat: to.slice(10) }
   return { kind: "view" }
 }
 
