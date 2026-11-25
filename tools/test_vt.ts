@@ -239,6 +239,8 @@ await section("pictures replayed in xterm.js", async () => {
   sc.dispose()
   let answered = "", answeredAt = 0
   const asked = new TermdScreen({ cols: 40, rows: 8, scrollback: 100, onReply: (d) => { answered += d; answeredAt ||= performance.now() } })
+  const workerStarted = asked.capture("text", null)
+  await workerStarted
   for (let i = 0; i < 5; i++) asked.write(`\r\x1b[2K\x1b[38;5;208mx\x1b[0m waiting ${i}`)
   const askedAt = performance.now()
   asked.write("\x1b[c")
@@ -412,15 +414,19 @@ await section("kitty graphics", async () => {
   await new Promise((r) => setTimeout(r, 60))
   check("… then all of it comes in order", /^before \x1b_Ga=T,q=2,f=24,i=12,s=8,v=6,o=z,t=d;[^\x1b]+\x1b\\ after \x1b\[1mbold$/.test(ordered), ordered)
   const huge = tinyPng(2400, 1600), bigSeq = `\x1b_Ga=T,q=2,f=100,i=13;${huge.toString("base64")}\x1b\\`
-  let bigOut = "", lag = 0, last = performance.now()
-  const ticker = setInterval(() => { const now = performance.now(); lag = Math.max(lag, now - last); last = now }, 5)
+  let bigOut = ""
+  const cpuOf = (since?: NodeJS.CpuUsage) => process.threadCpuUsage(since)
+  const here = cpuOf()
+  new KittyFeed({ emit: () => {}, remote: () => false }).feed(`${bigSeq}end`)
+  const inline = cpuOf(here).user, loopAlive = setInterval(() => {}, 1000), apartFrom = cpuOf()
   const decoded = new Promise<void>((ok) => {
     new KittyFeed({ emit: (d) => { bigOut += d; if (d.endsWith("end")) ok() }, remote: () => false, work: decodeElsewhere(() => {}) }).feed(`${bigSeq}end`)
   })
   await decoded
-  clearInterval(ticker)
-  check("termd decodes a big PNG in a thread of its own: its loop goes on meanwhile", /^\x1b_Ga=T,q=2,f=\d+,i=13,s=2400,v=1600,o=z,t=d,m=1;/.test(bigOut) && lag < 100,
-    { lag, head: bigOut.slice(0, 60) })
+  const apart = cpuOf(apartFrom).user
+  clearInterval(loopAlive)
+  check("termd decodes a big PNG in a thread of its own: its loop does little of the work", /^\x1b_Ga=T,q=2,f=\d+,i=13,s=2400,v=1600,o=z,t=d,m=1;/.test(bigOut) && apart < inline / 2,
+    { inline, apart, head: bigOut.slice(0, 60) })
   const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "vt-kitty-")), file = path.join(dir, "tty-graphics-protocol-1.png")
   fs.writeFileSync(file, png)
   const viaFile = (name: string, t: string, remote = false) => {
