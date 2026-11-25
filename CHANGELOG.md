@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The new-file menu has one entry for tables of notes, New base (a `.base` file), where it had New database too; `/base`
+  still puts one in a note.
 - Vaultite Nightly no longer emails everyone watching the repository's releases each night: its one release is updated
   in place.
 - Zoom, one way everywhere: ⌘+, ⌘- and ⌘0 (or Zoom in, Zoom out, Reset zoom and the new Zoom to fit, in the View menu and

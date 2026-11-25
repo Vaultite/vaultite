@@ -51,8 +51,8 @@ views:
   `markerIcon` (a lucide name).
 - `summaries`: `Sum`, `Average`, `Min`, `Max`, `Median`, `Range`, `Stddev`, `Earliest`, `Latest`, `Checked`,
   `Unchecked`, `Empty`, `Filled`, `Unique`, `Count` (any case), or an expression over `values`.
-- "New base" (palette, the file tree's menus) makes a `.base` listing that folder, "New database" a note with a fence
-  of it; `/base` puts a fence in the note. In a `.base`'s tab, its … menu changes a view's layout, adds a view, puts one
+- "New base" (palette, the file tree's menus) makes a `.base` listing that folder; `/base` puts a fence
+  in the note. In a `.base`'s tab, its … menu changes a view's layout, adds a view, puts one
   first (what an embed shows) or deletes one: small edits that keep everything else (comments, unknown keys).
 - A layout this app doesn't draw (a community plugin's) is a table, with a note; settings it doesn't use (`rowHeight`...)
   are kept and ignored. A `cards` view shows each file's `image: note.cover` (a [[picture]], a path, an address or a
