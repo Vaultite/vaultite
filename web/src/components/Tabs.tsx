@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import {
-  AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
+  AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, KeyRound, PictureInPicture2, Folder,
   ArrowLeftRight, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -373,6 +373,7 @@ const Sketch = () => (
   <div className="space-y-1.5 p-2"><div className="h-1.5 w-3/4 rounded-full bg-foreground/[0.08]" /><div className="h-1.5 w-11/12 rounded-full bg-foreground/[0.08]" /><div className="h-1.5 w-1/2 rounded-full bg-foreground/[0.08]" /></div>
 )
 
+const rowInfo = (item: DragItem): TabInfo => ({ label: item.label ?? item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: item.passwords ? KeyRound : FileText })
 export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const live = useDragItem()
   const [back, setBack] = useState<{ item: DragItem } | null>(null)
@@ -498,7 +499,7 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     : item.away?.group ? { label: item.label ?? "", icon: dotIcon(colorVar(item.away.color ?? "gray")) }
     : item.away?.to ? info({ id: "", to: item.away.to })
     : dragged ? info(dragged)
-    : item.from === "row" && !item.to ? { label: item.label ?? item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: FileText }
+    : item.from === "row" && !item.to ? rowInfo(item)
     : info({ id: "", to: item.to ?? "new" })
   return createPortal(
     <div ref={el} aria-hidden data-drag-ghost data-drag-look={look.kind} data-drag-shape={shape ?? undefined}

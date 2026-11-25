@@ -83,7 +83,10 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   so a derivation per read would cost seconds each.
 - KeePass files open only in the passwords process (kdbxproc.ts, a utilityProcess; kdbxwire.ts is all it's asked): never
   in main, whose imports reach none of it (tools/test/web/passwords.ts). A lock zeroes its keys and ends it, as a
-  JavaScript string is cleared only so. Electron ignores Node's `--permission` there, so its imports are what's checked.
+  JavaScript string is cleared only so. The page gets an entry without its password or one-time code's seed: each is asked
+  for alone, shown or edited, and copied here without it (`copy-password`). Strength and generating are its too
+  (strength.ts, zxcvbn-ts): never in INDEX_ROW, which locked calls read. A code on screen keeps nothing unlocked.
+  Electron ignores Node's `--permission` there, so its imports are what's checked.
 - The file's password is masterkey.ts': on a Mac, sealed to a Secure Enclave key only a finger enrolled now uses
   (`biometryCurrentSet`: the file's own password is the fallback, so the login password isn't one). Not a Keychain item:
   one with an access control needs an entitlement and a provisioning profile our builds lack (-34018), and the file

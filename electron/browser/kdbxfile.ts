@@ -1,17 +1,19 @@
-// The user's KeePass file, read fresh for every call: KeePassXC, Strongbox or iCloud may have just written it.
+// The user's KeePass file, read for every call: KeePassXC, Strongbox or iCloud may have just written it.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { forgetKeys } from "./argon2.ts"
-import { applyChange, entryById, exportOf, fullOf, listOf, removeEntry, sharesOf, type Row } from "./kdbxedit.ts"
+import { applyChange, entryById, exportOf, fullOf, listOf, moveEntries, removeEntry, removeGroup, saveGroup, sharesOf, type Row } from "./kdbxedit.ts"
+import { hashesOf, healthOf, leaked, setExcluded, type Hashes } from "./kdbxhealth.ts"
+import { passwordAt, restoreVersion, versionOf } from "./kdbxhistory.ts"
 import type { Access } from "./kdbxwire.ts"
 import { fieldsOf, loadKdbx, openDatabase, urlsOf, type Database } from "./keepass.ts"
 import type { Kdbx } from "./kdbx/index.ts"
 import { matchesSite } from "./loginsites.ts"
 import { messageOf } from "./messageof.ts"
-import { otpOf } from "./otp.ts"
+import { otpOf, totp } from "./otp.ts"
 import { fingerprint } from "./passwordsindex.ts"
-import type { Change } from "./passwordswire.ts"
+import type { Change, GroupChange, Moves, Removal } from "./passwordswire.ts"
 
 const BACKUPS_KEPT = 30
 const hash = (b: Uint8Array) => crypto.createHash("sha256").update(b).digest()
@@ -44,6 +46,9 @@ export class KdbxFiles {
   private readonly backups: string
   private held: { file: string; password: Uint8Array } | null = null
   private locks = 0
+  private hashes: Hashes = new Map()
+  private bits = new Map<string, number>()
+  private parsed: { sum: string; db: Kdbx } | null = null
   private writing: Promise<unknown> = Promise.resolve()
 
   constructor(backups: string) { this.backups = backups }
@@ -55,18 +60,31 @@ export class KdbxFiles {
     if (at !== this.locks) throw new Error("locked")
     this.held?.password.fill(0)
     this.held = { file: a.file, password: a.password }
+    this.parsed = null
     return null
   }
   lock() {
     this.locks++
     this.held?.password.fill(0)
     this.held = null
+    this.hashes.clear()
+    this.bits.clear()
+    this.parsed = null
     forgetKeys()
   }
 
   check(a: Access) { return this.opened(a, () => null) }
   list(a: Access) { return this.opened(a, (db) => listOf(db, a.file)) }
   get(a: Access, id: string) { return this.opened(a, (db) => fullOf(db, a.file, id)) }
+  password(a: Access, id: string, at?: number) {
+    return this.opened(a, (db) => { const p = at === undefined ? passwordIn(db, id) : passwordAt(db, id, at); if (p === null) throw new Error("that entry is gone from the file"); return p })
+  }
+  code(a: Access, id: string) {
+    return this.opened(a, (db) => {
+      const e = entryById(db, id), otp = e && otpOf(fieldsOf(e))
+      return otp && otp !== "steam" ? { code: totp(otp), period: otp.period } : null
+    })
+  }
   secretsOf(a: Access, id: string) {
     return this.opened(a, (db) => {
       const e = entryById(db, id)
@@ -86,7 +104,25 @@ export class KdbxFiles {
   save(a: Access, change: Change) { return this.write(a, (db) => applyChange(db, change)) }
   saveLogin(a: Access, l: LoginToSave) { return this.write(a, (db) => saveLogin(db, l)) }
   keepSecret(a: Access, title: string, value: string) { return this.write(a, (db) => keepSecret(db, title, value)) }
-  delete(a: Access, id: string) { return this.write(a, (db) => { removeEntry(db, id); return id }) }
+  move(a: Access, moves: Moves) { return this.write(a, (db) => moveEntries(db, moves)) }
+  delete(a: Access, r: Removal) { return this.write(a, (db) => { for (const id of r.ids) removeEntry(db, id, r.forever); return r.ids[0] }) }
+  saveGroup(a: Access, g: GroupChange) { return this.write(a, (db) => saveGroup(db, g)) }
+  removeGroup(a: Access, id: string) { return this.write(a, (db) => removeGroup(db, id)) }
+  version(a: Access, id: string, at: number) { return this.opened(a, (db) => versionOf(db, id, at)) }
+  restore(a: Access, id: string, at: number) { return this.write(a, (db) => restoreVersion(db, id, at)) }
+  exclude(a: Access, id: string, on: boolean) { return this.write(a, (db) => setExcluded(db, id, on)) }
+  async health(a: Access) {
+    const { bitsOf } = await import("./strength.ts")
+    const bits = (p: string) => { const was = this.bits.get(p); if (was !== undefined) return was; const n = bitsOf(p); this.bits.set(p, n); return n }
+    return this.opened(a, (db) => healthOf(db, bits))
+  }
+  async hashStarts(a: Access) {
+    const at = this.locks, hashes = await this.opened(a, hashesOf)
+    if (at !== this.locks) throw new Error("locked")
+    this.hashes = hashes
+    return [...hashes.keys()]
+  }
+  leaked(start: string, range: string) { return leaked(this.hashes, start, range) }
   async agents<T>(a: Agents, fn: (db: Database) => T) {
     try { return fn(await openDatabase(read(a.file), a.password)) } finally { a.password.fill(0) }
   }
@@ -99,7 +135,18 @@ export class KdbxFiles {
     a.password?.fill(0)
     try { return await fn(password) } finally { password.fill(0) }
   }
-  private opened<T>(a: Access, fn: (db: Kdbx) => T) { return this.using(a, async (password) => fn(await loadKdbx(read(a.file), password))) }
+  private opened<T>(a: Access, fn: (db: Kdbx) => T) {
+    const unlocked = !a.password
+    return this.using(a, async (password) => {
+      const data = read(a.file)
+      if (!unlocked) return fn(await loadKdbx(data, password))
+      const at = this.locks, sum = hash(data).toString("hex")
+      if (this.parsed?.sum === sum) return fn(this.parsed.db)
+      const db = await loadKdbx(data, password)
+      if (at === this.locks) this.parsed = { sum, db }
+      return fn(db)
+    })
+  }
   /** Applied to the file as it is now, saved only if it opens again, never over a write that came in meanwhile. */
   private write(a: Access, edit: (db: Kdbx) => string): Promise<{ id: string; warnings: string[] }> {
     const run = this.writing.then(() => this.using(a, (password) => this.edited(a.file, password, edit)))

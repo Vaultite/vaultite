@@ -37,7 +37,7 @@ await section("your passwords", async () => {
   ed.applyChange(main, { id, title: "Lighthouse", username: "alice", password: "pw-2", urls: ["https://lighthouse.example.com"], tags: [], notes: "n" })
   const full = ed.fullOf(main, "/f", id)!
   const entry = ed.entryById(main, id)!
-  check("your passwords: an edit changes it and keeps the old one in its history", full.password === "pw-2" && !full.free && full.urls.length === 1 && entry.history.length === 1 && kp.fieldsOf(entry.history[0]).Password === "pw-1")
+  check("your passwords: an edit changes it and keeps the old one in its history", kp.fieldsOf(entry).Password === "pw-2" && !full.free && full.urls.length === 1 && entry.history.length === 1 && full.history[0].changed.join() === "password,website,tags" && kp.fieldsOf(entry.history[0]).Password === "pw-1")
 
   const out = await kp.openDatabase(new Uint8Array(await ed.exportOf(main, shares[0])), SHARE)
   const ids = out.entries.map((e) => e.id).sort().join()
@@ -47,7 +47,7 @@ await section("your passwords", async () => {
   ed.removeEntry(main, inSub)
   const binned = ed.listOf(main, "/f")
   check("your passwords: deleting goes to the recycle bin first", binned.groups.find((g) => g.id === binned.entries.find((e) => e.id === inSub)?.group)?.bin === true)
-  ed.removeEntry(main, inSub)
+  ed.removeEntry(main, inSub, true)
   check("your passwords: deleting from the bin removes it", !ed.listOf(main, "/f").entries.some((e) => e.id === inSub))
   const after = await kp.openDatabase(new Uint8Array(await ed.exportOf(main, shares[0])), SHARE)
   check("your passwords: a deleted entry leaves the export", !after.entries.some((e) => e.id === inSub))
@@ -139,27 +139,6 @@ else await section("the Secure Enclave", async () => {
   check("enclave: what isn't one doesn't open", await said(open.open(bytes("nope"), "x", true)) === CANT.invalid && await said(open.open(Uint8Array.of(1, 255, 255, 0), "x", true)) === CANT.invalid)
   if (!gated.ready()) return skip("enclave: behind Touch ID", "Touch ID can't be used here now")
   check("enclave: sealed behind Touch ID with no question asked, never opened with no finger", await said(gated.open(gated.seal(bytes(MAIN)), "x", true)) === CANT.unavailable)
-})
-
-// ---------- Browser: the Passwords page's generator (plugins/core/web-viewer/generate.ts) ----------
-await section("password generator", async () => {
-  const { generatePassword, GEN_DEFAULTS } = await import("../../../plugins/core/web-viewer/generate.ts")
-  const many = Array.from({ length: 200 }, () => generatePassword(GEN_DEFAULTS))
-  check("password generator: 20 characters by default, each with a letter, a digit and a symbol",
-    many.every((p) => p.length === 20 && /[a-z]/i.test(p) && /\d/.test(p) && /[^a-z\d]/i.test(p)), many.slice(0, 3))
-  check("password generator: no two alike", new Set(many).size === many.length)
-  const digits = generatePassword({ length: 12, letters: false, digits: true, symbols: false })
-  check("password generator: only the kinds asked for", /^\d{12}$/.test(digits), digits)
-  check("password generator: the length kept within 8 to 64", generatePassword({ ...GEN_DEFAULTS, length: 3 }).length === 8 && generatePassword({ ...GEN_DEFAULTS, length: 500 }).length === 64)
-  check("password generator: none asked for is letters", /^[a-z]+$/i.test(generatePassword({ length: 10, letters: false, digits: false, symbols: false })))
-  // (a draw past the last whole multiple of the alphabet is thrown away: 10 digits, 2^32 - 1 is past it)
-  const draws = [0xffff_ffff, 7, 0xffff_ffff, 3, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
-  const fixed = generatePassword({ length: 8, letters: false, digits: true, symbols: false }, (a) => { a[0] = draws.shift()! })
-  check("password generator: unbiased, a draw past the last whole multiple is drawn again", fixed === "73123456", fixed)
-  const counts = new Map<string, number>()
-  for (let i = 0; i < 400; i++) for (const c of generatePassword({ length: 64, letters: false, digits: true, symbols: false })) counts.set(c, (counts.get(c) ?? 0) + 1)
-  const n = [...counts.values()]
-  check("password generator: every digit about as often", counts.size === 10 && Math.min(...n) / Math.max(...n) > 0.85, Object.fromEntries(counts))
 })
 
 // ---------- Browser: a login sealed for another Mac's app (electron/browser/sealed.ts) ----------

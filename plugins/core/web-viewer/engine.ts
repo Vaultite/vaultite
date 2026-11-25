@@ -2,7 +2,7 @@ import { webPages } from "@vaultite"
 import type { AgentPage } from "./agentpages"
 import type { Ext } from "./extstate"
 import type { Found, ImportedBookmark, ImportSource, Removed, Suggestion, Visit } from "./history"
-import type { Full, Group, Row, Status } from "./passwordstore"
+import type { Full, Group, Health, Row, Status, Version } from "./passwords/types"
 import type { Run, Step } from "./steps"
 
 export type ExtButton = { id: string; name: string; pinned: boolean; title: string; icon: string; badge: string; badgeColor: string; badgeTextColor: string; popup: boolean; enabled: boolean }
@@ -58,8 +58,15 @@ type Answers = {
   "passwords:fill-list": FillLogin[] | null
   "passwords:users": string[]
   "passwords:get": Full
+  "passwords:password": string
+  "passwords:code": { code: string; period: number } | null
+  "passwords:version": Version
+  "passwords:health": Health[]
+  "passwords:breaches": { id: string; times: number }[]
+  "passwords:strength": number
+  "passwords:generate": { password: string; bits: number }
   "passwords:give": string
-  "passwords:list": { groups: Group[]; entries: Row[] }
+  "passwords:list": { groups: Group[]; entries: Row[]; recycles: boolean }
   "passwords:save": { id: string }
   "passwords:set": Status & { error?: string }
   "passwords:status": Status

@@ -52,6 +52,7 @@ export type DragItem = {
   /** A site's login in Sites (web-viewer/Sites.tsx), by its set of logins (a profile) and site: moved to another set,
    *  or reordered in its own. */
   site?: { logins: string; site: string }
+  passwords?: string[]
   /** A database view's column, by key, moved along its table's header (`table`: which table). */
   column?: { table: string; key: string }
   /** Its source draws its own picture of it following the pointer (a phone's tab card, lifted whole): no DragGhost. */

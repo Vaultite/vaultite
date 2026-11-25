@@ -6,12 +6,13 @@ import path from "node:path"
 import { allPages, enclave, handle, tellAll, logger } from "./engine.ts"
 import { kdbx, onCrash } from "./kdbxhost.ts"
 import { OPS, type Access, type SAVED } from "./kdbxwire.ts"
-import type { z } from "zod"
+import { z } from "zod"
+import { GENERATE } from "./generate.ts"
 import { MasterKey } from "./masterkey.ts"
 import { messageOf } from "./messageof.ts"
 import { indexedFor, indexedSame, indexOf, newSalt, type Index } from "./passwordsindex.ts"
 import { openFor } from "./passwordslock.ts"
-import { CHANGE } from "./passwordswire.ts"
+import { CHANGE, GROUP_CHANGE, MOVES, REMOVAL } from "./passwordswire.ts"
 
 const log = logger("passwords")
 
@@ -62,8 +63,13 @@ async function reach<T>(reason: string, fn: (a: Access) => Promise<T>): Promise<
   const a = await access(reason)
   try { return await fn(a) } finally { a.password?.fill(0) }
 }
-async function shown<T>(fn: (a: Access) => Promise<T>): Promise<T> {
+function shown<T>(fn: (a: Access) => Promise<T>): Promise<T> {
   need()
+  return unrenewed(fn)
+}
+// (what asks by itself: a code on screen, a check going on. None keeps it unlocked)
+async function unrenewed<T>(fn: (a: Access) => Promise<T>): Promise<T> {
+  if (!isUnlocked()) throw new Error("locked")
   const out = await reach("", fn)
   if (!isUnlocked()) throw new Error("locked")
   return out
@@ -108,12 +114,14 @@ const saved = (reason: string, save: (a: Access) => Promise<z.output<typeof SAVE
   return { id }
 })
 
-// ---------- for the browser (userlogins.ts): the user's own logins ----------
-
 export const entriesForUrl = async (url: string) =>
   byIndex() ? indexedFor(indexed(), url) : reach("", (a) => kdbx().call(OPS.entriesForUrl, { ...a, url }))
 
 export const secretsOf = (id: string) => shown((a) => kdbx().call(OPS.secretsOf, { ...a, id }))
+
+const VERSION_AT = z.number().optional().catch(undefined), TEXT = z.string().catch("")
+const passwordOf = (id: string, at?: number) => shown((a) => kdbx().call(OPS.password, { ...a, id, at }))
+const codeOf = (id: string) => unrenewed((a) => kdbx().call(OPS.code, { ...a, id }))
 
 export const samePassword = async (ids: string[], given: string) =>
   new Set(byIndex() ? indexedSame(indexed(), ids, given) : await reach("", (a) => kdbx().call(OPS.samePassword, { ...a, ids, given })))
@@ -133,20 +141,21 @@ handle("passwords:give", async (_win, id) => {
   if (!e) throw new Error("that entry is gone from the file")
   if (!finger.can()) throw new Error("Touch ID confirms giving a password to an agent, and it can't be used now: type it instead")
   if (!await finger.ask(`give ${e.title || "a password"} to an agent`)) throw new Error("Touch ID didn't confirm it")
-  return e.password
+  return passwordOf(e.id)
 })
 
 // (copied here, not by the page: a window in the background can't touch the clipboard, so it never cleared it on time)
 let copied: { text: string; timer: NodeJS.Timeout } | null = null
-handle("passwords:copy", async (_win, text) => {
-  if (typeof text !== "string" || !text) return
+async function copy(text: string) {
+  if (!text) throw new Error("it has none")
   await clipboard.writeText(text)
   if (copied) clearTimeout(copied.timer)
   const mine = { text, timer: setTimeout(async () => { if (copied === mine) { copied = null; if (await clipboard.readText() === text) await clipboard.clear() } }, 30_000) }
   copied = mine
-})
-
-// ---------- the page's calls (the app's windows only) ----------
+}
+handle("passwords:copy", (_win, text) => copy(TEXT.parse(text)))
+handle("passwords:copy-password", async (_win, id, at) => copy(await passwordOf(String(id), VERSION_AT.parse(at))))
+handle("passwords:copy-code", async (_win, id) => { need(); return copy((await codeOf(String(id)))?.code ?? "") })
 
 const held = () => (master().onlyHeld() ? { held: true } : {})
 handle("passwords:status", async () => {
@@ -208,16 +217,31 @@ handle("passwords:get", async (_win, id) => {
   if (!f) throw new Error("that entry is gone from the file")
   return f
 })
-handle("passwords:save", async (_win, change) => {
-  need()
-  const c = CHANGE.safeParse(change)
-  if (!c.success) throw new Error("nothing to save")
-  return saved("", (a) => kdbx().call(OPS.save, { ...a, change: c.data }))
-})
-handle("passwords:delete", async (_win, id) => {
-  need()
-  await saved("", (a) => kdbx().call(OPS.delete, { ...a, id: String(id) }))
-})
+handle("passwords:password", (_win, id, at) => passwordOf(String(id), VERSION_AT.parse(at)))
+handle("passwords:code", (_win, id) => codeOf(String(id)))
+handle("passwords:version", (_win, id, at) => shown((a) => kdbx().call(OPS.version, { ...a, id: String(id), at: Number(at) })))
+handle("passwords:health", () => shown((a) => kdbx().call(OPS.health, a)))
+handle("passwords:breaches", async () => (await import("./breaches.ts")).breaches(
+  () => shown((a) => kdbx().call(OPS.hashStarts, a)),
+  (start, range) => unrenewed(() => kdbx().call(OPS.leaked, { start, range }))))
+handle("passwords:strength", (_win, text) => { need(); return kdbx().call(OPS.strength, { text: TEXT.parse(text) }) })
+handle("passwords:generate", (_win, options) => { need(); return kdbx().call(OPS.generate, GENERATE.parse(options ?? {})) })
+
+function change<T>(what: string, checked: z.ZodType<T>, save: (a: Access, x: T) => Promise<z.output<typeof SAVED>>) {
+  handle(`passwords:${what}`, async (_win, given) => {
+    need()
+    const x = checked.safeParse(given)
+    if (!x.success) throw new Error("nothing to save")
+    return saved("", (a) => save(a, x.data))
+  })
+}
+change("save", CHANGE, (a, change) => kdbx().call(OPS.save, { ...a, change }))
+change("move", MOVES, (a, moves) => kdbx().call(OPS.move, { ...a, moves }))
+change("delete", REMOVAL, (a, removal) => kdbx().call(OPS.delete, { ...a, removal }))
+change("save-group", GROUP_CHANGE, (a, group) => kdbx().call(OPS.saveGroup, { ...a, group }))
+change("remove-group", z.string(), (a, id) => kdbx().call(OPS.removeGroup, { ...a, id }))
+change("restore", z.object({ id: z.string(), at: z.number() }), (a, x) => kdbx().call(OPS.restore, { ...a, ...x }))
+change("exclude", z.object({ id: z.string(), on: z.boolean() }), (a, x) => kdbx().call(OPS.exclude, { ...a, ...x }))
 handle("passwords:for-page", async (_win, id) => {
   need()
   const p = allPages().find((x) => x.id === Number(id))

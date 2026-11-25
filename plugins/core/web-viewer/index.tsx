@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RectangleEllipsis, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
+import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, Copy, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RectangleEllipsis, RotateCw, Scissors, Search, Timer, User, Volume2, VolumeX } from "lucide-react"
 import { Arriving, choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, sitesColor, sitesTitle, splitArg, viewSource } from "./containers"
@@ -10,7 +10,8 @@ import { DesktopSettings } from "./DesktopSettings"
 import { manageContainers, SitesPanel, sitesPanelMenu, SitesView } from "./Sites"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { liveTitle } from "./livetitles"
-import { EDIT_DETAIL, ENTRY_DETAIL, entryTitle, NEW_DETAIL } from "./passwordstore"
+import { act, canAct, openSite } from "./passwords/acting"
+import { copyCode, copyPassword, copyText, EDIT_DETAIL, ENTRY_DETAIL, entryTitle, NEW_DETAIL } from "./passwords/store"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { openBookmark, starOf } from "./Star"
@@ -38,11 +39,11 @@ const WebPage = lazy(() => import("./WebPage"))
 const HistoryView = lazy(() => import("./HistoryView").then((m) => ({ default: m.HistoryView })))
 const ReplaysView = lazy(() => import("./Replays").then((m) => ({ default: m.ReplaysView })))
 const AgentPasskeys = lazy(() => import("./AgentPasskeys").then((m) => ({ default: m.AgentPasskeys })))
-const PasswordsView = lazy(() => import("./Passwords").then((m) => ({ default: m.PasswordsView })))
-const EntrySheet = lazy(() => import("./PasswordSheets").then((m) => ({ default: m.EntrySheet })))
+const PasswordsView = lazy(() => import("./passwords/Page").then((m) => ({ default: m.PasswordsView })))
+const EntrySheet = lazy(() => import("./passwords/Entry").then((m) => ({ default: m.EntrySheet })))
 // oxlint-disable-next-line react/only-export-components -- a lazy view's loader, as WebPage's; fast refresh is dev-only
 const WebPicture = lazy(() => import("./WebPage").then((m) => ({ default: m.WebPicture })))
-const EditSheet = lazy(() => import("./PasswordSheets").then((m) => ({ default: m.EditSheet })))
+const EditSheet = lazy(() => import("./passwords/Form").then((m) => ({ default: m.EditSheet })))
 const LiveView = lazy(() => import("./LiveView").then((m) => ({ default: m.LiveView })))
 const ExtensionsView = lazy(() => import("./Extensions").then((m) => ({ default: m.ExtensionsView })))
 
@@ -346,6 +347,10 @@ export default definePlugin({
     { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: manageContainers },
     { id: "web:passwords", name: "Show passwords", desktop: true, when: () => !!webPages?.engine, icon: RectangleEllipsis,
       run: () => openView("passwords", { newTab: !isViewOpen("view:passwords") }) },
+    { id: "web:password-copy", name: "Copy the password", keys: ["Mod+C"], desktop: true, when: () => canAct(), icon: Copy, run: () => act((e) => copyPassword(e.id)) },
+    { id: "web:password-username", name: "Copy the username", keys: ["Mod+B"], desktop: true, when: () => canAct((e) => !!e.username), icon: User, run: () => act((e) => copyText(e.username, "username")) },
+    { id: "web:password-code", name: "Copy the one-time code", keys: ["Mod+Shift+C"], desktop: true, when: () => canAct((e) => e.otp), icon: Timer, run: () => act((e) => copyCode(e.id)) },
+    { id: "web:password-open", name: "Open the password's website", keys: ["Mod+U"], desktop: true, when: () => canAct((e) => !!e.urls[0]), icon: Globe, run: () => act((e) => openSite(e.urls[0])) },
     { id: "web:downloads", name: "Show downloads", desktop: true, when: () => !!webPages?.download, run: () => showDownloads(), icon: Download },
     { id: "web:history", name: "Show history", keys: isMac ? ["Mod+Y"] : ["Mod+H"], desktop: true, when: () => !!webPages?.engine, run: () => openView("web-history", { newTab: !isViewOpen("view:web-history") }), icon: History },
     { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: () => import("./HistoryView").then((m) => m.askClear()), icon: Eraser },

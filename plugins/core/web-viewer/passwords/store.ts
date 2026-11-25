@@ -1,16 +1,8 @@
-import { useEffect, useState } from "react"
-import { afterSheets, cell, get, isMac, isViewOpen, notify, notifyError, openView, removals, secretDialog, Section, SettingRow, webPages } from "@vaultite"
-import { needEngine } from "./engine"
-
-export type Status = null | { file: string; locked: boolean; touchId: boolean; held?: boolean; error?: string }
-export type Group = { id: string; name: string; parent: string | null; share: string | null; bin: boolean }
-export type Row = {
-  id: string; group: string; title: string; username: string; urls: string[]; tags: string[]
-  free: boolean; shared: boolean; expired: boolean; otp: boolean; modified: number
-}
-export type Full = Row & { password: string; notes: string; otpUri: string; code: string | null }
-export type Change = { id?: string; group?: string; title: string; username: string; password: string; urls: string[]; tags: string[]; notes: string; otp?: string }
-export type Use = { t: number; entry: { id?: string; title: string; username: string }; site: string; agent: string; task?: string; status: string; approved?: string; machine?: string }
+import { useEffect } from "react"
+import { cell, detailPath, get, isMac, notify, notifyError, openDetail, removals, secretDialog, webPages } from "@vaultite"
+import { needEngine } from "../engine"
+import { byHand } from "./byhand"
+import type { Group, Health, Row, Status, Use } from "./types"
 
 export const FREE_TAG = "agent-free"
 export const entryTitle = (id: string) => state.get().entries?.find((e) => e.id === id)?.title || "Password"
@@ -24,32 +16,48 @@ const engine = needEngine("passwords need the desktop app")
 export const call = <N extends string>(name: N, ...args: unknown[]) => engine(`passwords:${name}`, ...args)
 export const isLocked = (e: unknown) => e instanceof Error && /(^|: )locked$/.test(e.message)
 
-type State = { status: Status | undefined; groups: Group[]; entries: Row[] | null }
-export const state = cell<State>({ status: undefined, groups: [], entries: null })
+type State = { status: Status | undefined; groups: Group[]; entries: Row[] | null; health: ReadonlyMap<string, Health>; leaks: ReadonlyMap<string, number> | null; recycles: boolean }
+const NONE: Pick<State, "groups" | "entries" | "health" | "leaks" | "recycles"> = { groups: [], entries: null, health: new Map(), leaks: null, recycles: true }
+export const state = cell<State>({ status: undefined, ...NONE })
 export const deleting = removals()
+export const selected = cell<string | null>(null)
+export const showsBeside = cell(false)
+
+export function openEntry(id: string) {
+  selected.set(id)
+  if (!showsBeside.get()) openDetail(detailPath(ENTRY_DETAIL, id))
+}
+export const editEntry = (id: string) => openDetail(detailPath(EDIT_DETAIL, id))
 
 let reading: Promise<void> | null = null, again = false
 export function refresh(): Promise<void> {
   if (reading) { again = true; return reading }
-  reading = (async () => {
-    let status: Status
-    try { status = await call("status") } catch { status = null }
-    if (!status || status.locked || status.error) return state.set({ status, groups: [], entries: null })
-    try {
-      const { groups, entries } = await call("list")
-      state.set({ status, groups, entries })
-    } catch (e) {
-      state.set({ status: { ...status, locked: isLocked(e) || status.locked }, groups: [], entries: isLocked(e) ? null : [] })
-      if (!isLocked(e)) notifyError(e, "Couldn't read your passwords")
-    }
-  })().finally(() => { reading = null; if (again) { again = false; void refresh() } })
+  reading = read().finally(() => { reading = null; if (again) { again = false; void refresh() } })
   return reading
+}
+function stillLeaked(was: State, health: State["health"]) {
+  return was.leaks && new Map([...was.leaks].filter(([id]) => was.health.get(id)?.since === health.get(id)?.since))
+}
+async function read() {
+  let status: Status
+  try { status = await call("status") } catch { status = null }
+  if (!status || status.locked || status.error) return state.set({ status, ...NONE })
+  try {
+    const { groups, entries, recycles } = await call("list")
+    state.update((s) => ({ ...s, status, groups, entries, recycles }))
+    const health = new Map((await call("health")).map((h) => [h.id, h]))
+    state.update((s) => (s.entries ? { ...s, health, leaks: stillLeaked(s, health) } : s))
+  } catch (e) {
+    if (isLocked(e)) return state.set({ status: { ...status, locked: true }, ...NONE })
+    state.update((s) => ({ ...s, status, entries: s.entries ?? [] }))
+    notifyError(e, "Couldn't read your passwords")
+  }
 }
 
 export function lockedNow(e: unknown) {
   if (!isLocked(e)) return false
   const s = state.get().status
-  if (s) state.set({ status: { ...s, locked: true }, groups: [], entries: null })
+  if (s) state.set({ status: { ...s, locked: true }, ...NONE })
   return true
 }
 
@@ -87,10 +95,14 @@ export async function forgetFile() {
 
 export const lockNow = () => void call("lock").catch((e) => notifyError(e, "Couldn't lock it"))
 
-export async function copySecret(text: string, what: string) {
-  try { await call("copy", text) } catch (e) { return notifyError(e, `Couldn't copy the ${what}`) }
+async function copied<T>(what: string, copy: () => Promise<T>) {
+  if (!byHand()) return
+  try { await copy() } catch (e) { if (!lockedNow(e)) notifyError(e, `Couldn't copy the ${what}`); return }
   notify(`Copied the ${what}: cleared in 30 seconds`)
 }
+export const copyText = (text: string, what: string) => copied(what, () => call("copy", text))
+export const copyPassword = (id: string, at?: number) => copied("password", () => call("copy-password", id, at))
+export const copyCode = (id: string) => copied("one-time code", () => call("copy-code", id))
 
 export const fetchUses = () => get<{ uses?: Use[] }>("web-viewer/login-uses").then((r) => (Array.isArray(r?.uses) ? r.uses : null), () => null)
 export const usesOf = (uses: Use[], e: Pick<Row, "id" | "title" | "username">) =>
@@ -104,28 +116,4 @@ export function approvedText(u: Use) {
   return key ? `approved with ${key}` : a ? `approved: ${a}` : "filled"
 }
 
-export function groupPath(groups: Map<string, Group>, id: string) {
-  const names: string[] = []
-  for (let g = groups.get(id); g && g.parent; g = g.parent ? groups.get(g.parent) : undefined) names.unshift(g.name)
-  return names.join(" / ")
-}
-
-export function sharedGroups(groups: Group[], entries: Row[]) {
-  return new Set([...groups.filter((g) => g.share && !g.bin).map((g) => g.id), ...entries.filter((e) => e.shared).map((e) => e.group)])
-}
-
 export const webUrl = (u: string) => (/^[a-z][a-z\d+.-]*:/i.test(u) ? u : `https://${u.replace(/^\/+/, "")}`)
-
-const showPasswords = () => afterSheets(() => openView("passwords", { newTab: !isViewOpen("view:passwords") }))
-
-export function PasswordsSetting() {
-  const [status, setStatus] = useState<Status | undefined>(undefined)
-  useEffect(() => { if (hasPasswords()) void call("status").then(setStatus, () => setStatus(null)) }, [])
-  return (
-    <div data-setting="passwords" className="mt-6">
-      <Section title="Passwords">
-        <SettingRow label="Your passwords" value={status === undefined ? "" : status ? fileName(status.file) : "Not set up"} onClick={showPasswords} />
-      </Section>
-    </div>
-  )
-}

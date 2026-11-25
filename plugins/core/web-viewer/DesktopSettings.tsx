@@ -1,7 +1,7 @@
 import { Group, Section, SettingRow, webPages } from "@vaultite"
 import { PermissionsSection } from "./PermissionsSection"
 import { SitesSettings } from "./Sites"
-import { PasswordsSetting } from "./passwordstore"
+import { PasswordsSetting } from "./passwords/Setting"
 
 export function DesktopSettings() {
   if (webPages?.sites && webPages.engine) return <><SitesSettings /><PermissionsSection /><PasswordsSetting /></>

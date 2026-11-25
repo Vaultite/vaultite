@@ -3,13 +3,15 @@
 import path from "node:path"
 import { Credentials, Kdbx, KdbxUuid, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
 import { FREE_TAG, fieldsOf, urlsOf } from "./keepass.ts"
-import { otpOf, totp } from "./otp.ts"
-import type { Change } from "./passwordswire.ts"
+import { otpOf } from "./otp.ts"
+import { historyOf, type Past } from "./kdbxhistory.ts"
+import type { Change, GroupChange, Moves } from "./passwordswire.ts"
 
-export type Group = { id: string; name: string; parent: string | null; share: string | null; bin: boolean }
+export type Group = { id: string; name: string; parent: string | null; share: string | null; bin: boolean; expanded: boolean }
 export type Row = { id: string; group: string; title: string; username: string; urls: string[]; tags: string[]; free: boolean
   shared: boolean; expired: boolean; otp: boolean; modified: number }
-export type Full = Row & { password: string; notes: string; otpUri: string; code: string | null }
+export type Listed = Row & { expires: number | null; from: string | null }
+export type Full = Listed & { password: boolean; notes: string; history: Past[] }
 /** A group KeePassXC exports with KeeShare: where to, with which password, and whether its subgroups go too. */
 export type Share = { group: string; path: string; password: string; keepGroups: boolean }
 
@@ -38,27 +40,27 @@ export function sharesOf(db: Kdbx, file: string): Share[] {
 }
 
 /** Groups, and entries without their secrets: those in an exported group are `shared` (agents' file has them). */
-export function listOf(db: Kdbx, file: string): { groups: Group[]; entries: Row[] } {
+export function listOf(db: Kdbx, file: string): { groups: Group[]; entries: Listed[]; recycles: boolean } {
   const shares = sharesOf(db, file)
   const bin = db.meta.recycleBinUuid?.id
-  const groups: Group[] = [], entries: Row[] = []
+  const groups: Group[] = [], entries: Listed[] = []
   const now = Date.now()
   const walk = (g: KdbxGroup, parent: string | null, share: Share | null, inBin: boolean) => {
     const own = shares.find((s) => s.group === g.uuid.id)
     const here = own ?? (share?.keepGroups ? share : null)
     const binned = inBin || (!!bin && g.uuid.id === bin)
-    groups.push({ id: g.uuid.id, name: g.name ?? "", parent, share: own ? own.path : null, bin: binned })
-    for (const e of g.entries) entries.push(rowOf(e, g.uuid.id, !!here && !binned, now))
+    groups.push({ id: g.uuid.id, name: g.name ?? "", parent, share: own ? own.path : null, bin: binned, expanded: g.expanded !== false })
+    for (const e of g.entries) entries.push({ ...rowOf(e, g.uuid.id, !!here && !binned, now), from: binned ? cameFrom(db, e)?.uuid.id ?? null : null })
     for (const sub of g.groups) walk(sub, g.uuid.id, here, binned)
   }
   walk(db.getDefaultGroup(), null, null, false)
-  return { groups, entries }
+  return { groups, entries, recycles: recycles(db) }
 }
 
-function rowOf(e: KdbxEntry, group: string, shared: boolean, now = Date.now()): Row {
-  const f = fieldsOf(e)
+function rowOf(e: KdbxEntry, group: string, shared: boolean, now = Date.now()): Omit<Listed, "from"> {
+  const f = fieldsOf(e), expires = e.times.expires && e.times.expiryTime ? e.times.expiryTime.getTime() : null
   return { id: e.uuid.id, group, title: f.Title ?? "", username: f.UserName ?? "", urls: urlsOf(f), tags: [...e.tags], free: isFree(e.tags), shared,
-    expired: !!e.times.expires && !!e.times.expiryTime && e.times.expiryTime.getTime() < now, otp: otpOf(f) !== null, modified: Number(e.times.lastModTime ?? 0) }
+    expired: expires !== null && expires < now, expires, otp: otpOf(f) !== null, modified: Number(e.times.lastModTime ?? 0) }
 }
 
 const entries = (g: KdbxGroup): KdbxEntry[] => [...g.entries, ...g.groups.flatMap(entries)]
@@ -66,16 +68,21 @@ export function entryById(db: Kdbx, id: string) {
   return entries(db.getDefaultGroup()).find((e) => e.uuid.id === id) ?? null
 }
 
-/** One entry, its secrets too. */
 export function fullOf(db: Kdbx, file: string, id: string): Full | null {
   const row = listOf(db, file).entries.find((e) => e.id === id)
   const e = entryById(db, id)
   if (!row || !e) return null
-  const f = fieldsOf(e), otp = otpOf(f)
-  return { ...row, password: f.Password ?? "", notes: f.Notes ?? "", otpUri: f.otp ?? "", code: otp && otp !== "steam" ? totp(otp) : null }
+  const f = fieldsOf(e)
+  return { ...row, password: !!f.Password, notes: f.Notes ?? "", history: historyOf(e) }
 }
 
 const clean = (s: string, n = 4000) => s.slice(0, n)
+
+function setExpiry(e: KdbxEntry, at: Change["expires"]) {
+  if (at === undefined) return
+  e.times.expires = at !== null
+  if (at !== null) e.times.expiryTime = new Date(at)
+}
 
 /** Apply an edit (a new entry without `id`): the old values go to the entry's history, as KeePassXC keeps them. */
 export function applyChange(db: Kdbx, c: Change): string {
@@ -101,18 +108,60 @@ export function applyChange(db: Kdbx, c: Change): string {
     else e.fields.delete("otp")
   }
   e.tags = [...new Set(c.tags.map((t) => clean(t, 100).trim()).filter(Boolean))]
+  setExpiry(e, c.expires)
   e.times.update()
   if (c.id && group && e.parentGroup !== group) db.move(e, group)
   return e.uuid.id
 }
 
-/** To the recycle bin (gone for good if it's in it already, or the file keeps none), as KeePassXC deletes. */
-export function removeEntry(db: Kdbx, id: string) {
+const isBin = (db: Kdbx, g: KdbxGroup) => g.uuid.id === db.meta.recycleBinUuid?.id
+function inBin(db: Kdbx, g: KdbxGroup | undefined) {
+  for (let at = g; at; at = at.parentGroup) if (isBin(db, at)) return true
+  return false
+}
+
+export const recycles = (db: Kdbx) => db.meta.recycleBinEnabled !== false
+
+/** To the recycle bin, or `forever`: from the bin, or in a file that keeps none. Never the one when asked the other. */
+export function removeEntry(db: Kdbx, id: string, forever = false) {
   const e = entryById(db, id)
   if (!e) return
-  const bin = db.meta.recycleBinUuid?.id
-  if (bin && e.parentGroup?.uuid.id === bin) db.move(e, null)
-  else db.remove(e)
+  const gone = inBin(db, e.parentGroup) || !recycles(db)
+  if (gone !== forever) throw new Error(gone ? "it's in the recycle bin already (moved elsewhere?)" : "it isn't in the recycle bin any more")
+  if (forever) return db.move(e, null)
+  db.createRecycleBin()
+  db.remove(e)
+}
+
+const cameFrom = (db: Kdbx, e: KdbxEntry) => {
+  const g = e.previousParentGroup && db.getGroup(e.previousParentGroup)
+  return g && g !== e.parentGroup && !inBin(db, g) ? g : null
+}
+
+export function moveEntries(db: Kdbx, moves: Moves): string {
+  for (const m of moves) {
+    const e = entryById(db, m.id)
+    if (!e) throw new Error("that entry is gone from the file")
+    const to = db.getGroup(m.group)
+    if (!to) throw new Error("that group is gone from the file")
+    if (e.parentGroup !== to) db.move(e, to)
+  }
+  return moves[0].id
+}
+
+export function saveGroup(db: Kdbx, c: GroupChange): string {
+  const parent = c.parent ? db.getGroup(c.parent) : db.getDefaultGroup(), g = c.id ? db.getGroup(c.id) : parent && db.createGroup(parent, c.name)
+  if (!g) throw new Error("that group is gone from the file")
+  g.name = c.name
+  g.times.update()
+  return g.uuid.id
+}
+export function removeGroup(db: Kdbx, id: string): string {
+  const g = db.getGroup(id)
+  if (!g) return id
+  if (!g.parentGroup || isBin(db, g) || g.entries.length || g.groups.length) throw new Error("only an empty group can be deleted")
+  db.move(g, null)
+  return id
 }
 
 /** The file KeePassXC writes for an exported group: that group as its root, its entries (and with keepGroups, its

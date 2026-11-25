@@ -1,11 +1,14 @@
-// The Passwords tab (plugins/core/web-viewer/Passwords.tsx) end to end in the desktop app, on a made-up KeePass file
-// written here (groups, a KeeShare-exported Agents group, a one-time code, the recycle bin): set up, listed by group,
-// searched, an entry's sheet (masked password, reveal, its code, agents' uses of it), edited with the generator and
-// the agent-free switch, a new one, deleted with Undo, locked and unlocked, and what's written read back from the file.
+// The Passwords tab (plugins/core/web-viewer/passwords/) end to end in the desktop app, on a made-up KeePass file
+// written here (groups, a KeeShare-exported Agents group, a one-time code, the recycle bin): set up, listed by group (the
+// tree's folds, moves, sorts), by keys alone, an entry beside the list or in a sheet (reveal, code, strength, history),
+// edited with the generator, the health report and its breach check (a made-up Have I Been Pwned), deleted with Undo,
+// locked and unlocked, and what's written read back from the file.
 // WRITES: the throwaway vault only (and the made-up file in a temporary folder).
 //   node web/qa/passwordspage.mjs <vault copy> [<folder for its pictures>]
 import { _electron } from "playwright-core"
+import crypto from "node:crypto"
 import fs from "node:fs"
+import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
@@ -14,13 +17,12 @@ import { otpOf, totp } from "../../electron/browser/otp.ts"
 const { args: [VAULT, SHOTS], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-passwords-"))
 
-// ---------- a made-up main file ----------
 const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
 await import("../../electron/browser/keepass.ts")
 const PW = "made-up main password", SECRET = "Lighthouse-7!pw", SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 const db = Kdbx.create(new Credentials(ProtectedValue.fromString(PW)), "Passwords")
 const b64 = (s) => Buffer.from(s).toString("base64")
-const work = db.createGroup(db.getDefaultGroup(), "Work"), agents = db.createGroup(db.getDefaultGroup(), "Agents")
+const work = db.createGroup(db.getDefaultGroup(), "Work"), servers = db.createGroup(work, "Servers"), agents = db.createGroup(db.getDefaultGroup(), "Agents")
 agents.customData = new Map([["KeeShare/Reference", { value: b64(`<?xml version="1.0"?><KeeShare><Type><Export/></Type><Group>${Buffer.from(agents.uuid.bytes).toString("base64")}</Group><Path>${b64("agents.kdbx")}</Path><Password>${b64("made-up share")}</Password><KeepGroups>True</KeepGroups></KeeShare>`) }]])
 const add = (group, title, user, pw, url, tags = [], more = {}) => {
   const e = db.createEntry(group)
@@ -31,10 +33,18 @@ const add = (group, title, user, pw, url, tags = [], more = {}) => {
 }
 add(work, "Lighthouse", "alice", SECRET, "https://lighthouse.example.com", ["work"], { otp: `otpauth://totp/Lighthouse:alice?secret=${SEED}&period=30`, Notes: "Front desk: ask for Bo." })
 add(agents, "Harbor", "alice@example.com", "harbor-pw", "harbor.example.org")
-add(db.getDefaultGroup(), "Bank", "alice.park", "bank-pw", "https://bank.example.net")
+const bankEntry = add(db.getDefaultGroup(), "Bank", "alice.park", "bank-old", "https://bank.example.net")
+bankEntry.times.lastModTime = new Date(Date.now() - 900 * 86400e3)
+bankEntry.pushHistory()
+bankEntry.fields.set("Password", ProtectedValue.fromString("bank-pw"))
+bankEntry.times.lastModTime = new Date()
+const vpn = add(servers, "VPN", "root", "bank-pw", "")
+vpn.times.expires = true
+vpn.times.expiryTime = new Date(Date.now() - 5 * 86400e3)
 const binned = add(db.getDefaultGroup(), "Old mail", "old", "old-pw", "https://mail.example.com")
 db.createRecycleBin()
 db.move(binned, db.getGroup(db.meta.recycleBinUuid))
+db.header.versionMinor = 1
 const DB = path.join(TMP, "Passwords.kdbx")
 fs.writeFileSync(DB, Buffer.from(await db.save()))
 const reread = async () => {
@@ -44,13 +54,20 @@ const reread = async () => {
   return all.map(({ e, group }) => ({ title: text(e.fields.get("Title")), username: text(e.fields.get("UserName")), password: text(e.fields.get("Password")), tags: e.tags, group }))
 }
 
-// ---------- the app ----------
+const sha = (p) => crypto.createHash("sha1").update(p).digest("hex").toUpperCase(), asked = []
+const pwned = http.createServer((req, res) => {
+  const start = req.url.split("/").pop()
+  asked.push({ url: req.url, padding: req.headers["add-padding"], cookie: req.headers.cookie })
+  res.end(`${"0".repeat(34)}1:0\r\n${sha("bank-pw").startsWith(start) ? `${sha("bank-pw").slice(5)}:41\r\n` : ""}`)
+})
+await new Promise((ok) => pwned.listen(0, "127.0.0.1", ok))
+
 const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "web-viewer"])] }))
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local"), VAULTITE_TEST_TOUCHID: "yes" },
+  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local"), VAULTITE_TEST_TOUCHID: "yes", VAULTITE_TEST_HIBP: `http://127.0.0.1:${pwned.address().port}` },
 })
 let output = ""
 app.process().stdout?.on("data", (d) => { output += d })
@@ -67,11 +84,14 @@ const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText())
 const USES = { uses: [{ t: Date.now() - 120_000, entry: { title: "Harbor", username: "alice@example.com" }, site: "harbor.example.org", agent: "Claude Code", status: "filled", approved: "the user's passkey (iPhone)", machine: "m1" }] }
 await win.route("**/api/web-viewer/login-uses", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(USES) }))
 await wait(1500)
-const sheet = win.locator("dialog[open]").last()
+const sheet = win.locator("dialog[open]").last(), side = win.locator("[data-passwords-side]")
+const row = (name) => win.locator(`[data-passwords-list] [data-passwords-entry="${name}"]`).first()
+const group = (name) => win.locator("[data-passwords-groups] [data-passwords-group]", { hasText: name }).first()
+const resize = (width) => app.evaluate(({ BaseWindow }, w) => { BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: w, height: 860 }) }, width)
+const clearClipboard = () => app.evaluate(({ clipboard }) => clipboard.writeText("nothing"))
 const toast = (text) => win.locator("[data-sonner-toast]", { hasText: text }).last()
 const rows = () => win.locator("[data-passwords-entry]").evaluateAll((els) => els.filter((e) => !e.closest("[data-kept]") && !e.hasAttribute("data-leaving")).map((e) => e.getAttribute("data-passwords-entry")))
 
-// ---------- not set up ----------
 const ran = await fetch(`${origin}/api/ops/ui.command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "web:passwords" }) }).then((r) => r.json()).catch((e) => ({ error: String(e) }))
 check("Show passwords opens the tab: not set up, it asks for the file", await until(() => win.locator("[data-passwords-setup] [data-passwords-choose]").isVisible(), 8000), ran)
 await shot("setup")
@@ -79,63 +99,137 @@ await shot("setup")
 // (the OS file dialog can't be driven here: the file and its password as Choose and its dialog give them)
 const set = await engine("passwords:set", DB, PW)
 check("set up: it opens, unlocked", set?.file === DB && set.locked === false, set)
-check("its entries listed, the recycle bin's left out, by title", await until(async () => (await rows()).join() === "Bank,Harbor,Lighthouse", 8000), await rows())
-check("its groups at the side: all, Work, Agents, the recycle bin, agents' logins", await until(async () =>
-  (await win.locator("[data-passwords-group]").evaluateAll((els) => els.map((e) => e.getAttribute("data-passwords-group")))).length === 5, 3000),
-  await win.locator("[data-passwords-groups]").innerText().catch(() => ""))
+check("its entries listed, the recycle bin's left out, by title", await until(async () => (await rows()).join() === "Bank,Harbor,Lighthouse,VPN", 8000), await rows())
+const places = () => win.locator("[data-passwords-groups] [data-passwords-group]").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()))
+check("its places at the side: all, health, agents' logins, the groups with counts, the recycle bin last", await until(async () =>
+  (await places()).join("|") === "All passwords 4|Health 4|Agents' logins|Agents 1|Work 2|Servers 1|Recycle bin 1", 4000), await places())
 check("the shared entry is marked for agents", await win.locator('[data-passwords-entry="Harbor"] [data-passwords-mark="shared"]').count() === 1)
 check("no password in the list", !(await win.locator("[data-passwords-list]").innerText()).includes(SECRET))
 await shot("list")
 
-// ---------- search and groups ----------
 const search = win.locator('[data-passwords] input[type="search"]')
 await search.fill("example.org")
 check("search by website", await until(async () => (await rows()).join() === "Harbor", 2000), await rows())
 await search.fill("work")
 check("… by tag", await until(async () => (await rows()).join() === "Lighthouse", 2000), await rows())
 await search.fill("")
+await group("Work").click()
+check("a group shows what's in it and below", await until(async () => (await rows()).join() === "Lighthouse,VPN", 2000), await rows())
+await win.locator('[data-passwords-fold="Work"]').click()
+check("… and folds, its count kept", await until(async () => (await places()).join("|").includes("Work 2|Recycle bin"), 2000), await places())
 await win.locator("[data-passwords-group]", { hasText: "Recycle bin" }).click()
 check("the recycle bin shows what's in it", await until(async () => (await rows()).join() === "Old mail", 2000), await rows())
 await win.locator('[data-passwords-group="all"]').click()
 
-// ---------- an entry's sheet ----------
-await win.locator('[data-passwords-entry="Lighthouse"]').click()
-await sheet.locator("[data-password-sheet]").waitFor({ timeout: 5000 })
-check("its sheet: username and website, the password masked", /alice/.test(await sheet.innerText()) && /lighthouse\.example\.com/.test(await sheet.innerText()) && !(await sheet.innerText()).includes(SECRET))
-const code = (await sheet.locator("[data-password-code]").innerText()).replace(/\D/g, "").slice(0, 6)
-const now = totp(otpOf({ otp: `otpauth://totp/x?secret=${SEED}` }), Date.now()), before = totp(otpOf({ otp: `otpauth://totp/x?secret=${SEED}` }), Date.now() - 30_000)
-check("its one-time code, as RFC 6238 has it now", code === now || code === before, [code, now])
-await sheet.getByRole("button", { name: "Show password" }).click()
-check("Show password reveals it", (await sheet.innerText()).includes(SECRET))
-await sheet.getByRole("button", { name: "Copy password" }).click()
-check("Copy password copies it", await until(async () => (await clipboard()) === SECRET, 2000))
-check("… and says it's cleared in 30 seconds", await until(() => toast("cleared in 30 seconds").count(), 2000) > 0)
-check("its notes", /Front desk: ask for Bo/.test(await sheet.innerText()))
-await shot("entry")
+await win.locator("[data-passwords-sort]").click()
+await win.getByRole("menuitemradio", { name: "Weakest first", exact: true }).click()
+check("sorted by strength, weakest first", await until(async () => (await rows()).join() === "Bank,VPN,Harbor,Lighthouse", 3000), await rows())
+await win.locator("[data-passwords-sort]").click()
+await win.getByRole("menuitemradio", { name: "Name", exact: true }).click()
+const marks = async () => Object.fromEntries(await win.locator("[data-passwords-list] [data-passwords-entry]").evaluateAll((els) => els.map((e) => [e.getAttribute("data-passwords-entry"), e.querySelector("[data-password-strength]")?.getAttribute("data-password-strength")])))
+check("each row marks its password's strength", await until(async () => { const m = await marks(); return m.Bank === "poor" && m.Lighthouse === "weak" }, 3000), await marks())
+await search.fill("a")
+await search.press("ArrowDown")
+await win.keyboard.press("ArrowDown")
+check("↓ from the search to the list, and on: the entry beside follows", await until(() => side.locator('[data-password-sheet="Harbor"]').count(), 3000) === 1)
+await search.fill("")
+await row("Bank").focus()
+await clearClipboard()
+await win.keyboard.press("ControlOrMeta+c")
+check("⌘C copies its password", await until(async () => (await clipboard()) === "bank-pw", 3000))
+await win.keyboard.press("ControlOrMeta+b")
+check("⌘B its username", await until(async () => (await clipboard()) === "alice.park", 3000), await clipboard())
+await clearClipboard()
+const commanded = await fetch(`${origin}/api/ops/ui.command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "web:password-copy" }) }).then((r) => r.json()).catch((e) => ({ error: String(e) }))
+check("an agent running that command copies nothing: only a key pressed does", (await clipboard()) === "nothing", commanded)
+await row("Bank").focus()
+await win.keyboard.press("Enter")
+check("Enter edits it", await until(() => sheet.locator('[data-password-form="edit"]').count(), 3000) === 1)
 await win.keyboard.press("Escape")
 
-await win.locator('[data-passwords-entry="Harbor"]').click()
-await sheet.locator("[data-password-sheet]").waitFor({ timeout: 5000 })
-check("used by agents: which, where, how approved", await until(async () => /Claude Code · harbor\.example\.org · .* · approved with iPhone/.test(await sheet.innerText()), 3000), await sheet.innerText())
+await row("Lighthouse").click()
+await side.locator('[data-password-sheet="Lighthouse"]').waitFor({ timeout: 5000 })
+await side.locator("[data-password-code]").waitFor({ timeout: 5000 })
+check("beside the list: username and website, the password masked", /alice/.test(await side.innerText()) && /lighthouse\.example\.com/.test(await side.innerText()) && !(await side.innerText()).includes(SECRET) && !(await win.locator("dialog[open]").count()))
+check("the page holds no password till it's asked for", !(await win.evaluate((x) => document.documentElement.outerHTML.includes(x), SECRET)))
+check("its strength, under its password", /Weak · \d+ bits/.test(await side.innerText()), await side.innerText())
+const code = (await side.locator("[data-password-code]").innerText()).replace(/\D/g, "").slice(0, 6)
+const now = totp(otpOf({ otp: `otpauth://totp/x?secret=${SEED}` }), Date.now()), before = totp(otpOf({ otp: `otpauth://totp/x?secret=${SEED}` }), Date.now() - 30_000)
+check("its one-time code, as RFC 6238 has it now", code === now || code === before, [code, now])
+await win.evaluate(() => { for (const b of document.querySelectorAll('[data-passwords-side] [aria-label="Show password"], [data-passwords-side] [aria-label="Copy password"]')) b.click() })
+check("a click made by a script shows and copies nothing: only the user's own does", !(await until(async () => (await side.innerText()).includes(SECRET), 800)) && (await clipboard()) === "nothing")
+await side.getByRole("button", { name: "Show password" }).click()
+check("Show password reveals it", await until(async () => (await side.innerText()).includes(SECRET), 3000))
+await side.getByRole("button", { name: "Copy password" }).click()
+check("Copy password copies it", await until(async () => (await clipboard()) === SECRET, 2000))
+check("… and says it's cleared in 30 seconds", await until(() => toast("cleared in 30 seconds").count(), 2000) > 0)
+check("its notes", await until(async () => /Front desk: ask for Bo/.test(await side.innerText()), 2000))
+await shot("entry")
+await row("Harbor").click()
+check("another picked: the one revealed is gone from the page", await until(async () => !(await side.innerText()).includes(SECRET), 2000))
+check("used by agents: which, where, how approved", await until(async () => /Claude Code · harbor\.example\.org · .* · approved with iPhone/.test(await side.innerText()), 3000), await side.innerText())
 
-// ---------- editing: the generator, the agent-free switch ----------
-await sheet.locator("[data-password-edit]").click()
+await row("Bank").click()
+await side.locator("[data-password-history] button").first().click()
+await side.locator("[data-password-past]").first().click()
+await side.locator("[data-password-version]").waitFor({ timeout: 3000 })
+check("its history: what changed, the old password masked", /Password changed/.test(await side.innerText()) && !(await side.innerText()).includes("bank-old"))
+await side.getByRole("button", { name: "Show that password" }).click()
+check("… shown on asking", await until(async () => (await side.innerText()).includes("bank-old"), 2000))
+await shot("history")
+await side.locator("[data-password-restore]").click()
+check("… brought back, in the file", await until(async () => (await reread()).find((e) => e.title === "Bank")?.password === "bank-old", 4000))
+await until(async () => (await side.locator("[data-password-past]").count()) === 2, 4000)
+await side.locator("[data-password-past]").first().click()
+await side.locator("[data-password-restore]").click()
+check("… and what it replaced brought back again", await until(async () => (await reread()).find((e) => e.title === "Bank")?.password === "bank-pw", 4000))
+
+await win.locator('[data-passwords-fold="Work"]').click()
+const drag = async (from, to) => {
+  const a = await from.boundingBox(), b = await to.boundingBox()
+  await win.mouse.move(a.x + 80, a.y + a.height / 2); await win.mouse.down()
+  await win.mouse.move(a.x + 60, a.y + a.height / 2 + 12, { steps: 4 }); await win.mouse.move(b.x + 60, b.y + b.height / 2, { steps: 8 })
+  await until(async () => /Move to/.test(await win.locator("[data-drag-ghost]").innerText()), 2000)
+  await shot("drag")
+  await win.mouse.up()
+}
+await drag(row("Bank"), group("Servers"))
+check("dragged onto a group, it's in it", await until(async () => (await reread()).find((e) => e.title === "Bank")?.group === "Servers", 4000) && await until(() => toast("to Servers").count(), 2000) > 0, (await reread()).map((e) => `${e.title}:${e.group}`))
+await toast("to Servers").locator("[data-button]").click()
+check("… and Undo puts it back", await until(async () => (await reread()).find((e) => e.title === "Bank")?.group === "Passwords", 4000), (await reread()).map((e) => `${e.title}:${e.group}`))
+await win.locator("[data-passwords-new-group]").click({ force: true })
+await win.locator("[data-passwords-name]").fill("Home")
+await win.keyboard.press("Enter")
+check("a new group", await until(() => group("Home").count(), 4000) === 1)
+await row("Bank").click({ button: "right" })
+await win.getByRole("menuitem", { name: "Move to" }).hover()
+await win.getByRole("menuitemradio", { name: "Home", exact: true }).click()
+check("moved to it from the row's menu", await until(async () => (await reread()).find((e) => e.title === "Bank")?.group === "Home", 4000))
+
+await row("Harbor").click()
+await side.locator("[data-password-edit]").click()
 await sheet.locator('[data-password-form="edit"]').waitFor({ timeout: 5000 })
 check("the switch can be turned on for a shared entry", await sheet.locator('[data-password-free="can"]').count() === 1)
 await sheet.locator("[data-password-generate]").click()
-const generated = await sheet.locator('[data-password-field="password"]').inputValue()
+const field = sheet.locator('[data-password-field="password"]'), strength = sheet.locator("[data-password-strength]")
+check("… its password's strength, as it's typed", await until(async () => (await field.inputValue()).length === 20 && await strength.getAttribute("data-password-strength") === "excellent", 3000), await strength.innerText())
+const generated = await field.inputValue()
 check("Generate makes a 20-character password, shown", generated.length === 20 && generated !== "harbor-pw" && await sheet.locator('[data-password-field="password"]').getAttribute("type") === "text", generated)
-await sheet.getByRole("switch", { name: "Digits" }).click()
+await sheet.getByRole("radio", { name: "Passphrase" }).click()
+check("a passphrase: words joined, and what it's worth", await until(async () => /^[a-z]+(-[a-z]+){5}$/.test(await field.inputValue()) && await strength.getAttribute("data-password-strength") === "good", 3000), await field.inputValue())
+await shot("passphrase")
+await sheet.getByRole("radio", { name: "Password", exact: true }).click()
+await sheet.getByRole("switch", { name: "0–9" }).click()
+await until(async () => { const v = await field.inputValue(); return v.length === 20 && !/\d/.test(v) }, 3000)
 const noDigits = await sheet.locator('[data-password-field="password"]').inputValue()
 check("… a kind turned off makes another without it", noDigits !== generated && !/\d/.test(noDigits), noDigits)
 await shot("edit")
 await sheet.getByRole("switch", { name: "Agents can use it without asking" }).click()
 await sheet.locator('[data-password-field="username"]').fill("harbor@example.org")
 await sheet.locator("[data-password-save]").click()
-check("saved: back to its sheet, changed", await until(async () => /harbor@example\.org/.test(await sheet.innerText().catch(() => "")), 5000), await sheet.innerText().catch(() => ""))
+check("saved: beside the list again, changed", await until(async () => /harbor@example\.org/.test(await side.innerText()) && !(await win.locator("dialog[open]").count()), 5000), await side.innerText())
 const afterEdit = (await reread()).find((e) => e.title === "Harbor")
 check("… in the file: the username, the generated password, the agent-free tag", afterEdit?.username === "harbor@example.org" && afterEdit.password === noDigits && afterEdit.tags.includes("agent-free"), afterEdit && { ...afterEdit, password: afterEdit.password === noDigits })
-await win.keyboard.press("Escape")
 check("… and the list marks it agent-free", await until(() => win.locator('[data-passwords-entry="Harbor"] [data-passwords-mark="free"]').count(), 3000) === 1)
 
 await win.locator('[data-passwords-entry="Bank"]').click({ button: "right" })
@@ -149,7 +243,6 @@ check("an unsaved change asks before the sheet closes", await until(() => win.lo
 await win.locator("[data-confirm-ok]").click()
 check("… Discard closes it, nothing written", await until(async () => !(await win.locator("dialog[open] [data-password-form]").count()), 2000) && !(await reread()).some((e) => e.title === "Bank of Lighthouse"))
 
-// ---------- a new one, in a group ----------
 await win.locator("[data-passwords-group]", { hasText: "Work" }).click()
 await win.locator("[data-passwords-new]").click()
 await sheet.locator('[data-password-form="new"]').waitFor({ timeout: 5000 })
@@ -160,23 +253,58 @@ await sheet.locator('[data-password-field="url"]').fill("ferry.example.com")
 await sheet.locator("[data-password-add-url]").click()
 await sheet.locator('[data-password-field="url"]').nth(1).fill("https://tickets.ferry.example.com")
 await sheet.locator('[data-password-field="title"]').press("Enter")
-check("a new one: its sheet shows it", await until(async () => /Ferry/.test(await sheet.locator("[data-password-sheet]").innerText().catch(() => "")), 5000))
+check("a new one: beside the list", await until(() => side.locator('[data-password-sheet="Ferry"]').count(), 5000) === 1)
 const ferry = (await reread()).find((e) => e.title === "Ferry")
 check("… in the file, in the group it was made in", ferry?.group === "Work" && ferry.password === "ferry-pw", ferry)
-await win.keyboard.press("Escape")
-check("… and in the group's list", await until(async () => (await rows()).join() === "Ferry,Lighthouse", 3000), await rows())
+check("… and in the group's list", await until(async () => (await rows()).join() === "Ferry,Lighthouse,VPN", 3000), await rows())
 await win.locator('[data-passwords-group="all"]').click()
 
-// ---------- delete, Undo ----------
-await win.locator('[data-passwords-entry="Ferry"]').click()
-await sheet.locator("[data-password-delete]").click()
+const issue = (id) => win.locator(`[data-passwords-issue="${id}"] [data-passwords-entry]`).evaluateAll((els) => els.map((e) => e.getAttribute("data-passwords-entry")).sort())
+await win.locator('[data-passwords-group="health"]').click()
+check("health: weak, reused and expired, each linking to its entry", await until(async () => (await issue("reused")).join() === "Bank,VPN" && (await issue("expired")).join() === "VPN" && (await issue("weak")).includes("Bank"), 4000),
+  [await issue("weak"), await issue("reused"), await issue("expired")])
+await win.locator('[data-passwords-issue="reused"] [data-passwords-entry="VPN"]').click()
+check("… its entry, beside, says which other has the same", await until(async () => /Same as Bank/.test(await side.innerText()), 3000), await side.innerText())
+check("no breach is checked unasked", asked.length === 0 && await win.locator('[data-passwords-breaches="unchecked"]').count() === 1, asked)
+await win.locator("[data-passwords-check]").click()
+check("… asked, it says first what would be sent", await until(async () => /first 5 characters/.test(await win.locator("[data-confirm]").innerText()), 2000) && asked.length === 0)
+await win.locator("[data-confirm-ok]").click()
+check("checked: the one in a breach, with how often", await until(async () => (await issue("leaked")).join() === "Bank,VPN" && /Seen 41 times/.test(await win.locator("[data-passwords-health]").innerText()), 8000), await win.locator("[data-passwords-health]").innerText())
+check("… what was sent: 5 characters of each hash, padded answers asked for, no cookie", asked.length >= 3 && asked.every((a) => /^\/range\/[0-9A-F]{5}$/.test(a.url) && a.padding === "true" && !a.cookie), asked)
+await shot("health")
+await win.locator('[data-passwords-issue="expired"] [data-passwords-entry="VPN"]').click({ button: "right" })
+await win.getByRole("menuitem", { name: "Leave out of the report" }).click()
+check("left out of the report", await until(async () => !(await issue("expired")).length && !(await issue("reused")).includes("VPN") && await win.locator("[data-passwords-left]").count() === 1, 4000), [await issue("expired"), await issue("reused")])
+await win.locator('[data-passwords-group="all"]').click()
+
+await row("Ferry").click({ button: "right" })
+await win.getByRole("menuitem", { name: "Delete" }).click()
+check("Delete: the next one is picked", await until(() => side.locator('[data-password-sheet="Harbor"]').count(), 3000) === 1)
 check("Delete: off the list at once, with Undo", await until(async () => !(await rows()).includes("Ferry"), 3000) && await until(() => toast("to the recycle bin").count(), 2000) > 0, await rows())
 check("… in the file's recycle bin", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Recycle Bin", 3000), (await reread()).map((e) => `${e.title}:${e.group}`))
 await toast("to the recycle bin").locator("[data-button]").click()
 check("Undo puts it back in its group", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Work", 5000) && await until(async () => (await rows()).includes("Ferry"), 3000),
   [await win.locator("[data-sonner-toast]").allInnerTexts(), (await reread()).map((e) => `${e.title}:${e.group}`)])
 
-// ---------- the lock ----------
+await group("Recycle bin").click()
+await row("Old mail").click({ button: "right" })
+await win.getByRole("menuitem", { name: "Restore" }).click()
+check("Restore takes one out of the recycle bin, back where it was", await until(async () => (await reread()).find((e) => e.title === "Old mail")?.group === "Passwords", 4000), (await reread()).map((e) => `${e.title}:${e.group}`))
+await win.locator('[data-passwords-group="all"]').click()
+await win.locator('[data-passwords-fold="Work"]').click()
+
+await resize(900)
+await until(async () => !(await side.count()), 3000)
+await row("Lighthouse").click()
+check("narrow: its sheet", await until(() => sheet.locator('[data-password-sheet="Lighthouse"]').count(), 4000) === 1)
+await shot("narrow")
+await clearClipboard()
+await win.keyboard.press("ControlOrMeta+c")
+check("… where ⌘C copies its password too", await until(async () => (await clipboard()) === SECRET, 3000))
+await win.keyboard.press("Escape")
+await resize(1300)
+await until(() => side.count(), 3000)
+
 await win.locator('[data-passwords-action="lock"]').click()
 check("Lock: the lock screen, its file named, nothing listed", await until(() => win.locator("[data-passwords-lock]").isVisible(), 3000) && !(await rows()).length
   && /Passwords\.kdbx/.test(await win.locator("[data-passwords-lock]").locator("..").innerText()))
@@ -186,16 +314,17 @@ check("a wrong password says so", await until(() => win.locator("[data-passwords
 await shot("locked")
 await win.locator("[data-passwords-password]").fill(PW)
 await win.locator("[data-passwords-password]").press("Enter")
-check("its password unlocks it", await until(async () => (await rows()).length === 4, 5000), await rows())
-await win.locator('[data-passwords-entry="Lighthouse"]').click()
-await sheet.locator("[data-password-sheet]").waitFor({ timeout: 5000 })
+check("its password unlocks it", await until(async () => (await rows()).length === 6, 5000), await rows())
+check("a group folded stays so", (await places()).join("|").includes("Work 3|Recycle bin"), await places())
+await row("Lighthouse").click()
+await until(async () => /Front desk/.test(await side.innerText()), 4000)
+await side.getByRole("button", { name: "Show password" }).click()
+await until(async () => (await side.innerText()).includes(SECRET), 3000)
 await engine("passwords:lock")
-check("locked while a sheet shows an entry: the sheet shows the lock instead", await until(async () => await sheet.locator("[data-passwords-lock]").count() === 1 && !(await sheet.innerText()).includes("Front desk"), 3000))
-await win.keyboard.press("Escape")
+check("locked while an entry shows: nothing of it is left on the page", await until(async () => await win.locator("[data-passwords-lock]").count() === 1 && !(await win.evaluate((x) => document.documentElement.outerHTML.includes(x) || document.documentElement.outerHTML.includes("Front desk"), SECRET)), 3000))
 
-// ---------- the clipboard, 30 s on ----------
 await engine("passwords:unlock")
-await until(async () => (await rows()).length === 4, 5000)
+await until(async () => (await rows()).length === 6, 5000)
 await win.locator('[data-passwords-entry="Bank"]').click({ button: "right" })
 await win.getByRole("menuitem", { name: "Copy password" }).click()
 check("Copy password from a row's menu", await until(async () => (await clipboard()) === "bank-pw", 3000))
@@ -203,12 +332,12 @@ await win.bringToFront()
 await wait(31_000)
 check("… cleared from the clipboard 30 seconds on", (await clipboard()) === "", await clipboard() === "bank-pw" ? "still there" : "something else")
 
-// ---------- stop using it ----------
 await win.locator('[data-passwords-action="more"]').click()
 await win.getByRole("menuitem", { name: "Stop using it" }).click()
 check("Stop using it: back to choosing a file", await until(() => win.locator("[data-passwords-setup]").isVisible(), 3000))
 check("no secret in the app's or the server's output", ![SECRET, PW, "bank-pw", "ferry-pw"].some((s) => output.includes(s)), output.slice(-400))
 await app.close()
+pwned.close()
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 fs.rmSync(TMP, { recursive: true, force: true })
 await done()

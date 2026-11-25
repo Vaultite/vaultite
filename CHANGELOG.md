@@ -24,6 +24,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Passwords: your KeePass file opens only in a process of its own, which locking ends with every key it held, and it locks
   by itself after 10 minutes unused. On a Mac with Touch ID its password is sealed to the Secure Enclave, so macOS itself
   asks for your finger (the first unlock moves it there): saving a login or keeping a secret while locked asks for it too.
+- Passwords, redone: groups as a tree you fold and drag passwords between, an entry beside the list in a wide pane,
+  each password's strength, a health report (weak, reused, expired, old, and a check for known breaches only when you ask:
+  Have I Been Pwned hears 5 characters of each hash), passphrases in the generator, older versions to see and restore,
+  sorting, and keys (arrows, Enter, ⌘C password, ⌘B username, ⇧⌘C code, ⌘U website). A password comes to the page only
+  when you show or edit it.
 - Browser: passkeys work in a sign-in inside a frame (as on chase.com), not only in the page itself; a frame from
   another site gets them only when its page allows it, as in Chrome.
 - Companion and dictation: a key bumped while you hold the Talk key or a dictation key (fn beside Control, Shift, a letter)
