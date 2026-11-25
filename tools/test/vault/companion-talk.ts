@@ -17,6 +17,11 @@ export default async ($: VaultTest) => {
   $.check("companion: an ask's answer keeps what it said while you typed", page.length === 2 && page[0].said[0] === "Tidied.", page)
   $.check("companion: a burst of edits it answered on its own is one trigger above its answer, an unanswered one isn't shown",
     page[1]?.kind === "edit" && page[1].text === "ship on friday\nwith Alice" && page[1].said[0] === "Friday is a holiday." && page[1].where === "Notes/Plan, line 3", page[1])
+  const passed = exchanges([edit(1, now - 300_000, "- [x] Water the fern"), { ...ask(2, now - 100_000, "thanks"), kind: "ask" }], [
+    { t: now - 299_000, as: "Claude", op: "look", text: "at Notes/Plan.md" }, { t: now - 298_000, as: "Claude", op: "pass", text: "their own list" },
+    { t: now - 297_000, as: "Claude", op: "done" }, { t: now - 99_000, as: "Claude", op: "pass", text: "a thanks" }], [], "Claude", { reactions: true })
+  $.check("companion: an edit it let pass isn't an answer, nor an exchange; an ask it let pass still is",
+    passed.length === 1 && passed[0].kind === "ask" && passed[0].did[0] === "let it pass: a thanks", passed)
   $.check("companion: without reactions (its prompt's talk), edits aren't exchanges",
     exchanges([edit(1, now, "x")], [{ t: now + 10, as: "Claude", op: "say", text: "hi" }], [], "Claude").length === 0)
   const drawing = (id: string, title: string, n: number) => ({ id, agent: "Claude", tint: "orange", t: now, marks: Array.from({ length: n }, () => ({ type: "paper" as const, title, w: 200, h: 100, items: [] })) })

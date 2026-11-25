@@ -20,7 +20,7 @@ import { workerOps } from "./workerops.ts"
 
 export type JobDeps = {
   askOf: (name: string) => Moment | undefined
-  own: (name: string, ctx: OpCtx) => boolean
+  own: (name: string) => boolean
   say: (ctx: OpCtx, name: string, text: string) => Promise<unknown>
   saidSince?: (name: string, since: number) => string[]
   turnEnd?: (name: string) => Promise<void> | null

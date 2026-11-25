@@ -52,9 +52,10 @@ function reactions(ms: Moment[], asks: { t: number }[], acts: Act[], o: { reacti
   return out.map(({ m, burst }) => (m.kind === "edit" ? { ...m, ...editOf(burst) } : m))
 }
 
+const NO_ANSWER = new RegExp(`^(?:${DOES.look}|${DOES.pass})\\b`)
 const answeredOnly = (xs: Exchange[], asks: (Moment | Heard | Reacted)[]) => xs.flatMap((e, i) => {
   const m = asks[i]
-  if (REACTS.has(e.kind) && !e.said.length && !e.did.some((d) => d !== "pointed")) return []
+  if (REACTS.has(e.kind) && !e.said.length && !e.did.some((d) => !NO_ANSWER.test(d))) return []
   return "edit" in m && m.edit ? [{ ...e, edit: m.edit }] : [e]
 })
 

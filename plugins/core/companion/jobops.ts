@@ -10,6 +10,7 @@ import type { JobCore, JobDeps } from "./workers.ts"
 export function jobsOps(plugin: Plugin, d: JobDeps, core: JobCore) {
   const { jobOf, refresh, links, changed, all, seen, wake, clockOf, close, restart, unsure } = core
   const theirWord = wordsOf(plugin)
+  const answered = (p: { as?: unknown }) => { const name = d.who(p); if (d.own(name)) d.did(name, "job-answer") }
   plugin.op({
     id: "companion.job-answer",
     cli: "companion job-answer",
@@ -37,14 +38,14 @@ its terminal (companion job-open).
       const n = choiceIn(w, str(p.choice))
       if (!n) throw new OpError(`choice: one of ${w.choices.map((c, i) => `${i + 1} "${c}"`).join(", ")}`)
       if (w.kind === "stuck") {
-        if (w.choices[n - 1] === RESTART) await restart(ctx, j, tellerOf(ctx, d.own(d.who(p), ctx) ? d.who(p) : ""))
+        if (w.choices[n - 1] === RESTART) await restart(ctx, j, tellerOf(ctx, d.own(d.who(p)) ? d.who(p) : ""))
         else { clockOf(j).kept = Date.now(); delete j.waits; await refresh(j, true).catch(() => {}); changed() }
-        d.did(d.who(p), "job-answer")
+        answered(p)
         return { ...cardOf(j), answered: w.choices[n - 1] }
       }
       let by = ctx.who
       if (!userSurface(ctx.who)) {
-        const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined
+        const m = d.own(d.who(p)) ? d.askOf(d.who(p)) : undefined
         const word = await theirWord(ctx, m, plainWords(str(p.said)), { since: w.at })
         if ("why" in word) throw new OpError(`${NOT_THEIRS} (${word.why})`, 403)
         by = { ...BY_THEIR_WORD, label: word.by }
@@ -55,7 +56,7 @@ its terminal (companion job-open).
         delete j.waits
         j.now = `Answered: ${w.choices[n - 1]}`
         changed()
-        d.did(d.who(p), "job-answer")
+        answered(p)
         return { ...cardOf(j), answered: w.choices[n - 1] }
       }
       type Row = { id: string; kind: string; state: string; terminal?: string }
@@ -70,7 +71,7 @@ its terminal (companion job-open).
       delete j.waits
       j.now = `Answered: ${w.choices[n - 1]}`
       changed()
-      d.did(d.who(p), "job-answer")
+      answered(p)
       return { ...cardOf(j), answered: w.choices[n - 1] }
     },
     text: (r) => `Answered "${r.answered}" in "${r.title}" (${r.id}).`,
@@ -155,7 +156,7 @@ in one short line, merge it or close it as it is (each a button).
       const j = jobOf(str(p.id))
       let byWord = ""
       if (ctx.who.agent) {
-        const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined, why = unsure(j, m, str(p.which))
+        const m = d.own(d.who(p)) ? d.askOf(d.who(p)) : undefined, why = unsure(j, m, str(p.which))
         if (why) throw new OpError(why, 409)
         if (j.state === "ready for review") {
           const word = await theirWord(ctx, m, plainWords(str(p.said)), { closes: true })

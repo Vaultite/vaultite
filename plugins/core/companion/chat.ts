@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { IncomingMessage } from "node:http"
 import { z } from "zod"
-import { type OpCtx, whoOf } from "../../../core/plugins.ts"
+import { whoOf } from "../../../core/plugins.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import { ALLOW, sessions, promptFor } from "./alwayson.ts"
 import { plugin } from "./self.ts"
@@ -47,8 +47,8 @@ export const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau c
 export const AS_TOOL = whoOf("cli", "claude-code")
 const itsTool = new AsyncLocalStorage<string>()
 export const asItsTool = <T>(fn: () => T, name = ownName()) => itsTool.run(key(name), fn)
-export function itsOwn(name: string, ctx: OpCtx) {
-  if (itsTool.getStore() === key(name) || ctx.who.client?.startsWith("app/")) return true
+export function itsOwn(name: string) {
+  if (itsTool.getStore() === key(name)) return true
   const w = requestWriter.getStore(), from = [w?.terminal, w?.session].filter(Boolean)
   return from.length > 0 && sessions().some((s) => from.includes(s.id) && key(s.name) === key(name))
 }

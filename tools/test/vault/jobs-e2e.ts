@@ -389,10 +389,16 @@ export default async ($: VaultTest) => {
       const asApp = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
       const ends: string[] = [], linkEnd = (b: Any) => { const id = String(b.link ?? "").split("/").pop()!; ends.push(id); return id }
       write("Notes/Errands.md", "# Errands\n\n- [ ] Compare the two flights 📅 2026-12-01\n- [x] Book the car\n")
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "how tall is the lighthouse?", app: "com.example.browser", title: "Lighthouse", sx: 10, sy: 20 })
+      const talk = async () => (await api("POST", "ops/companion.conversation", {}))[1].exchanges.findLast((e: Any) => e.text === "how tall is the lighthouse?")
       ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 3, text: "Compare the two flights" }, asApp)
       linkEnd(b)
       check("Do it: a task line's worker is told its note and line, on Opus, and it goes in progress", st === 200 && b.state === "starting" && said.at(-1)?.model === "opus" &&
         /Notes\/Errands\.md \(line 3\): Compare the two flights/.test(said.at(-1)?.prompt ?? "") && read("Notes/Errands.md").includes("- [/] Compare the two flights 📅 2026-12-01"), [st, b, read("Notes/Errands.md")])
+      await new Promise((r) => setTimeout(r, 600))
+      const spoke = await talk()
+      check("Do it: their own hand, so not the companion's answer to their last ask, nor that ask's words in the job",
+        !!spoke && !spoke.did.includes("handed off") && !spoke.said.length && !/how tall is the lighthouse/.test(said.at(-1)?.prompt ?? "") && !(await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.text?.startsWith("On it: Compare")), [spoke, said.at(-1)?.prompt])
       ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 4 }, asApp)
       check("Do it: a line that's no open task is refused", st === 404, [st, b])
       // Two tapped at once (two devices): one worker. And of two lines alike, the one tapped.
