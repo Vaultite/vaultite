@@ -417,6 +417,23 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/companion.do", { text: "Tidy the trip note" }, asApp)
       linkEnd(b)
       check("Do it: only words is a job too", st === 200 && /Tidy the trip note/.test(said.at(-1)?.prompt ?? ""), [st, b])
+      {
+        const { apiCtx } = await import("../../../plugins/core/companion/chat.ts"), { checkParams } = await import("../../../core/ops.ts")
+        const ho = app.plugins.find((x) => x.id === "companion")!.ops.find((o) => o.id === "companion.handoff")!
+        const opened: unknown[] = []
+        const run = (open: string, fails = ""): Promise<Any> => asItsTool(async () => ho.run(checkParams(ho, { task: `Count the gulls (${open})`, open }), { ...apiCtx, op: async (id: string, p: Any) => {
+          if (id !== "ui.open") return apiCtx.op(id, p)
+          if (fails) throw new Error(fails)
+          opened.push(p)
+          return {}
+        } }))
+        const beside = await run("right"), tab = await run("tab"), none = await run("down", "no app window is open")
+        for (const r of [beside, tab, none]) linkEnd(r)
+        check("handoff --open: its terminal in a pane on that side, or a tab", beside.state === "starting" && JSON.stringify(opened) === JSON.stringify([{ path: beside.link, split: "right" }, { path: tab.link }]) &&
+          ho.text!(beside, {}).endsWith("Its terminal: opened in a split right.") && ho.text!(tab, {}).endsWith("opened in a tab."), [opened, ho.text!(beside, {})])
+        check("handoff --open with nowhere to open it: the job starts, the companion says it isn't open", none.state === "starting" && none.unopened === "no app window is open" &&
+          !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && /I couldn't open its terminal: it's in Jobs\./.test(n.text ?? "")), 3000, 50)), none)
+      }
       // (an "it" between two jobs: their ask over one's terminal, an agent naming the other: it asks which, unless their words name it)
       const pwin = socket()
       matchSocket(app.plugins, ["companion", "live"])![1].fn(pwin, helperReq, { wild: [], query: {} })

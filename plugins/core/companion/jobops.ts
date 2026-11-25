@@ -1,14 +1,15 @@
 import { OpError, type Plugin, quoted, userSurface } from "../../../core/plugins.ts"
 import { SPLITS } from "../../../core/splitto.ts"
-import { cardOf, choiceIn, jobsText, jobText, linkOf, queuedLine, terminalOf, str } from "./jobs.ts"
+import { cardOf, choiceIn, jobsText, jobText, terminalOf, str } from "./jobs.ts"
 import { BY_THEIR_WORD, NOT_THEIRS, plainWords, wordsOf } from "./jobword.ts"
 import { RESTART } from "./joblife.ts"
 import { tellerOf } from "./jobtold.ts"
+import { openJob } from "./jobopen.ts"
 import type { JobCore, JobDeps } from "./workers.ts"
 
 
 export function jobsOps(plugin: Plugin, d: JobDeps, core: JobCore) {
-  const { jobOf, refresh, links, changed, all, seen, wake, clockOf, close, restart, unsure } = core
+  const { jobOf, refresh, links, changed, all, seen, clockOf, close, restart, unsure } = core
   const theirWord = wordsOf(plugin)
   const answered = (p: { as?: unknown }) => { const name = d.who(p); if (d.own(name)) d.did(name, "job-answer") }
   plugin.op({
@@ -114,7 +115,9 @@ its terminal (companion job-open).
     id: "companion.job-open",
     cli: "companion job-open",
     summary: "Open a job's terminal in a tab (as its card does), or in a split on the side they say: one closed once it was done resumes its conversation first.",
-    help: `  vau companion job-open jd3k2h1g
+    help: `One you're handing off now: handoff's open.
+
+  vau companion job-open jd3k2h1g
   vau companion job-open jd3k2h1g --split right`,
     kind: "write",
     lock: false,
@@ -123,11 +126,7 @@ its terminal (companion job-open).
     args: ["id"],
     run: async (p, ctx) => {
       const j = jobOf(str(p.id))
-      if (j.state === "waiting") throw new OpError(`"${j.title}" ${queuedLine(j).toLowerCase()}: it has no terminal yet`, 409)
-      if (j.state !== "stopped" && await wake(ctx, j)) changed()
-      clockOf(j).opened = Date.now()
-      seen([j.id])
-      await ctx.op("ui.open", { path: linkOf(j), ...(p.split ? { split: p.split } : {}) })
+      await openJob(core, ctx, j, str(p.split))
       return cardOf(j)
     },
     text: (r, p) => `Opened "${r.title}" (${r.id})${p.split ? ` in a split ${p.split}` : ""}.`,

@@ -1,7 +1,8 @@
 import { ONLY_OS } from "./jobos.ts"
 import { SAID_OFTEN } from "../../../core/desktop/spoken.ts"
 import { type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
-import { cardOf, followTask, type Handoff, type Queued, str } from "./jobs.ts"
+import { cardOf, followTask, type Handoff, type JobCard, messageOf, type Queued, str } from "./jobs.ts"
+import { openedText, openJob, OPENS } from "./jobopen.ts"
 import type { Machines } from "./jobmachines.ts"
 import type { Card } from "./jobplace.ts"
 import { toolNotes } from "./toolnotes.ts"
@@ -9,6 +10,7 @@ import { tellerOf, type Told, toldTogether } from "./jobtold.ts"
 import type { Moment } from "./types.ts"
 import type { JobCore, JobDeps } from "./workers.ts"
 
+type Handed = JobCard & { queued?: boolean; opened?: string; unopened?: string }
 const ANSWERING_MS = 10 * 60_000
 
 const withPage = (d: JobDeps, m: Moment | undefined) => { const url = m?.pane && !m.url ? d.pageOf?.(m.pane) : ""; return m && url ? { ...m, url } : m }
@@ -54,6 +56,7 @@ jobs), typed into its terminal; anything about its result ("merge it", "try X to
 resumes), with land for their word to merge it, and ask false when their ask isn't about its work. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
   vau companion handoff "Make the header blue on this page"
+  vau companion handoff "Compare the two flights" --open right
   vau companion handoff "Use the darker blue instead" --job jd3k2h1g
   vau companion handoff "They said merge it" --job jd3k2h1g --land
   vau companion handoff "Say hi" --account personal --machine m1`,
@@ -74,6 +77,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },
       land: { type: "boolean", description: "with job: their word to merge what it made (merge it, ship it): it's told to land it as its repo's rules say, and closes once merged" },
       ask: { type: "boolean", default: true, description: "with job: false when their ask isn't about that job's work (questions to you, another errand, sending on what they asked before): only task goes, never their words" },
+      open: { type: "string", enum: [...OPENS], description: "their words ask to see it too (its terminal here, beside this, in split panes): opened as it's handed off, in a tab or a new pane on that side. A handoff ends your turn, so what else they asked for (another job's job-open) comes before it" },
       which: { type: "string", description: "with job: their words naming that job, when their ask was over another job's terminal" }, as: d.as },
     args: ["task"],
     run: async (p, ctx) => {
@@ -81,17 +85,27 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       if (!task) throw new OpError("task: what to do")
       const own = d.own(name), latest = own ? d.askOf(name) : undefined, ask = withPage(d, latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined)
       const by = tellerOf(ctx, own ? name : "")
-      if (!own) return await handoff(p, ctx, task, ask, by, async () => {})
+      if (!own) return await shown(p, ctx, await handoff(p, ctx, task, ask, by, async () => {}))
       holding(name, ctx, ask?.t ?? Date.now())
-      try { return await handoff(p, ctx, task, ask, by, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }) }
+      try {
+        const r = await shown(p, ctx, await handoff(p, ctx, task, ask, by, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }))
+        if (r.unopened && !r.queued) heldTold(name, { kind: "kept", title: r.title, line: "I couldn't open its terminal: it's in Jobs." })
+        return r
+      }
       finally { release(name) }
     },
-    text: (r) => "queued" in r ? `Kept for later (${r.id}): "${r.title}". ${r.now}: it's sent by itself then, shown waiting in Jobs; nothing for them to retry. End your turn.`
-      : `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
+    text: (r) => (r.queued ? `Kept for later (${r.id}): "${r.title}". ${r.now}: it's sent by itself then, shown waiting in Jobs; nothing for them to retry. End your turn.`
+      : `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`) + (r.opened ? ` Its terminal: ${openedText(r.opened)}.` : r.unopened ? ` Its terminal isn't open: ${r.unopened}` : ""),
     did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
   })
 
-  async function handoff(p: Handoff, ctx: OpCtx, task: string, ask: Moment | undefined, by: string, told: (t: Told) => Promise<void>) {
+  async function shown(p: Handoff, ctx: OpCtx, r: Handed): Promise<Handed> {
+    const to = str(p.open)
+    if (!to) return r
+    try { await openJob(core, ctx, jobOf(r.id), to) } catch (e) { return { ...r, unopened: messageOf(e) } }
+    return { ...r, opened: to }
+  }
+  async function handoff(p: Handoff, ctx: OpCtx, task: string, ask: Moment | undefined, by: string, told: (t: Told) => Promise<void>): Promise<Handed> {
       const sent = ask?.live
       if (sent) throw new OpError(`this ask already went straight to the job ${sent} working on that page (live editing), which does it: end your turn`, 409)
       if (str(p.job)) {
