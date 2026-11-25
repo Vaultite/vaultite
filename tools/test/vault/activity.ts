@@ -8,7 +8,8 @@ export default async ($: VaultTest) => {
   // ---------- Activity: who did what (plugin.onRequest, plugin.onChange), timings ----------
   const { sessionsOf } = await import("../../../plugins/core/activity/reading.ts")
   const { routeOf } = await import("../../../plugins/core/activity/timings.ts")
-  /** A request as server.ts reports it: started, run, ended. */
+  const outOfThisMs = () => { const t = Date.now(); while (Date.now() === t); }
+  /** A request as server.ts reports it: started, run, ended, in no ms of the next one's (a file's clock is finer). */
   async function actHeard(method: string, p: string, body: unknown, client: string | null, agent: string | null = null, at = Date.now()) {
     const [route, qs] = p.split("?")
     const end = app.requestStarted({ t: at, method, route, query: qs ? Object.fromEntries(new URLSearchParams(qs)) : {}, client, agent, command: null,
@@ -16,6 +17,7 @@ export default async ($: VaultTest) => {
     const t = performance.now()
     const r = await api(method, p, body)
     end({ status: r[0], ms: performance.now() - t, body, ...(r[0] >= 400 ? { error: r[1]?.error } : {}) })
+    outOfThisMs()
     return r
   }
   {
