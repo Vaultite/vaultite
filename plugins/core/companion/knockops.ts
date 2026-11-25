@@ -2,9 +2,11 @@ import { z } from "zod"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { actOn, addKnock, duration, expire, type JobNow, type Knock, type KnockAct, makeKnock, mootWhy, over, type Presence, presencesOf, type PresenceState, settleMoot,
-  type TermRow, URGENCIES } from "../../../core/desktop/knocks.ts"
+  stillSettled, type TermRow, URGENCIES } from "../../../core/desktop/knocks.ts"
 import { type Job, terminalOf } from "./jobs.ts"
 import { messageOf } from "./errors.ts"
+import { islandOps } from "./islandops.ts"
+import { islandRows } from "./islandrows.ts"
 import type { Message } from "./rooms.ts"
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
@@ -13,10 +15,10 @@ const MUTE_MS = 12 * 3600_000
 const EVERY_MS = 6000
 const Listed = z.object({ sessions: z.array(z.unknown()).optional(), machines: z.record(z.string(), z.string()).optional(), trouble: z.unknown().optional() })
 const Row = z.object({ id: z.string(), agent: z.string().nullable().optional(), state: z.string().optional(), needs: z.boolean().optional(), name: z.string().optional(),
-  title: z.string().optional(), msg: z.string().optional() })
+  title: z.string().optional(), msg: z.string().optional(), kind: z.string().optional(), machineLabel: z.string().optional(), since: z.number().optional() })
 const Heard = z.object({ act: z.enum(["show", "later", "told", "ignore", "open"]), id: z.unknown().optional(), mute: z.unknown().optional() })
 
-type Deps = { toScreens: (m: object) => void; listening: () => boolean; jobs: () => Job[]; off: () => boolean; hidden: () => boolean }
+type Deps = { toScreens: (m: object) => void; listening: () => boolean; jobs: () => Job[]; seenJobs: (ids: string[]) => void; off: () => boolean; hidden: () => boolean }
 
 export function knockOps(plugin: Plugin, d: Deps) {
   const all = () => plugin.keptNames("knocks/").map((n) => plugin.kept<Knock | null>(n, null)).filter((k): k is Knock => !!k?.id)
@@ -30,6 +32,12 @@ export function knockOps(plugin: Plugin, d: Deps) {
   const local = (from: string) => (self && from.endsWith(`@${self}`) ? from.slice(0, -self.length - 1) : from)
   const named = (k: Knock) => (k.from ? { ...k, from: local(k.from) } : k)
 
+  const others = islandRows(plugin, d.jobs)
+  const settled = () => plugin.kept<Record<string, number>>("presences-settled", {})
+  function putSettled(next: Record<string, number>) {
+    if (JSON.stringify(next) !== JSON.stringify(settled())) plugin.keep("presences-settled", next, { shared: true })
+  }
+
   let rows: TermRow[] = []
   let listedAt = 0, answered = new Set<string>()
   const rested = new Map<string, number>()
@@ -40,9 +48,10 @@ export function knockOps(plugin: Plugin, d: Deps) {
     const now = Date.now(), ks = tidy(now)
     const jobs = d.jobs(), titles = new Map(jobs.map((j) => [local(terminalOf(j)), j.title]))
     const ready = new Set(jobs.filter((j) => j.state === "ready for review").map((j) => local(terminalOf(j))))
-    const none = d.off() || d.hidden()
-    presences = none ? [] : presencesOf(rows, ks.map(named), seen, now, { titles, ready, jobs: new Map(jobs.map((j) => [local(terminalOf(j)), j.id])) })
-    const m = { t: "knocks", knocks: none ? [] : ks.filter((k) => !over(k)), presences }
+    const none = d.off() || d.hidden(), listed = [...rows, ...others.chats()], every = [...listed, ...others.jobs(listed, local)]
+    if (listedAt) putSettled(stillSettled(settled(), every, now))
+    presences = none ? [] : presencesOf(every, ks.map(named), seen, now, { titles, ready, settled: settled(), jobs: new Map(jobs.map((j) => [local(terminalOf(j)), j.id])) })
+    const m = { t: "knocks", knocks: none ? [] : ks.filter((k) => !over(k)), presences, settled: settled() }
     const text = JSON.stringify(m)
     if (text === sent && !force) return
     sent = text
@@ -73,15 +82,16 @@ export function knockOps(plugin: Plugin, d: Deps) {
     if (again) { again = false; return readTerminals(asked) }
   }
   async function read() {
-    const began = Date.now()
+    const began = Date.now(), chats = others.readChats().catch(() => {})
     try {
       const r = await plugin.runOp("terminal.list", { machine: "all" }), listed = Listed.safeParse(r.result).data
-      rows = (listed?.sessions ?? []).flatMap((s) => Row.safeParse(s).data ?? [])
+      rows = await Promise.all((listed?.sessions ?? []).flatMap((s) => { const x = Row.safeParse(s).data; return x ? [others.asking({ ...x, at: x.since })] : [] }))
       answered = new Set([...(listed && !listed.trouble ? [""] : []), ...Object.entries(listed?.machines ?? {}).filter(([, v]) => v === "ok").map(([k]) => k)])
       for (const row of rows) if (row.state !== "working") rested.set(row.id, Math.max(began, rested.get(row.id) ?? 0))
       for (const id of rested.keys()) if (!rows.some((x) => x.id === id)) rested.delete(id)
       listedAt = began
     } catch {}
+    await chats
     tell()
   }
   const timer = setInterval(() => void readTerminals(), EVERY_MS)
@@ -103,6 +113,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
     if (row && row.state !== "working") rested.set(row.id, k.at + 1)
     const before = new Map(all().map((x) => [x.id, x.state])), ks = addKnock(all(), k, isMuted)
     for (const x of ks) if (x.id === k.id || x.state !== before.get(x.id)) put(x)
+    putSettled(Object.fromEntries(Object.entries(settled()).filter(([id]) => id !== local(k.from))))
     tell()
     return named(ks.find((x) => x.id === k.id)!)
   }
@@ -196,6 +207,19 @@ its proof (companion job-show), one without opens its terminal.
     },
   })
 
+  const settle = (from: string) => { for (const x of all()) if (x.from === qualified(from) && !over(x)) put(actOn(x, "open", Date.now())); tell() }
+  islandOps(plugin, {
+    presences: () => presences,
+    read: () => readTerminals(true),
+    settle: (p) => {
+      putSettled({ ...settled(), [p.id]: Date.now() })
+      if (p.knock) act(p.knock, "open")
+      if (p.job) d.seenJobs([p.job])
+      tell()
+    },
+    answered: (p) => settle(p.id),
+  })
+
   return {
     heard(m: Message) {
       const h = Heard.safeParse(m).data
@@ -206,6 +230,6 @@ its proof (companion job-show), one without opens its terminal.
     presences: () => presences,
     knocks: () => all().filter((k) => !over(k)),
     knock,
-    settle: (from: string) => { for (const x of all()) if (x.from === qualified(from) && !over(x)) put(actOn(x, "open", Date.now())); tell() },
+    settle,
   }
 }

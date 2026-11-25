@@ -109,40 +109,66 @@ export function mootWhy(k: Knock, o: { job?: JobNow; session?: SessionNow; liste
 export const settleMoot = (k: Knock, why: string): Knock => ({ ...k, state: "moot", why })
 
 export type PresenceState = "needs you" | "ready" | "working" | "done"
+export type PresenceAsk = { what: string; id?: string }
 export type Presence = { id: string; who: string; tint: string; state: PresenceState; since: number; step?: string; line?: string; knock?: string; urgency?: Urgency; terminal?: string; open?: string
-  job?: string }
-export type TermRow = { id: string; agent?: string | null; state?: string; needs?: boolean; review?: boolean; name?: string; title?: string; machineLabel?: string; msg?: string }
+  job?: string; chat?: string; link?: string; agent?: string; where?: string; ask?: PresenceAsk }
+export type TermRow = { id: string; agent?: string | null; state?: string; needs?: boolean; review?: boolean; name?: string; title?: string; machineLabel?: string; msg?: string
+  source?: "chat" | "job"; at?: number; job?: string; kind?: string; ask?: PresenceAsk }
 export const DONE_MS = 15 * 60_000
 export const PRESENCE_GROUPS: { state: PresenceState; label: string }[] = [
   { state: "needs you", label: "Needs you" }, { state: "ready", label: "Ready for review" }, { state: "working", label: "Working" }, { state: "done", label: "Done" },
 ]
+export const restCounts = (ps: Pick<Presence, "state">[]) => ({ needs: ps.filter((p) => p.state === "needs you").length, working: ps.filter((p) => p.state === "working").length })
+export const atRest = (ps: Pick<Presence, "state">[]) => { const n = restCounts(ps); return n.needs + n.working > 0 }
 const RANKED: Record<PresenceState, number> = { "needs you": 0, ready: 1, working: 2, done: 3 }
+const oneLine = (s: string | undefined) => s?.replace(/\s+/g, " ").trim() ?? ""
 const stateOf = (r: TermRow): PresenceState | null =>
   waitsOnUser(r) ? "needs you" : r.state === "working" ? "working" : hasNews(r) ? "ready" : r.state === "done" || r.state === "error" ? "done" : null
 
-export function presencesOf(rows: TermRow[], knocks: Knock[], seen: Map<string, { state: PresenceState; since: number }>, now: number,
-  { titles = new Map<string, string>(), ready = new Set<string>(), skip = new Set<string>(), jobs = new Map<string, string>() }:
-  { titles?: Map<string, string>; ready?: Set<string>; skip?: Set<string>; jobs?: Map<string, string> } = {}): Presence[] {
-  const out = new Map<string, Presence>()
+type Known = { titles?: Map<string, string>; ready?: Set<string>; skip?: Set<string>; jobs?: Map<string, string>; settled?: Record<string, number> }
+
+function presenceOf(r: TermRow, state: PresenceState, since: number, title?: string): Presence {
+  const p: Presence = { id: r.id, who: title || r.name || r.title || r.agent || "A session", tint: agentTint(r.id.replace(/^\w+:/, "")), state, since }
+  if (!r.source) p.terminal = r.id
+  if (r.source === "chat") p.chat = r.id.replace(/^chat:/, "")
+  if (r.agent) p.agent = r.agent
+  if (r.job) p.job = r.job
+  if (r.machineLabel) p.where = r.machineLabel
+  const step = oneLine(r.msg)
+  if (step) p.step = step
+  if (r.ask && state === "needs you") p.ask = r.ask
+  return p
+}
+
+function knocked(out: Map<string, Presence>, k: Knock) {
+  const p = out.get(k.from), state: PresenceState = k.hold && p?.state !== "needs you" ? "ready" : "needs you"
+  const of: Presence = p ?? { id: k.from || `knock:${k.id}`, who: k.who, tint: agentTint(k.from || k.who), state, since: 0 }
+  if (!p && k.from && !k.from.includes(":")) of.terminal = k.from
+  Object.assign(of, { state, line: k.line, knock: k.id, urgency: k.urgency, since: k.shown ?? k.at })
+  if (k.open) of.open = k.open
+  out.set(of.id, of)
+}
+
+export function presencesOf(rows: TermRow[], knocks: Knock[], seen: Map<string, { state: PresenceState; since: number }>, now: number, o: Known = {}): Presence[] {
+  const out = new Map<string, Presence>(), settled = o.settled ?? {}
   for (const r of rows) {
-    let state = r.agent ? stateOf(r) : null
-    if (!state || skip.has(r.id)) continue
-    if (ready.has(r.id) && state !== "needs you") state = "ready"
-    const was = seen.get(r.id), since = was?.state === state ? was.since : now
+    const said = r.agent ? stateOf(r) : null
+    if (!said || o.skip?.has(r.id)) continue
+    const state = o.ready?.has(r.id) && said !== "needs you" ? "ready" : said
+    const was = seen.get(r.id), since = was?.state === state ? was.since : r.at ?? now
     seen.set(r.id, { state, since })
-    if (state === "done" && now - since > DONE_MS) continue
-    out.set(r.id, { id: r.id, who: titles.get(r.id) || r.name || r.title || r.agent || "A session", tint: agentTint(r.id), state, since, terminal: r.id,
-      ...(r.msg?.trim() ? { step: r.msg.replace(/\s+/g, " ").trim() } : {}) })
+    if ((state === "done" && now - since > DONE_MS) || (settled[r.id] && (state === "done" || state === "ready"))) continue
+    out.set(r.id, presenceOf(r, state, since, o.titles?.get(r.id)))
   }
   for (const id of [...seen.keys()]) if (!rows.some((r) => r.id === id)) seen.delete(id)
-  for (const k of knocks) {
-    if (k.state !== "showing" && k.state !== "told") continue
-    const p = out.get(k.from)
-    const state: PresenceState = k.hold && p?.state !== "needs you" ? "ready" : "needs you"
-    const knocked = { state, line: k.line, knock: k.id, urgency: k.urgency, since: k.shown ?? k.at, ...(k.open ? { open: k.open } : {}) }
-    if (p) Object.assign(p, knocked)
-    else out.set(k.from || `knock:${k.id}`, { id: k.from || `knock:${k.id}`, who: k.who, tint: agentTint(k.from || k.who), ...knocked, ...(k.from && !k.from.includes(":") ? { terminal: k.from } : {}) })
-  }
-  for (const p of out.values()) { const job = p.terminal && jobs.get(p.terminal); if (job) p.job = job }
-  return [...out.values()].sort((a, b) => RANKED[a.state] - RANKED[b.state] || (a.state === "done" ? b.since - a.since : a.since - b.since))
+  for (const k of knocks) if (k.state === "showing" || k.state === "told") knocked(out, k)
+  for (const p of out.values()) { const job = p.terminal && o.jobs?.get(p.terminal); if (job) p.job = job }
+  return byNeed([...out.values()])
+}
+export const byNeed = (ps: Presence[]) => ps.sort((a, b) => RANKED[a.state] - RANKED[b.state] || (a.state === "done" ? b.since - a.since : a.since - b.since))
+
+const SETTLED_MS = 7 * 86_400_000
+export function stillSettled(settled: Record<string, number>, rows: TermRow[], now: number) {
+  const back = new Set(rows.flatMap((r) => (r.state === "working" || waitsOnUser(r) ? [r.id] : [])))
+  return Object.fromEntries(Object.entries(settled).filter(([id, at]) => !back.has(id) && now - at < SETTLED_MS))
 }

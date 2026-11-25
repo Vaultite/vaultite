@@ -12,7 +12,7 @@ import { jobNews } from "./helperlogic.ts"
 import { captureHeard, captureHost, recordFor, recordingNow, regionAct, regionMoved, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { keepTimeline, timelineHost, timelineRefollow } from "./timeline.ts"
-import { islandNow, islandUnder, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
+import { cloudHeard, islandNow, islandUnder, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
 import { closePanel, drawingActs, dropDrawings, onPanel, overlayActs, panelBounds, showDrawing, showOverlay, watchLayers } from "./overlay.ts"
 import { displayShot as shootDisplay, onScreenEvent, type Req, screenAsk as askHelper, startScreen, stopScreen } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
@@ -22,7 +22,7 @@ import { offerHere, offerSaid, stopTakeover, takeoverClick, takeoverDriving, tak
 import { type Needs, offerHeard, offerHost, offerScene, offerTimeline, OFFER_UP_MS } from "./timelineoffer.ts"
 import { asked, LIVE, QUIET, screenAsk, screenAsked, screenDo, stubs, switched } from "./helperask.ts"
 import { fnEvent, FOCUS, OK, SCREEN_EVENT, type ScreenEvent, WINDOW } from "./screenwire.ts"
-import { based, basedAt, BUSY, defaults, dictating, drawWith, front, frontHappened, frontIs, hidden, hint, hinted, host, hostIs, notice, op, OpFailed, DONE, prefs, prefsAre, stopFor, type HelperHost } from "./helperbase.ts"
+import { based, basedAt, BUSY, defaults, dictating, drawWith, front, frontHappened, frontIs, hidden, hint, hinted, host, hostIs, notice, op, DONE, prefs, prefsAre, stopFor, type HelperHost } from "./helperbase.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("helper")
@@ -33,14 +33,15 @@ import { type Heard, SAID } from "./homewire.ts"
 import { COMPANION_SETTINGS, DICTATION_SETTINGS, prefsOf, SCREEN_SETTINGS } from "./helperprefs.ts"
 import type { z } from "zod"
 import { axThings, clicked, excluded, findIn, inputHeard, nearAt, nearPoint, lastNear, openedUntil, openOn, places, placeTold, pointedAt, teachThings, walkPlace } from "./helperat.ts"
-import { badge, badged, followInbox, hideTray, jobNotice, login, menuHost, menuItems, mutedUntil, openIn, openPresence, panelMenu, showTray } from "./helpermenu.ts"
+import { badge, badged, followInbox, hideTray, jobNotice, login, menuHost, menuItems, mutedUntil, openIn, panelMenu, showTray } from "./helpermenu.ts"
+import { answerPresence, openPresence, settlePresence, tell } from "./helpersessions.ts"
 import { drawingCame, drawn, drawnIs, marks, offerAnswered, paceDrawing, penHeard, realtimePaused, sayHere, speaker, spoken, stopVoice, voiceFront, voiceHeard, voiceHeardAgent, voiceHost, voiceSetting, waited } from "./helpervoice.ts"
 import { followHeard, landAsks, learnHost } from "./helperlearn.ts"
 import { act, freeBy, freeTick, micSent, micTold, roamIn, session, sessionHost, starting, stopListening } from "./helpersession.ts"
 import { cutWords, keepCut, takeCut } from "./helpercut.ts"
 import { answerArrived, answerBox, cutShort, talkedAt, askedAloud, askFrom, saidInBoxIs, captured, closeSummon, cue, endExchange, exchange, failed, heldClick, holdAppear, inkHeard, inkOff, missed, moveOn, openAnswer, presses, saidInBox, sendSummon, settle, startSummon, summon, talkHeard, talkHost, talkNow } from "./helpertalk.ts"
 import { boxAgain, followCalls, keptQuiet, notCall, playQuiet, quietForCall, quietHeld, quietHeldIs, quietHost, replaying, replayingIs, stopFromBox, unheard } from "./helperquiet.ts"
-import { chatChanged, chatOf, openChat } from "./helperchat.ts"
+import { chatChanged, chatOf, companionRow, openChat } from "./helperchat.ts"
 import { chordHeard, fnHeard, followKeys, listen, modHeard } from "./helperkeys.ts"
 import { draw, glide, lastScene, lastSceneIs, ridingAgain, ringFollows } from "./helpercursor.ts"
 import { voiceCall } from "./helperscreen.ts"
@@ -80,7 +81,6 @@ function takeLock(): Promise<net.Server | null> {
   }))
 }
 
-const notSent = (e: Error) => (e instanceof OpFailed && e.status === 404 ? "That session has ended" : "Couldn't reach that session")
 export async function startHelper(h: HelperHost) {
   if (host) return true
   lock = await takeLock()
@@ -126,8 +126,9 @@ export async function startHelper(h: HelperHost) {
     base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: screenAsk, cue: (n) => cue(n),
     walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
     speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
-    open: openPresence, hint, view: (to) => void openIn(to), muted: () => mutedUntil > Date.now(),
-    send: (id, text) => op("terminal.send", { id, text }, DONE).then(() => null, notSent), ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
+    open: openPresence, answer: answerPresence, settle: settlePresence, companion: companionRow, openCompanion: () => openChat(live.state.name, screen.getCursorScreenPoint()), hint, view: (to) => void openIn(to), muted: () => mutedUntil > Date.now(),
+    send: tell, ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
+  if (h.cloud) onFree(h.cloud(cloudHeard))
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu, play: playQuiet, stop: stopFromBox, notCall,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
     closed: (_name, why) => { if (session?.into === "panel") stopFor(session.sink, true); if (why === "esc") endExchange(); else moveOn(); draw() } })

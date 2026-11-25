@@ -2,6 +2,7 @@ import { Notification, shell, type WebContents } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { privateApp } from "../core/privateapps.ts"
+import type { CloudSession } from "./cloud.ts"
 import type { DictationSink } from "./dictation.ts"
 import type { HomeWindow } from "./cursorhandoff.ts"
 import type { HeldClick, Point } from "./helperlogic.ts"
@@ -37,6 +38,7 @@ export type HelperHost = {
   quit: () => void
   /** The tray's icon (a template image). */
   icon: string
+  cloud?: (heard: (list: CloudSession[]) => void) => () => void
 }
 export let host: HelperHost | null = null
 /** The host's dictation (kept after a stop: what's still in flight there asks it). */

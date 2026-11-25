@@ -35,6 +35,12 @@ export function chatOf(name: string): PanelData | null {
   const play = saying ? "stop" as const : quietHeld?.name === name && items.some((i) => i.kind === "say" && i.t >= quietHeld!.asked) ? "play" as const : undefined
   return { name, tint: a.tint, items, ...(words ? { words } : {}), ...(busy ? { busy } : {}), ...(hint ? { hint } : {}), ...(play ? { play } : {}), ...(quiet ? { quiet } : {}) }
 }
+export function companionRow() {
+  const { name, mode, agents } = live.state, a = agents.get(name)
+  if (!name || mode === "off") return null
+  const talk = prefs.talk.length ? `Hold ${keysSaid(prefs.talk.slice(0, 1))} to talk` : "Open its conversation"
+  return { name, tint: a?.tint ?? "orange", doing: a && BUSY.has(a.state) ? "Thinking…" : talk }
+}
 /** Its conversation open by its cursor (`at`, the screen's), taking the keyboard: its bubble goes into it, all of it seen;
  *  `travels`: summoned, it goes with the companion. */
 export function openChat(name: string, at: Point, travels = false) {

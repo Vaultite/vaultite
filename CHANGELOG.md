@@ -10,6 +10,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Antigravity there, and its tab, row, state and Agents panel say Antigravity. Antigravity, Gemini, Copilot, Amp, Aider and
   other agents' programs are known by name and logo without a plugin, and a reply to an earlier agent's session is never
   typed to the one that runs there since.
+- Companion: agents by the notch rest as tiny dots with the count inside, amber for those that need you and muted for
+  those at work, nothing otherwise. A hover or a click lists every agent: terminals, chats, jobs and cloud sessions, with
+  Approve and Decline on what one asks, Settle on what's ready or done, and the companion itself. Opening one goes to your
+  workspace named Code, when you have one.
 - Coding agents: a plan limits block reads only the plan's limits (`GET /api/<agent>/limits`), not a month of usage, so
   it shows sooner, and a plugin whose sessions aren't read here (a chat app's plan) can draw one.
 - Passwords: your KeePass file opens only in a process of its own, which locking ends with every key it held, and it locks

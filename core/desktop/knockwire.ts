@@ -10,4 +10,5 @@ export const KNOCK = z.looseObject({
 export const PRESENCE = z.looseObject({
   id: z.string(), who: z.string(), tint: z.string(), state: z.enum(["needs you", "ready", "working", "done"]), since: z.number(), step: opt(z.string()), line: opt(z.string()),
   knock: opt(z.string()), urgency: opt(z.enum(URGENCIES)), terminal: opt(z.string()), open: opt(z.string()), job: opt(z.string()),
+  chat: opt(z.string()), link: opt(z.string()), agent: opt(z.string()), where: opt(z.string()), ask: opt(z.object({ what: z.string(), id: opt(z.string()) })),
 }) satisfies z.ZodType<Presence>

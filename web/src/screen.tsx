@@ -20,7 +20,8 @@ import { Chat, type ChatItem } from "@/components/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
 import { type Box, HOLD, tellHolds } from "./screendraw/hold"
 import { Region, REGION_STYLE } from "./screenregion"
-import { Island, ISLAND_STYLE } from "./screenisland"
+import { Island } from "./screenisland"
+import { ISLAND_STYLE } from "./island/style"
 import type { RegionScene } from "../../core/desktop/clips"
 
 type Point = { x: number; y: number }

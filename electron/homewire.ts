@@ -38,7 +38,7 @@ const LIVE_MESSAGE = z.discriminatedUnion("t", [
   message("find", { id: ID, text: z.unknown().optional().transform((v) => String(v ?? "")) }),
   message("things", { id: ID }),
   message("inputs", { on: z.unknown().optional().transform((v) => v === true) }),
-  message("knocks", { knocks: listOf(KNOCK).catch([]), presences: listOf(PRESENCE).catch([]) }),
+  message("knocks", { knocks: listOf(KNOCK).catch([]), presences: listOf(PRESENCE).catch([]), settled: z.record(z.string(), z.number()).catch({}) }),
   message("record", { job: z.string() }),
   message("jobs", { jobs: listOf(HELPER_JOB) }),
 ])
@@ -58,5 +58,6 @@ export const SAID = z.object({ said: z.unknown().optional() }).catch({})
 export const ADDED = z.object({ added: z.object({ word: z.string(), said: z.string().optional() }).nullish().catch(null) }).catch({ added: null })
 const DECISION = z.object({ question: z.string(), from: z.string().nullable(), created: z.string().nullable(), blocking: FLAG })
 export const DECISIONS = z.object({ decisions: listOf(DECISION).catch([]) }).catch({ decisions: [] })
+export const WORKSPACES = z.object({ workspaces: z.array(z.object({ name: z.string().nullish().catch(null) }).nullable().catch(null)).catch([]), window: z.number().nullish().catch(null) }).catch({ workspaces: [] })
 export const HOLD = z.object({ hold: z.object({ until: z.string() }).nullish().catch(null) }).catch({ hold: null })
 export const REALTIME_KEY = z.object({ url: WORDS, key: WORDS }).catch({})

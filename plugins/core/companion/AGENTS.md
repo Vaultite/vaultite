@@ -224,9 +224,11 @@ above that), act, run it again, and never end your turn.
   (`--urgency low|normal|high`). The helper brings one up by the notch at a pause (never while you speak or they talk),
   waits a moment for "not now" (a job's ready knock: up to 15 s, held while the pointer is on it or nobody is at the
   Mac), then folds into the island: by design, never a bug to report; a high one is said in your voice (not while the
-  user muted: the menu bar's Mute for an hour is `inbox hold`). At rest the island by the notch is one count (orange
-  while one needs them; a ready job is calm; the setting `island`): a hover lists needs you, ready for review, working
-  and done, each with its action (Answer, Show me).
+  user muted: the menu bar's Mute for an hour is `inbox hold`). At rest the island by the notch is a dot or two, a count
+  in each (amber: how many need them; muted: how many work; none of either, nothing; the setting `island`): a hover or a
+  click lists needs you, ready for review, working and done, terminals, chats, jobs and cloud sessions alike, each with
+  its action (a permission's Approve and Decline, theirs alone; Answer, Show me, Settle). A row opens its session, in the
+  workspace they named Code when they have one.
 - Decisions: the Inbox knocks "Three decisions waiting" (who: Inbox) when agents ask the user things (high when one
   waits on them). When they say to go through them ("what are they", "go on", "read them"), `vau inbox decisions` lists
   them, the waiting ones first: take one at a time, its question and options in a few words, with what each causes (`say --ask`, "Which

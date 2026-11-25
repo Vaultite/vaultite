@@ -59,7 +59,7 @@ try {
   const line = await onScreen(await box(".island-card [data-island-knock]"))
   await point(line)
   check("over a knock's card it takes the pointer", await taking(true))
-  await helper((h, id) => h.island().knocks.find((x) => x.id === id) && h.knocks({ knocks: [], presences: h.island().presences }), k.id)
+  await helper((h, a) => h.island().knocks.find((x) => x.id === a.id) && h.knocks({ knocks: [], presences: a.sessions }), { id: k.id, sessions })
   check("its card gone under the still pointer: the window lets it through", await until(() => page.evaluate(() => !document.querySelector(".island-card")), 4000) && await taking(false, 2000), await takes())
 
   // Its page reloaded while it took the pointer: the new page has heard nothing, the window lets go all the same.

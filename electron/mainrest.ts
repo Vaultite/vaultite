@@ -18,6 +18,7 @@ import { buildMenu, helperPrefs, nameOf, save, setHelperPrefs, updates } from ".
 import { desktopEvent, handOver, helper, kept, ownPids, popouts, rootOf, setHelper, wins } from "./servers.ts"
 import { beginQuit, lastFocused, openHome, quitting } from "./vaultwindow.ts"
 import { remoteWins } from "./remotewin.ts"
+import { onCloud } from "./cloudheard.ts"
 import { pathDirs } from "./setupwin.ts"
 import { mainLog } from "./mainlog.ts"
 import { shellReady } from "./shellready.ts"
@@ -92,6 +93,7 @@ const helperHost = async (): Promise<HelperHost> => ({
   event: (name, data) => { for (const w of [...wins.values(), ...kept.values()]) { const m = { type: "desktop:event", name, data }; if (w.server?.connected) w.server.send(m); else w.link?.send(m) } },
   prefs: () => helperPrefs, setPrefs: (x) => { setHelperPrefs({ ...helperPrefs, ...x }); save() },
   icon: path.join(ROOT, "electron", "tray", "stoneTemplate.png"),
+  cloud: onCloud,
 })
 
 export async function startRest(withHelper: boolean) {

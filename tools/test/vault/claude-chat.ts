@@ -264,6 +264,21 @@ export default async ($: VaultTest) => {
       ask.title === "Claude wants to run rm -rf build", ask)
 
     // Always allow from the chat tab: its suggested rule goes with it.
+    {
+      await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+      delete sdk.runs[0].permission
+      await api("POST", "ops/claude-code.chat-send", { id, text: "By the notch, ask permission" })
+      await waitFor(() => host.list().find((s) => s.id === id)?.state === "waiting", 3000, 50)
+      const [, k] = await api("POST", "ops/companion.knocks", {}), p = k.presences.find((x: Any) => x.chat === id)
+      check("chat: by the notch it needs you, with what it asks", p?.state === "needs you" && p.ask?.what === "Claude wants to run rm -rf build", k.presences)
+      const answer = (o: Any, http: Any) => api("POST", "ops/companion.presence-answer", { id: p.id, answer: "approve", what: p.ask.what, ...o }, http)
+      const [agent] = await answer({}, as("cli", "claude-code")), [other] = await answer({ what: "Claude wants to run ls" }, asApp)
+      check("chat: approved there only by you, and only what its card showed", agent === 403 && other === 409 && !sdk.runs[0].permission, [agent, other])
+      const [ok] = await answer({}, asApp)
+      await waitFor(() => sdk.runs[0].permission, 3000, 50)
+      check("chat: Approve by the notch allows it in the session", ok === 200 && sdk.runs[0].permission?.behavior === "allow", [ok, sdk.runs[0].permission])
+      await api("PATCH", "config/plugin/companion", { mode: null })
+    }
     await api("POST", "ops/claude-code.chat-send", { id, text: "Again, ask permission" })
     await waitFor(() => host.list().find((s) => s.id === id)?.state === "waiting", 3000, 50)
     ;[st] = await api("POST", "ops/claude-code.chat-answer", { id, allow: true, always: true }, asApp)

@@ -12,11 +12,12 @@ import type { WalkScene } from "../core/desktop/walks.ts"
 
 /** What the page draws: the presences, the knock showing (`left`: ms of its grace left), a QA walk or lesson on, where it
  *  sits in its window. */
-export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }
-/** What the user does there: opens a session (a presence's id), puts a knock off, closes its card (`dismiss`: it rests in
- *  the island), ignores it (`mute`: its session), a walk's buttons (scratch, done, cancel), All agents (`agents`: the view to open). */
-export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; dismiss: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void
-  agents: (to: string) => void; hover?: (on: boolean) => void }
+export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; companion: Companion | null
+  answering: Record<string, "approve" | "deny">
+  spot: Spot; left: number; width: number }
+export type Companion = { name: string; tint: string; doing: string }
+export type IslandActs = { open: (id: string) => void; approve: (id: string) => void; deny: (id: string) => void; settle: (id: string) => void; later: (knock: string) => void; dismiss: (knock: string) => void
+  ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void; companion: () => void; agents: (to: string) => void; hover?: (on: boolean) => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 /** Its window's size: room for the knock's line and, below the bar, the list a hover opens (about 9 rows with their
@@ -33,6 +34,7 @@ let sent = ""
 let faces: (Rect & { id: string })[] = []
 
 /** What the user does on it, heard once. */
+const ACT = z.object({ act: z.enum(["open", "approve", "deny", "settle", "later", "dismiss", "ignore", "walk", "companion", "agents"]), id: z.string(), mute: z.boolean().optional().catch(undefined) })
 const FACE = z.looseObject({ id: z.string(), x: z.number(), y: z.number(), width: z.number(), height: z.number() })
 export function islandActs(a: IslandActs) {
   if (acts) { acts = a; return }
@@ -44,13 +46,8 @@ export function islandActs(a: IslandActs) {
     faces = list.flatMap((f) => FACE.safeParse(f).data ?? [])
   })
   listen(ipcMain, "island:act", (e, m: { act?: unknown; id?: unknown; mute?: unknown }) => {
-    if (!mine(e) || typeof m?.id !== "string") return
-    if (m.act === "open") acts?.open(m.id)
-    else if (m.act === "later") acts?.later(m.id)
-    else if (m.act === "dismiss") acts?.dismiss(m.id)
-    else if (m.act === "ignore") acts?.ignore(m.id, m.mute === true)
-    else if (m.act === "walk") acts?.walk(m.id)
-    else if (m.act === "agents") acts?.agents(m.id)
+    const said = mine(e) ? ACT.safeParse(m).data : undefined
+    if (said) acts?.[said.act](said.id, said.mute === true)
   })
 }
 

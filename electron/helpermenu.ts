@@ -1,7 +1,6 @@
 import { app, Menu, nativeImage, Notification, screen, Tray, type BrowserWindow } from "electron"
 import path from "node:path"
 import { messageOf } from "./browser/messageof.ts"
-import type { Presence } from "../core/desktop/knocks.ts"
 import { countText } from "../core/desktop/walks.ts"
 import { badgeOf, cursorBitmap, dottedBitmap, type HelperJob, jobNote, menuNow, type Point, TINT_RGB } from "./helperlogic.ts"
 import { openFromMenu, presencesNow } from "./knockhelper.ts"
@@ -11,6 +10,7 @@ import { icon } from "./menu.ts"
 import { endWalk, startWalk, walkOn, walkScene } from "./walk.ts"
 import { asked, QUIET } from "./helperask.ts"
 import { DONE, hint, host, op, OpFailed, prefs } from "./helperbase.ts"
+import { whyNot } from "./helpersessions.ts"
 import { DECISIONS, HOLD } from "./homewire.ts"
 import { z } from "zod"
 import { live } from "./helperlive.ts"
@@ -98,37 +98,6 @@ async function openJob(j: HelperJob) {
   host.openHome()
   const why = await whyNot(() => op("companion.job-open", { id: j.id }, DONE))
   if (why && await whyNot(() => op("ui.open", { path: j.link }, DONE))) hint(why)
-}
-export async function openPresence(p: Presence): Promise<string | null> {
-  if (!host) return null
-  host.openHome()
-  const show = p.open?.startsWith("job:") ? p.open.slice(4) : ""
-  const shown = show ? await whyNot(() => op("companion.job-show", { id: show, displays: screen.getAllDisplays().map((d) => d.bounds) }, DONE)) : "nothing to show"
-  if (!shown) return null
-  if (p.job) {
-    const why = await whyNot(() => op("companion.job-open", { id: p.job }, DONE))
-    if (!why || !p.terminal) return why
-  }
-  if (p.terminal) return openTerminal(p.terminal, p.who)
-  if (p.open && !show) return whyNot(() => op("ui.open", { path: p.open }, DONE))
-  return show ? shown : null
-}
-async function openTerminal(id: string, who: string) {
-  const t = await answerOf(() => op("terminal.get", { id }, TERMINAL))
-  if ("why" in t) return /no terminal/.test(t.why) ? `${who} has ended` : t.why
-  if (t.ok.ended || t.ok.id !== id.replace(/@.*$/, "")) return `${who} has ended`
-  return whyNot(() => op("ui.open", { path: `view:terminal/${id}` }, DONE))
-}
-const TERMINAL = z.looseObject({ id: z.string(), ended: z.boolean().optional() })
-const whyNot = async <T>(run: () => Promise<T>) => { const r = await answerOf(run); return "why" in r ? r.why : null }
-async function answerOf<T>(run: () => Promise<T>): Promise<{ ok: T } | { why: string }> {
-  for (let i = 0; ; i++) {
-    try { return { ok: await run() } } catch (e) {
-      const failed = e instanceof OpFailed ? e : null, waiting = !failed || /no app window/.test(failed.why) || failed.status >= 500
-      if (!waiting || i >= 19) return { why: failed?.why ? failed.why.replace(/ \(.*\)$/, "") : "Vaultite didn't answer" }
-      await new Promise((r) => setTimeout(r, 500))
-    }
-  }
 }
 /** A job ended or needs them: a notification, whose click opens it; what it waits on, its buttons answer there. */
 export function jobNotice(j: HelperJob) {

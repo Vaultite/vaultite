@@ -7,6 +7,7 @@ import { z } from "zod"
 import { strings } from "../core/values.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { hostOfUrl, siteOf } from "./webwire.ts"
+import { tellCloud } from "./cloudheard.ts"
 import { askGitHub } from "./cloudgithub.ts"
 import { dueAt } from "./clouddue.ts"
 
@@ -187,7 +188,9 @@ export function cloudHandlers(host: CloudHost) {
   })
   const tellAll = (before: string) => {
     const after = state()
-    if (JSON.stringify(after) !== before) for (const w of windows) host.tell(w, { type: "cloud", ...after })
+    if (JSON.stringify(after) === before) return
+    for (const w of windows) host.tell(w, { type: "cloud", ...after })
+    tellCloud(after.sessions)
   }
 
   const news = (s: CloudSession, kind: "done" | "waiting", title: string, account: CloudAccount) => {
@@ -200,7 +203,7 @@ export function cloudHandlers(host: CloudHost) {
   async function read() {
     clearTimeout(timer)
     for (const w of windows) if (w.isDestroyed()) windows.delete(w)
-    if (!windows.size) return
+    if (!windows.size) return tellCloud([])
     if (reading) return void (again = true)
     reading = true
     try {

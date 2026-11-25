@@ -1,9 +1,11 @@
 // The helper's side of knocks (core/desktop/knocks.ts): each comes up at a pause it sees (no one talking, the user
 // still and at this Mac), waits its grace (a ready one's 15 s hold) for "not now", then is told; island.ts draws it.
 import { powerMonitor, screen } from "electron"
-import { actOn, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../core/desktop/knocks.ts"
+import { actOn, atRest, byNeed, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../core/desktop/knocks.ts"
 import { listen } from "./helperscope.ts"
-import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
+import { type Companion, islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
+import type { CloudSession } from "./cloud.ts"
+import { cloudPresences } from "./islandcloud.ts"
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
 import type { WalkScene } from "../core/desktop/walks.ts"
 import { agentTint } from "../core/agenttint.ts"
@@ -24,8 +26,12 @@ export type KnockHost = {
   speak: (text: string) => void
   /** Open a presence's session in Vaultite (its terminal), or what its knock names: null once it opened, else why not. */
   open: (p: Presence) => Promise<string | null>
-  /** Type words into a session's terminal and press Enter: null once it went, else why not, for the user. */
-  send: (terminal: string, text: string) => Promise<string | null>
+  /** Type words into a session's terminal and press Enter, or send them to its chat: null once it went, else why not, for the user. */
+  send: (p: Presence, text: string) => Promise<string | null>
+  answer: (p: Presence, yes: boolean) => Promise<string | null>
+  settle: (p: Presence) => Promise<string | null>
+  companion: () => Companion | null
+  openCompanion: () => void
   /** A word by the pointer, a moment. */
   hint: (text: string) => void
   /** How long the user's been still (ms): a scripted copy stands one in. */
@@ -40,7 +46,9 @@ export type KnockHost = {
 
 let host: KnockHost | null = null
 let knocks: Knock[] = []
+let served: Presence[] = [], cloud: CloudSession[] = [], settled: Record<string, number> = {}
 let presences: Presence[] = []
+const answering = new Map<string, "approve" | "deny">()
 let timer: ReturnType<typeof setTimeout> | null = null
 /** What the island is placed by: each display's notch (asked once a display change), other apps' islands (every few s). */
 let notches: { frame: Rect; notch?: Rect }[] | null = null
@@ -61,6 +69,10 @@ export function knockHost(h: KnockHost) {
       const p = presences.find((x) => x.id === id || x.knock === id)
       if (p) openIt(p)
     },
+    approve: (id) => answer(id, true),
+    deny: (id) => answer(id, false),
+    settle,
+    companion: () => host?.openCompanion(),
     later: (id) => act(id, "later"),
     // (as if its time ran out: told, its presence still in the island; dismissing isn't answering)
     dismiss: (id) => { if (knocks.find((x) => x.id === id)?.state === "showing") act(id, "told") },
@@ -80,7 +92,8 @@ export function knockHost(h: KnockHost) {
 export function stopKnocks() {
   if (timer) clearTimeout(timer)
   timer = null
-  knocks = []; presences = []; walk = null; walkSaid = ""
+  knocks = []; served = []; cloud = []; settled = {}; presences = []; walk = null; walkSaid = ""
+  answering.clear()
   showIsland(null, null, null)
 }
 
@@ -93,15 +106,47 @@ export function walkShown(w: WalkScene | null) {
 }
 
 /** The server's knocks and presences, as it sends them on each change. */
-export function knocksHeard(m: { knocks: Knock[]; presences: Presence[] }) {
+export function knocksHeard(m: { knocks: Knock[]; presences: Presence[]; settled?: Record<string, number> }) {
   const mine = new Map(knocks.map((k) => [k.id, k]))
   knocks = m.knocks.map((k) => {
     // (what this helper did a moment ago, the server not having said it back yet)
     const had = mine.get(k.id)
     return had && had.state === "showing" && (k.state === "waiting" || k.state === "showing") ? had : k
   })
-  presences = m.presences
+  served = m.presences
+  settled = m.settled ?? settled
+  gather()
+}
+export function cloudHeard(list: CloudSession[]) {
+  cloud = list
+  gather()
+}
+function gather() {
+  presences = byNeed([...served, ...cloudPresences(cloud, served, settled, Date.now())])
+  for (const id of answering.keys()) if (!presences.some((p) => p.id === id && p.ask)) answering.delete(id)
   tick()
+}
+
+function answer(id: string, yes: boolean) {
+  const h = host, p = presences.find((x) => x.id === id)
+  if (!h || !p?.ask || answering.has(id)) return
+  answering.set(id, yes ? "approve" : "deny")
+  tick()
+  void h.answer(p, yes).then((why) => {
+    answering.delete(id)
+    if (why) h.hint(why)
+    tick()
+  })
+}
+
+function settle(id: string) {
+  const h = host, p = presences.find((x) => x.id === id)
+  if (!h || !p) return
+  const drop = (x: Presence) => x.id !== id
+  served = served.filter(drop)
+  settled = Object.assign({}, settled, { [id]: Date.now() })
+  gather()
+  void h.settle(p).then((why) => { if (why) h.hint(why) })
 }
 
 function act(id: string, what: KnockAct, mute = false) {
@@ -134,14 +179,14 @@ function tick() {
     return
   }
   const showing = k?.state === "showing" ? k : null
-  // (nobody at the Mac a while: the presences go till they're back; a walk or lesson stays; done ones never show at rest)
   const away = !showing && stillNow() > AWAY_MS
-  const live = !!walk || (!away && (presences.some((p) => p.state !== "done") || !!showing))
+  const live = !!walk || !!showing || (!away && (atRest(presences) || (!!hovering && presences.length > 0)))
   if (live) void place()
   const hold = showing ? holdOf(showing) : 0
   const left = showing ? (hovering ? hold - (hovering - (showing.shown ?? hovering)) : hold - (now - (showing.shown ?? now))) : 0
   const tint = showing ? presences.find((p) => p.knock === showing.id)?.tint ?? agentTint(showing.from || showing.who) : ""
-  showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null, walk } : null, spot)
+  showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null, walk,
+    companion: host.companion(), answering: Object.fromEntries(answering) } : null, spot)
   // (quick while one shows, its grace counting; else at a walk while any wait or show)
   const waiting = knocks.some((x) => !over(x) && x.state !== "told")
   if (showing || waiting || live || presences.length) timer = setTimeout(tick, showing ? 200 : 1000)
@@ -184,9 +229,9 @@ export function knockSaid(text: string) {
  *  ask of the companion's. */
 export function toPresence(text: string, at: { x: number; y: number }) {
   const id = presenceAt(at), p = id ? presences.find((x) => x.id === id) : null
-  if (!host || !p?.terminal || !text.trim()) return false
+  if (!host || !(p?.terminal || p?.chat) || !text.trim()) return false
   const h = host
-  void h.send(p.terminal, text.trim()).then((why) => {
+  void h.send(p, text.trim()).then((why) => {
     h.hint(why ?? `Sent to ${p.who}`)
     if (!why && p.knock) act(p.knock, "open")
   })
@@ -212,9 +257,9 @@ function openIt(p: Presence) {
   void h.open(p).then((why) => {
     if (!why) return
     h.hint(why)
-    if (why.endsWith("ended")) { presences = presences.filter((x) => x.id !== p.id); tick() }
+    if (why.endsWith("ended")) { served = served.filter((x) => x.id !== p.id); gather() }
   })
 }
 
 /** What a scripted copy's island shows (web/qa/helper.mjs). */
-export const islandNow = (at?: { x: number; y: number }) => ({ knocks, presences, walk, spot, showing: knocks.find((k) => k.state === "showing")?.id ?? null, ...(at ? { at: presenceAt(at) } : {}) })
+export const islandNow = (at?: { x: number; y: number }) => ({ knocks, presences, settled, walk, spot, showing: knocks.find((k) => k.state === "showing")?.id ?? null, ...(at ? { at: presenceAt(at) } : {}) })

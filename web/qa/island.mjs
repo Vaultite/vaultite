@@ -1,5 +1,5 @@
 // The island by the notch: a session's knock comes up beside the notch, rests as a mark, and a hover lists sessions.
-// Needs the desktop app, the screen helper stood in for; WRITES only the throwaway vault.
+// Needs the desktop app (electron/knockhelper.ts, electron/helpersessions.ts), the screen helper stood in for; WRITES only the throwaway vault.
 //   node web/qa/island.mjs <vault copy> [png]
 // Paths: electron/island.ts
 import { _electron } from "playwright-core"
@@ -44,7 +44,7 @@ check("…right of the notch, joined to it (its window tucked under it), at the 
 check("…with Answer and a close, and no countdown", came?.close && came.answer && !came.countdown, came)
 check("…below the bar, as the status items leave its line no room beside the notch", came?.card)
 if (PNG) { await wait(400); fs.writeFileSync(PNG, (await island.screenshot({ omitBackground: true }))) }
-check("its time over, it's told: the island rests as one orange mark counting who needs them, no faces or spinners", await until(() => helper((h) => h.island().knocks.find((x) => x.state === "told")), 6000) &&
+check("its time over, it's told: the island rests as one amber dot counting who needs them, no faces or spinners", await until(() => helper((h) => h.island().knocks.find((x) => x.state === "told")), 6000) &&
   await until(() => island.evaluate(() => { const m = document.querySelector("[data-island-mark]")
     return m?.dataset.islandMark === "needs you" && m.dataset.count === "1" && !document.querySelector("[data-island-knock]") && !document.querySelector(".island-spin, .island-ping") }), 4000))
 if (PNG) { await wait(600); fs.writeFileSync(PNG.replace(/\.png$/, "-rest.png"), (await island.screenshot({ omitBackground: true }))) }
@@ -108,13 +108,16 @@ const mixed = [{ id: "qa-n", who: "Lighthouse migration", tint: "teal", state: "
   { id: "qa-w1", who: "Inbox decisions", tint: "green", state: "working", since: Date.now() - 720_000, step: "Running npm test" },
   { id: "qa-w2", who: "Kitty images", tint: "pink", state: "working", since: Date.now() - 60_000 },
   { id: "qa-d", who: "Release notes", tint: "blue", state: "done", since: Date.now() - 60_000 }]
-const restOf = () => island.evaluate(() => { const m = document.querySelector("[data-island-mark]"); return m && { state: m.dataset.islandMark, count: m.dataset.count, dot: !!m.querySelector("[data-island-ready]") } })
+const restOf = () => island.evaluate(() => [...document.querySelectorAll("[data-island-dot]")].map((d) => `${d.dataset.islandDot}:${d.textContent}`).join())
+const rests = (dots) => until(async () => (await restOf()) === dots, 4000)
 await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed.slice(1))
-check("ready and working at rest: white, counting who works, a dot for the ready one", await until(async () => { const r = await restOf(); return r?.state === "working" && r.count === "2" && r.dot ? r : null }, 4000), await restOf())
-await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed.slice(4))
-check("only done: nothing shows at rest", await until(async () => !(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.isVisible())), 4000))
+check("ready and working at rest: one muted dot, counting who works", await rests("working:2"), await restOf())
+for (const [what, list] of [["ready and done", [mixed[1], mixed[4]]], ["only done", mixed.slice(4)]]) {
+  await helper((h, list) => h.knocks({ knocks: [], presences: list }), list)
+  check(`${what}: nothing shows at rest`, await until(async () => !(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.isVisible())), 4000))
+}
 await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed)
-check("one needs them: the mark is orange, counting one", await until(async () => { const r = await restOf(); return r?.state === "needs you" && r.count === "1" ? r : null }, 4000), await restOf())
+check("one needs them: an amber dot counting one, beside the muted one", await rests("needs:1,working:2"), await restOf())
 if (PNG) { await wait(700); fs.writeFileSync(PNG.replace(/\.png$/, "-mark.png"), await island.screenshot({ omitBackground: true })) }
 await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
 const listed = await until(() => island.evaluate(() => { const rows = [...document.querySelectorAll("[data-island-row]")]; if (!rows.length) return null
@@ -124,6 +127,17 @@ check("a hover lists needs you, ready, working, the done folded, as the Agents p
   listed?.groups.join("|") === "Needs you · 1|Ready for review · 1|Working · 2" && listed.rows.join() === "qa-n:Answer,qa-r:Show me,qa-w1:,qa-w2:" && listed.done === "1 done›" && listed.agents, listed)
 check("…a working one says what it does now", /Running npm test/.test(listed?.step ?? ""), listed)
 if (PNG) { await wait(400); fs.writeFileSync(PNG.replace(/\.png$/, "-list.png"), await island.screenshot({ omitBackground: true })) }
+const row = (id) => island.locator(`[data-island-row="${id}"]`)
+await row("qa-r").locator('[data-island-action="Settle"]').click()
+check("Settle takes a ready one out of the island", await until(async () => !(await row("qa-r").count()), 3000) && await helper((h) => !h.island().presences.some((p) => p.id === "qa-r")))
+check("…and the server keeps it settled", await until(() => helper((h) => "qa-r" in (h.island().settled ?? {})), 3000), await helper((h) => h.island().settled))
+await helper((h, list) => h.knocks({ knocks: [], presences: [...list, { id: "chat:qa-ask", who: "Migration", tint: "teal", state: "needs you", since: Date.now(), chat: "qa-ask", ask: { what: "npm run migrate", id: "ask:1" } }] }), mixed)
+await until(() => row("chat:qa-ask").count(), 3000)
+await row("chat:qa-ask").locator('[data-island-action="Approve"]').click()
+check("Approve asks the server, which says what's no longer asked", await until(() => helper((h) => h.hinted().startsWith("Couldn't answer Migration: it moved on")), 5000), await helper((h) => h.hinted()))
+check("…and its buttons are back", await until(() => row("chat:qa-ask").locator("button:disabled").count().then((n) => !n), 2000))
+await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed)
+await until(async () => !(await row("chat:qa-ask").count()), 3000)
 await island.locator("[data-island-done]").click()
 check("…the done ones unfold", await until(() => island.evaluate(() => !!document.querySelector('[data-island-row="qa-d"]')), 2000))
 await island.mouse.move(600, 330)
@@ -171,21 +185,35 @@ for (const n of [1, 8, 30]) {
   if (PNG && n === 30) fs.writeFileSync(PNG.replace(/\.png$/, "-many.png"), await island.screenshot({ omitBackground: true }))
   if (n !== 30) continue
   const box = await island.locator(".island-rows").boundingBox()
-  const first = await island.evaluate(() => { const r = document.querySelector('[data-island-row="qa-0"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })
+  const first = await island.evaluate(() => { const el = document.querySelector("[data-island-row]"), r = el.getBoundingClientRect(); return { id: el.dataset.islandRow, x: r.x + r.width / 2, y: r.y + r.height / 2 } })
   await island.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   for (let i = 0; i < 40; i++) await island.mouse.wheel(0, 120)
   const end = await until(async () => { const c = await card(); return c && c.scroll + c.room >= c.full - 1 ? c : null }, 3000) ?? await card()
   check("…the wheel scrolls it to the last", !!end && end.scroll > 0 && end.scroll + end.room >= end.full - 1 && end.more === "top", end)
-  check("…the last row shown whole", await island.evaluate(() => { const l = document.querySelector(".island-rows").getBoundingClientRect(), r = document.querySelector('[data-island-row="qa-29"]').getBoundingClientRect()
+  check("…the last row shown whole", await island.evaluate(() => { const l = document.querySelector(".island-rows").getBoundingClientRect(), r = [...document.querySelectorAll("[data-island-row]")].at(-1).getBoundingClientRect()
     return r.bottom <= l.bottom + 1 && r.top >= l.top }))
   const wb2 = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
   const there = await until(() => helper((h, p) => h.island(p).at, { x: wb2.x + first.x, y: wb2.y + first.y }), 2000)
-  check("…a row scrolled out isn't where it was: what's shown there is", !!there && there !== "qa-0", there)
+  check("…a row scrolled out isn't where it was: what's shown there is", !!there && there !== first.id, there)
   check("…still open, still hovered", await island.evaluate(() => !!document.querySelector("[data-island][data-open]")))
   if (PNG) fs.writeFileSync(PNG.replace(/\.png$/, "-scrolled.png"), await island.screenshot({ omitBackground: true }))
   await island.mouse.move(600, 330)
 }
 await helper((h, a) => h.knocks({ knocks: h.island().knocks, presences: a }), before)
+
+await op("plugin.enable", { id: "workspaces" })
+await until(async () => Array.isArray((await op("workspace.list", {})).workspaces), 8000)
+await fetch(`http://127.0.0.1:${port}/api/workspaces/3`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Code" }) })
+const coded = await op("terminal.start", { command: "sleep 600", name: "island-code" })
+await helper((h, id) => h.knocks({ knocks: [], presences: [{ id, who: "Coding", tint: "teal", state: "working", since: Date.now(), terminal: id, agent: "claude" }] }), coded.id)
+await until(() => island.evaluate(() => !!document.querySelector("[data-island-mark]")), 4000)
+await island.locator("[data-island]").hover({ position: { x: 25, y: 10 } })
+await until(() => row(coded.id).count(), 3000)
+await row(coded.id).locator("button").first().click()
+check("a row opens its session in the workspace named Code", await until(async () => (await op("workspace.list", {})).window === 3, 8000) &&
+  await until(async () => (await op("workspace.tabs", { n: 3 }))[0]?.tabs.some((t) => t.panes.some((p) => p.to === `view:terminal/${coded.id}`)), 8000), await op("workspace.tabs", {}))
+await op("terminal.end", { id: coded.id })
+await island.mouse.move(600, 330)
 
 await helper((h, a) => h.stub("windows", { windows: [a] }), { ...vors(display.x + 560, 350) })
 const islandBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
