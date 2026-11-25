@@ -33,7 +33,7 @@ export function fileLinks(t: Term, y: number): Link[] | undefined {
       else if (text.slice(0, start).endsWith("./")) start -= 2
       if (start > 0 && !BOUND.test(text[start - 1])) continue
       if (links.length && at[start] <= links[links.length - 1].range.end.x - 1) break
-      links.push({ text: path, range: { start: { x: at[start] + 1, y }, end: { x: at[end - 1] + 1, y } }, activate: (e) => openFile(path, { newTab: linkClick(e).newTab }) })
+      links.push({ text: path, range: { start: { x: at[start] + 1, y }, end: { x: at[end - 1] + 1, y } }, open: (e) => openFile(path, { newTab: linkClick(e).newTab }), target: { wiki: path } })
       break
     }
   }

@@ -1,3 +1,5 @@
+import { linkUnder, reporting as reports, wireHover } from "./hover.ts"
+import type { Link } from "./links.ts"
 import { MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER } from "./screen.ts"
 import type { Term } from "./term.ts"
 
@@ -5,28 +7,29 @@ const mods = (e: MouseEvent) => (e.shiftKey ? MOD_SHIFT : 0) | (e.ctrlKey ? MOD_
 /** DOM button to Ghostty's: left, middle, right. */
 const BUTTON = [1, 3, 2]
 
+/** What a press became: its program's, a selection, a link's click (its program's once it's a drag) or a menu's. */
+type Down = { press: PointerEvent; as: "program" | "select" | "menu"; moved: boolean; link: Link | null } | { press: PointerEvent; as: "link"; moved: boolean; link: Link }
+
+function pressOf(t: Term, press: PointerEvent, link: Link | null): Down {
+  const base = { press, moved: false }
+  // (⌃-click on a Mac is the right-click: the link's menu)
+  if (link && t.o.mac && press.ctrlKey) return { ...base, as: "menu", link: null }
+  if (!reports(t, press)) return { ...base, as: "select", link }
+  return link ? { ...base, as: "link", link } : { ...base, as: "program", link: null }
+}
+
 export function wirePointer(t: Term) {
   const el = t.element
-  let down: { button: number; x: number; y: number; reported: boolean; moved: boolean; link: ReturnType<Term["linkAt"]> } | null = null
+  let down: Down | null = null
   let held = 0, scrollTimer = 0, last: PointerEvent | null = null
   const px = (e: MouseEvent) => { const c = t.cellAt(e.clientX, e.clientY); return { c, at: { x: c.px * t.m.dpr, y: c.py * t.m.dpr } } }
   const report = (action: "press" | "release" | "motion", e: MouseEvent, button: number) => {
     const { at } = px(e)
     t.emit(t.s.mouse(action, button, mods(e), at, t.surface(), held > 0))
   }
-  const reporting = (e: MouseEvent) => t.s.mouseTracking && !e.shiftKey
+  const reporting = (e: MouseEvent) => reports(t, e)
   const geo = () => ({ cols: t.cols, cellWidth: t.m.w, height: t.rows * t.m.h })
-  const hover = (e: MouseEvent) => {
-    const { c } = px(e)
-    const at = c.inside && !reporting(e) ? t.linkAt(c.x, c.y) : null
-    const same = at && t.hovered && at.link.text === t.hovered.link.text && at.link.range.start.x === t.hovered.link.range.start.x && at.link.range.start.y === t.hovered.link.range.start.y
-    if (same) return
-    if (t.hovered) { t.hovered.link.leave?.(e, t.hovered.link.text); el.removeAttribute("data-term-link") }
-    t.hovered = at
-    if (at) { at.link.hover?.(e, at.link.text); el.setAttribute("data-term-link", "") }
-    el.style.cursor = at ? "pointer" : reporting(e) ? "default" : "text"
-    t.requestRender(true)
-  }
+  const hover = wireHover(t, () => !!down)
 
   const onDown = (e: PointerEvent) => {
     if (e.pointerType === "touch") return
@@ -37,11 +40,11 @@ export function wirePointer(t: Term) {
     // (the field keeps the keyboard, no browser selection; a right-click's menu still comes)
     if (e.button !== 2) e.preventDefault()
     held++
-    down = { button: e.button, x: e.clientX, y: e.clientY, reported: false, moved: false, link: null }
+    const link = e.button === 0 ? linkUnder(t, e)?.link ?? null : null
+    down = pressOf(t, e, link)
     try { el.setPointerCapture(e.pointerId) } catch { /* (a pointer the page doesn't hold: no capture, the drag still works inside) */ }
-    if (reporting(e)) { down.reported = true; report("press", e, BUTTON[e.button]); return }
-    if (e.button !== 0) return
-    down.link = t.hovered
+    if (down.as === "program") return report("press", e, BUTTON[e.button])
+    if (down.as !== "select" || e.button !== 0) return
     t.s.gestureEvent("press", c, at, geo(), performance.now())
     t.requestRender(true)
   }
@@ -49,15 +52,16 @@ export function wirePointer(t: Term) {
     if (e.pointerType === "touch") return
     last = e
     if (!down) {
-      hover(e)
+      hover.move(e)
       // (motion with no button, for a program that asked for all of it: 1003)
       if (reporting(e) && t.s.mode(1003)) report("motion", e, 0)
       return
     }
-    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 3) down.moved = true
-    if (down.reported) { if (t.s.mode(1002) || t.s.mode(1003)) report("motion", e, BUTTON[down.button]); return }
-    if (down.button !== 0 || !down.moved) return
-    drag(e)
+    if (Math.hypot(e.clientX - down.press.clientX, e.clientY - down.press.clientY) > 3) down.moved = true
+    const { press } = down, { button } = press
+    if (down.as === "link" && down.moved) { down = { press, as: "program", moved: true, link: null }; report("press", press, BUTTON[button]) }
+    if (down.as === "program") { if (t.s.mode(1002) || t.s.mode(1003)) report("motion", e, BUTTON[button]); return }
+    if (down.as === "select" && button === 0 && down.moved) drag(e)
   }
   const drag = (e: PointerEvent) => {
     const { c, at } = px(e)
@@ -74,14 +78,16 @@ export function wirePointer(t: Term) {
     held = Math.max(0, held - 1)
     const d = down
     down = null
-    if (d.reported) { report("release", e, BUTTON[d.button]); return }
-    if (d.button !== 0) return
-    const { c, at } = px(e)
-    t.s.gestureEvent("release", c, at, geo(), performance.now())
-    if (!d.moved && d.link && t.hovered?.link === d.link.link) { t.s.clearSelection(); d.link.link.activate(e, d.link.link.text) }
+    if (d.as === "program") return report("release", e, BUTTON[d.press.button])
+    if (d.press.button !== 0) return
+    if (d.as === "select") {
+      const { c, at } = px(e)
+      t.s.gestureEvent("release", c, at, geo(), performance.now())
+    }
+    if (!d.moved && d.link && e.type === "pointerup") { t.s.clearSelection(); d.link.open(e) }
     t.requestRender(true)
   }
-  const onLeave = (e: PointerEvent) => { if (!down && t.hovered) { t.hovered.link.leave?.(e, t.hovered.link.text); t.hovered = null; el.removeAttribute("data-term-link"); t.requestRender(true) } }
+  const onLeave = () => { if (!down) hover.leave() }
   const onWheel = (e: WheelEvent) => {
     if (e.ctrlKey || e.metaKey || e.defaultPrevented) return
     e.preventDefault()
@@ -105,7 +111,7 @@ export function wirePointer(t: Term) {
   el.addEventListener("pointerleave", onLeave)
   el.addEventListener("wheel", onWheel, { passive: false })
   return () => {
-    clearInterval(scrollTimer)
+    clearInterval(scrollTimer); hover.dispose()
     el.removeEventListener("pointerdown", onDown); el.removeEventListener("pointermove", onMove); el.removeEventListener("pointerup", onUp)
     el.removeEventListener("pointercancel", onUp); el.removeEventListener("pointerleave", onLeave); el.removeEventListener("wheel", onWheel)
   }

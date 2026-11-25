@@ -3,12 +3,12 @@ import type { Frame, Mark, Renderer } from "./render/frame.ts"
 import { measure, type Metrics } from "./render/glyphs.ts"
 import { WebglRenderer } from "./render/webgl.ts"
 import { keyBytes } from "./input.ts"
-import { osc8At, webLinks, type Link, type LinkProvider } from "./links.ts"
+import { osc8At, webLinks, type Link, type LinkAction, type LinkProvider } from "./links.ts"
 import { wirePointer } from "./mouse.ts"
 import { findAll, type FindSpec } from "./search.ts"
 import { F_LINK, Screen, type Drawn, type Match, type Row } from "./screen.ts"
 
-export type { Link, LinkProvider } from "./links.ts"
+export type { Link, LinkProvider, Press } from "./links.ts"
 export type { FindSpec } from "./search.ts"
 
 export type Theme = {
@@ -24,7 +24,8 @@ export type TermOptions = {
   fontFamily: string; fontSize: number; lineHeight: number
   cursorStyle: CursorStyle; cursorInactiveStyle: CursorStyle | "outline"; cursorBlink: boolean
   scrollback: number; theme: Theme
-  onLink: (e: MouseEvent, uri: string) => void
+  /** What an address does: null for one that isn't opened. */
+  linkAction: (uri: string) => LinkAction | null
   /** A program copying (OSC 52). */
   onCopy: (text: string) => void
   mac: boolean
@@ -434,12 +435,12 @@ export class Term {
   linkAt(x: number, vy: number): { link: Link; cells: { y: number; x1: number; x2: number }[] } | null {
     const top = this.s.scrollbar().offset, y = top + vy, row = this.view[vy]
     if (row) {
-      const h = osc8At(this.s, row, x, vy, F_LINK)
-      if (h) return { link: { text: h.uri, range: { start: { x: h.x1 + 1, y: y + 1 }, end: { x: h.x2 + 1, y: y + 1 } }, activate: (e) => this.o.onLink(e, h.uri) }, cells: [{ y: vy, x1: h.x1, x2: h.x2 }] }
+      const h = osc8At(this.s, row, x, vy, F_LINK), act = h && this.o.linkAction(h.uri)
+      if (h && act) return { link: { ...act, text: h.uri, declared: true, range: { start: { x: h.x1 + 1, y: y + 1 }, end: { x: h.x2 + 1, y: y + 1 } } }, cells: [{ y: vy, x1: h.x1, x2: h.x2 }] }
     }
     const found: Link[] = []
     for (const p of this.providers) p.provideLinks(y + 1, (ls) => { if (ls) found.push(...ls) })
-    found.push(...webLinks(this.s, y, (e, uri) => this.o.onLink(e, uri)))
+    found.push(...webLinks(this.s, y, this.o.linkAction))
     const hit = found.find((l) => {
       const a = l.range.start, b = l.range.end, cx = x + 1, cy = y + 1
       return (cy > a.y || (cy === a.y && cx >= a.x)) && (cy < b.y || (cy === b.y && cx <= b.x))

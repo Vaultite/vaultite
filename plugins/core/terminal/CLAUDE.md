@@ -27,6 +27,8 @@
   what its encoder leaves to the platform's text (Backspace, ⌥←) is in `input.ts`. WebGL's glyphs are drawn on their
   own ground (keyed by colours, shared between terminals): on a clear one text reads heavier. Gotchas: a `bool` the
   module reports is one byte (read `getUint8`); structs passed "by value" go by pointer in the wasm ABI.
+- A click on a link is the terminal's even while a program has the mouse (`vt/hover.ts`): Claude Code's fullscreen
+  underlines links itself, opens them only for ⌃ or ⌥ (a report has no ⌘), and then on the machine it runs on.
 - termd's loop never waits on a screen: each terminal's libghostty-vt runs in a thread of its own (`termd/screen.ts`,
   `screenworker.ts`), so its answers (capture, snapshot) are async, and output after a snapshot's point waits for it.
   One that hasn't answered for HUNG (the module stuck on some output, 2026-11-11) starts again blank. termd says what

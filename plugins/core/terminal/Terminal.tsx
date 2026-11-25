@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, TextSelect } from "lucide-react"
-import { cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, keysText, onResized, openMenu, openPermissions, resizing, textSize, usePageLock, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, keysText, linkItems, onResized, openMenu, openPermissions, resizing, textSize, usePageLock, usePane, useTextSize, useTextSizeWheel, useVisibleArea, type MenuItem } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, floatingSpot, MAX } from "@plugins/find/tools"
 import { copy, pasteClipboard } from "./clipboard"
 import { dictationInput } from "./dictation"
@@ -8,7 +8,7 @@ import { acquire, release, touchScreen, type Live, type Status } from "./live"
 import { register, touch } from "./sessions"
 import { useHeldGrid } from "./held"
 import { fontSize } from "./theme"
-import { setModule, type Term } from "./vt/term"
+import { setModule, type Press, type Term } from "./vt/term"
 import { vtModule } from "./vt/wasm"
 
 setModule(await vtModule())
@@ -24,6 +24,9 @@ const KEYS: { label: ReactNode; name: string; send: (t: Term) => string }[] = [
   { label: <ArrowDown className="size-[17px]" strokeWidth={2} />, name: "Down", send: (t) => arrow(t, "B") },
   { label: <ArrowRight className="size-[17px]" strokeWidth={2} />, name: "Right", send: (t) => arrow(t, "C") },
 ]
+
+const TAP: Press = { metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, button: 0 }
+const joined = (first: MenuItem[], then: MenuItem[]) => [...first, ...then.map((it, i) => (i === 0 && first.length ? { ...it, sep: true } : it))]
 
 const finders = new WeakMap<Element, () => void>()
 export const openFind = (view: Element) => finders.get(view)?.()
@@ -81,11 +84,16 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     let swiping = false, lastY = 0, lastT = 0, speed = 0, glide = 0
     // Off a Mac ⌃C and ⌃V are the shell's.
     const hint = (k: string) => (touchUi ? undefined : keyHint(isMac ? `Mod+${k}` : `Ctrl+Shift+${k}`))
-    const menu = (at: { x: number; y: number }) => openMenu(at, [
+    const linkAt = (at: { x: number; y: number }) => { const c = t.cellAt(at.x, at.y); return c.inside ? t.linkAt(c.x, c.y)?.link : undefined }
+    const menu = (at: { x: number; y: number }) => {
+      const target = linkAt(at)?.target
+      openMenu(at, joined(target ? linkItems(target) : [], own()))
+    }
+    const own = (): MenuItem[] => [
       ...(t.hasSelection() ? [{ label: "Copy", icon: Copy, hint: hint("C"), run: () => { copy(t.getSelection()); t.focus() } }] : []),
       { label: "Paste", icon: ClipboardPaste, hint: hint("V"), run: () => { touchActions.current.paste(); if (!touchUi) t.focus() } },
       { label: "Select all", icon: TextSelect, run: () => { t.selectAll(); if (!touchUi) t.focus() } },
-    ])
+    ]
     const onContextMenu = (e: MouseEvent) => {
       if (isWindows || touchUi) return
       e.preventDefault(); e.stopPropagation()
@@ -127,10 +135,12 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
         return
       }
       if (!start) return
+      const link = linkAt(start)
       start = null
       // No mouse events or double-tap zoom follow a touchend whose default is prevented.
       if (e.cancelable) e.preventDefault()
       if (pressed) return
+      if (link) return link.open(TAP)
       const ta = t.textarea
       if (document.activeElement !== ta) pageAt.current = scrollY
       else if (!keyboardUp()) ta?.blur()

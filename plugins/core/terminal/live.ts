@@ -1,7 +1,8 @@
-import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, linkClick, mintedHere, offerPicture, onLook, openWebLink, pastedFiles, span, textSize, trackSoon, openSocket, type Socket } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, isMac, isWindows, mintedHere, offerPicture, onLook, pastedFiles, span, textSize, trackSoon, openSocket, type Socket } from "@vaultite"
 import type { FindOptions } from "@plugins/find/tools"
 import { copy, flushCopy, pasteClipboard } from "./clipboard"
 import { fileLinks } from "./fileLinks"
+import { linkAction } from "./linkAction"
 import { CLOSE } from "./closes"
 import { closedJustNow, parkTerminal, touch, unparkTerminal } from "./sessions"
 import { codeFont, cursor, fontSize, glassy, settings, theme } from "./theme"
@@ -82,7 +83,7 @@ function create(id: string): Live {
   const t = new Term({
     fontFamily: codeFont(), fontSize: fontSize(textSize("terminal")), lineHeight: 1.15, mac: isMac,
     cursorStyle: c.style, cursorInactiveStyle: c.inactive, cursorBlink: c.blink, scrollback: 10000, theme: theme(), webgl: !glassy(),
-    onLink: (e, uri) => { if (/^https?:/i.test(uri)) openWebLink(uri, linkClick(e)) },
+    linkAction: (uri) => linkAction(uri, id),
     onCopy: copy,
   })
   const files = t.registerLinkProvider({ provideLinks: (y, done) => done(fileLinks(t, y)) })

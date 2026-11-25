@@ -297,9 +297,13 @@ export class Screen extends Vt {
   hyperlink(x: number, y: number) {
     const out = this.big + 160
     if (!this.ref("VIEWPORT", x, y, out)) return ""
-    const r = this.x.ghostty_grid_ref_hyperlink_uri(out, this.big + 256, 700, this.big + 192)
-    if (r !== 0) return ""
-    return dec.decode(this.u8.subarray(this.big + 256, this.big + 256 + this.dv.getUint32(this.big + 192, true)))
+    const len = this.big + 192
+    this.x.ghostty_grid_ref_hyperlink_uri(out, 0, 0, len)
+    const n = this.dv.getUint32(len, true), buf = n ? this.x.ghostty_wasm_alloc(n) : 0
+    if (!buf) return ""
+    try {
+      return this.x.ghostty_grid_ref_hyperlink_uri(out, buf, n, len) === 0 ? dec.decode(this.u8.subarray(buf, buf + n)) : ""
+    } finally { this.x.ghostty_wasm_free(buf, n) }
   }
   textFrom(from: number, unwrap: boolean) { return this.format("PLAIN", from, { unwrap, trim: true }) }
 

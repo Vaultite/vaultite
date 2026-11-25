@@ -11,6 +11,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   on you. Plain shells can be listed too (Plain shells). New Code workspace makes a workspace with the Agents panel alone
   and no tab list, where a clicked session takes the pane instead of opening a tab (⌘-click still opens one). Agents'
   sessions leave the Inbox unless Show agent sessions in Inbox is on; their toasts and notifications stay.
+- Terminals: a click on a link opens it while a program has the mouse too (Claude Code's fullscreen underlined links that
+  a click didn't open): links the program wrote, and text links in one that follows the pointer; in others (an editor)
+  ⌘-click, Ctrl-click off a Mac. A tap opens one on a phone, a right-click (a held finger) has the link's menu, and
+  email and file links and very long addresses open.
 - Terminals: a terminal shows as the agent that runs in it now, not the one it was started with: quit Claude Code and run
   Antigravity there, and its tab, row, state and Agents panel say Antigravity. Antigravity, Gemini, Copilot, Amp, Aider and
   other agents' programs are known by name and logo without a plugin, and a reply to an earlier agent's session is never

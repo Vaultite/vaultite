@@ -96,6 +96,22 @@ for (const [side, x0, x1] of [["left", 18, 300], ...(right ? [["right", 372, 90]
   await page.keyboard.press("Escape"); await until(async () => !(await drawer()), 3000); await idle()
 }
 
+await page.evaluate(() => { window.__opened = []; window.open = (url) => { window.__opened.push(String(url)); return null } })
+await page.locator("[data-term]").tap()
+await page.keyboard.type("clear; printf '\\e]8;;https://example.com/tap-1\\e\\\\tap here\\e]8;;\\e\\\\\\n'"); await page.keyboard.press("Enter")
+const spotOf = () => page.evaluate(() => {
+  const el = document.querySelector("[data-terminal]"), c = el.terminalCell(), y = el.terminalText().split("\n").findIndex((l) => l.startsWith("tap here"))
+  return y < 0 ? null : { x: c.x + 3.5 * c.width, y: c.y + (y + 0.5) * c.height }
+})
+await until(spotOf, 4000)
+await page.evaluate(() => document.activeElement?.blur())
+await page.locator("[aria-label='Terminal keys']").waitFor({ state: "detached" })
+await idle()
+const spot = await spotOf()
+await page.touchscreen.tap(spot.x, spot.y)
+check("a tap on a link opens it", !!(await until(() => page.evaluate(() => window.__opened.join(" ").includes("example.com/tap-1")), 3000)), await page.evaluate(() => window.__opened))
+check("and the keyboard stays down", !(await page.evaluate(() => !!document.activeElement?.closest("[data-term]"))))
+
 await page.locator("[data-term]").tap()
 await page.keyboard.type("exit"); await page.keyboard.press("Enter")
 await idle()
