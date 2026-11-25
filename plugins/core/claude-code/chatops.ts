@@ -8,10 +8,11 @@ import { entryText } from "./chatentries.ts"
 import { EFFORTS, modeOf, MODES } from "./chatprotocol.ts"
 import { IMAGES_PARAM, picturesFor } from "./chatpictures.ts"
 import { MODE_LABELS } from "./chatsocket.ts"
+import type { codeThreads } from "./threadops.ts"
 
 type Needs = Pick<ChatCore, "start" | "send" | "hostedOr404" | "ask" | "answer" | "asking" | "runsAs" | "hello" | "hosted" | "keeper" | "titleOf" | "d">
 
-export function chatOps(plugin: Plugin, c: Needs) {
+export function chatOps(plugin: Plugin, c: Needs, threads: Threads) {
   const { start, send, hostedOr404, ask, answer, asking, runsAs, hello, hosted, keeper, titleOf, d } = c
 
   const ID = { type: "string", required: true, description: "the session's id (vau chat list; <id>@<machine>: another machine's)" } as const
@@ -50,50 +51,7 @@ function onMachines(def: Op) {
   const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""}${s.state === "idle" && s.awaits ? ` (${awaitsText(s.awaits).replace(/^W/, "w")}: its end wakes it)` : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${modeLabel(s.mode)}${s.account ? ` · ${s.account}` : ""}`
   const theUser = (ctx: OpCtx) => { if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403) }
 
-  async function show(ctx: OpCtx, id: string) {
-    const path = `view:claude-session/${id}`
-    try {
-      if (byUser(ctx.who)) return void await ctx.ui({ action: "open", path, newTab: true })
-      await ctx.ui({ action: "open", path, background: true })
-      const who = ctx.who.label
-      await ctx.ui({ action: "notify", text: `${who[0].toUpperCase()}${who.slice(1)} started a chat with Claude`, button: { label: "Show", open: path } })
-    } catch (e) {
-      if (!(e instanceof OpError && e.status === 409)) throw e
-    }
-  }
-
-  plugin.op({
-    id: "claude-code.chat-start", cli: "chat start", mcp: "chat_start", owner: OWNER, kind: "write", lock: false,
-    summary: "Start a Claude Code chat session: run in the app (not a terminal), drawn in a chat tab, its questions and permissions answered there and in the inbox.",
-    help: `It runs in the app's chat keeper, so it goes on when the server restarts, and it's a normal Claude Code session:
-claude --resume <id> in a terminal opens the same conversation. account: one of Claude Code's accounts (its config
-folders; vau chat start --help lists none: GET /api/claude-code/accounts); cwd: the folder it works in (the vault by
-default); model (sonnet, opus, haiku, fable or a full id), effort (low to max) and mode (default, acceptEdits, plan,
-auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, else auto). open: show its tab (an agent's opens behind the user's, with a toast).
-
-  vau chat start "Fix the flaky upload test" --cwd ~/code/lighthouse --model sonnet
-  vau chat start "Plan the release" --mode plan --open`,
-    params: {
-      prompt: { type: "string", description: "its first message (none: it waits for one)" },
-      cwd: { type: "string", description: "the folder it works in (default: the vault's)" },
-      account: { type: "string", description: "the Claude Code account to run in (default: default)" },
-      model: { type: "string", description: "sonnet, opus, haiku, fable, or a model's full id" },
-      effort: { type: "string", enum: EFFORTS, description: "how hard it thinks" },
-      mode: { type: "string", enum: MODES, description: "its permission mode (default: the account's permissions.defaultMode, else auto)" },
-      open: { type: "boolean", description: "open its chat tab in the user's window" },
-      images: IMAGES_PARAM,
-    },
-    args: ["prompt"],
-    run: async (p, ctx) => {
-      const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
-      const s = await start({ prompt: p.prompt, cwd: p.cwd ? path.resolve(String(p.cwd).replace(/^~(?=$|\/)/, HOME)) : undefined, account: p.account,
-        model: p.model, effort: p.effort, mode: p.mode, by: byUser(ctx.who) ? "app" : ctx.who.agent || ctx.who.client || "agent", ...(images.length ? { images, uuid } : {}) })
-      if (p.open) await show(ctx, s.id)
-      return { id: s.id, state: s.state, cwd: s.cwd, account: s.account }
-    },
-    text: (r) => `Started chat ${r.id} in ${r.cwd} (${r.account}): vau chat read ${r.id}.`,
-    did: ({ prompt }) => ({ action: "run", text: prompt ? `Started a chat: ${String(prompt).slice(0, 60)}` : "Started a chat" }),
-  })
+  startOp(plugin, start, threads)
 
   onMachines(defineOp({
     id: "claude-code.chat-send", cli: "chat send", mcp: "chat_send", owner: OWNER, kind: "write", lock: false,
@@ -250,4 +208,57 @@ Machines (its sessions are <id>@<machine>), all every machine's.
     },
     text: (r) => (r.stopped ? "Stopped; claude --resume " + r.id + " opens it in a terminal." : "It wasn't running."),
   }))
+}
+
+type Threads = Pick<ReturnType<typeof codeThreads>, "prepare" | "record">
+function startOp(plugin: Plugin, start: Needs["start"], threads: Threads) {
+  const OWNER = "Claude Code's chat"
+  async function show(ctx: OpCtx, id: string) {
+    const path = `view:claude-session/${id}`
+    try {
+      if (byUser(ctx.who)) return void await ctx.ui({ action: "open", path, newTab: true })
+      await ctx.ui({ action: "open", path, background: true })
+      const who = ctx.who.label
+      await ctx.ui({ action: "notify", text: `${who[0].toUpperCase()}${who.slice(1)} started a chat with Claude`, button: { label: "Show", open: path } })
+    } catch (e) {
+      if (!(e instanceof OpError && e.status === 409)) throw e
+    }
+  }
+
+  plugin.op({
+    id: "claude-code.chat-start", cli: "chat start", mcp: "chat_start", owner: OWNER, kind: "write", lock: false,
+    summary: "Start a Claude Code chat session: run in the app (not a terminal), drawn in a chat tab, its questions and permissions answered there and in the inbox.",
+    help: `It runs in the app's chat keeper, so it goes on when the server restarts, and it's a normal Claude Code session:
+  claude --resume <id> in a terminal opens the same conversation. account: one of Claude Code's accounts (its config
+  folders; vau chat start --help lists none: GET /api/claude-code/accounts); cwd: the folder it works in (the vault by
+  default); model (sonnet, opus, haiku, fable or a full id), effort (low to max) and mode (default, acceptEdits, plan,
+  auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, else auto). open: show its tab (an agent's opens behind the user's, with a toast).
+
+  vau chat start "Fix the flaky upload test" --cwd ~/code/lighthouse --model sonnet
+  vau chat start "Plan the release" --mode plan --open`,
+    params: {
+      prompt: { type: "string", description: "its first message (none: it waits for one)" },
+      cwd: { type: "string", description: "the folder it works in (default: the vault's)" },
+      account: { type: "string", description: "the Claude Code account to run in (default: default)" },
+      model: { type: "string", description: "sonnet, opus, haiku, fable, or a model's full id" },
+      effort: { type: "string", enum: EFFORTS, description: "how hard it thinks" },
+      mode: { type: "string", enum: MODES, description: "its permission mode (default: the account's permissions.defaultMode, else auto)" },
+      open: { type: "boolean", description: "open its chat tab in the user's window" },
+      worktree: { type: "boolean", description: "in a git repository, run in a worktree of its own on a new agents/ branch (default: the app's chats do, others don't)" },
+      images: IMAGES_PARAM,
+    },
+    args: ["prompt"],
+    run: async (p, ctx) => {
+      const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
+      const cwd = p.cwd ? path.resolve(String(p.cwd).replace(/^~(?=$|\/)/, HOME)) : undefined
+      const thread = await threads.prepare(cwd, String(p.prompt ?? ""), p.worktree ?? byUser(ctx.who))
+      const s = await start({ prompt: p.prompt, cwd: thread?.t.cwd ?? cwd, account: p.account,
+        model: p.model, effort: p.effort, mode: p.mode, by: byUser(ctx.who) ? "app" : ctx.who.agent || ctx.who.client || "agent", ...(images.length ? { images, uuid } : {}) })
+      if (thread) await threads.record(s.id, thread)
+      if (p.open) await show(ctx, s.id)
+      return { id: s.id, state: s.state, cwd: s.cwd, account: s.account, branch: thread?.t.worktree ? thread.t.branch : undefined }
+    },
+    text: (r) => `Started chat ${r.id} in ${r.cwd} (${r.account}): vau chat read ${r.id}.`,
+    did: ({ prompt }) => ({ action: "run", text: prompt ? `Started a chat: ${String(prompt).slice(0, 60)}` : "Started a chat" }),
+  })
 }

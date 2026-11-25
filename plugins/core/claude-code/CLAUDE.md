@@ -32,3 +32,7 @@
   anew), so an update reaches the companion's sessions, which never leave it empty.
 - Cloud jobs' sessions (`cloud.ts`) are read through Claude Code's control requests, which it answers only to a program
   not started inside a Claude Code session (`CLAUDE_CODE_CHILD_SESSION`): a server run from an agent's shell can't follow them.
+- A thread's worktree and checkpoints (`threads.ts`) live outside the vault: turn N is the hidden ref
+  `refs/vaultite-agents/<id>/turn-N`, a commit made through a copy of the index, so the user's index and branch never
+  change; a diff of the folder now marks new files intent-to-add in a copy too, so polling it writes no objects. A copy keeps the index's mtime: a fresh one has git's racy-clean check trust
+  the stat of a same-size edit made in the second the index was written, and miss it.
