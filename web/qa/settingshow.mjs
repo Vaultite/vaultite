@@ -1,6 +1,7 @@
 // settings.show opens Settings at a setting, companion.see reads it and its sheets, AI shows the companion's model. Throwaway server only.
 //   node web/qa/settingshow.mjs <base url> [out dir] (core/settingsfind.ts, components/AiSettings.tsx, plugins/core/companion/panes.ts)
 import { mkdirSync } from "node:fs"
+import { app as appOf } from "./lib/app.mjs"
 import { SHOTS, apiAt, qa, until } from "./lib/qa.mjs"
 
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
@@ -16,6 +17,7 @@ async function open(w, h, mobile = false) {
   await page.goto(B)
   await page.waitForSelector("main", { timeout: 30000 })
   await until(async () => ((await api("GET", "ui"))?.windows ?? 0) > 0, 10000)
+  await appOf(page).idle()
   return { ctx, page }
 }
 const flashed = (page, sel) => until(() => page.locator(`${sel}.reveal-flash`).count(), 5000)
