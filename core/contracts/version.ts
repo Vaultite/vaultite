@@ -43,6 +43,7 @@ export const AppUpdates = z.object({
   store: z.object({ state: z.string(), why: z.string(), running: Sha.optional(), last: z.object({ from: Sha, to: Sha, at: z.number() }).optional() }).optional(),
   how: z.enum(["install", "relaunch"]).optional(),
   behind: z.string().optional(),
+  failed: z.object({ times: z.number(), why: z.string() }).optional(),
   root: Root.optional(),
 })
 export type AppUpdates = z.infer<typeof AppUpdates>

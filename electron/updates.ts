@@ -3,6 +3,7 @@ import { app, autoUpdater, dialog, powerMonitor, shell, type WebContents } from 
 import type { AppUpdater } from "electron-updater"
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { Readable } from "node:stream"
 import type { AppUpdates, UpdateStatus } from "../core/contracts/version.ts"
@@ -12,7 +13,7 @@ import { relaunchSoon, storeLook, storeOn, storeReady, storeStatus, type StoreHo
 import { relaunchOptions } from "./argv.ts"
 import type { UpdateMode } from "./vaultlist.ts"
 import { RELEASE } from "./mainbase.ts"
-import { describe, menuItem, offerMessage, packageManaged, restartWaitsOn, START, statusOf, step, type Current, type Effect, type How, type Leave, type ReleaseOutcome,
+import { describe, failed, failedMessage, menuItem, offerMessage, packageManaged, restartWaitsOn, START, statusOf, step, type Current, type Effect, type How, type Leave, type ReleaseOutcome,
   type UpdateEvent, type Updates } from "./updatelogic.ts"
 
 const LOOK_EVERY = 3 * 60_000
@@ -103,7 +104,7 @@ function run(fx: Effect) {
     })
     case "build": return build(fx.byHand, fx.want)
     case "stop-build": if (buildChild?.pid) try { process.kill(-buildChild.pid, "SIGTERM") } catch { /* gone */ } return
-    case "store-look": storeRun = storeLook(storeHost()).then((s) => send({ type: "looked", state: s.state, why: s.why, quitting: host.quitting() }), (e: unknown) => {
+    case "store-look": storeRun = storeLook(storeHost()).then((s) => send({ type: "looked", state: s.state, why: s.why, next: s.next, quitting: host.quitting() }), (e: unknown) => {
       logUpdate(`store: the look failed: ${said(e)}`)
       send({ type: "looked", state: null, why: "", quitting: host.quitting() })
     }).finally(() => { storeRun = null }); return
@@ -116,7 +117,7 @@ function run(fx: Effect) {
     case "unnote": return fs.rmSync(UPDATED(), { force: true })
     case "leave": return afterFlush(leave(fx.then))
     case "current": return upToDate(fx.current)
-    case "failed": return updateFailed(fx.why)
+    case "failed": return fx.tell === "dialog" ? updateFailed(fx.why) : void noticeFailed()
     default: return fx satisfies never
   }
 }
@@ -126,7 +127,8 @@ export function appUpdates(): AppUpdates {
   return { mode: host.mode(), available: updatable(), from: MANAGED && PACKAGE_TYPE ? PACKAGE_TYPE : worktree ? "worktree" : FROM_RELEASES ? "releases" : BRANCH, ready: o?.commit ?? null,
     doing: statusOf(state, app.getName())?.text ?? null, commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(),
     ...(worktree ? { worktree } : { helperCommit: host.helperCommit() }),
-    ...(store ? { store, how: o?.how === "relaunch" ? "relaunch" : "install" } : {}), ...(started ? { root: started } : {}), ...(o?.behind ? { behind: o.behind } : {}) }
+    ...(store ? { store, how: o?.how === "relaunch" ? "relaunch" : "install" } : {}), ...(started ? { root: started } : {}), ...(o?.behind ? { behind: o.behind } : {}),
+    failed: failed(state) }
 }
 
 let started: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } | null = null
@@ -139,7 +141,7 @@ const storeHost = (): StoreHost => ({
   helper: () => host.helperCommit(), reloadHelper: (root, commit) => host.reloadHelper(root, commit), log: logUpdate,
 })
 export function logUpdate(line: string) {
-  try { fs.mkdirSync(app.getPath("logs"), { recursive: true }); fs.appendFileSync(path.join(app.getPath("logs"), "update.log"), `${new Date().toISOString()} ${line}\n`) } catch { /* no log */ }
+  try { fs.mkdirSync(path.dirname(LOG()), { recursive: true }); fs.appendFileSync(LOG(), `${new Date().toISOString()} ${line}\n`) } catch { /* no log */ }
 }
 function offer(commit: string, how: Exclude<How, "worktree">, behind?: string | null) {
   send({ type: "offered", commit, how: WORKTREE ? "worktree" : how, ...(behind !== undefined ? { behind } : {}) })
@@ -164,10 +166,10 @@ let worktree: { worktree: string; branch: string; commit: string; dirty: boolean
 export function worktreeNow(w: NonNullable<typeof worktree>) { worktree = w }
 export function worktreeChanged(what: string) { send({ type: "changed", what }) }
 
+const LOG = () => path.join(app.getPath("logs"), "update.log")
 function updateLog() {
-  const dir = app.getPath("logs")
-  fs.mkdirSync(dir, { recursive: true })
-  return fs.openSync(path.join(dir, "update.log"), "a")
+  fs.mkdirSync(path.dirname(LOG()), { recursive: true })
+  return fs.openSync(LOG(), "a")
 }
 
 function checkForUpdate(byHand: boolean) {
@@ -247,7 +249,12 @@ function upToDate(c: Current) {
 function updateFailed(why: string) {
   void dialog.showMessageBox({ type: "warning", message: `Couldn't update ${app.getName()}`, buttons: ["OK", "Show log"],
     detail: `${why} ${app.getName()} keeps this version and tries again later.` })
-    .then((r) => { if (r.response === 1) void shell.openPath(path.join(app.getPath("logs"), "update.log")) })
+    .then((r) => { if (r.response === 1) void shell.openPath(LOG()) })
+}
+
+async function noticeFailed() {
+  const { tellOneVault } = await import("./attached.ts"), text = failedMessage(state, app.getName(), os.hostname().split(".")[0])
+  if (await tellOneVault(host.windows().map((w) => w.port), logUpdate, text, LOG())) send({ type: "noticed" })
 }
 
 function built() {

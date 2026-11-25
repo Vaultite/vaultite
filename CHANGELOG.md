@@ -100,6 +100,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   signed in as it, never another account's from another container.
 - Updates: an agent browsing where no one watches (an always-on one in its own container) no longer holds the
   server's restart, and nothing holds it past 30 minutes but an agent acting in a tab the user sees.
+- Updates: an app built from source whose background updates keep failing says so once, after three in a row, in your
+  inbox with why and its log; Settings, About and `vau version` say it meanwhile, and being offline never counts.
 - Mac: updating from a release works again. Since 0.15.0 the update downloaded, then macOS's installer gave up on a
   read-only folder in the new app, so 0.13.0 never moved on and said nothing; a release now ships nothing read-only.
 - Desktop: a hidden sidebar no longer peeks out while the pointer is mid-page on a pinch-zoomed web page under a

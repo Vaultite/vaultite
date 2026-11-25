@@ -29,6 +29,16 @@ function updateError(host: Host, log: (line: string) => void, message: string) {
   for (const w of host.windows()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
 }
 
+export async function tellOneVault(ports: number[], log: (line: string) => void, text: string, open: string): Promise<boolean> {
+  for (const port of ports) {
+    const r = await fetch(`http://127.0.0.1:${port}/api/ops/ui.notify`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" },
+      body: JSON.stringify({ text, error: true, actionOpen: open }), signal: AbortSignal.timeout(5000) }).catch(() => null)
+    if (r?.ok) { log(`updates: told the user: ${text}`); return true }
+  }
+  log("updates: no vault's server took the notice: told at the next failure")
+  return false
+}
+
 export const serverCommit = (port: number, log: (line: string) => void) => fetch(`http://127.0.0.1:${port}/api/ops/app.version`, { method: "POST",
   headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(5000) }).then(async (r) => {
   const { VersionHere } = await import("../core/contracts/version.ts")

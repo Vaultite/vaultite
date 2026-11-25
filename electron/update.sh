@@ -54,7 +54,7 @@ build)
   src=$2 repo=$3 running=$4 branch=${5:-main} script=${6:-app:build} want=${7:-}
   # The finished build goes here (the .app, then commit, written last): never one half built.
   next=$(dirname "$src")/update.noindex
-  [ -d "$src/.git" ] || { rm -rf "$src"; git clone --quiet "$repo" "$src"; }
+  [ -d "$src/.git" ] || { gone "$src"; git clone --quiet "$repo" "$src"; }
   cd "$src"
   # Where the app says it's from: a clone made before the repo moved would fetch the old one, forever "up to date".
   [ "$(git remote get-url origin)" = "$repo" ] || git remote set-url origin "$repo"

@@ -7,6 +7,7 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
+import { removeReadOnly } from "../core/update/store.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 if (process.platform !== "linux") {
@@ -34,7 +35,7 @@ const built = fs.readdirSync(path.join(ROOT, "dist-app")).find((d) => /^linux.*-
 if (!built) throw new Error("no dist-app/linux-unpacked: npm run app:build didn't build the app")
 
 // The app may be running from DEST: its files are replaced under it, and the next launch is the new one.
-fs.rmSync(DEST, { recursive: true, force: true })
+removeReadOnly(DEST)
 fs.mkdirSync(path.dirname(DEST), { recursive: true })
 fs.cpSync(path.join(ROOT, "dist-app", built), DEST, { recursive: true, verbatimSymlinks: true })
 const exe = path.join(DEST, EXE)

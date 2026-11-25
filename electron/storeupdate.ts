@@ -7,7 +7,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { gitEnv } from "../core/gitenv.ts"
 import { holdRoot } from "../core/update/lease.ts"
-import { stopRuns, type Recipe, type Root, type RootStore } from "../core/update/store.ts"
+import { removeReadOnly, stopRuns, type Recipe, type Root, type RootStore } from "../core/update/store.ts"
 import type { Applied, Update, UpdaterOptions } from "../core/update/updater.ts"
 import { BRANCH, CODE, HOST, SHELL } from "./identity.ts"
 import { mainLog } from "./mainlog.ts"
@@ -123,7 +123,7 @@ async function buildShell(h: StoreHost, r: Root) {
   const next = path.join(userData(), "update.noindex"), work = path.join(next, `build-${r.commit}`)
   const run = (cmd: string, args: string[], env: NodeJS.ProcessEnv = {}) => exec(cmd, args, { cwd: work, maxBuffer: 64 << 20, timeout: 45 * 60_000,
     env: { ...process.env, PATH: h.path(), ...env } })
-  fs.rmSync(work, { recursive: true, force: true })
+  removeReadOnly(work)
   fs.mkdirSync(next, { recursive: true })
   h.log(`store: building a new shell from ${r.commit.slice(0, 7)}`)
   // (APFS clones, Linux reflinks where it can: the root's blocks shared)
@@ -140,11 +140,11 @@ async function buildShell(h: StoreHost, r: Root) {
     const made = fs.readdirSync(out).map((d) => path.join(out, d, process.platform === "darwin" ? `${name}.app` : "")).find((p) => /\.app$|-unpacked\/?$/.test(p) && fs.existsSync(p))
     if (!made) throw new Error("electron-builder made no app")
     const to = path.join(next, process.platform === "darwin" ? `${name}.app` : name)
-    fs.rmSync(to, { recursive: true, force: true })
+    removeReadOnly(to)
     fs.rmSync(path.join(next, "commit"), { force: true })
     fs.renameSync(made, to)
     fs.writeFileSync(path.join(next, "commit"), `${r.commit}\n`)
-  } finally { fs.rmSync(work, { recursive: true, force: true }) }
+  } finally { removeReadOnly(work) }
   h.log(`store: the new shell for ${r.commit.slice(0, 7)} is built`)
 }
 

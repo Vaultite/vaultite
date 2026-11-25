@@ -10,7 +10,7 @@ import { copyText } from "@/core/richmd"
 import { Button } from "@/components/Button"
 import { Group, Section, SettingRow } from "@/components/kit"
 import { capitalize } from "@/lib/utils"
-import type { VersionHere } from "../../../core/contracts/version.ts"
+import type { AppUpdates, VersionHere } from "../../../core/contracts/version.ts"
 
 const FROM: Record<string, string> = { current: "from its code store", good: "from its code store (the last that started)", bundle: "its own bundle", checkout: "this checkout", dev: "a worktree" }
 
@@ -34,6 +34,9 @@ function useVersion() {
   }, [served])
   return v
 }
+
+const noneReady = ({ failed, mode }: AppUpdates) =>
+  failed ? `${failed.times > 1 ? `The last ${failed.times} updates` : "The last update"} failed: ${failed.why}` : mode === "off" ? "Updates off" : "No update waiting"
 
 export function Running() {
   const v = useVersion()
@@ -62,7 +65,7 @@ export function Running() {
           <SettingRow label="App" data-settings-row="running-app" value={app.commit ? <Hash sha={app.commit} /> : undefined}
             onClick={app.commit ? () => void copy(app.commit!) : undefined} chevron={app.commit ? Copy : null}
             sub={app.worktree ? [`${app.worktree.branch} in ${app.worktree.worktree}`, app.worktree.dirty && "uncommitted changes", app.ready && `${app.ready}: relaunch to run them`].filter(Boolean).join(" · ")
-              : app.doing ?? (app.ready ? `${short(app.ready)} is ready: ${app.how === "relaunch" ? "relaunch to run it, a couple of seconds" : "restart to update"}` : app.mode === "off" ? "Updates off" : "No update waiting")} />
+              : app.doing ?? (app.ready ? `${short(app.ready)} is ready: ${app.how === "relaunch" ? "relaunch to run it, a couple of seconds" : "restart to update"}` : noneReady(app))} />
         )}
         {app?.root && app.store && (
           <SettingRow label="App's code" data-settings-row="running-root" value={app.root.commit ? <Hash sha={app.root.commit} /> : undefined}
