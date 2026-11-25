@@ -1,10 +1,12 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react"
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react"
 import { ArrowUpRight, Download, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import { dateText } from "@/core/data"
 import { get } from "@/core/http"
 import { localCopy } from "@/core/justsaved"
 import { formatSize, isVector, kindIcon, kindName, type FileKind } from "@/core/filekinds"
 import { gone, openFile } from "@/core/files"
+import { desktop } from "@/core/desktop"
+import { useZoomTarget } from "@/core/zoom"
 import { isDesktop } from "@/core/platform"
 import { saveFile, savesBySharing } from "@/core/savefile"
 import { useVaultChange } from "@/core/live"
@@ -102,9 +104,18 @@ export function ImageView({ path, info, v, page, focus, onSize }: { path: string
   )
 }
 
+function usePdfZoom(box: RefObject<HTMLElement | null>, keyboardIn: boolean) {
+  const zoom = desktop?.pdfZoom
+  useZoomTarget(box, zoom ? async (step) => {
+    const z = await zoom(box.current?.querySelector("iframe")?.src ?? "", step)
+    return z === null ? null : { text: `Page ${Math.round(z * 100)}%`, actual: Math.abs(z - 1) < 0.001 }
+  } : null, { keyboardIn })
+}
+
 // Mobile browsers draw only a picture of a PDF's first page in a frame.
 export function PdfView({ path, info, v, page }: { path: string; info: FileInfo | null; v: number; page: boolean }) {
   const [ref, h] = useFill(page)
+  usePdfZoom(ref, !page)
   if (!isDesktop()) {
     return (
       <FileCard path={path} info={info}>

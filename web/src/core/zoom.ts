@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react"
-import { Scan, ZoomIn, ZoomOut } from "lucide-react"
+import { Maximize, Scan, ZoomIn, ZoomOut } from "lucide-react"
 import type { Command } from "@/core/commands"
 import { desktop } from "@/core/desktop"
 import { notify } from "@/core/notify"
@@ -14,32 +14,39 @@ export type Zoomed = { text: string; actual: boolean } | null
 /** A step in (1), out (-1) or back to actual size (0) of what an element draws. */
 export type Zoom = (step: ZoomStep) => Zoomed | Promise<Zoomed>
 
-const targets = new Map<HTMLElement, Zoom>()
+export type ZoomTarget = { zoom: Zoom; fit?: () => void; keyboardIn?: boolean }
+const targets = new Map<HTMLElement, ZoomTarget>()
 
-/** ⌘+ ⌘- ⌘0 zoom what `ref` draws while the keyboard is in it or it's in the focused pane (null: they don't). */
-export function useZoomTarget(ref: RefObject<HTMLElement | null>, zoom: Zoom | null) {
-  const live = useRef(zoom)
-  useEffect(() => { live.current = zoom })
-  const on = !!zoom
+/** ⌘+ ⌘- ⌘0 zoom what `ref` draws while the keyboard is in it or (but for one part of a page: `keyboardIn`) it's in the
+ *  focused pane (null: they don't). `fit`: what Zoom to fit does there. */
+export function useZoomTarget(ref: RefObject<HTMLElement | null>, zoom: Zoom | null, { fit, keyboardIn }: { fit?: () => void; keyboardIn?: boolean } = {}) {
+  const live = useRef({ zoom, fit })
+  useEffect(() => { live.current = { zoom, fit } })
+  const on = !!zoom, fits = !!fit
   useEffect(() => {
     const el = ref.current
     if (!el || !on) return
-    const z: Zoom = (step) => live.current?.(step) ?? null
-    targets.set(el, z)
-    return () => { if (targets.get(el) === z) targets.delete(el) }
-  }, [ref, on])
+    const t: ZoomTarget = { zoom: (step) => live.current.zoom?.(step) ?? null, fit: fits ? () => live.current.fit?.() : undefined, keyboardIn }
+    targets.set(el, t)
+    return () => { if (targets.get(el) === t) targets.delete(el) }
+  }, [ref, on, fits, keyboardIn])
 }
 
-export function zoomTarget(): Zoom | null {
+export function keyboardAt() {
   // A web page in a pane holding the keyboard leaves document.hasFocus() false.
   const a = document.hasFocus() ? document.activeElement : null
+  return a?.closest("[data-palette]") || a === document.body ? null : a
+}
+
+export function zoomTarget(): ZoomTarget | null {
+  const a = keyboardAt()
   for (let n = a; n; n = n.parentElement) { const z = n instanceof HTMLElement && targets.get(n); if (z) return z }
   if (a?.closest("dialog[open], [role=dialog]")) return null
   const id = activePane()?.id
   const pane = id ? document.querySelector(`[data-pane="${CSS.escape(id)}"]`) : null
   if (!pane) return null
   let best: HTMLElement | null = null
-  for (const el of targets.keys()) if (pane.contains(el) && (!best || el.compareDocumentPosition(best) & Node.DOCUMENT_POSITION_FOLLOWING)) best = el
+  for (const [el, t] of targets) if (!t.keyboardIn && pane.contains(el) && (!best || el.compareDocumentPosition(best) & Node.DOCUMENT_POSITION_FOLLOWING)) best = el
   return best ? targets.get(best)! : null
 }
 
@@ -70,13 +77,14 @@ async function zoomWith(zoom: Zoom, step: ZoomStep) {
 }
 
 const canZoom = () => !!ui || (isDesktop() && !!zoomTarget())
-const zoomFocused = (step: ZoomStep) => () => zoomWith(zoomTarget() ?? interfaceZoom, step)
+const zoomFocused = (step: ZoomStep) => () => zoomWith(zoomTarget()?.zoom ?? interfaceZoom, step)
 const WORDS = "zoom bigger smaller font text size"
 
 export function zoomCommands(): Command[] {
   return [
     { id: "zoom:in", name: "Zoom in", keys: ["Mod+=", "Mod+Shift+="], when: canZoom, run: zoomFocused(1), icon: ZoomIn, words: WORDS },
     { id: "zoom:out", name: "Zoom out", keys: ["Mod+-"], when: canZoom, run: zoomFocused(-1), icon: ZoomOut, words: WORDS },
+    { id: "zoom:fit", name: "Zoom to fit", when: () => !!zoomTarget()?.fit, run: () => zoomTarget()?.fit?.(), icon: Maximize, words: WORDS },
     { id: "zoom:reset", name: "Reset zoom", keys: ["Mod+0"], when: canZoom, run: zoomFocused(0), icon: Scan, words: `${WORDS} actual` },
     ...(ui ? [
       { id: "interface-size:increase", name: "Increase interface size", keys: ["Mod+Alt+=", "Mod+Alt+Shift+="], run: () => zoomWith(interfaceZoom, 1), icon: ZoomIn, words: `${WORDS} app window` },

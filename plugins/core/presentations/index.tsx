@@ -6,8 +6,8 @@ const Deck = lazy(() => import("./Deck"))
 
 const format: FileFormat = {
   exts: ["pptx"], icon: Presentation, tint: "var(--orange)", binary: true, layout: "inline",
-  render: ({ url }) => <Suspense fallback={<Loading />}><Deck url={url!} /></Suspense>,
-  embed: ({ url }) => <Suspense fallback={<Loading />}><Deck url={url!} embed /></Suspense>,
+  render: ({ url, path }) => <Suspense fallback={<Loading />}><Deck url={url!} path={path} /></Suspense>,
+  embed: ({ url, path }) => <Suspense fallback={<Loading />}><Deck url={url!} path={path} embed /></Suspense>,
 }
 
 export default definePlugin({

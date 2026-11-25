@@ -47,7 +47,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   const pageAt = useRef(0)
   const touchActions = useRef({ key: (_send: (t: Term) => string) => {}, paste: () => {}, hide: () => {} })
   const size = useTextSize("terminal")
-  useTextSizeWheel(host, "terminal", true)
+  useTextSizeWheel(host, "terminal", { first: true })
   useEffect(() => {
     const l = live.current
     if (!l || l.t.o.fontSize === fontSize(size)) return

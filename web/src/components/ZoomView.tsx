@@ -25,7 +25,7 @@ function usePanZoom(box: RefObject<HTMLElement | null>, o: Omit<PanZoomOptions, 
     return () => { off(); z.destroy(); zoom.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one for the box's life; the options are read live
   }, [])
-  useZoomTarget(box, keys ? (step) => { if (step) zoom.current?.step(step); else zoom.current?.zoomTo(1); return null } : null)
+  useZoomTarget(box, (step) => { if (step) zoom.current?.step(step); else zoom.current?.zoomTo(1); return null }, { fit: () => zoom.current?.fit(), keyboardIn: !keys })
   return zoom
 }
 

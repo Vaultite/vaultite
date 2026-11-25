@@ -12,4 +12,5 @@ const format: FileFormat = {
 
 export default definePlugin({
   formats: { book: format },
+  textSizes: { book: { label: "Book", sub: "Ebooks' text", quiet: true } },
 })

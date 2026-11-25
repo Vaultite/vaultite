@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, ClipboardPaste, Copy, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
-import { Button, closePane, cn, copyText, errorText, get, haptic, keysText, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useGiveKeys, useScopedState, webPages, coarse, type BarKey, type FieldKeys, openSocket, type Socket } from "@vaultite"
+import { Button, closePane, cn, copyText, errorText, get, haptic, keysText, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useGiveKeys, useScopedState, webPages, wheelScale, coarse, type BarKey, type FieldKeys, openSocket, type Socket } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -451,7 +451,7 @@ function Watch({ tab: asked, machine, back }: { tab: number; machine: string; ba
       e.preventDefault()
       const r = img.current!.getBoundingClientRect(), k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1
       // A trackpad's pinch comes as the wheel with Control held.
-      if (e.ctrlKey) return zoomTo(view.current.s * Math.exp((-e.deltaY * k) / 100), e)
+      if (e.ctrlKey || e.metaKey) return zoomTo(view.current.s * wheelScale(e.deltaY * k), e)
       if (view.current.s > 1.001) return panOrScroll(-e.deltaX * k, -e.deltaY * k, at(e))
       if (e.target !== img.current) return
       send({ type: "wheel", ...at(e), dx: (e.deltaX * k) / r.width, dy: (e.deltaY * k) / r.height, modifiers: mods(e) })

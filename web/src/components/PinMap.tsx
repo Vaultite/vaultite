@@ -8,6 +8,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"
 import { Maximize2 } from "lucide-react"
 import { startMap } from "@/core/mapstyle"
 import { MapControls } from "@/components/MapControls"
+import { useMapZoom } from "@/core/mapzoom"
 import { namedIcon } from "@/core/pages"
 import "./PinMap.css"
 
@@ -103,6 +104,7 @@ export default function PinMap({ pins, onOpen, onFail, zoom }: {
     else map.fitBounds(boundsOf(ps), { padding: PAD, maxZoom: max, animate, duration: 700 })
   }
 
+  useMapZoom(box, mapRef, fitAll)
   const near = useNearScreen(box)
   useEffect(() => {
     if (!box.current || !near) return

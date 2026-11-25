@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
-import { usePageZoom } from "@vaultite"
+import { keptZoom, usePageZoom } from "@vaultite"
 import type { MindNode } from "./tree"
 
 const ROW = 30, GAP = 44, PAD = 10, MAX_W = 260, MARGIN = 16, H = 24
@@ -61,8 +61,8 @@ export function MindMap({ root, path, depth = 9, onGo, height }: { root: MindNod
   const { all, width, height: h } = useMemo(() => layout(root, shut, depth), [root, depth, shut.size, [...shut].join()])
   const toggle = (line: number) => { folded.set(path, withToggled(shut, line)); redraw((n) => n + 1) }
   const W = width + MARGIN * 2 + 24, Hh = h + MARGIN * 2
-  const box = useRef<HTMLDivElement>(null), [zoom, setZoom] = useState(1)
-  usePageZoom(box, (z) => flushSync(() => setZoom(z)), !height)
+  const box = useRef<HTMLDivElement>(null), [zoom, setZoom] = useState(() => (height ? 1 : keptZoom(`${path}#map`)))
+  usePageZoom(box, (z) => flushSync(() => setZoom(z)), { path: height ? undefined : `${path}#map`, embed: !!height })
   return (
     <div ref={box} className="overflow-auto" style={height ? { height } : undefined} data-mind-map>
       <svg width={W * zoom} height={Hh * zoom} viewBox={`${-MARGIN} ${-MARGIN - ROW / 2} ${W} ${Hh}`} className="block min-w-full" role="tree" aria-label={`Mind map of ${root.text}`}

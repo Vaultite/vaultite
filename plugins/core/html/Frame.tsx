@@ -1,7 +1,8 @@
+import { flushSync } from "react-dom"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { askBeforeOpening, outsideVault } from "./links.ts"
 import { joinShared, type SharedLink } from "./sharing.ts"
-import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange, openSocket, type Socket } from "@vaultite"
+import { cn, confirmDialog, isNumber, keptZoom, usePageZoom, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange, openSocket, type Socket } from "@vaultite"
 
 type Peer = (m: Record<string, unknown>) => void
 const peers = new Map<string, Set<Peer>>()
@@ -48,6 +49,12 @@ export function ArtifactFrame({ path, page, height, className }: {
   const [h, setH] = useState<number | null>(null)
   const [ready, setReady] = useState(false)
   const [min, setMin] = useState(page ? 480 : 0)
+  const [zoom, setZoom] = useState(() => (page ? keptZoom(path) : 1))
+  const zoomBy = usePageZoom(frame, (z) => flushSync(() => setZoom(z)), { path: page ? path : undefined, embed: !page })
+  const pinch = useCallback((d: { by: number; x: number; y: number }) => {
+    const r = frame.current?.getBoundingClientRect(), k = keptZoom(path)
+    if (r && isNumber(d.by) && d.by > 0 && isNumber(d.x) && isNumber(d.y)) zoomBy(d.by, { x: r.left + d.x * k, y: r.top + d.y * k })
+  }, [path, zoomBy])
   const reads = useRef(new Map<string, number | null>())
   const listening = useRef(false)
   const growth = useRef<number[]>([])
@@ -102,7 +109,8 @@ export function ArtifactFrame({ path, page, height, className }: {
         const now = Date.now()
         growth.current = [...growth.current.filter((t) => now - t < 1000), now]
         setH((cur) => (cur !== null && d.h > cur && growth.current.length > 6 ? cur : d.h))
-      } else if (d.type === "listening") listening.current = true
+      } else if (d.type === "pinch") pinch(d)
+      else if (d.type === "listening") listening.current = true
       else if (d.type === "state" && d.data && typeof d.data === "object" && !outside && !share) {
         fetch("api/artifact/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, data: d.data }) })
           .catch(() => {})
@@ -193,7 +201,7 @@ export function ArtifactFrame({ path, page, height, className }: {
       peers.get(path)?.delete(forward)
       for (const ws of calls.values()) ws.close()
     }
-  }, [path, page, sendTheme])
+  }, [path, page, sendTheme, pinch])
 
   const self = useRef<number | null | undefined>(undefined)
   const stat = async (paths: string[]): Promise<Record<string, number | null> | null> => {
@@ -221,12 +229,12 @@ export function ArtifactFrame({ path, page, height, className }: {
     else setReloads((n) => n + 1)
   })
 
-  const shown = height ?? Math.max(h ?? (page ? 0 : 160), min)
+  const shown = height ?? Math.max(h ?? (page ? 0 : 160), min / zoom)
   return (
     <iframe ref={frame} src={url} title={stem(path)}
       sandbox={share ? "allow-scripts" : "allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"}
       referrerPolicy="no-referrer" loading={page ? "eager" : "lazy"}
       className={cn("block w-full border-0 bg-transparent transition-opacity duration-150", ready ? "opacity-100" : "opacity-0", className)}
-      style={{ height: shown, colorScheme: isDark() ? "dark" : "light" }} />
+      style={{ height: shown, zoom, colorScheme: isDark() ? "dark" : "light" }} />
   )
 }

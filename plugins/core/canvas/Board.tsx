@@ -121,7 +121,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     zoom: zoomBy, fit: fitAll, fitSelection, zoom100: zoomTo100, selected: () => sel.size > 0 || !!selEdge,
   }
   useEffect(() => registerBoard(() => ({ ...keyed.current!, box: box.current })), [box])
-  useZoomTarget(box, (step) => { if (step) zoomBy(step > 0 ? 1.25 : 0.8); else zoomTo100(); return null })
+  useZoomTarget(box, (step) => { if (step) zoomBy(step > 0 ? 1.25 : 0.8); else zoomTo100(); return null }, { fit: fitAll, keyboardIn: embed })
 
   const toWorld = (cx: number, cy: number): Pt => {
     const r = box.current!.getBoundingClientRect(), v = viewRef.current

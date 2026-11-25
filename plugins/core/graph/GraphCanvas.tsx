@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
 import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type ForceLink, type ForceManyBody, type ForceX, type ForceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
-import { onLook, trackSoon } from "@vaultite"
+import { onLook, onPinch, trackSoon, useZoomTarget } from "@vaultite"
 import { nameOf, type Graph, type GraphEdge, type GraphNode } from "./graph"
 
 type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string; text: string; tw: number; tws: number; la: number }
@@ -13,7 +13,7 @@ type CanvasState = {
   t: { k: number; x: number; y: number }; w: number; h: number; dpr: number; touched: boolean
   drawn: boolean; wake: () => void; dirty: boolean
   hover: SimNode | null; search: string; focus: string; font: string; colors: { fg: string; muted: string; line: string; bg: string; accent: string }
-  onOpen: (path: string, newTab: boolean) => void; compact: boolean; arrows: boolean; look: Look; fit: (() => void) | null; setMoved: (moved: boolean) => void
+  onOpen: (path: string, newTab: boolean) => void; compact: boolean; arrows: boolean; look: Look; fit: (() => void) | null; zoomBy: ((by: number) => void) | null; setMoved: (moved: boolean) => void
 }
 
 type CanvasProps = {
@@ -96,9 +96,11 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false,
     drawn: false, wake: () => {}, get dirty() { return !this.drawn }, set dirty(v: boolean) { this.drawn = !v; if (v) this.wake() },
     hover: null, search: "", focus: "", font: "system-ui", colors: { fg: "#000", muted: "#888", line: "#ccc", bg: "#fff", accent: "#07f" },
-    onOpen, compact: !!compact, arrows: false, look: {}, fit: null, setMoved: () => {},
+    onOpen, compact: !!compact, arrows: false, look: {}, fit: null, zoomBy: null, setMoved: () => {},
   })
   const [moved, setMoved] = useState(false)
+  const fitAll = () => st.current.fit?.()
+  useZoomTarget(wrap, (step) => { if (step) st.current.zoomBy?.(step > 0 ? 1.25 : 0.8); else fitAll(); return null }, { fit: fitAll, keyboardIn: compact })
   st.current.onOpen = onOpen
   st.current.setMoved = setMoved
 
@@ -231,7 +233,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     const pts = new Map<number, { x: number; y: number }>()
     let drag: { node: SimNode | null; x: number; y: number; moved: boolean; t0: number } | null = null
     let pinch: { d: number; cx: number; cy: number } | null = null
-    const local = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+    const local = (e: { clientX: number; clientY: number }) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
     const down = (e: PointerEvent) => {
       if (e.button !== 0) return
       el.setPointerCapture(e.pointerId)
@@ -298,13 +300,15 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       if (e.pointerType === "touch") { s.hover = null; s.dirty = true }
     }
     const leave = () => { if (!drag && s.hover) { s.hover = null; s.dirty = true } }
+    s.zoomBy = (by) => zoomAt(s.w / 2, s.h / 2, by)
+    const unpinch = onPinch(el, { zoom: (by, at) => { const p = local({ clientX: at.x, clientY: at.y }); zoomAt(p.x, p.y, by) } })
     const wheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
       const p = local(e)
-      // A trackpad pinch arrives as a wheel event with ctrlKey.
-      const pan = !e.ctrlKey && !e.metaKey && e.deltaMode === 0 && Math.abs(e.deltaX) > 0
+      const pan = e.deltaMode === 0 && Math.abs(e.deltaX) > 0
       if (pan) { s.t = { ...s.t, x: s.t.x - e.deltaX, y: s.t.y - e.deltaY }; touch(); s.dirty = true; return }
-      zoomAt(p.x, p.y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022)))
+      zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0022))
     }
     const aux = (e: MouseEvent) => {
       if (e.button !== 1) return
@@ -484,6 +488,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       el.removeEventListener("pointercancel", up)
       el.removeEventListener("pointerleave", leave)
       el.removeEventListener("wheel", wheel)
+      unpinch()
       el.removeEventListener("auxclick", aux)
       const pos = POS.get(scope)
       if (pos) for (const n of s.nodes) if (n.x !== undefined) pos.set(n.n.path, { x: n.x, y: n.y! })

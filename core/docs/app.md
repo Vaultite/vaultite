@@ -131,7 +131,7 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).
   `panelDividers`: true | false (default), a line between the sidebars' panels. `panelHeadings`: `shown` (default) | `quiet`: the panels' headings become a slim gap whose name and buttons show while the pointer is in it or ⌥ is held (a panel picked up shows them all; a folded one keeps its heading; one whose content doesn't say what it is, like Inbox or Links, stays shown; a panel with nothing to show, like an empty Inbox, takes no room). Phones have no hover: quiet ones there are named only while ⌥ is held, held for their menu. `sidebarButtons`: true | false (default), on phones, buttons in the top bar that open the sidebars; off, they're swiped in from the screen's edges (in a phone's browser, where the edges are the browser's, they always show). `quickTextSize`: true | false
-  (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size.
+  (default): ⌘/⌃ and the wheel, or a pinch, over a note, code, a chat or a terminal changes its text size.
 - `interfaceFont`, `textFont` (notes), `monoFont` (code): a font's name or a CSS font-family list; empty is the app's.
   `fileIcons`: true | false. `tabBar`: true (default) | false: the window's tabs in a bar above its panes (a split tab is
   one chip); off, none (switch with the Tabs panel, `tabs:tabs`, or the keyboard). Vertical tabs are both: `tabBar` false and
@@ -158,8 +158,9 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   `pullActions`: the three commands a page pulled down past its top offers on a phone, by palette command id: left,
   straight down (what a plain pull runs), right (`["file:new", "switcher:open", "tab:close"]`, the default; one left
   out or empty keeps its default).
-  No font size: ⌘+ ⌘- ⌘0 (Ctrl off a Mac) zoom what's focused: a note's or a terminal's text size (each device's, a
-  terminal's a point at a time), a web page's site (kept per site on the Mac), a canvas; with none of those, the desktop
+  No font size: ⌘+ ⌘- ⌘0 (Ctrl off a Mac) zoom what's focused: a note's, code's, a chat's, a book's, a table's or a
+  terminal's text size (each device's, a terminal's a point at a time), a web page's site (kept per site on the Mac), a
+  picture, a PDF, a Word file, a deck, an HTML page, a canvas, the graph, a map; with none of those, the desktop
   app's interface size, the whole window's zoom (View > Interface size, ⌥⌘+ ⌥⌘- ⌥⌘0, Settings > Appearance), one for
   every window on that computer (the app's own `vaults.json`, never the vault). In a browser the browser zooms the rest.
 - `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`, else

@@ -6,8 +6,8 @@ const Docx = lazy(() => import("./Docx"))
 
 const format: FileFormat = {
   exts: ["docx"], icon: FileText, tint: "var(--blue)", binary: true, layout: "inline",
-  render: ({ url }) => <Suspense fallback={<Loading />}><Docx url={url!} /></Suspense>,
-  embed: ({ url }) => <Suspense fallback={<Loading />}><Docx url={url!} embed /></Suspense>,
+  render: ({ url, path }) => <Suspense fallback={<Loading />}><Docx url={url!} path={path} /></Suspense>,
+  embed: ({ url, path }) => <Suspense fallback={<Loading />}><Docx url={url!} path={path} embed /></Suspense>,
 }
 
 export default definePlugin({

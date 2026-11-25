@@ -57,7 +57,7 @@ const APPEARANCE: Record<string, Setting> = {
   sidebarButtons: { about: "true or false (default): on phones, buttons in the top bar open the sidebars; off, they're swiped in from the screen's edges (in a phone's browser they always show)", parse: bool("sidebarButtons") },
   panelHeadings: { about: "shown (default) or quiet: the sidebars' panels without headings, a slim gap between them whose name shows while the pointer is in it or ⌥ is held (a folded panel, and one like Inbox whose content doesn't say what it is, keeps its heading)", parse: oneOf("shown", "quiet") },
   panelDividers: { about: "true or false (default): a line between the sidebars' panels", parse: bool("panelDividers") },
-  quickTextSize: { about: "true or false (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size", parse: bool("quickTextSize") },
+  quickTextSize: { about: "true or false (default): ⌘/⌃ and the wheel, or a pinch, over a note, code, a chat or a terminal changes its text size (a book, a table, a page or a picture always zooms so)", parse: bool("quickTextSize") },
   interfaceFont: { about: "the interface's font family (a font installed on the device; Settings lists them)", parse: (v) => v },
   textFont: { about: "the font of notes' text", parse: (v) => v },
   monoFont: { about: "the font of code and source mode", parse: (v) => v },

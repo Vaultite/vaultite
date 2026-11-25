@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react"
-import { linkClick, Loading, openWebLink, usePageZoom } from "@vaultite"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { keptZoom, linkClick, Loading, openWebLink, usePageZoom } from "@vaultite"
 
-export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
+export default function Deck({ url, path, embed }: { url: string; path: string; embed?: boolean }) {
   const box = useRef<HTMLDivElement>(null), pages = useRef<HTMLDivElement>(null)
-  usePageZoom(pages, (z) => { if (box.current) box.current.style.width = z === 1 ? "" : `${z * 100}%` }, !embed)
+  const widen = (z: number) => { if (box.current) box.current.style.width = z === 1 ? "" : `${z * 100}%` }
+  usePageZoom(pages, widen, { path: embed ? undefined : path, embed })
+  useLayoutEffect(() => { if (!embed) widen(keptZoom(path)) }, [embed, path])
   const [state, setState] = useState<"loading" | "ok" | string>("loading")
   const [count, setCount] = useState(0)
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
     if (/^https?:/i.test(href)) openWebLink(href, linkClick(e))
   }
   return (
-    <div ref={pages} className={embed ? "max-h-[520px] overflow-auto" : "overflow-x-auto"} data-deck={count || undefined}>
+    <div ref={pages} className={embed ? "max-h-[520px] overflow-auto" : "min-h-[75vh] overflow-x-auto"} data-deck={count || undefined}>
       {state === "loading" && <Loading />}
       {state !== "loading" && state !== "ok" && <p className="p-4 text-[15px] text-muted-foreground">This deck couldn't be read: {state}.</p>}
       <div ref={box} onClick={click} className="[&_.pptx-slide]:shadow-sm" />

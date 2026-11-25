@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   // The window's chrome see-through to the desktop (electron/translucency.ts): asked for, told whenever it changes.
   translucent: MAC || WIN ? { set: call("window:translucent"), on: (fn) => { ipcRenderer.on("vaultite:translucent", (_e, t) => fn(t)) } } : undefined,
   on: (fn) => { ipcRenderer.on("vaultite", (_e, msg) => fn(msg)) },
+  pdfZoom: call("pdf:zoom"),
   interfaceSize: { get: call("window:zoom"), step: call("window:zoom-step"), on: (fn) => { ipcRenderer.on("vaultite:zoom", (_e, z) => fn(z)) } },
   // The Browser's pages (electron/web.ts). The pages themselves get no preload: nothing of this reaches them.
   web: {

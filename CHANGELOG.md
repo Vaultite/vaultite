@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Zoom, one way everywhere: ⌘+, ⌘- and ⌘0 (or Zoom in, Zoom out, Reset zoom and the new Zoom to fit, in the View menu and
+  the palette) act on what you're in, where they resized the whole interface: code, JSON and notebooks, Claude Code
+  chats, CSV files and spreadsheets, ebooks, HTML pages, PDFs (desktop app), the graph and maps. A pinch, or ⌘ and
+  scroll, zooms books, tables, HTML pages, Word files and decks too, and goes at one speed on canvases, the graph and
+  pictures. Word files, decks, mind maps and HTML pages open as large as you left them on that device.
 - Pictures are controllable wherever they show. An image's tab fills its pane, and zooms with a pinch, ⌘ and scroll, a
   click (a double tap on a phone), `+` and `-`, ⇧1 to fit, ⇧2 its width, ⇧0 or ⌘0 its own size, or its buttons; drag,
   scroll or the arrows move it. An image or a diagram in a note, a chat, a notebook, a book, a replay or a file on

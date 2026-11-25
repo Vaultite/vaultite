@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, Plus } from "lucide-react"
-import { cn, FilterField, numberText, parseCsv } from "@vaultite"
+import { cn, FilterField, numberText, parseCsv, useSizedText } from "@vaultite"
 import { addRow, setCell } from "./csvedit"
 
 const PAGE = 300
@@ -21,6 +21,7 @@ export function CsvView({ text, embed, onChange }: { text: string; embed?: boole
     })
     return { head: h, rows: rs, numeric }
   }, [text])
+  const sized = useRef<HTMLDivElement>(null), size = useSizedText(sized, embed ? null : "table", { always: true })
   const [q, setQ] = useState("")
   const [sort, setSort] = useState<{ col: number; dir: 1 | -1 } | null>(null)
   const [all, setAll] = useState(false)
@@ -60,8 +61,8 @@ export function CsvView({ text, embed, onChange }: { text: string; embed?: boole
           </span>
         </div>
       )}
-      <div className={cn("overflow-auto rounded-[10px] border-[0.5px] border-border", embed ? "max-h-[420px]" : "max-h-[calc(100dvh-220px)]")}>
-        <table data-keylist className="w-full border-collapse text-[14px] leading-5">
+      <div ref={sized} className={cn("overflow-auto rounded-[10px] border-[0.5px] border-border", embed ? "max-h-[420px]" : "max-h-[calc(100dvh-220px)]")}>
+        <table data-keylist style={size} className="w-full border-collapse text-[14px] leading-5">
           <thead className="sticky top-0 z-[1] bg-card">
             <tr>
               {head.map((h, j) => (

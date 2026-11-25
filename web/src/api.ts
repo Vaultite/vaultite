@@ -164,7 +164,7 @@ export { EarlierRow, useEarlier, useGlide, useHold, useSteady } from "@/core/ste
 export { cell, type Cell } from "@/core/signal"
 /** Taps answered at once: rows taken off a list before the write is done, a button's slow action, a value just chosen. */
 export { removals, useBusy, useChosen } from "@/core/leaving"
-export { setTextSize, stepTextSize, textSize, useTextSize, useTextSizeWheel, type TextSizeKind } from "@/core/textsize"
+export { pinchTextSize, setTextSize, stepTextSize, textSize, useTextSize, useSizedText, useTextSizeWheel, type TextSizeKind } from "@/core/textsize"
 export { useZoomTarget, type Zoom, type Zoomed, type ZoomStep } from "@/core/zoom"
 export { addKeys, appShortcut, beginKeys, cancelKeys, commandKeys, keyCaps, keyHint, modifiedSteps, runShortcut, typingIn, useCommandKeys, useCommands, usePendingKeys } from "@/core/commands"
 export { isLinux, isMac, isWindows, keysText, modKey, revealLabel, showLabel } from "@/core/platform"
@@ -221,6 +221,11 @@ export { FileEmbed } from "@/components/FileEmbed"
 export { openViewer, viewImage } from "@/core/viewer"
 /** A document drawn as wide as its place, zoomed as a PDF is. */
 export { usePageZoom } from "@/core/pagezoom"
+export { keptZoom } from "@/core/keptzoom"
+/** A pinch over an element, as each device sends one: ⌘ or ⌃ + wheel, Safari's gestures, two fingers (`touches`). */
+export { onPinch } from "@/core/pinch"
+export { wheelScale } from "@/core/panzoom"
+export { isNumber } from "../../core/values.ts"
 export { ZoomImage, ZoomInPlace, ZoomView } from "@/components/ZoomView"
 // A file docked in a sidebar as a panel: a note edited as in its tab, with its own view on the panel's heading.
 export { DockedFile, DockedViewToggle } from "@/components/DockedFile"
@@ -267,6 +272,7 @@ export { WeeksGrid } from "@/components/WeeksGrid"
 // Maps: the base map's look (core/mapstyle.ts), its buttons, and a lazy map of pins (MapLibre loads with it).
 export { followMapTheme, MAP_STYLE, mapTheme, restyleMap, startMap, type MapTheme } from "@/core/mapstyle"
 export { MapControls, type MapButton } from "@/components/MapControls"
+export { useMapZoom } from "@/core/mapzoom"
 export type { MapPin } from "@/components/PinMap"
 export const PinMap = lazy(() => import("@/components/PinMap"))
 // Blocks: a body in pieces (its blocks, embeds and the Markdown between them), a block's options, a block drawn on its

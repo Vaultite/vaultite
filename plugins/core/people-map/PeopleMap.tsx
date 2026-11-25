@@ -4,7 +4,7 @@ import type { Map as MLMap, Marker } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"
 import { LocateFixed, Maximize2 } from "lucide-react"
-import { MapControls, startMap, useNearScreen } from "@vaultite"
+import { MapControls, startMap, useMapZoom, useNearScreen } from "@vaultite"
 import type { Person } from "@plugins/people/types"
 import { colorOf, firstName, initials, regionOf, type Me } from "./places"
 import "./PeopleMap.css"
@@ -147,6 +147,7 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
   live.current = { people, me, onOpen, onFail, all }
   const redraw = useRef<(() => void) | null>(null)
 
+  useMapZoom(box, mapRef, fitAll)
   const near = useNearScreen(box)
   useEffect(() => {
     if (!box.current || !near) return

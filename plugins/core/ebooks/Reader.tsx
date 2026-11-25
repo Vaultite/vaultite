@@ -1,7 +1,7 @@
 // foliate-js renders pages in same-origin frames with scripts on (a WebKit bug), so `safe` cleans every page first.
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, List } from "lucide-react"
-import { Bar, cn, Loading, menuBelow, openViewer, openWebLink, errorText } from "@vaultite"
+import { Bar, cn, Loading, menuBelow, onPinch, openViewer, openWebLink, pinchTextSize, textSize, useTextSize, useTextSizeWheel, errorText } from "@vaultite"
 
 import type { Book, TocItem, View } from "foliate-js/view.js"
 
@@ -84,12 +84,13 @@ function lookCloser(doc: Document, target: EventTarget | null) {
   if (url) openViewer({ name: "Picture", url })
 }
 
-function pageStyle() {
+function pageStyle(percent: number) {
   const css = getComputedStyle(document.documentElement)
   const fg = css.getPropertyValue("--foreground").trim()
   const link = css.getPropertyValue("--primary").trim()
   return `
     html { color-scheme: light dark; }
+    html { font-size: ${percent}% !important; }
     html, body { color: ${fg} !important; background: transparent !important; }
     body * { color: inherit; background-color: transparent; }
     a, a * { color: ${link} !important; }
@@ -108,6 +109,9 @@ function Pages({ url, path }: { url: string; path: string }) {
   const [state, setState] = useState<"loading" | "ok" | string>("loading")
   const [where, setWhere] = useState<{ fraction: number; label: string }>({ fraction: 0, label: "" })
   const [toc, setToc] = useState<TocItem[]>([])
+  const reader = useRef<HTMLDivElement>(null), size = useTextSize("book")
+  useTextSizeWheel(reader, "book", { always: true })
+  useEffect(() => { view.current?.renderer?.setStyles?.(pageStyle(size)) }, [size])
   const keys = (e: KeyboardEvent | React.KeyboardEvent) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return
     if (e.key === "ArrowLeft") { e.preventDefault(); void view.current?.goLeft() }
@@ -141,6 +145,7 @@ function Pages({ url, path }: { url: string; path: string }) {
       v.addEventListener("load", (e) => {
         const doc = e.detail.doc
         doc.addEventListener("keydown", keys)
+        onPinch(doc.documentElement, { zoom: (by) => pinchTextSize("book", by), touches: true })
         doc.addEventListener("click", (ev) => {
           if (!matchMedia("(pointer: coarse)").matches) return lookCloser(doc, ev.target)
           const win = doc.defaultView
@@ -155,7 +160,7 @@ function Pages({ url, path }: { url: string; path: string }) {
       v.renderer.setAttribute("flow", "paginated")
       v.renderer.setAttribute("gap", "6%")
       v.renderer.setAttribute("max-inline-size", "680px")
-      v.renderer.setStyles?.(pageStyle())
+      v.renderer.setStyles?.(pageStyle(textSize("book")))
       if (!on) return
       setToc(book.toc ?? [])
       let last: string | null = null
@@ -172,7 +177,7 @@ function Pages({ url, path }: { url: string; path: string }) {
   }
   const side = "absolute top-1/2 z-[1] grid size-9 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
   return (
-    <div className="flex h-full flex-col" tabIndex={0} onKeyDown={keys} data-keeps-keys data-ebook>
+    <div ref={reader} className="flex h-full flex-col" tabIndex={0} onKeyDown={keys} data-keeps-keys data-ebook>
       <div className="flex h-10 shrink-0 items-center gap-2 border-b-[0.5px] border-border px-2 text-[13px]">
         {toc.length > 0 && (
           <button type="button" onClick={contents} className="flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">

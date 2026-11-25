@@ -805,9 +805,10 @@ function Loaded({ store, initial, pane, docked, onGone }: { store: Store; initia
     settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />
   const phoneToggle = phoneTab && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="header" />
   const note = pane && !dash && !json && !notebook && (format ? !!format.prose : isMd(path) && !code)
-  const size = useTextSize("note")
-  useTextSizeWheel(article, note ? "note" : null)
-  const zoom = note && size !== 100 ? size / 100 : 0
+  const textKind = note ? "note" : pane && (code || json || notebook || source) ? "code" : null
+  const size = useTextSize(textKind ?? "note")
+  useTextSizeWheel(article, textKind)
+  const zoom = textKind && size !== 100 ? size / 100 : 0
   const drawing = format && !source ? format.render({ store, path, text: full(), editable: shown === "live" && !ro && !share, place: pane ? "page" : "sheet",
     onChange: (text) => { if (text === full()) return; const s = splitFm(text); cur.current = s; setFm(s.fm); redraw(); changed() } }) : null
   const clashes = useMemo(() => {
@@ -869,10 +870,10 @@ function Loaded({ store, initial, pane, docked, onGone }: { store: Store; initia
     <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || (format && !format.prose) ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       data-grid={editGrid ? "" : undefined} data-docked={docked}
       onContextMenu={outsideMenu}
-      style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
+      style={zoom && note && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
       {pathBar()}
       {phoneToggle}
-      <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
+      <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? textKind : undefined}>
         {!page && !docked && (!pane || phoneTab) && (
           <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={folderLine(path)} head={fileHead} pane={pane}
             toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="sheet" />} />

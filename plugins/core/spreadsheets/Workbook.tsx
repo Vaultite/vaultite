@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { CellObject, WorkBook, WorkSheet } from "./xlsx/xlsx.mjs"
-import { cn, FilterField, Loading, numberText, errorText } from "@vaultite"
+import { cn, FilterField, Loading, numberText, errorText, useSizedText } from "@vaultite"
 
 const PAGE = 500, EMBED_ROWS = 60
 const READ_MS = 60_000
@@ -101,6 +101,7 @@ export default function Workbook({ url, embed, sheet: only }: { url: string; emb
 
 function SheetGrid({ ws, embed }: { ws: WorkSheet; embed?: boolean }) {
   const grid = useMemo(() => gridOf(ws), [ws])
+  const sized = useRef<HTMLDivElement>(null), zoom = useSizedText(sized, embed ? null : "table", { always: true })
   const [q, setQ] = useState("")
   const [all, setAll] = useState(false)
   const shown = useMemo(() => {
@@ -127,8 +128,8 @@ function SheetGrid({ ws, embed }: { ws: WorkSheet; embed?: boolean }) {
           </span>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-        <table className="border-separate border-spacing-0 text-[13px] leading-5 select-text" data-sheet-grid>
+      <div ref={sized} className="min-h-0 flex-1 overflow-auto overscroll-contain">
+        <table style={zoom} className="border-separate border-spacing-0 text-[13px] leading-5 select-text" data-sheet-grid>
           <colgroup>
             <col style={{ width: 44 }} />
             {grid.widths.map((w, c) => <col key={c} style={{ width: w ?? 100, minWidth: w === 0 ? 0 : 40 }} />)}

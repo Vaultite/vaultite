@@ -280,5 +280,9 @@ for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers, ...(MA
     return fn(win, ...args)
   })
 }
+handle("pdf:zoom", async (w, src: string, step: number) => {
+  if (!w) throw new Error("no vault here")
+  return (await import("./pdfzoom.ts")).zoomPdf(w.win.webContents, str(src), step === 1 || step === -1 ? step : 0)
+})
 handle("window:zoom", () => zoom)
 handle("window:zoom-step", (_w, step: unknown) => zoomBy(step === 1 || step === -1 ? step : 0))

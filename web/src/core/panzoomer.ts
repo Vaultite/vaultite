@@ -1,6 +1,6 @@
 import { closestOf } from "@/core/dom"
-import { isNumber } from "../../../core/values.ts"
-import { closerScale, fitScale, held, mostScale, steppedScale, wheelPx, wheelScale, zoomedAbout, type Pt, type Size, type View } from "@/core/panzoom"
+import { onPinch, zoomWheel } from "@/core/pinch"
+import { closerScale, fitScale, held, mostScale, steppedScale, wheelPx, zoomedAbout, type Pt, type Size, type View } from "@/core/panzoom"
 
 const SLOP = 4, TWICE_MS = 320, TWICE_PX = 32, GLIDE_MS = 200, FLING = 0.35
 
@@ -14,9 +14,6 @@ export type PanZoomOptions = {
   taps?: boolean
   moves: () => boolean
 }
-
-type Gesture = Event & { scale: number; clientX: number; clientY: number }
-const isGesture = (e: Event): e is Gesture => "scale" in e && isNumber(e.scale) && "clientX" in e && "clientY" in e
 
 const gap = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
 const between = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
@@ -33,7 +30,7 @@ export class PanZoom {
   private touch = false
   private tap: (Pt & { t: number }) | null = null
   private speed: Pt & { t: number } = { x: 0, y: 0, t: 0 }
-  private pinched = 1
+  private readonly unpinch: () => void
   private readonly quit = new AbortController()
   private readonly watch: ResizeObserver
   private readonly box: HTMLElement
@@ -50,14 +47,13 @@ export class PanZoom {
     box.addEventListener("click", (e) => this.onClick(e), { signal, capture: true })
     // Two fingers scroll the page otherwise, which ends a pinch with a pointercancel.
     for (const t of ["touchstart", "touchmove"] as const) box.addEventListener(t, (e) => { if (e.touches.length > 1 && e.cancelable) e.preventDefault() }, live)
-    // Safari on a Mac sends a pinch as its own events; on iOS they only echo the touches.
-    if (!navigator.maxTouchPoints) for (const g of ["gesturestart", "gesturechange"]) box.addEventListener(g, (e) => this.onGesture(e), live)
+    this.unpinch = onPinch(box, { zoom: (by, at) => { this.still(); this.show(zoomedAbout(this.view, this.within(this.view.k * by), this.at({ clientX: at.x, clientY: at.y }))) } })
     this.watch = new ResizeObserver(() => this.refresh())
     this.watch.observe(box)
     this.refresh()
   }
 
-  destroy() { this.quit.abort(); this.watch.disconnect(); cancelAnimationFrame(this.frame) }
+  destroy() { this.quit.abort(); this.unpinch(); this.watch.disconnect(); cancelAnimationFrame(this.frame) }
 
   get zoomed() { return !this.fitted }
   get scale() { return this.view.k }
@@ -136,17 +132,11 @@ export class PanZoom {
   }
 
   private onWheel(e: WheelEvent) {
-    const by = wheelPx(e, this.box.clientHeight), zooms = e.ctrlKey || e.metaKey
-    if (!zooms && this.fitted) return
+    if (zoomWheel(e) || this.fitted) return
     e.preventDefault()
     this.still()
-    this.show(zooms ? zoomedAbout(this.view, this.within(this.view.k * wheelScale(by.y || by.x)), this.at(e)) : { ...this.view, x: this.view.x - by.x, y: this.view.y - by.y })
-  }
-  private onGesture(e: Event) {
-    if (!isGesture(e)) return
-    e.preventDefault()
-    if (e.type === "gesturestart") { this.still(); this.pinched = this.view.k; return }
-    this.show(zoomedAbout(this.view, this.within(this.pinched * e.scale), this.at(e)))
+    const by = wheelPx(e, this.box.clientHeight)
+    this.show({ ...this.view, x: this.view.x - by.x, y: this.view.y - by.y })
   }
 
   private onDown(e: PointerEvent) {

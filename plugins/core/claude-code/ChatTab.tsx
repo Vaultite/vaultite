@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, History } from "lucide-react"
-import { Arriving, cn, glide, moves, notifyError, trackSoon, useDesktop } from "@vaultite"
+import { Arriving, cn, glide, moves, notifyError, trackSoon, useDesktop, useSizedText } from "@vaultite"
 import "./chat.css"
 import { type Driven, drivenOf } from "./driven"
 import { nameTab, NEW } from "./titles"
@@ -60,6 +60,7 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
     isOpen: (k, dflt) => opened.get(k) ?? dflt,
     toggle: (k, dflt) => { f.hold(); setOpened((m) => new Map(m).set(k, !(m.get(k) ?? dflt))) },
   }), [c.cwd, o?.home, opened]) // eslint-disable-line react-hooks/exhaustive-deps
+  const root = useRef<HTMLDivElement>(null), text = useSizedText(root, "chat")
   useLayoutEffect(() => { f.follow() }, [c.entries, c.s?.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const away = [...pending.map((p) => p.id), ...queued.map((q) => c.entries.findLast((e) => e.id === q.id || (e.k === "user" && e.text === q.text))?.id ?? "")].join(",")
@@ -83,7 +84,7 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
     onSend={f.stick} onQueued={(q) => setSentQueued([...queued, q])} />
   if (fresh && told.length) {
     return (
-      <div className="flex h-full min-h-0 flex-col bg-background" data-chat="new" data-state="starting">
+      <div ref={root} className="flex h-full min-h-0 flex-col bg-background" data-chat="new" data-state="starting">
         <div className="isolate flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
           <Outgoing outs={told} className="chat-talk mx-auto mt-auto flex w-full chat-column flex-col gap-3 px-5 pt-5 pb-8 max-md:px-4" />
         </div>
@@ -93,7 +94,7 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
   }
   if (fresh) {
     return (
-      <div className="flex h-full min-h-0 flex-col bg-background" data-chat="new" data-state="new">
+      <div ref={root} className="flex h-full min-h-0 flex-col bg-background" data-chat="new" data-state="new">
         <div className="chat-fresh isolate flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4">
           <div className="chat-fresh-in m-auto w-full chat-column">{desktop ? <Welcome><div className="-mx-4">{composer}</div></Welcome> : <Welcome />}</div>
         </div>
@@ -102,11 +103,11 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
     )
   }
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-chat={id} data-state={c.s?.state ?? (c.tui !== null ? "terminal" : "closed")}>
+    <div ref={root} className="flex h-full min-h-0 flex-col bg-background" data-chat={id} data-state={c.s?.state ?? (c.tui !== null ? "terminal" : "closed")}>
       <Head id={id} title={title} c={c} o={o} scrolled={f.scrolled} back={back && { name: d?.name ?? "Timeline", go: back }} />
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div ref={f.scroller} onScroll={f.onScroll} className="isolate min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div ref={f.content} className="chat-talk mx-auto w-full chat-column px-5 pt-5 pb-8 max-md:px-4">
+        <div ref={f.content} style={text} className="chat-talk mx-auto w-full chat-column px-5 pt-5 pb-8 max-md:px-4">
           {!c.ready ? (told.length ? <Outgoing outs={told} className="flex flex-col gap-3" /> : <Skeleton note={c.unreachable} retry={c.retry} />) : c.failed && !c.entries.length ? <Unread id={id} retry={c.retry} /> : !c.found ? <p className="py-10 text-center text-[15px] text-muted-foreground">This session isn't on this machine, or it's in a private account.</p> : (
             <>
               <Kinfolk id={id} state={c.s?.state ?? ""} />

@@ -75,6 +75,7 @@ const def = agentPlugin(SRC, {
 })
 
 export default definePlugin({ ...def,
+  textSizes: { chat: { label: "Chat", sub: "Claude Code chats' text", quiet: true } },
   webPageActions: ({ url, title }) => {
     const chat = activeChatInTab()
     return chat ? [{ label: "Send page to thread", icon: MessageSquarePlus, run: () => { addPageChip(chat, { url, title }); notify("Added page to the thread") } }] : []

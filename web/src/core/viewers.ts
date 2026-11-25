@@ -1,6 +1,7 @@
 import { Maximize, MoveHorizontal, Scan, ZoomIn, ZoomOut } from "lucide-react"
 import type { Command } from "@/core/commands"
 import type { PanZoom } from "@/core/panzoomer"
+import { keyboardAt } from "@/core/zoom"
 import { activePane } from "@/core/workspace"
 
 type Viewer = { box: HTMLElement; zoom: PanZoom }
@@ -11,9 +12,9 @@ export function addViewer(v: Viewer) {
 }
 
 function viewer(): PanZoom | null {
-  const a = document.activeElement
+  const a = keyboardAt()
   for (const v of viewers) if (a && v.box.contains(a)) return v.zoom
-  if (a && a !== document.body) return null
+  if (a) return null
   const id = activePane()?.id, pane = id ? document.querySelector(`[data-pane="${CSS.escape(id)}"]`) : null
   for (const v of viewers) if (pane?.contains(v.box) && v.box.closest("[data-format-pane]")) return v.zoom
   return null

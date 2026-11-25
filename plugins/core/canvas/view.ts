@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react"
+import { onPinch } from "@vaultite"
 import { GRID, zoomAbout, type View } from "./geometry"
 
 const FAR_K = 0.3
@@ -79,26 +80,24 @@ export function useView() {
   return { box, stage, zoomLabel, viewRef, win, winRef, cull, bar, barAt, placeBar, paint, anim, setView, animateTo }
 }
 
-// A trackpad pinch arrives as a wheel event with ctrlKey.
 export function useWheel(box: RefObject<HTMLDivElement | null>, embed: boolean, viewRef: RefObject<View>, setView: (v: View) => void) {
   useEffect(() => {
     const el = box.current
     if (!el || embed) return
     const wheel = (e: WheelEvent) => {
-      if (e.target instanceof Element && e.target.closest("[data-scrolls], [data-editing]") && !e.ctrlKey && !e.metaKey) return
+      if (e.ctrlKey || e.metaKey || (e.target instanceof Element && e.target.closest("[data-scrolls], [data-editing]"))) return
       e.preventDefault()
       const v = viewRef.current
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1
-      if (!e.ctrlKey && !e.metaKey) {
-        const side = e.shiftKey && !e.deltaX
-        setView({ ...v, x: v.x - (side ? e.deltaY : e.deltaX) * unit, y: v.y - (side ? 0 : e.deltaY) * unit })
-        return
-      }
-      const r = el.getBoundingClientRect()
-      setView(zoomAbout(v, v.k * Math.exp(-e.deltaY * unit * (e.ctrlKey ? 0.01 : 0.002)), e.clientX - r.left, e.clientY - r.top))
+      const side = e.shiftKey && !e.deltaX
+      setView({ ...v, x: v.x - (side ? e.deltaY : e.deltaX) * unit, y: v.y - (side ? 0 : e.deltaY) * unit })
     }
     el.addEventListener("wheel", wheel, { passive: false })
-    return () => el.removeEventListener("wheel", wheel)
+    const unpinch = onPinch(el, { zoom: (by, at) => {
+      const v = viewRef.current, r = el.getBoundingClientRect()
+      setView(zoomAbout(v, v.k * by, at.x - r.left, at.y - r.top))
+    } })
+    return () => { el.removeEventListener("wheel", wheel); unpinch() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embed])
 }

@@ -65,7 +65,10 @@
 - Selecting several is `core/select.ts` (Finder's way); several at once is one toast with one Undo.
 - Looking closely at what's drawn (an image, a diagram, a video) is one engine, `core/panzoomer.ts`: `ZoomView` fills its
   place, `ZoomInPlace` zooms in the page's flow, `openViewer` / `viewImage` open the viewer (a sheet) on what's shown
-  small. A document as wide as its place is `usePageZoom`. Never a click that swaps sizes, nor a zoom of a view's own.
+  small. A document as wide as its place is `usePageZoom` (its size kept per file), text is `useSizedText` with a kind of
+  its own. A pinch is always `onPinch` (⌘ + wheel, Safari's gestures, two fingers), never a wheel listener of a view's own.
+- ⌘+ ⌘- ⌘0 and Zoom to fit go to what the keyboard is in, else the focused pane's (`useZoomTarget`; one part of a page
+  says `keyboardIn`), else the interface: a new view that can zoom is a target.
 - Dragging is `core/drag.ts` (pointer events, not dnd-kit or HTML5; files from the computer are HTML5 drops, which a
   note takes anywhere in its place: `core/filedrop.ts`). A finger drags only with `{ touch: true }`.
 - A list reordered by dragging makes way, as browser tabs do (`core/slide.ts`: `slotAt`, `reorder`, `useSlide`), never a

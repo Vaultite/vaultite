@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { linkClick, Loading, openWebLink, usePageZoom } from "@vaultite"
+import { keptZoom, linkClick, Loading, openWebLink, usePageZoom } from "@vaultite"
 import { disarmLinks, DRAWN, linkOf } from "./untrusted"
 
 const STYLE = `
@@ -8,10 +8,10 @@ const STYLE = `
   .docx-wrapper > section.docx { box-shadow: 0 0 0 0.5px var(--border), 0 2px 14px color-mix(in srgb, var(--foreground) 8%, transparent) !important; margin-bottom: 16px !important; }
 `
 
-function useFitPages(keys: boolean) {
-  const host = useRef<HTMLDivElement>(null), pages = useRef<HTMLDivElement>(null), zoom = useRef(1)
+function useFitPages(path: string, embed: boolean) {
+  const host = useRef<HTMLDivElement>(null), pages = useRef<HTMLDivElement>(null), zoom = useRef(embed ? 1 : keptZoom(path))
   const refit = useCallback(() => { const el = host.current, b = el?.shadowRoot?.lastElementChild; if (el && b instanceof HTMLElement) fit(el, b, zoom.current) }, [])
-  usePageZoom(pages, (z) => { zoom.current = z; refit() }, keys)
+  usePageZoom(pages, (z) => { zoom.current = z; refit() }, { path: embed ? undefined : path, embed })
   useEffect(() => {
     const el = host.current
     if (!el) return
@@ -22,8 +22,8 @@ function useFitPages(keys: boolean) {
   return { host, pages, refit }
 }
 
-export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
-  const { host, pages, refit } = useFitPages(!embed)
+export default function Docx({ url, path, embed }: { url: string; path: string; embed?: boolean }) {
+  const { host, pages, refit } = useFitPages(path, !!embed)
   const [state, setState] = useState<"loading" | "ok" | string>("loading")
   useEffect(() => {
     const el = host.current
@@ -61,7 +61,7 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     else if (link?.to === "place") host.current?.shadowRoot?.getElementById(decodeURIComponent(link.id))?.scrollIntoView({ block: "start" })
   }
   return (
-    <div ref={pages} className={embed ? "max-h-[520px] overflow-auto" : "overflow-x-auto"}>
+    <div ref={pages} className={embed ? "max-h-[520px] overflow-auto" : "min-h-[75vh] overflow-x-auto"}>
       {state === "loading" && <Loading />}
       {state !== "loading" && state !== "ok" && <p className="p-4 text-[15px] text-muted-foreground">This document couldn't be read: {state}.</p>}
       <div ref={host} onClick={click} data-docx className="select-text" />

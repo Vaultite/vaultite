@@ -317,6 +317,22 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
   })
   w.open = (href?: string | URL) => { if (href) openHref(String(href)); return null }
 
+  const pinched = (e: Event, by: number, x: number, y: number) => { e.preventDefault(); post({ type: "pinch", by, x, y }) }
+  if (!cfg.embed) addEventListener("wheel", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.defaultPrevented) return
+    const px = e.deltaY * [1, 16, innerHeight][e.deltaMode]
+    pinched(e, Math.exp(-px * (Math.abs(px) >= 50 ? 0.002 : 0.01)), e.clientX, e.clientY)
+  }, { passive: false })
+  let gap = 0
+  if (!cfg.embed) for (const type of ["touchstart", "touchmove", "touchend"] as const) addEventListener(type, (e) => {
+    const [a, b] = [...e.touches]
+    if (!b || e.touches.length > 2 || e.defaultPrevented) { gap = 0; return }
+    const now = Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY))
+    if (gap && type === "touchmove") pinched(e, now / gap, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
+    else if (e.cancelable) e.preventDefault()
+    gap = now
+  }, { passive: false })
+
   let last = 0
   const measure = () => {
     const b = document.body

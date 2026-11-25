@@ -345,6 +345,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isLinux`: A Linux computer (not Android).
 - `isListedPage(path, store?)`: A page offered to pin where the pages are listed (Pinned's): not one of a dated run (PageView `series`).
 - `isMac`: A Mac, iPhone or iPad: ⌘ is the app's Mod key.
+- `isNumber(v)`
 - `iso(d)`
 - `isOffline()`
 - `isOutside`
@@ -357,6 +358,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
 - `keepLive(path)`: A live session takes `path`'s saving (joining it): `live` once typed in, `handBack` on `base` (the server's text then; none: unknown) and `shown` (its editors' text then).
 - `keptLive(path)`: Whether a live session keeps `path` now (joining it or typed in): its editors' autosave stands down.
+- `keptZoom(path)`
 - `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
 - `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
@@ -459,6 +461,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, a note's callouts and tables, with their lines): plugins that change rendered Markdown (another app's…
 - `onPaneMotion(fn)`: Hear each move of panes as it starts; a promise back holds it at its start till it settles (at most HOLD_MS): what a pane shows outside the page (a web page's native view) stands in a picture of…
+- `onPinch(el, { zoom, when, touches, first })`
 - `onReconnect(fn)`
 - `onResized(f)`: Run `f` each time a resize drag ends; returns its undo.
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
@@ -549,6 +552,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Picture({ width, height, className, children })`
 - `PIN_SEARCH`: A search pinned: "search:<query>".
 - `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>" or "view:<name>/<arg>" (view:web/<address>: a web page).
+- `pinchTextSize(kind, by)`
 - `pinInWorkspace(path, on, before, base)`: Pin a page in the current workspace (at the end, or before `before`) or unpin it there; one without a list of its own starts from `base` (the vault's).
 - `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a web page, Inbox, a coding agent's conversation).
 - `pinnedFoldersOpen`: Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened.
@@ -845,6 +849,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useListsIn(ref, id)`: A split's lists, drawn: they grow out of its row when a click just listed them.
 - `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
+- `useMapZoom(box, map, fit)`
 - `useMenuShowing()`: A menu is showing, as a hook (what it was opened from holds still meanwhile).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.
@@ -854,7 +859,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `useOverConnect()`: overConnect(), as a hook.
 - `usePageLock(on?)`
-- `usePageZoom(ref, apply, keys?)`
+- `usePageZoom(ref, apply, { path, embed }?)`
 - `usePane()`
 - `usePaneTopBar(ref, title?)`: A view's top bar (ViewBar, the Browser's): without a pane tab bar its pane's title row (Tabs.tsx; not with `title` false, one sliding over the view), clear of what's fixed over the window's…
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…
@@ -877,6 +882,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useShrinkOut(ref, what)`: A tab, or a tab group's chip or row, gone from the tab bar or the Tabs panel however it went shrinks away: a copy, as React takes it out.
 - `useSidebarMode()`
 - `useSidebars()`
+- `useSizedText(ref, kind, o?)`
 - `useSlide(box, order, axis, { heldAtEnd }?)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
 - `useSteady(sorted, held, old)`: The rows in their order and which fold under Earlier (`old`); while `held`, as they last were: each keeps its place and its side of the fold (what it shows still changes), new ones come last.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
@@ -887,7 +893,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTabList()`: This window's tabs, live.
 - `useTerminalAccount(id, a)`: The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the first (its bare name's).
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
-- `useTextSizeWheel(ref, kind, first?)`: ⌘+ ⌘- ⌘0 while it's focused (core/zoom.ts), and ⌘/⌃ + wheel or a pinch over `ref` while Pinch to resize text is on (off as in Obsidian: pinches set it off by accident), step `kind`'s size.
+- `useTextSizeWheel(ref, kind, { first, always }?)`: ⌘+ ⌘- ⌘0 while it's focused (core/zoom.ts), and ⌘/⌃ + wheel or a pinch over `ref` (a note's, a chat's, a terminal's while Pinch to resize text is on; `always`, as any reader's), step `kind`'s size.
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useUiMarks(id)`: The marks on the element of data-ui `id`, live.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
@@ -895,7 +901,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useVirtual(list, keys, { estimate, keep, overscan })`: Which of `keys` (a row each) `list` draws: each drawn row gets `data-vi={index}` (measured), `keep` are drawn wherever they are, `estimate` is a row's height until one is measured, `overscan` how…
 - `useVisibleArea(on)`: The part of the window the user sees (above the on-screen keyboard), followed while `on`.
 - `useWorkspaceVersion()`: Redraws when the current workspace or what's kept in it changes; answers a number that changes then.
-- `useZoomTarget(ref, zoom)`: ⌘+ ⌘- ⌘0 zoom what `ref` draws while the keyboard is in it or it's in the focused pane (null: they don't).
+- `useZoomTarget(ref, zoom, { fit, keyboardIn }?)`: ⌘+ ⌘- ⌘0 zoom what `ref` draws while the keyboard is in it or (but for one part of a page: `keyboardIn`) it's in the focused pane (null: they don't).
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
@@ -920,6 +926,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WebSite`
 - `WeeksGrid({ tip, tint, goal, weeks, onOpen })`
 - `weekStart(s)`
+- `wheelScale(px)`
 - `whenIdle(fn, timeout?)`
 - `WIKI`
 - `withGroupFolded(l, id, collapsed?)`
