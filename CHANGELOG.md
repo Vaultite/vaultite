@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Coding agents: a plan limits block reads only the plan's limits (`GET /api/<agent>/limits`), not a month of usage, so
+  it shows sooner, and a plugin whose sessions aren't read here (a chat app's plan) can draw one.
 - Passwords: your KeePass file opens only in a process of its own, which locking ends with every key it held, and it locks
   by itself after 10 minutes unused. On a Mac with Touch ID its password is sealed to the Secure Enclave, so macOS itself
   asks for your finger (the first unlock moves it there): saving a login or keeping a secret while locked asks for it too.

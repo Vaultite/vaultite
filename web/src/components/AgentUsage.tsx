@@ -60,6 +60,7 @@ export type LiveSession = OfAccount & {
 export type Day = { date: string; cost: number; tokens: number; active_min: number; sessions: number }
 export type Share = { name: string; cost: number; tokens: number; root?: string; sessions?: number; active_min?: number; last?: string }
 type AccountPlan = { id: string; label: string; private?: boolean; uses?: string[]; plan: AgentUsage["plan"]; limits: AgentUsage["limits"] }
+export type AgentPlan = Pick<AgentUsage, "plan" | "limits" | "accounts">
 export type AgentUsage = {
   plan: { name: string; monthly: number | null } | null
   limits: { source: string; observed: string; windows: Window[] } | null
@@ -85,20 +86,25 @@ export function useAgentRoute<T>(route: string, options: Record<string, unknown>
   return { data, error: data ? null : error, retry, on: there ? ` on ${m?.label ?? machine}` : "", machine: there }
 }
 
-function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days = 30) {
+function useAgentPoll<T>(src: AgentSource, route: string, options: BlockCtx["options"], query: Record<string, string | number> = {}) {
   const [tick, setTick] = useState(() => Math.floor(Date.now() / EVERY))
   useEffect(() => {
     const id = setInterval(() => { if (!document.hidden) setTick(Math.floor(Date.now() / EVERY)) }, 1000)
     return () => clearInterval(id)
   }, [])
   const [again, setAgain] = useState(0)
-  const got = useAgentRoute<AgentUsage>(src.path, options, { days }, `${tick}.${again}`)
+  const got = useAgentRoute<T>(route, options, query, `${tick}.${again}`)
+  const refresh = () => api("POST", machinePath(got.machine, `${src.path}/refresh`)).then(() => setAgain((n) => n + 1))
+  return { ...got, refresh }
+}
+
+function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days = 30) {
+  const got = useAgentPoll<AgentUsage>(src, src.path, options, { days })
   const { data, machine } = got
   useEffect(() => {
     if (data) for (const s of [...data.sessions, ...data.live]) if (s.title) titles.set(`${src.view}/${onMachine(s.id, machine)}`, s.title)
   }, [data, src.view, machine])
-  const refresh = () => api("POST", machinePath(machine, `${src.path}/refresh`)).then(() => setAgain((n) => n + 1))
-  return { ...got, refresh }
+  return got
 }
 
 const titles = new Map<string, string>()
@@ -207,7 +213,7 @@ function Consent({ src, consent }: { src: AgentSource; consent: NonNullable<Agen
 export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => void }) {
   const [unknown, setUnknown] = useState(false)
   const tick = useTick(unknown ? 8 * EVERY : EVERY)
-  const { data } = useLive<Pick<AgentUsage, "limits" | "accounts">>(`${src.path}/limits`, tick)
+  const { data } = useLive<AgentPlan>(`${src.path}/limits`, tick)
   const each = data?.accounts && data.accounts.length > 1 ? data.accounts : data?.limits ? [{ label: "", limits: data.limits }] : []
   const shown = each.flatMap((a) => (a.limits?.windows.length ? [{ label: a.label, top: Math.max(...a.limits.windows.map((w) => w.used)), all: a.limits.windows }] : []))
   useEffect(() => setUnknown(!!data && !shown.length), [data, shown.length])
@@ -220,7 +226,7 @@ export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => v
 
 /** Its plan's allowances; with several accounts, each one's under its name (`account:` for one). */
 export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource }) {
-  const { data, error, retry, on, refresh } = useAgentUsage(src, options)
+  const { data, error, retry, on, refresh } = useAgentPoll<AgentPlan>(src, `${src.path}/limits`, options)
   const [settings] = usePluginSettings(src.path)
   const [asking, setAsking] = useState(false)
   const again = () => {
@@ -538,7 +544,10 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
         { ...opens.split, words: "new", desktop: true, when, run: () => openAgent(src.agent, { split: true }) },
       ],
     } : {}),
-    mockLive: () => ({ [src.path]: mockUsage(demo), ...demoMore?.() }),
+    mockLive: () => {
+      const u = mockUsage(demo)
+      return { [src.path]: u, [`${src.path}/limits`]: { plan: u.plan, limits: u.limits }, ...demoMore?.() }
+    },
   }
 }
 
