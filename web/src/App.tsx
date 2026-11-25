@@ -83,10 +83,8 @@ import { coarse } from "@/core/haptics"
 import { PhoneHeader } from "@/components/PhoneHeader"
 import { drawerOut, openDrawer } from "@/core/drawer"
 import { Tooltips } from "@/components/Tooltip"
-import { BundleTrial } from "@/components/BundleTrial"
 import { VaultManager, webVaults } from "@/components/VaultManager"
 import { ContextMenus } from "@/components/ContextMenu"
-import { ConfirmDialogs } from "@/components/ConfirmDialog"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space } from "@/lib/utils"
 import { byTab } from "@/core/focus"
@@ -98,6 +96,8 @@ import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 import { lastStartUnfinished, shellDrawn, whenIdle } from "@/core/firstscreen"
 
 if (phoneOs === "android") void import("@/core/androidapp")
+const ConfirmDialogs = apart(() => import("@/components/ConfirmDialogDrawn").then((m) => m.ConfirmDialogs), { memoized: true })
+const BundleTrial = lazy(() => import("@/components/BundleTrial").then((m) => ({ default: m.BundleTrial })))
 const Toaster = apart(() => import("@/components/Toast").then((m) => m.Toaster))
 const WelcomeCards = apart(() => import("@/components/Welcome").then((m) => m.WelcomeCards), { memoized: true })
 const SearchPalette = apart(() => import("@/components/SearchPalette").then((m) => m.SearchPalette))
@@ -671,8 +671,8 @@ export default function App() {
       {!desktop && <Suspense fallback={<Arriving />}><SelectionBar /></Suspense>}
       <ContextMenus />
       <Suspense fallback={<Arriving />}><WelcomeCards /></Suspense>
-      <ConfirmDialogs />
-      <BundleTrial store={store} />
+      <Suspense fallback={<Arriving />}><ConfirmDialogs /></Suspense>
+      {store?.bundles?.trial && <Suspense fallback={<Arriving />}><BundleTrial store={store} /></Suspense>}
       <Suspense fallback={<Arriving />}><Toaster desktop={desktop} /></Suspense>
       {typedYet && <Suspense fallback={<Arriving />}><KeyboardKeys /></Suspense>}
 
