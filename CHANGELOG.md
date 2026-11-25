@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Vaultite Nightly no longer emails everyone watching the repository's releases each night: its one release is updated
+  in place.
 - Zoom, one way everywhere: ⌘+, ⌘- and ⌘0 (or Zoom in, Zoom out, Reset zoom and the new Zoom to fit, in the View menu and
   the palette) act on what you're in, where they resized the whole interface: code, JSON and notebooks, Claude Code
   chats, CSV files and spreadsheets, ebooks, HTML pages, PDFs (desktop app), the graph and maps. A pinch, or ⌘ and
