@@ -238,9 +238,21 @@ jobs:
             gh release create "$GITHUB_REF_NAME" out/*.dmg out/*.AppImage out/*.deb out/*-Setup-*.exe $apk --verify-tag --title "Vaultite $V" \
               --notes-file notes.md
           else
-            gh release delete nightly --cleanup-tag --yes || true
-            gh release create nightly out/*.dmg out/*.AppImage out/*.deb out/*-Setup-*.exe $apk --prerelease --target "$GITHUB_SHA" \
-              --title "Nightly $V" --notes "Vaultite Nightly: main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. It installs beside Vaultite and updates itself to each next nightly."
+            # One release, updated in place: GitHub emails every release watcher each time one is published (#25)
+            files=(out/*.dmg out/*.AppImage out/*.deb out/*-Setup-*.exe $apk)
+            notes="Vaultite Nightly: main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. It installs beside Vaultite and updates itself to each next nightly."
+            if ! gh release view nightly > /dev/null 2>&1; then
+              gh release create nightly "${files[@]}" --prerelease --target "$GITHUB_SHA" --title "Nightly $V" --notes "$notes"
+            else
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+              # (upload, then delete what this build didn't replace: a download link never 404s in between)
+              gh release upload nightly "${files[@]}" --clobber
+              keep=$(for f in "${files[@]}"; do basename "$f"; done)
+              gh release view nightly --json assets --jq '.assets[].name' | while read -r name; do
+                grep -qxF "$name" <<< "$keep" || gh release delete-asset nightly "$name" --yes
+              done
+              gh release edit nightly --prerelease --title "Nightly $V" --notes "$notes"
+            fi
           fi
       # The feed's files, the update lists last so they never name a file that isn't there yet (a nightly's are
       # nightly*.yml, named after the version's prerelease; Windows' are latest.yml and nightly.yml).
