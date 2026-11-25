@@ -16,6 +16,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   scroll or the arrows move it. An image or a diagram in a note, a chat, a notebook, a book, a replay or a file on
   another machine opens in the viewer, the same way, at a click. A video zooms where it plays, and Word files, decks and
   mind maps by a pinch or ⌘+ and ⌘-.
+- Vaults: a vault's nickname is set in place: click its name in Manage vaults, or Set nickname… in its row's menu, the vault
+  menu, the sidebar's vault button (right-click) or the palette (Set vault nickname…). It shows everywhere the app names
+  the vault, the window, tab, Dock and menu titles too, live; blank goes back to the folder's name, which never changes.
 - Agents panel: sessions sit on shelves (Pinned, Needs you, Working, then Snoozed and Settled folded), with a chip per
   repository to filter by, Pin (⌘⇧P), Snooze, and Settle and next (⌘⇧S), which refuses a session still working or waiting
   on you. Plain shells can be listed too (Plain shells). New Code workspace makes a workspace with the Agents panel alone

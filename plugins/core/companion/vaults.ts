@@ -1,14 +1,20 @@
-import path from "node:path"
 import { localDate } from "../../../core/plugins.ts"
+import { nicknameAt } from "../../../core/nickname.ts"
+import { vaultName } from "../../../core/vaultname.ts"
 import { type Exchange, exchanges, inVault } from "./conversation.ts"
 import { plugin } from "./self.ts"
 import { ownName } from "./settings.ts"
 import { log, acts } from "./state.ts"
 
+const nicknames = new Map<string, string>()
+export async function learnNicknames() {
+  await Promise.all(plugin.otherLocalDirs().map(async ({ vault }) => { const n = await nicknameAt(vault); if (n !== null) nicknames.set(vault, n) }))
+}
+
 export function talkInOtherVaults(day: string): Exchange[] {
   return plugin.otherLocalDirs().flatMap(({ dir, vault }) => {
     const ms = log.readIn(dir, day), as = ms.findLast((m) => m.summoned && m.for)?.for ?? ownName()
-    return inVault(exchanges(ms, acts.readIn(dir, day), [], as), path.basename(vault))
+    return inVault(exchanges(ms, acts.readIn(dir, day), [], as), vaultName(vault, nicknames.get(vault)))
   })
 }
 

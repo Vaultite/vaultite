@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   openVault: call("vaults:open"),
   createVault: call("vaults:create"),
   removeVault: call("vaults:remove"),
+  setNickname: call("vaults:nickname"),
   pickFolder: call("vaults:pick"),
   revealVault: call("vaults:reveal"),
   manageVaults: call("vaults:manage"),

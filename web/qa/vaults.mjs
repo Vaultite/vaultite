@@ -17,7 +17,6 @@ try {
   await page.waitForSelector("[role=tree]")
   check("no desktop bits in a browser", await page.evaluate(() => !document.documentElement.hasAttribute("data-electron") && !("vaultite" in window)))
 
-  // A file from the computer dropped on Notes: uploaded there.
   await page.evaluate(() => {
     const row = document.querySelector('[data-tree-path="Notes"]')
     const dt = new DataTransfer()
@@ -28,7 +27,6 @@ try {
   const up = await api("file?path=Notes%2FBrowser%20drop.md")
   check("a file dropped on a folder is uploaded there", String(up.text).includes("Dropped in a browser."), up)
 
-  // The vault menu: Manage vaults opens the sheet.
   const vaultButton = page.locator("aside nav[aria-label=App] button[aria-haspopup=menu]")
   await vaultButton.click()
   // (at the sidebar's foot, with no room under it: it opens above, not pushed over the button)
@@ -71,6 +69,33 @@ try {
   await page.goto(B)
   await page.waitForSelector("[role=tree]")
   check("the app shows the new vault", (await page.locator("aside nav[aria-label=App]").textContent()).includes("Second"))
+  check("the tab's title names it", await until(async () => await page.title() === "Second · Vaultite", 5000), await page.title())
+
+  await page.evaluate(() => { window.__loaded = true })
+  const row = page.locator(`[data-vault-row="${second}"]`), nick = page.getByLabel("Nickname", { exact: true })
+  await page.locator("[data-vault-button]").click()
+  await page.getByRole("menuitem", { name: "Manage vaults" }).click()
+  await row.getByRole("button", { name: "Set nickname for Second" }).click()
+  check("a click on a vault's name edits its nickname, the folder's name its placeholder", await nick.getAttribute("placeholder") === "Second" && await nick.inputValue() === "")
+  await nick.fill("Never")
+  await page.keyboard.press("Escape")
+  check("Escape cancels, the sheet still open", await until(async () => !(await nick.count()) && await row.count() === 1, 3000) && /Second/.test(await row.textContent()))
+  await row.getByRole("button", { name: "Set nickname for Second" }).click()
+  await nick.fill("Harbour")
+  await page.keyboard.press("Enter")
+  const shows = (n) => until(async () => (await page.locator("[data-vault-button]").textContent()).trim() === n && await page.title() === `${n} · Vaultite` && (await row.textContent()).startsWith(n), 8000)
+  check("Enter saves: the row, the sidebar and the tab's title", await shows("Harbour"), [await row.textContent(), await page.title()])
+  check("…its folder's path under it, muted", (await row.textContent()).includes(second.replace(os.homedir(), "~")))
+  await page.screenshot({ path: path.join(OUT, "nickname.png") })
+  await api("config/vault", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Beacon" }) })
+  check("set elsewhere (an agent, another device): the open sheet follows too", await shows("Beacon"), [await row.textContent(), await page.title()])
+  check("vau context names it", JSON.stringify(await api("ops/app.context", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).includes('"name":"Beacon"'))
+  await row.getByRole("button", { name: "Set nickname for Beacon" }).click()
+  await nick.fill("")
+  await page.keyboard.press("Enter")
+  check("blank goes back to the folder's name", await shows("Second"), [await row.textContent(), await page.title()])
+  check("…with no reload", await page.evaluate(() => window.__loaded === true))
+  await page.keyboard.press("Escape")
   // The vault menu lists the other vaults on the web too; back to the first from there.
   // (the list comes once the app is idle, the menu is made as it opens: reopened until it's there)
   const item = page.getByRole("menuitem", { name: `Open ${path.basename(first)}`, exact: true })

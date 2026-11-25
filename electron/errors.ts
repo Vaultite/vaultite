@@ -32,7 +32,7 @@ export function failedBox(title: string, e: unknown, o: { why?: string; log?: st
   })
 }
 
-export function hangs(win: AppWindow, name: string) {
+export function hangs(win: AppWindow, name: () => string) {
   let asking: AbortController | null = null
   let hang: Hang | null = null, reported = false, timer: NodeJS.Timeout | undefined, due = 0
   const sample = async () => {
@@ -49,7 +49,7 @@ export function hangs(win: AppWindow, name: string) {
     const frames = how === "recovered" && !win.isDestroyed()
       ? await Promise.race([win.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: LONG_FRAMES }]).then((v) => LONG_FRAME_LIST.parse(v)), new Promise<LongFrame[]>((r) => setTimeout(() => r([]), 3000))]).catch(() => [])
       : []
-    const r = hangReport(name, hang, { at: Date.now(), how }, { load: os.loadavg()[0], freeMB: Math.round(os.freemem() / 2 ** 20), totalMB: Math.round(os.totalmem() / 2 ** 20) }, frames)
+    const r = hangReport(name(), hang, { at: Date.now(), how }, { load: os.loadavg()[0], freeMB: Math.round(os.freemem() / 2 ** 20), totalMB: Math.round(os.totalmem() / 2 ** 20) }, frames)
     reportError("hung", r.message, r.stack)
   }
   const look = async () => {
@@ -68,7 +68,7 @@ export function hangs(win: AppWindow, name: string) {
     if (!hang) { hang = hangStarted(Date.now()); reported = false; due = Date.now(); void look() }
     if (asking || win.isDestroyed()) return
     const ask = (asking = new AbortController())
-    const r = await dialog.showMessageBox(win, { type: "warning", message: `${name} isn't responding`, detail: "Wait for it, or reload its page.",
+    const r = await dialog.showMessageBox(win, { type: "warning", message: `${name()} isn't responding`, detail: "Wait for it, or reload its page.",
       buttons: ["Wait", "Reload"], defaultId: 0, cancelId: 0, signal: ask.signal }).catch(() => ({ response: 0 }))
     asking = null
     if (r.response === 1 && !ask.signal.aborted && !win.isDestroyed()) { await ended("reloaded"); if (!win.isDestroyed()) win.webContents.forcefullyCrashRenderer() }
@@ -77,10 +77,10 @@ export function hangs(win: AppWindow, name: string) {
   win.webContents.on("render-process-gone", () => void ended("reloaded"))
   win.on("closed", () => void ended("gone"))
 }
-export function crashedFor(win: AppWindow, name: string) {
+export function crashedFor(win: AppWindow, name: () => string) {
   return () => {
     if (win.isDestroyed()) return
-    void dialog.showMessageBox(win, { type: "error", message: `${name} keeps stopping`, detail: "Its page crashed three times in a minute.",
+    void dialog.showMessageBox(win, { type: "error", message: `${name()} keeps stopping`, detail: "Its page crashed three times in a minute.",
       buttons: ["Reload", "Close window"], defaultId: 0, cancelId: 1 }).then((r) => {
       if (win.isDestroyed()) return
       if (r.response === 0) win.webContents.reload(); else win.close()

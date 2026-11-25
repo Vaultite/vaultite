@@ -27,6 +27,7 @@ import "./handlers.ts"
 
 export { webWindow } from "./web.ts"
 export { appsWindow } from "./apps.ts"
+export { heardNickname } from "./nicknames.ts"
 export { serverCall } from "./browser/engine.ts"
 export { talkCall } from "./talklog.ts"
 export { appUpdates, checkInstalled, lookNow, mainBehind, restartToUpdate, worktreeChanged, worktreeNow } from "./updates.ts"

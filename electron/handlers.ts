@@ -36,8 +36,8 @@ handle("vaults:list", async (w) => {
   const local = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0)), names = listedNames(local.map((v) => v.path))
   return {
     current: w?.vault.path ?? null, home: app.getPath("home"),
-    vaults: local.map((v, i) => ({ path: v.path, name: names[i], open: wins.has(v.path), ...(v.path === sandboxPath() ? { sandbox: true } : {}) }))
-      .concat(remotes.map((r) => ({ path: r.url, name: r.name, open: remoteWins.has(r.url), remote: true }))),
+    vaults: [...local.map((v, i) => ({ path: v.path, name: names[i], nickname: v.nickname, open: wins.has(v.path), sandbox: v.path === sandboxPath() || undefined })),
+      ...remotes.map((r) => ({ path: r.url, name: r.name, open: remoteWins.has(r.url), remote: true }))],
   }
 })
 handle("vaults:open", async (_w, p: string) => {
@@ -67,6 +67,7 @@ handle("vaults:remove", (_w, p: string) => {
   save()
   buildMenu()
 })
+handle("vaults:nickname", (_w, p: string, nickname: string) => import("./nicknames.ts").then((n) => n.setNickname(str(p), str(nickname))))
 handle("vaults:pick", async (w) => {
   const opts = { properties: ["openDirectory", "createDirectory"] } satisfies OpenDialogOptions
   const parent = w?.win ?? manager

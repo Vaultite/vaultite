@@ -72,8 +72,10 @@ const { compress, compressibleType, copyOf, worthCompressing, writeWhole } = awa
 web.on(() => void keepAssets(web.dist, KEPT_ASSETS).catch((e) => log.warn("couldn't keep the new build's assets", e)))
 const { fetchFromICloud, iCloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
+const { ownNickname, VAULT_SETTINGS } = await import("./core/nickname.ts")
+const { NICKNAME_FILE } = await import("./core/vaultname.ts")
 const { answers, bequeath, claim, reclaim, servingKey } = await import("./core/serving.ts")
-const { attach, detach, inDesktop, LISTENING, onHost, onHostMessage } = await import("./core/desktopapp.ts")
+const { attach, desktopCall, detach, inDesktop, LISTENING, onHost, onHostMessage } = await import("./core/desktopapp.ts")
 timing.mark("imports")
 void (await import("./core/running.ts")).startedOn().then(startup.runsCommit, () => {})
 
@@ -126,7 +128,10 @@ async function vaultThere(p: string) {
 }
 
 function watch(l: LiveType) {
-  l.listen((c) => app.changed(c.paths))
+  l.listen((c) => {
+    app.changed(c.paths)
+    if (inDesktop() && (!c.paths || c.paths.includes(NICKNAME_FILE))) desktopCall("vault:nickname", [ownNickname(vault)]).catch(() => {})
+  })
   app.ui = l.drive
   app.presence = { list: () => l.present(), tell: (device, msg) => l.tell(device, msg) }
   app.liveMark = () => l.mark()
@@ -499,7 +504,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const why = await app.ownerWhy(req, "Managing vaults")
     if (why) return json(res, { error: why }, 403)
     try {
-      return json(res, await vaults.handle(method, parts, query, isObj(body) ? body : {}, vault.path, switchTo))
+      return json(res, await vaults.handle(method, parts, query, isObj(body) ? body : {}, vault.path, switchTo, (name) => { vault.patchConfig(VAULT_SETTINGS, { name }) }))
     } catch (e) {
       if (e instanceof HTTPError) return json(res, { error: e.message }, e.status)
       throw e

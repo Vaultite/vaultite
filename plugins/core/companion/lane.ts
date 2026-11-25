@@ -19,7 +19,7 @@ import { nearBy } from "./screensocket.ts"
 import { answering } from "./edits.ts"
 import { excerpts, awayIn, momentsText } from "./momentstext.ts"
 import { askOf, jobs } from "./wiring.ts"
-import { talkElsewhere } from "./vaults.ts"
+import { learnNicknames, talkElsewhere } from "./vaults.ts"
 
 export const SUMMONED_TOOLS = ["pass", "open", "edit", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "where", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
 const SUMMONED_ACTS = ["say", "look", "draw"]
@@ -85,11 +85,12 @@ export const lane = (): Lane => {
     watching: (name, seen) => { life.delete(key(name)); setAgent(name, seen ? { seen: true } : {}) },
     did,
     talk: (t) => talkBefore(t),
-    elsewhere: (since, t) => elsewhereText(talkElsewhere(since, t), t),
+    elsewhere: (since, t) => { void learnNicknames(); return elsewhereText(talkElsewhere(since, t), t) },
     say: (name, text) => { const a = agents.get(key(name)), answers = inSummoned.run(true, () => answering(name))
       keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}), ...(answers ? { answers } : {}) }, sayMs(text))) },
   })
   laneOf = { vault: plugin.vault, lane: l }
+  void learnNicknames()
   setTimeout(browserLogins, 20_000).unref?.()
   return l
 }

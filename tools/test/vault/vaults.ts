@@ -8,10 +8,10 @@ export default async ($: VaultTest) => {
   const { VAULT, api, check, write } = $
   // Manage vaults on the web (core/vaults.ts): a list on this machine, any folder but hidden and system ones.
   const vaultsMod = await import("../../../core/vaults.ts")
-  const opened: string[] = []
+  const opened: string[] = [], own: (string | null)[] = []
   const home = os.homedir()
   const vh = (method: string, route: string, query: Record<string, string>, body: Record<string, unknown> = {}): Promise<Any> =>
-    vaultsMod.handle(method, ["vaults", ...route.split("/").filter(Boolean)], query, body, VAULT, async (p) => { opened.push(p) }).catch((e) => e)
+    vaultsMod.handle(method, ["vaults", ...route.split("/").filter(Boolean)], query, body, VAULT, async (p) => { opened.push(p) }, (n) => { own.push(n) }).catch((e) => e)
   let vr: Any
   // (root's home, /root, is a system folder)
   if (vaultsMod.refused(home)) skip("vaults: home's folders, hidden ones left out", `home (${home}) is a system folder`)
@@ -54,7 +54,7 @@ export default async ($: VaultTest) => {
     if (was === null) fs.rmSync(file); else fs.writeFileSync(file, was)
   }
 
-  const N = await import("../../../core/vaultname.ts")
+  const N = { ...await import("../../../core/vaultname.ts"), ...await import("../../../core/nickname.ts") }
   check("vault names: two folders of one name show as much of their paths as tells them apart",
     N.listNames([{ path: "/code/areth/vault" }, { path: "/code/lighthouse/vault" }, { path: "/notes/Main" }]).join() === "areth/vault,lighthouse/vault,Main")
   check("vault names: two nicknames of one name too, after the nickname",
@@ -72,6 +72,25 @@ export default async ($: VaultTest) => {
     vr = await vh("GET", "", {})
     check("vault names: the list names another vault by its nickname", vr.vaults.find((v: Any) => v.path === dir)?.name === "Lighthouse", vr)
     check("vault names: nicknameAt reads none where there's no vault.json", await N.nicknameAt(other) === "")
+    const kept = () => JSON.parse(fs.readFileSync(path.join(dir, ".vaultite", "vault.json"), "utf8"))
+    fs.writeFileSync(path.join(dir, ".vaultite", "vault.json"), JSON.stringify({ name: "Lighthouse", later: 1 }))
+    vr = await vh("PATCH", "", {}, { path: dir, nickname: "  Harbour\n notes " })
+    check("nickname: another vault's is set in its own folder, the file's other keys kept", vr.vaults?.find((v: Any) => v.path === dir)?.nickname === "Harbour notes" && JSON.stringify(kept()) === '{"later":1,"name":"Harbour notes"}', [vr, kept()])
+    vr = await vh("PATCH", "", {}, { path: dir, nickname: "   " })
+    const cleared = vr.vaults?.find((v: Any) => v.path === dir)
+    check("nickname: a blank one clears it, back to the folder's name", cleared?.name.split("/").at(-1) === "vault" && cleared.nickname === undefined && JSON.stringify(kept()) === '{"later":1}', [vr, kept()])
+    vr = await vh("PATCH", "", {}, { path: dir, nickname: "vault" })
+    check("nickname: the folder's own name is none", JSON.stringify(kept()) === '{"later":1}', kept())
+    vr = await vh("PATCH", "", {}, { path: VAULT, nickname: "Lighthouse" })
+    check("nickname: the served vault's goes through its own settings", own.join() === "Lighthouse", own)
+    vr = await vh("PATCH", "", {}, { path: other, nickname: "Elsewhere" })
+    check("nickname: none for a folder that isn't in the list", vr.status === 404 && !fs.existsSync(path.join(other, ".vaultite")), vr)
+    fs.writeFileSync(path.join(dir, ".vaultite", "vault.json"), "{not json")
+    vr = await vh("PATCH", "", {}, { path: dir, nickname: "Harbour" })
+    check("nickname: a vault.json that can't be read is left as it is", vr instanceof Error && fs.readFileSync(path.join(dir, ".vaultite", "vault.json"), "utf8") === "{not json", vr)
+    fs.writeFileSync(path.join(dir, ".vaultite", "sandbox.json"), "{}")
+    vr = await vh("PATCH", "", {}, { path: dir, nickname: "Harbour" })
+    check("nickname: none for a playground", vr.status === 400, vr)
     if (was === null) fs.rmSync(file); else fs.writeFileSync(file, was)
     fs.rmSync(other, { recursive: true })
   }
@@ -80,7 +99,7 @@ export default async ($: VaultTest) => {
   check("vault names: unnamed, the vault is its folder's name", st.vault.name === folder && st.vault.nickname === undefined, st.vault)
   await api("PATCH", "config/vault", { name: "Lighthouse" })
   ;[, st] = await api("GET", "state")
-  check("vault names: renamed, the state names it so, its folder as it was", st.vault.name === "Lighthouse" && st.vault.nickname === "Lighthouse" && fs.existsSync(VAULT), st.vault)
+  check("vault names: with a nickname, the state names it so, its folder as it was", st.vault.name === "Lighthouse" && st.vault.nickname === "Lighthouse" && fs.existsSync(VAULT), st.vault)
   write(".vaultite/vault.json", JSON.stringify({ name: ["not", "text"] }))
   ;[, st] = await api("GET", "state")
   check("vault names: a name that isn't text is none", st.vault.name === folder, st.vault)

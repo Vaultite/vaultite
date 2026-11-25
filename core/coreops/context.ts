@@ -9,7 +9,8 @@ import { onOff, pluginList } from "./plugins.ts"
 import { serverUrl } from "../plugins.ts"
 import { untyped } from "./types.ts"
 import { logger } from "../log.ts"
-import { ownNickname, vaultName } from "../vaultname.ts"
+import { ownNickname } from "../nickname.ts"
+import { vaultName } from "../vaultname.ts"
 
 const log = logger("context")
 

@@ -107,6 +107,7 @@ export function startDesktop() {
     if (m.type === "command" && m.id) runCommandId(m.id)
     else if (m.type === "link" && m.id) { const id = m.id; let n = 0; const go = () => { if (!runCommandLink(id) && ++n < 40) setTimeout(go, 150) }; go() }
     else if (m.type === "link" && m.bundle) void import("@/core/bundles").then((b) => b.openImport(m.bundle!))
+    else if (m.type === "vaults") refresh()
     else if (m.type === "open" && m.path) open(m.path)
     else if (m.type === "web" && m.url && /^https?:\/\//i.test(m.url)) { const url = m.url; void import("@/core/links").then((l) => l.openWebLink(url, { newTab: false, fromApp: true })) }
     else if (m.type === "go" && m.path) openFile(m.path)

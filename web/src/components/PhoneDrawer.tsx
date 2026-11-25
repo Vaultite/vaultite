@@ -6,6 +6,7 @@ import { route } from "@/core/nav"
 import { usePageLock } from "@/core/pagelock"
 import { useDesktop } from "@/core/platform"
 import { phoneDock, useSidebars, type Side } from "@/core/plugins"
+import { nicknameItems } from "@/core/nickname"
 import { drawerOut, openDrawer, useDrawer, useHasDrawer } from "@/core/drawer"
 import { usePrefs } from "@/core/prefs"
 import { menuFor } from "@/components/ContextMenu"
@@ -97,7 +98,7 @@ const DrawerBody = memo(function DrawerBody({ side, store, file, tab, vaultName,
         <Dock store={store} file={file} tab={tab} />
         <nav aria-label="App" className="flex items-center gap-1 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
           {share ? <SharedWith phone /> : (
-          <button type="button" onClick={vaultMenu} aria-haspopup="menu"
+          <button type="button" onClick={vaultMenu} onContextMenu={menuFor(nicknameItems)} aria-haspopup="menu"
             className="-ml-1.5 flex h-11 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[10px] px-1.5 text-left active:bg-foreground/[0.06]">
             <span className="min-w-0 truncate text-[15px] font-semibold">{vaultName}</span>
             <ChevronsUpDown className="size-4 shrink-0 text-tertiary" strokeWidth={2} />

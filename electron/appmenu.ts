@@ -88,7 +88,7 @@ function buildMenu() {
     },
   })
   // (The same menu again isn't set: setting it closes one that's open.)
-  const key = JSON.stringify([w?.menu ?? null, recent.map((v) => [v.path, wins.has(v.path)]), remotes.map((r) => [r.url, remoteWins.has(r.url)]), update && [update.label, update.enabled]])
+  const key = JSON.stringify([w?.menu ?? null, recent.map((v, i) => [v.path, names[i], wins.has(v.path)]), remotes.map((r) => [r.url, remoteWins.has(r.url)]), update && [update.label, update.enabled]])
   if (key === menuShown && Menu.getApplicationMenu()) return
   menuShown = key
   const menu = Menu.buildFromTemplate(template), top = menu.getMenuItemById("on-top")

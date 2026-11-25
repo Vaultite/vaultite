@@ -5,7 +5,8 @@ Vaultite's words, as the code and its docs use them. Use these, not the ones und
 ## The user's things
 
 **Vault**: the folder of Markdown files that is all of the user's data, and the app's settings in its `.vaultite/`.
-Its **name** is its folder's unless it has a **nickname** (`.vaultite/vault.json`'s `name`); renaming a vault gives it one.
+It shows as its **nickname** if it has one (`.vaultite/vault.json`'s `name`), else its folder's name; a nickname never
+renames the folder.
 _Avoid_: database, workspace (that's a desk, below), library.
 
 **File**: one file in the vault; a **note** when it's Markdown. Its **kind** is its `type:` field (a person, a log, a

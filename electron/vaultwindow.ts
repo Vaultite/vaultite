@@ -30,6 +30,7 @@ export const beginQuit = () => { quitting = true }
 export let manager: AppWindow | null = null
 export const waiting: string[] = []
 
+export const titleOf = (p: string) => dev?.titled(nameOf(p)) ?? nameOf(p)
 export async function openVault(p: string, file?: string) {
   const open = wins.get(p)
   if (open) {
@@ -51,7 +52,7 @@ export async function openVault(p: string, file?: string) {
   const apps = appsOn(p), glass = translucentAt(p), clear = apps || (MAC && glass)
   const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
-    title: dev?.titled(nameOf(p)) ?? nameOf(p), ...chrome(),
+    title: titleOf(p), ...chrome(),
     acceptFirstMouse: true,
     // (the system's blur shows only through a transparent window)
     ...(clear ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }),
@@ -120,8 +121,8 @@ export async function openVault(p: string, file?: string) {
   win.webContents.on("did-fail-load", (_e, code, _d, _u, main) => { if (main && code !== -3) loadFailed = true })
   if (server) w.watch = watchServer(w, server, () => loadFailed)
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(zoom))
-  revive(win.webContents, () => { w.ready = false }, crashedFor(win, nameOf(p)))
-  hangs(win, nameOf(p))
+  revive(win.webContents, () => { w.ready = false }, crashedFor(win, () => nameOf(p)))
+  hangs(win, () => nameOf(p))
   guard(win, `http://127.0.0.1:${port}`)
   webWindow(win)
   translucentWindow(win, clear, glass)
@@ -135,7 +136,7 @@ export async function openVault(p: string, file?: string) {
 }
 
 function watchServer(w: Win, first: Server, loadFailed: () => boolean) {
-  const p = w.vault.path, name = nameOf(p)
+  const p = w.vault.path
   return new ServerWatch<Server>(first, {
     start: () => {
       const at = w.port, started = startServer(w.vault, at)
@@ -154,12 +155,12 @@ function watchServer(w: Win, first: Server, loadFailed: () => boolean) {
     failed: (why, starting) => {
       if (w.win.isDestroyed()) return
       const said = why.includes("\n") ? "" : `\n${logSince(serverLog(p), (w.server && logFrom.get(w.server)) ?? Infinity)}`
-      failedBox(`Couldn't ${starting ? "open" : "keep running"} ${name}`, new Error(why + said),
+      failedBox(`Couldn't ${starting ? "open" : "keep running"} ${nameOf(p)}`, new Error(why + said),
         { why: starting ? "Its server stopped as it started." : "Its server kept stopping, or didn't start again.", log: serverLog(p) })
       w.win.close()
     },
     over: () => (w.win.isDestroyed() ? "its window closed" : quitting ? "the app quits" : null),
-    log: (line) => mainLog(`${name}: ${line}`),
+    log: (line) => mainLog(`${nameOf(p)}: ${line}`),
   })
 }
 export async function helperHome() {

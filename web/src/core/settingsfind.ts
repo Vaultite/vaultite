@@ -68,7 +68,7 @@ export function findable(store: Store, disabled: string[], show: Show): Found[] 
       return { id: row, label: w.name, sub: w.sub?.(), where: placeOf(w).name, words: w.words ?? "", run: w.section === "sidebars" ? placeOf(w).open : () => show(w.section ?? "appearance", `[data-settings-row="${row}"]`), switch: w }
     }),
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
-    { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vaults", words: "vault folder",
+    { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vaults", words: "vault folder nickname",
       run: () => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") } },
     { ...row("version", "Version", "About", '[data-settings-row="version"]', `Vaultite ${APP_VERSION}`), words: "about" },
     { ...row("running", "Running", "About", '[data-settings-row="running"]', "The server's commit and its updates"), words: "commit build deployed live hash server" },

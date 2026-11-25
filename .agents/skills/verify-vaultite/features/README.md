@@ -34,4 +34,5 @@ What a user can do in Vaultite, one file per feature: how to reach it, how to dr
 - [Settings](./settings.md): sections, search, a switch kept in `.vaultite/editor.json`, the palette, plugins off and on.
 - [Daily notes](./daily-notes.md): today's and tomorrow's note, the Daily note panel, routines ticked on the Today page.
 - [Inbox](./inbox.md): asks answered, results pinned and settled, a session's reply box, the keys.
+- [Vault nickname](./vault-nickname.md): set from the sidebar and Manage vaults, shown everywhere, cleared to the folder's name.
 - [Phone layout](./phone.md): the header, bar, drawer, back, tab cards at a phone's width.

@@ -12,11 +12,12 @@ says which workspace the user's window is on. What's open (each device's and wor
 plugins' caches aren't settings: the server keeps them out of the vault, shared with the other machines (`vau kept`;
 change them with their plugins' ops: `vau workspace`, `vau tabs`).
 
-**Vault name**, `.vaultite/vault.json`: `name`, the vault's nickname, shown wherever the app names it (the sidebar,
-the vault menu, Manage vaults) instead of its folder's name, which never changes for it: a vault in a repo's `vault/`
-folder called after the project. Unset or empty, the folder's name. `vau settings set vault '{"name": "Lighthouse"}'`,
-or Rename vault in the vault menu; null goes back to the folder's. Two vaults of one name show as much of their paths
-as tells them apart (`lighthouse/vault`).
+**Nickname**, `.vaultite/vault.json`: `name`, shown wherever the app names the vault (the sidebar, the vault menu, Manage
+vaults, the window's and the tab's title, the Dock and the app's menus) instead of its folder's name; the folder isn't
+renamed. Only ever what the user set: unset or empty, the folder's name. `vau settings set vault '{"name": "Lighthouse"}'`
+(null clears it), Set nickname… in the vault menu or on the sidebar's vault button, or a click on the vault's name in
+Manage vaults; it shows with no reload. Two vaults of one name show as much of their paths as tells them apart
+(`lighthouse/vault`).
 
 **Plugins**, `.vaultite/plugins.json`: `disabled` (app plugins off), `enabled` (vault plugins and off-by-default ones
 on: the app's off-by-default ones like people, logs), `index` (the plugin directory's address, an https URL; unset: Vaultite's), `updates` (which installed plugins update on their

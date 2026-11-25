@@ -12,7 +12,7 @@ import { currentEditor, keysInEditor } from "@/core/editors"
 import { bareWindow, desktop as desktopApp, hasLights } from "@/core/desktop"
 import { canKeepOnTop, keepOnTop, onTop } from "@/core/ontop"
 import { otherVaults } from "@/core/desktopapp"
-import { canRenameVault, renameVault } from "@/core/vaultrename"
+import { appVaults, canSetNickname, nicknameItems, setNickname } from "@/core/nickname"
 import { peekPanel, peekRider, usePeek, usePeekLights, useSideMotion } from "@/core/peek"
 import { useBarFade } from "@/core/barfade"
 import { hideBarsOnUserScroll } from "@/core/barhide"
@@ -83,7 +83,7 @@ import { coarse } from "@/core/haptics"
 import { PhoneHeader } from "@/components/PhoneHeader"
 import { drawerOut, openDrawer } from "@/core/drawer"
 import { Tooltips } from "@/components/Tooltip"
-import { VaultManager, webVaults } from "@/components/VaultManager"
+import { webVaults } from "@/core/webvaults"
 import { ContextMenus } from "@/components/ContextMenu"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space } from "@/lib/utils"
@@ -116,6 +116,7 @@ const preloadSoon = () => {
 }
 const PhoneDrawers = lazy(() => import("@/components/PhoneDrawer").then((m) => ({ default: m.PhoneDrawers })))
 const Setup = lazy(() => import("@/pages/Setup").then((m) => ({ default: m.Setup })))
+const VaultManager = lazy(() => import("@/components/VaultManager").then((m) => ({ default: m.VaultManager })))
 const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
 const Viewer = lazy(() => import("@/components/Viewer"))
 const IconPicker = lazy(() => import("@/components/IconPicker"))
@@ -163,10 +164,15 @@ const manageVaults = () => (desktopApp ? desktopApp.manageVaults() : openDetail(
 const VAULT_MENU = (): MenuItem[] => [
   ...otherVaults().map((v) => ({ label: `Open ${v.name}`, run: () => { (desktopApp ? desktopApp.openVault(v.path) : webVaults.open(v.path)).catch((e) => notifyError(e, "Couldn't open it")) } })),
   { label: "Manage vaults", sep: !!otherVaults().length, run: () => { manageVaults() } },
-  ...(canRenameVault() ? [{ label: "Rename vault…", run: renameVault }] : []),
+  ...nicknameItems(),
   ...(desktopApp?.openSandbox ? [{ label: "Open the playground", run: () => { desktopApp!.openSandbox!() } }] : []),
   ...(phoneApp ? [{ label: "Switch server…", run: () => { phoneApp!.launcher() } }] : []),
 ]
+
+function vaultButtonMenu(): MenuItem[] {
+  const own = nicknameItems(), foot = barAreaMenu("foot")()
+  return own.length ? [...own.map((m) => ({ ...m, icon: PencilLine })), ...foot.map((m, i) => (i ? m : { ...m, sep: true }))] : foot
+}
 
 function sheet_(...a: Parameters<typeof detail_>): ReturnType<typeof detail_> {
   try { return detail_(...a) } catch (e) { return { body: <Drawn draw={() => { throw e }} />, title: "" } }
@@ -199,7 +205,7 @@ function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Ta
   }
   if (kind === "tabs") return { body: <Suspense fallback={<Arriving />}><TabSwitcher store={store} info={tabInfo} /></Suspense>, title: "Tabs" }
   if (kind === "vaults") {
-    return { body: <><SheetHead icon={Logo} tint="var(--primary)" kicker="Vaultite" title="Vaults" /><VaultManager backend={webVaults} /></>, title: "Vaults" }
+    return { body: <><SheetHead icon={Logo} tint="var(--primary)" kicker="Vaultite" title="Vaults" /><Suspense fallback={<Arriving />}><VaultManager backend={appVaults} /></Suspense></>, title: "Vaults" }
   }
   const own = CORE_SHEETS[id ? `${kind}/` : kind]
   if (own) return { body: <Suspense fallback={<Arriving />}>{own[1](store, decodeURIComponent(id ?? ""))}</Suspense>, title: own[0] }
@@ -371,6 +377,7 @@ export default function App() {
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
   const vaultName = vaultNameOf(store)
   const vaultMenu = (e: React.MouseEvent) => menuBelow(e, VAULT_MENU())
+  useEffect(() => { if (store && !share) document.title = `${vaultName} · Vaultite` }, [store, vaultName])
   const actionTarget = () => currentEditor()?.path ?? currentFile()
   const tabFile = () => (isDesktop() ? currentFile() : "")
   const besideText = () => { const ed = currentEditor(); return !!ed?.undo && keysInEditor(ed) }
@@ -433,7 +440,7 @@ export default function App() {
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
     { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
       icon: PanelLeft, nameWhenOn: "Show tabs on top", on: () => tabsInSidebar() },
-    { id: "vault:rename", name: "Rename vault…", when: canRenameVault, words: "nickname", run: renameVault, icon: PencilLine },
+    { id: "vault:nickname", name: "Set vault nickname…", when: canSetNickname, words: "rename name", run: setNickname, icon: PencilLine },
     { id: "tab:rename", name: "Rename tab…", when: () => canRenameTab(activeTab()), run: () => renameTab(), icon: PencilLine },
     { id: "tab:group", name: "Add current tab to group…", when: isDesktop, run: chooseTabGroup, icon: GroupIcon },
     { id: "tab:rename-group", name: "Rename tab group…", when: () => isDesktop() && !!activeTab().group, run: renameTabGroup, icon: PencilLine },
@@ -588,7 +595,8 @@ export default function App() {
         <nav aria-label="App" data-sidebar-foot data-bar-area onContextMenu={menuFor(barAreaMenu("foot"))} className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
           {leftOpen && share && <SharedWith />}
           {leftOpen && !share && (
-            <button type="button" onClick={vaultMenu} aria-haspopup="menu" data-tip={vaultName} data-tip-trunc="" data-tip-side="top"
+            <button type="button" data-vault-button onClick={vaultMenu} onContextMenu={menuFor(vaultButtonMenu)}
+              aria-haspopup="menu" data-tip={vaultName} data-tip-trunc="" data-tip-side="top"
               className="flex h-7 min-w-7 flex-1 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] font-medium whitespace-nowrap hover:bg-foreground/[0.06]">
               <ChevronsUpDown className="size-4 shrink-0 text-tertiary" strokeWidth={2} />
               <span className="min-w-0 truncate">{vaultName}</span>

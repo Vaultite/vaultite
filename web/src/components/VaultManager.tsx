@@ -1,43 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronLeft, ChevronRight, Ellipsis, FlaskConical, Folder, FolderOpen, FolderPlus, Server, type LucideIcon } from "lucide-react"
-import { menuBelow } from "@/components/ContextMenu"
-import { api } from "@/core/http"
-import { revealLabel } from "@/core/platform"
+import { ChevronLeft, ChevronRight, FlaskConical, Folder, FolderPlus, Server, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
 import { Bar, Stone } from "@/components/kit"
+import { FIELD, VaultRow } from "@/components/VaultRow"
+import type { FolderList, KnownVault, VaultBackend, VaultList } from "@/core/webvaults"
 import { useKeptCount } from "@/core/heights"
 import { plainText } from "../../../core/plainerror.ts"
-
-type KnownVault = { path: string; name: string; open?: boolean
-  sandbox?: boolean
-  remote?: boolean }
-export type VaultList = { current?: string | null; home?: string; vaults: KnownVault[] }
-type FolderList = { path: string; home: string; parent: string | null; folders: { name: string; vault: boolean }[] }
-export type VaultBackend = {
-  list: () => Promise<VaultList>
-  open: (path: string) => Promise<unknown>
-  create: (parent: string, name: string) => Promise<unknown>
-  remove: (path: string) => Promise<unknown>
-  pick?: () => Promise<string | null>
-  folders?: (path?: string) => Promise<FolderList>
-  reveal?: (path: string) => void
-  connect?: (address: string) => Promise<unknown>
-  playground?: () => Promise<unknown>
-}
-
-export const webVaults: VaultBackend = {
-  list: () => api("GET", "vaults"),
-  open: (path) => api("POST", "vaults/open", { path }).then(switched),
-  create: (parent, name) => api("POST", "vaults/create", { parent, name }).then(switched),
-  remove: (path) => api("DELETE", `vaults?path=${encodeURIComponent(path)}`),
-  folders: (path) => api("GET", `vaults/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
-}
-
-function switched() {
-  try { localStorage.removeItem("vaultite.tabs") } catch {}
-  location.replace(location.pathname)
-}
+import { nicknameTyped, vaultName } from "../../../core/vaultname.ts"
 
 const short = (p: string, home?: string) => (home && p.startsWith(home + "/") ? `~${p.slice(home.length)}` : p)
 
@@ -53,10 +23,17 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
   const [home, setHome] = useState<string | undefined>()
   const load = () => backend.list().then((l) => { setList(l); if (l.home) setHome(l.home) }, (e) => setError(plainText(e)))
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the list loads once, as it opens
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); return backend.watch?.(load) }, [])
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setError("")
     try { await fn(); await load() } catch (e) { setError(plainText(e)) } finally { setBusy(false) }
+  }
+  const setNickname = async (v: KnownVault, typed: string) => {
+    const nickname = nicknameTyped(typed, v.path) ?? undefined
+    setError("")
+    setList((l) => l && { ...l, vaults: l.vaults.map((x) => (x.path === v.path ? { ...x, nickname, name: vaultName(x.path, nickname) } : x)) })
+    try { await backend.nickname?.(v.path, typed) } catch (e) { setError(plainText(e, "Couldn't set the nickname")) }
+    await load()
   }
   const openFolder = async () => {
     if (!backend.pick) return setStep("browse-open")
@@ -85,26 +62,12 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
           ))}
         </div>
       )}
-      {vaults.map((v) => {
-        const here = v.path === list?.current
-        return (
-          <div key={v.path} className={cn("group relative flex items-center rounded-[6px]", here ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]")}>
-            <button type="button" disabled={busy} onClick={() => (here ? undefined : run(() => backend.open(v.path)))}
-              data-tip={here ? "This vault" : `Open ${v.name}`} className="flex min-w-0 flex-1 cursor-pointer flex-col items-start px-2.5 py-1.5 pr-8 text-left">
-              <span className="w-full truncate text-[13px] font-medium">{v.name}</span>
-              <span className="w-full truncate text-[12px] text-muted-foreground">{v.sandbox ? "Made up, fresh each time it opens" : v.remote ? `On ${new URL(v.path).host}` : short(v.path, home)}</span>
-            </button>
-            <button type="button" aria-label={`More for ${v.name}`}
-              onClick={(e) => menuBelow(e, [
-                ...(backend.reveal && !v.remote ? [{ label: revealLabel, icon: FolderOpen, run: () => backend.reveal!(v.path) }] : []),
-                { label: "Remove from list", disabled: here, run: () => run(() => backend.remove(v.path)) },
-              ])}
-              className="absolute right-1 grid size-6 cursor-pointer place-items-center rounded-[4px] text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground">
-              <Ellipsis className="size-4" strokeWidth={2.25} />
-            </button>
-          </div>
-        )
-      })}
+      {vaults.map((v) => (
+        <VaultRow key={v.path} v={v} here={v.path === list?.current} busy={busy} open={() => void run(() => backend.open(v.path))}
+          sub={v.sandbox && backend.playground ? "Made up, fresh each time it opens" : v.remote ? `On ${new URL(v.path).host}` : short(v.path, home)}
+          nickname={backend.nickname && !v.sandbox && !v.remote ? (typed) => void setNickname(v, typed) : undefined}
+          reveal={backend.reveal && !v.remote ? () => backend.reveal!(v.path) : undefined} remove={() => void run(() => backend.remove(v.path))} />
+      ))}
     </nav>
   )
 
@@ -122,7 +85,7 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
         <h2 className="text-[17px] font-semibold">Create new vault</h2>
         <Setting title="Vault name" sub="The name of the new folder.">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="My vault" aria-label="Vault name" autoFocus
-            className="h-7 w-44 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:ring-1 focus:ring-primary/60" />
+            className={cn(FIELD, "w-44")} />
         </Setting>
         <Setting title="Location" sub={parent ? short(parent, home) : "Where the vault's folder goes."}>
           <Button size="small" look="outline" onClick={pickParent}>Browse</Button>
@@ -139,7 +102,7 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
         <p className="text-[13px] text-muted-foreground">One that runs Vaultite and is always on, like a Mac at home or a Linux server. It opens in a window here, as on your iPhone.</p>
         <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="studio.tailnet.ts.net:8447" aria-label="Server address" autoFocus
           spellCheck={false} autoCapitalize="none" data-server
-          className="h-7 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:ring-1 focus:ring-primary/60" />
+          className={FIELD} />
         <div><Button size="small" look="primary" type="submit" disabled={!address.trim() || busy}>Connect</Button></div>
       </form>
     )

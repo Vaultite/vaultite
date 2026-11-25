@@ -15,7 +15,7 @@ import { log, acts, BOOKKEEPING, drawnLog } from "./state.ts"
 import { cut } from "./edits.ts"
 import { AS } from "./args.ts"
 import { jobs } from "./wiring.ts"
-import { talkInOtherVaults } from "./vaults.ts"
+import { learnNicknames, talkInOtherVaults } from "./vaults.ts"
 
 export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; sent?: number; think?: number; word?: number; total?: number }
 
@@ -90,6 +90,7 @@ recognizer, the key's up and down, its end), as the menu-bar helper logged them 
   run: async (p) => {
     const day = str(p.day) || localDate(Date.now())
     const presses = Presses.parse(await plugin.desktop("talk:presses", { day }).catch(() => []))
+    await learnNicknames()
     const here = exchanges(log.read(day), acts.read(day), presses, ownName(), { reactions: true, drawn: drawnLog.read(day) })
     return { day, exchanges: [...here, ...talkInOtherVaults(day)].sort((a, b) => a.t - b.t), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
   },

@@ -70,6 +70,7 @@ export function serverFor(v: Known) {
 
 const LOOK_ASKED = z.object({ port: z.number(), commit: z.string() })
 export const answerCall = (v: Known, m: Call) => rest.then((r) => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
+  : m.name === "vault:nickname" ? r.heardNickname(v, m)
   : m.name === "app:updates" ? r.appUpdates()
   : m.name === "app:update-look" ? r.lookNow(LOOK_ASKED.safeParse(Array.isArray(m.args) ? m.args[0] : undefined).data)
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
