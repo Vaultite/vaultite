@@ -1,4 +1,4 @@
-import { memo, Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
+import { memo, Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronLeft, ChevronRight, Ellipsis, Search } from "lucide-react"
 import { commandName, isOn, isSetting, keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
@@ -37,9 +37,9 @@ export type MenuItem = {
   /** Not a choice: muted text that wraps, saying what the menu is about (a block's description, where its live data
    *  comes from). `run` is unused. */
   caption?: boolean
-  /** Not a choice: a text field atop the menu, focused as it opens on a computer (a tab group's name). `set` hears each change;
-   *  Enter or Escape closes the menu, ↓ goes to its rows. `label` names it. */
-  field?: { value: string; placeholder?: string; set: (v: string) => void }
+  /** Not a choice: a text field atop the menu, focused as it opens (a phone's only when it's all there is). `set` hears
+   *  each change, `save` the last one as the menu closes, but by Escape. `label` names it, `hint` is a line under it. */
+  field?: { value: string; placeholder?: string; max?: number; hint?: string; set?: (v: string) => void; save?: (v: string) => void }
   /** Not a choice: the shared palette (core/colors.ts) as a row of swatches, `value` ringed. Picking one keeps the menu
    *  open (redrawn), as a browser's tab group editor does. `label` names it. */
   colors?: { value: string; pick: (c: Color) => void }
@@ -286,7 +286,8 @@ function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: bo
   useEffect(() => {
     // preventDefault: else Escape's close request reaches the sheet's <dialog> once the menu's is gone.
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); closeMenu() } }
-    const onResize = () => closeMenu({ now: true })
+    const keyboardCame = () => !isDesktop() && !!document.activeElement?.closest("[data-menu-field]")
+    const onResize = () => { if (!keyboardCame()) closeMenu({ now: true }) }
     addEventListener("keydown", onKey)
     addEventListener("resize", onResize)
     return () => { removeEventListener("keydown", onKey); removeEventListener("resize", onResize) }
@@ -376,7 +377,10 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   // After placing: a visibility:hidden list can't take focus.
   const placed = pos !== null
   useLayoutEffect(() => {
-    if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(`${drill ? "" : ":scope > [data-menu-field] input, "}:scope > button:not(:disabled)`)?.focus({ preventScroll: true })
+    if (!placed || !(focus || trail.length)) return
+    const row = ":scope > button:not(:disabled)", input = ":scope > [data-menu-field] input"
+    const first = ref.current?.querySelector<HTMLElement>(drill ? row : `${input}, ${row}`) ?? ref.current?.querySelector<HTMLElement>(input)
+    first?.focus({ preventScroll: true })
   }, [placed, focus, trail])
   const toField = useRef(false)
   useLayoutEffect(() => {
@@ -529,11 +533,19 @@ function MenuProgress({ value }: { value: number }) {
 function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | null | undefined }) {
   const f = it.field!
   const [v, setV] = useState(f.value)
+  const hintId = useId()
+  const ending = useRef({ was: f.value, now: f.value, save: f.save })
+  useLayoutEffect(() => {
+    const end = ending.current
+    const cancels = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape" && !e.isComposing) end.now = end.was }
+    addEventListener("keydown", cancels, { capture: true })
+    return () => { removeEventListener("keydown", cancels, { capture: true }); if (end.now !== end.was) end.save?.(end.now) }
+  }, [])
   return (
     <div data-menu-field className="px-1 pt-1 pb-1.5 md:px-0.5 md:pt-0.5 md:pb-1">
-      <input value={v} placeholder={f.placeholder} aria-label={it.label} spellCheck={false} autoComplete="off"
+      <input value={v} placeholder={f.placeholder} maxLength={f.max} aria-label={it.label} aria-describedby={f.hint ? hintId : undefined} spellCheck={false} autoComplete="off"
         onFocus={(e) => e.currentTarget.select()}
-        onChange={(e) => { setV(e.target.value); f.set(e.target.value) }}
+        onChange={(e) => { setV(e.target.value); ending.current.now = e.target.value; f.set?.(e.target.value) }}
         onKeyDown={(e) => {
           e.stopPropagation()
           if (e.nativeEvent.isComposing) return
@@ -541,6 +553,7 @@ function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | nul
           else if (e.key === "ArrowDown") { e.preventDefault(); first()?.focus() }
         }}
         className="h-10 w-full rounded-[8px] bg-foreground/[0.06] px-3 text-[17px] outline-none ring-primary/60 placeholder:text-muted-foreground focus:ring-2 md:h-7 md:rounded-[6px] md:px-2 md:text-[13px]" />
+      {f.hint && <p id={hintId} className="px-2 pt-1.5 text-[15px] leading-5 text-muted-foreground md:px-1.5 md:pt-1 md:text-[12px] md:leading-4 md:whitespace-nowrap">{f.hint}</p>}
     </div>
   )
 }

@@ -1,28 +1,17 @@
-import fs from "node:fs"
-import path from "node:path"
-import { z } from "zod"
-import type { Item, Vault } from "./vault.ts"
-
-export const VAULT_SETTINGS = "vault"
-const MAX = 80
+export const NICKNAME_FILE = ".vaultite/vault.json"
 
 const parts = (p: string) => p.split(/[\\/]+/).filter(Boolean)
 export const folderName = (p: string) => parts(p).at(-1) ?? p
 
-const VaultSettings = z.looseObject({ name: z.string().catch("").default("") }).catch({ name: "" })
-export const nicknameOf = (settings: Item) => VaultSettings.parse(settings).name.replace(/\s+/g, " ").trim().slice(0, MAX)
+export const NICKNAME_MAX = 80
+export const NICKNAME_HINT = "Shown instead of the folder's name; the folder isn't renamed"
+export const nicknameText = (typed: string) => typed.replace(/\s+/g, " ").trim().slice(0, NICKNAME_MAX)
+export const nicknameTyped = (typed: string, p: string) => {
+  const n = nicknameText(typed)
+  return n && n !== folderName(p) ? n : null
+}
 
 export const vaultName = (p: string, nickname = "") => nickname || folderName(p)
-
-export const ownNickname = (vault: Pick<Vault, "config">) => nicknameOf(vault.config(VAULT_SETTINGS))
-
-export async function nicknameAt(dir: string, ms = 1000): Promise<string | null> {
-  const read = fs.promises.readFile(path.join(dir, ".vaultite", `${VAULT_SETTINGS}.json`), "utf8")
-    .then((t) => nicknameOf(JSON.parse(t)), () => "")
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const late = new Promise<null>((done) => { timer = setTimeout(() => done(null), ms); timer.unref?.() })
-  try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
-}
 
 export type Named = { path: string; nickname?: string }
 

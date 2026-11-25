@@ -5,12 +5,16 @@ import { z } from "zod"
 import { listOf, readJson } from "./jsonfile.ts"
 import { HTTPError, LOCAL } from "./plugins.ts"
 import { readText, writeAtomic } from "./vault.ts"
-import { listNames, nicknameAt } from "./vaultname.ts"
+import { nicknameAt, saveNicknameAt } from "./nickname.ts"
+import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
+import { listNames, nicknameTyped } from "./vaultname.ts"
 
 const Known = z.object({ path: z.string() })
 type Known = z.infer<typeof Known>
 const Saved = z.looseObject({ current: z.string().optional().catch(undefined), vaults: listOf(Known).optional() })
 type Saved = z.infer<typeof Saved>
+
+const Nicknamed = z.object({ path: z.string().catch(""), nickname: z.string().catch("") })
 
 const FILE = () => path.join(LOCAL, "vaults.json")
 const HOME = os.homedir()
@@ -77,22 +81,37 @@ function remember(list: Known[], p: string) {
   return [{ path: p }, ...list.filter((v) => v.path !== p)]
 }
 
+const isSandbox = (p: string) => fs.existsSync(path.join(p, SANDBOX_MARKER))
+
 async function named(list: Known[]) {
   const nicknames = await Promise.all(list.map((v) => nicknameAt(v.path)))
   const names = listNames(list.map((v, i) => ({ path: v.path, nickname: nicknames[i] ?? "" })))
-  return list.map((v, i) => ({ path: v.path, name: names[i] }))
+  return list.map((v, i) => ({ path: v.path, name: names[i], nickname: nicknames[i] || undefined, sandbox: isSandbox(v.path) || undefined }))
 }
 
 export type Switch = (p: string) => Promise<void>
+export type Nickname = (nickname: string | null) => void
+
+async function setNickname({ path: p, nickname: typed }: z.output<typeof Nicknamed>, serving: string, list: Known[], own: Nickname) {
+  if (p !== serving && !list.some((v) => v.path === p)) throw new HTTPError(404, "that vault isn't in the list")
+  if (!isDir(p)) throw new HTTPError(404, `no folder '${p}'`)
+  if (isSandbox(p)) throw new HTTPError(400, "the playground has no nickname")
+  const nickname = nicknameTyped(typed, p)
+  if (p === serving) own(nickname); else await saveNicknameAt(p, nickname, writeAtomic)
+}
 
 export async function handle(method: string, parts: string[], query: Record<string, string>, body: Record<string, unknown>,
-  serving: string, open: Switch): Promise<unknown> {
+  serving: string, open: Switch, own: Nickname): Promise<unknown> {
   if (parts[0] !== "vaults") return undefined
   const route = parts.slice(1).join("/")
   const s = load()
   const list = s.vaults ?? []
   const known = async () => ({ current: serving, home: HOME, vaults: await named(list.some((v) => v.path === serving) ? list : remember(list, serving)) })
   if (route === "" && method === "GET") return known()
+  if (route === "" && method === "PATCH") {
+    await setNickname(Nicknamed.parse(body), serving, list, own)
+    return known()
+  }
   if (route === "" && method === "DELETE") {
     const p = query.path ?? body.path
     if (p === serving) throw new HTTPError(400, "that's the vault being served; open another one first")

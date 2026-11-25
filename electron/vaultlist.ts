@@ -5,7 +5,7 @@ import { DEV } from "./identity.ts"
 import type { HelperPrefs } from "./helper.ts"
 import { sandboxPath } from "./sandbox.ts"
 import * as Setup from "./setup.ts"
-import { folderName, listNames, nicknameAt, vaultName } from "../core/vaultname.ts"
+import { folderName, listNames, vaultName } from "../core/vaultname.ts"
 
 export type UpdateMode = "automatic" | "notify" | "off"
 export const UPDATE_MODES: UpdateMode[] = ["automatic", "notify", "off"]
@@ -55,18 +55,7 @@ export const nameOf = (p: string) => vaultName(p, nicknameOf(p))
 export const folderOf = (p: string) => (p === sandboxPath() ? "Playground" : folderName(p))
 export const listedNames = (ps: string[]) => listNames(ps.map((p) => ({ path: p, nickname: nicknameOf(p) })))
 export const find = (p: string) => known.find((v) => v.path === p)
-export async function learnNames(vs = known) {
-  const now = await Promise.all(vs.map((v) => nicknameAt(v.path)))
-  let changed = false
-  vs.forEach((v, i) => {
-    const n = now[i]
-    if (n === null || n === (v.nickname ?? "")) return
-    if (n) v.nickname = n
-    else delete v.nickname
-    changed = true
-  })
-  if (changed) { save(); buildMenu() }
-}
+export const learnNames = (vs = known) => import("./nicknames.ts").then((n) => n.learn(vs))
 export function remember(p: string) {
   let v = find(p)
   if (!v) known.push((v = { path: p }))

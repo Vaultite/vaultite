@@ -10,6 +10,7 @@ export type DesktopApi = {
   openVault: (path: string) => Promise<unknown>
   createVault: (parent: string, name: string) => Promise<unknown>
   removeVault: (path: string) => Promise<unknown>
+  setNickname?: (path: string, nickname: string) => Promise<void>
   pickFolder: () => Promise<string | null>
   revealVault: (path: string) => Promise<unknown>
   manageVaults: () => Promise<unknown>

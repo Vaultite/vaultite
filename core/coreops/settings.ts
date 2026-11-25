@@ -10,7 +10,7 @@ import { lines } from "./common.ts"
 import type { Item } from "../vault.ts"
 import { strings } from "../values.ts"
 import { pluginList } from "./plugins.ts"
-import { VAULT_SETTINGS } from "../vaultname.ts"
+import { VAULT_SETTINGS } from "../nickname.ts"
 
 
 /** A text read as JSON when it is (numbers, true, lists), else the text. */
