@@ -97,6 +97,19 @@ export function channelPaths(ws) {
   return (payload) => paths.get(frameOf(payload)?.ch)
 }
 
+export function watchChannels(ws, onOpen) {
+  const open = new Map()
+  const closed = (ch) => { open.get(ch)?.(); open.delete(ch) }
+  const heard = ({ payload }) => {
+    const f = frameOf(payload)
+    if (f?.kind === "o") { const onClose = onOpen(f.rest); if (onClose) open.set(f.ch, onClose) }
+    else if (f?.kind === "c" || f?.kind === "r") closed(f.ch)
+  }
+  ws.on("framesent", heard)
+  ws.on("framereceived", heard)
+  ws.on("close", () => { open.forEach((_, ch) => closed(ch)) })
+}
+
 export const tapChannel = (target, path) => target.addInitScript((path) => {
   const W = window.WebSocket, tap = { open: false, sent: [], ws: null, ch: "" }
   const frame = (text) => tap.ws.dispatchEvent(new MessageEvent("message", { data: text }))

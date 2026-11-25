@@ -7,6 +7,7 @@ import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { apiAt, openPalette, PROMPT, qa, tailnet, TERMINAL_FIND_KEY, terminalText, until as poll, wait } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
+import { watchChannels } from "./lib/sockets.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -161,23 +162,17 @@ for (const dark of [false, true]) {
 // replay to wait for). Closing its tab lets it go.
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
-  await ctx.addInitScript(() => {
-    window.__socks = []
-    const W = window.WebSocket
-    window.WebSocket = class extends W {
-      constructor(url, p) {
-        super(url, p)
-        const m = /\/api\/terminal\/([^?]+)/.exec(String(url))
-        if (!m || /end=1/.test(String(url))) return
-        const r = { id: decodeURIComponent(m[1]), closed: false }
-        window.__socks.push(r)
-        this.addEventListener("close", () => { r.closed = true })
-      }
-    }
-  })
   const page = watch(await ctx.newPage()), ui = app(page)
   const text = () => terminalText(page)
-  const socks = (sid) => page.evaluate((sid) => window.__socks.filter((s) => s.id === sid), sid)
+  const opened = []
+  page.on("websocket", (ws) => watchChannels(ws, (path) => {
+    const m = /^terminal\/([^?]+)/.exec(path)
+    if (!m || /end=1/.test(path)) return null
+    const r = { id: decodeURIComponent(m[1]), closed: false }
+    opened.push(r)
+    return () => { r.closed = true }
+  }))
+  const socks = async (sid) => opened.filter((s) => s.id === sid)
   const sid = `${id}p`
   await page.goto(`${B}#view/terminal%2F${sid}`)
   await until(async () => PROMPT.test(await text()), 8000)
@@ -185,7 +180,7 @@ for (const dark of [false, true]) {
   await page.keyboard.type("echo parked-$((20+1))"); await page.keyboard.press("Enter")
   await until(async () => (await text()).includes("parked-21"))
   await page.keyboard.press("Control+Backquote") // another terminal, in a new tab: this one's is hidden
-  await until(async () => (await page.evaluate(() => window.__socks.length)) > 1)
+  await until(async () => opened.length > 1)
   await ui.idle()
   check("a hidden terminal stays connected", (await socks(sid)).filter((s) => !s.closed).length === 1, await socks(sid))
   await page.locator(`[data-session="${sid}"]`).first().click()
