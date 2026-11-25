@@ -1,180 +1,139 @@
 // Your passwords: the user's own KeePass file (the one KeePassXC and Strongbox open), for the Passwords page, filling
-// their own logins and saving new ones. This computer's, set up here; never through the server, which agents can call.
+// their own logins and saving new ones; never through the server, which agents can call. Opened only in kdbxproc.ts.
 import { app, clipboard, dialog, powerMonitor, safeStorage, systemPreferences } from "electron"
-import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, handle, tellAll, logger } from "./engine.ts"
-import type { Full, Row } from "./kdbxedit.ts"
-import type { Otp } from "./keepass.ts"
+import { allPages, enclave, handle, tellAll, logger } from "./engine.ts"
+import { kdbx, onCrash } from "./kdbxhost.ts"
+import { OPS, type Access, type SAVED } from "./kdbxwire.ts"
+import type { z } from "zod"
+import { MasterKey } from "./masterkey.ts"
 import { messageOf } from "./messageof.ts"
-import { CHANGE, configOf, type Config } from "./passwordswire.ts"
+import { indexedFor, indexedSame, indexOf, newSalt, type Index } from "./passwordsindex.ts"
+import { openFor } from "./passwordslock.ts"
+import { CHANGE } from "./passwordswire.ts"
 
 const log = logger("passwords")
 
-// (kdbx/ loads at the first use: a Mac that never opens the page never loads it)
-const kdbx = () => Promise.all([import("./keepass.ts"), import("./kdbxedit.ts")]).then(([k, e]) => ({ ...k, ...e }))
-
-const CONFIG = () => path.join(app.getPath("userData"), "passwords.json")
-const BACKUPS = () => path.join(app.getPath("userData"), "passwords-backups")
-/** With no keyring (a Linux without a Secret Service), the password is held only till the app quits. */
-let held: { file: string; password: string } | null = null
-const keyring = () => safeStorage.isEncryptionAvailable()
-function config(): Config | null {
-  try { return configOf(fs.readFileSync(CONFIG(), "utf8")) } catch { return null }
+const test = () => !app.isPackaged && process.env.VAULTITE_TEST_TOUCHID === "yes" // (QA: no finger in a test)
+const touchId = () => process.platform === "darwin" && systemPreferences.canPromptTouchID()
+const finger = {
+  can: () => test() || touchId(),
+  ask: async (reason: string) => test() || systemPreferences.promptTouchID(reason).then(() => true, () => false),
 }
-function passwordOf(c: Config): string | null {
-  if (c.key === null) return held?.file === c.file ? held.password : null
-  try { return safeStorage.decryptString(Buffer.from(c.key, "base64")) } catch { return null }
-}
+let key: MasterKey | undefined
+const master = () => key ??= new MasterKey({ dir: app.getPath("userData"), safe: safeStorage, finger,
+  unsealed: (why) => log.error(`its password isn't behind Touch ID yet: ${why}`), enclave: () => enclave().catch((e) => { log.warn(`no Secure Enclave: ${messageOf(e)}`); return null }) })
 
 // ---------- the lock: what shows a secret or lists entries waits for Touch ID or the file's password ----------
 
 const OPEN_MS = 10 * 60_000
-let openUntil = 0
+const opened = openFor(OPEN_MS, () => lock())
 const changed = () => tellAll({ type: "engine:passwords:changed" })
-export const isUnlocked = () => openUntil > Date.now()
+export const isUnlocked = () => opened.isOpen()
 function need() {
   if (!isUnlocked()) throw new Error("locked")
-  openUntil = Date.now() + OPEN_MS
+  opened.open()
 }
 function lock() {
-  const was = isUnlocked()
-  openUntil = 0
+  const was = opened.close()
+  kdbx().lock()
   if (was) changed()
 }
+onCrash(() => { log.error("the passwords process stopped"); lock() })
 app.whenReady().then(() => { powerMonitor.on("lock-screen", lock); powerMonitor.on("suspend", lock) }, () => {})
-const touchId = () => process.platform === "darwin" && systemPreferences.canPromptTouchID()
 
-// ---------- the file: read fresh for every call (KeePassXC, Strongbox or iCloud may have just written it) ----------
 
-export const configured = () => !!config()
-
-async function load() {
-  const c = config()
+export const configured = () => !!master().config()
+function config() {
+  const c = master().config()
   if (!c) throw new Error("no passwords file is set up on this computer")
-  const password = passwordOf(c)
-  if (password === null) throw new Error("its password isn't kept since the app started: type it again")
-  let data: Buffer
-  try { data = fs.readFileSync(c.file) } catch { throw new Error(`${path.basename(c.file)} isn't there`) }
-  const k = await kdbx()
-  return { k, c, password, data, db: await k.loadKdbx(data, password) }
+  return c
+}
+async function access(reason: string): Promise<Access> {
+  const { file } = config()
+  if (isUnlocked()) return { file }
+  const password = master().gated() ? reason ? await master().ask(reason) : null : master().silent()
+  if (password) return { file, password }
+  throw new Error(master().gated() ? "locked" : "its password isn't kept since the app started: type it again")
 }
 
-const hash = (b: Uint8Array) => crypto.createHash("sha256").update(b).digest("hex")
-function writeAtomic(file: string, data: Uint8Array) {
-  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.vaultite-${process.pid}.tmp`)
-  fs.writeFileSync(tmp, data, { mode: 0o600 })
-  fs.renameSync(tmp, file)
+async function reach<T>(reason: string, fn: (a: Access) => Promise<T>): Promise<T> {
+  const a = await access(reason)
+  try { return await fn(a) } finally { a.password?.fill(0) }
 }
-function backup(file: string, data: Buffer) {
-  fs.mkdirSync(BACKUPS(), { recursive: true, mode: 0o700 })
-  fs.writeFileSync(path.join(BACKUPS(), `${Date.now()}-${path.basename(file)}`), data, { mode: 0o600 })
-  const old = fs.readdirSync(BACKUPS()).sort().slice(0, -30)
-  for (const f of old) fs.rmSync(path.join(BACKUPS(), f), { force: true })
+async function shown<T>(fn: (a: Access) => Promise<T>): Promise<T> {
+  need()
+  const out = await reach("", fn)
+  if (!isUnlocked()) throw new Error("locked")
+  return out
 }
 
-let writing: Promise<unknown> = Promise.resolve()
-/** Change the file: applied to it as it is now, saved only if it opens again, the old one kept (the last 30), never over
- *  a write that came in meanwhile (tried again on it). Then each KeeShare export is written as KeePassXC would. */
-function write<T>(edit: (db: Awaited<ReturnType<typeof load>>["db"], k: Awaited<ReturnType<typeof kdbx>>) => T): Promise<T> {
-  const run = writing.then(async () => {
-    for (let i = 0; ; i++) {
-      const { k, c, password, data, db } = await load()
-      const out = edit(db, k)
-      db.cleanup({ historyRules: true })
-      const saved = new Uint8Array(await db.save())
-      await k.loadKdbx(saved, password)
-      let now: Buffer | null = null
-      try { now = fs.readFileSync(c.file) } catch { /* moved meanwhile */ }
-      if (!now || hash(now) !== hash(data)) {
-        if (i < 2) continue
-        throw new Error(`${path.basename(c.file)} kept changing while saving: try again`)
-      }
-      backup(c.file, data)
-      writeAtomic(c.file, saved)
-      for (const s of k.sharesOf(db, c.file)) {
-        if (!fs.existsSync(path.dirname(s.path))) continue
-        try { writeAtomic(s.path, new Uint8Array(await k.exportOf(db, s))) } catch (e) { log.error(`a KeeShare export wasn't written: ${messageOf(e)}`) }
-      }
-      changed()
-      return out
-    }
-  })
-  writing = run.catch(() => {})
-  return run
+async function open(file: string, password: Uint8Array) {
+  await kdbx().call(OPS.unlock, { file, password })
+  if (!kdbx().unlocked()) throw new Error("locked")
+  opened.open()
 }
+
+
+const INDEX = () => path.join(app.getPath("userData"), "passwords-index.bin")
+let index: Index | null = null
+function indexed(): Index {
+  const { file } = config()
+  try { index ??= indexOf(safeStorage.decryptString(fs.readFileSync(INDEX()))) } catch { index = null }
+  if (index?.file !== file) throw new Error("locked")
+  return index
+}
+async function reindex(a: Access) {
+  if (!master().gated()) return forgetIndex()
+  try {
+    const salt = newSalt()
+    index = { file: a.file, salt, rows: await kdbx().call(OPS.index, { ...a, salt }) }
+    const tmp = `${INDEX()}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, safeStorage.encryptString(JSON.stringify(index)), { mode: 0o600 })
+    fs.renameSync(tmp, INDEX())
+  } catch (e) { log.error(`what's for which site wasn't kept: ${messageOf(e)}`) }
+}
+function forgetIndex() {
+  index = null
+  fs.rmSync(INDEX(), { force: true })
+}
+const byIndex = () => !isUnlocked() && master().gated()
+
+const saved = (reason: string, save: (a: Access) => Promise<z.output<typeof SAVED>>) => reach(reason, async (a) => {
+  const { id, warnings } = await save(a)
+  for (const w of warnings) log.error(w)
+  await reindex(a)
+  changed()
+  return { id }
+})
 
 // ---------- for the browser (userlogins.ts): the user's own logins ----------
 
-export async function entriesForUrl(url: string): Promise<Row[]> {
-  const { k, c, db } = await load()
-  const { groups, entries } = k.listOf(db, c.file)
-  const bin = new Set(groups.filter((g) => g.bin).map((g) => g.id))
-  return entries.filter((e) => !bin.has(e.group) && e.urls.some((u) => k.matchesSite(u, url)))
-}
+export const entriesForUrl = async (url: string) =>
+  byIndex() ? indexedFor(indexed(), url) : reach("", (a) => kdbx().call(OPS.entriesForUrl, { ...a, url }))
 
-export async function secretsOf(id: string): Promise<{ username: string; password: string; otp: Otp | "steam" | null } | null> {
-  need()
-  const { k, db } = await load()
-  const e = k.entryById(db, id)
-  if (!e) return null
-  const f = k.fieldsOf(e)
-  return { username: f.UserName ?? "", password: f.Password ?? "", otp: k.otpOf(f) }
-}
+export const secretsOf = (id: string) => shown((a) => kdbx().call(OPS.secretsOf, { ...a, id }))
 
-/** Which of these entries have this password: compared here, so it needs no unlock and shows nothing. */
-export async function samePassword(ids: string[], password: string): Promise<Set<string>> {
-  const { k, db } = await load()
-  const given = crypto.createHash("sha256").update(password).digest()
-  return new Set(ids.filter((id) => {
-    const e = k.entryById(db, id)
-    return !!e && crypto.timingSafeEqual(crypto.createHash("sha256").update(k.fieldsOf(e).Password ?? "").digest(), given)
-  }))
-}
+export const samePassword = async (ids: string[], given: string) =>
+  new Set(byIndex() ? indexedSame(indexed(), ids, given) : await reach("", (a) => kdbx().call(OPS.samePassword, { ...a, ids, given })))
 
-/** A login the user just signed in with: a new entry named after its site, or `id`'s password changed. */
-export async function saveLogin(l: { url: string; username: string; password: string; id?: string }): Promise<{ id: string }> {
-  const site = (() => { try { return new URL(l.url) } catch { return null } })()
-  if (!site || !/^https?:$/.test(site.protocol)) throw new Error("only a web page's login is saved")
-  return write((db, k) => {
-    if (l.id) {
-      const f = k.entryById(db, l.id)
-      if (!f) throw new Error("that entry is gone from the file")
-      const ff = k.fieldsOf(f)
-      return { id: k.applyChange(db, { id: l.id, title: ff.Title ?? "", username: l.username || (ff.UserName ?? ""), password: l.password, urls: k.urlsOf(ff), tags: [...f.tags], notes: ff.Notes ?? "" }) }
-    }
-    const host = site.hostname.replace(/^www\./, "")
-    return { id: k.applyChange(db, { title: host, username: l.username, password: l.password, urls: [`${site.protocol}//${site.host}`], tags: [], notes: "" }) }
-  })
-}
+export const saveLogin = (l: { url: string; username: string; password: string; id?: string }) =>
+  saved("save a login to your passwords", (a) => kdbx().call(OPS.saveLogin, { ...a, url: l.url, username: l.username, given: l.password, id: l.id }))
 
-/** A secret the user gave an agent (`vau secret`), kept in a Secrets group under its prompt: the same prompt again
- *  changes it, its old value kept in its history. Writing shows nothing, so it needs no unlock. */
 handle("passwords:keep-secret", async (_win, title, value) => {
   const name = String(title ?? "").trim().slice(0, 200)
   if (!name || typeof value !== "string" || !value) throw new Error("nothing to keep")
-  return { id: await write((db, k) => {
-    const root = db.getDefaultGroup()
-    const group = root.groups.find((g) => g.name === "Secrets") ?? db.createGroup(root, "Secrets")
-    const was = group.entries.find((e) => k.fieldsOf(e).Title === name)
-    const f = was ? k.fieldsOf(was) : {}
-    return k.applyChange(db, { id: was?.uuid.id, group: group.uuid.id, title: name, username: f.UserName ?? "", password: value, urls: k.urlsOf(f), tags: was ? [...was.tags] : [], notes: f.Notes ?? "" })
-  }) }
+  return saved("keep a secret in your passwords", (a) => kdbx().call(OPS.keepSecret, { ...a, title: name, value }))
 })
 
 // (handing one to an agent always takes the user's finger, unlocked or not: computer use could click the dialog)
 handle("passwords:give", async (_win, id) => {
-  need()
-  const { k, db } = await load()
-  const e = k.entryById(db, String(id))
+  const e = await shown((a) => kdbx().call(OPS.get, { ...a, id: String(id) }))
   if (!e) throw new Error("that entry is gone from the file")
-  const f = k.fieldsOf(e)
-  if (!(!app.isPackaged && process.env.VAULTITE_TEST_TOUCHID === "yes")) {
-    if (!touchId()) throw new Error("Touch ID confirms giving a password to an agent, and it can't be used now: type it instead")
-    if (!await systemPreferences.promptTouchID(`give ${f.Title || "a password"} to an agent`).then(() => true, () => false)) throw new Error("Touch ID didn't confirm it")
-  }
-  return f.Password ?? ""
+  if (!finger.can()) throw new Error("Touch ID confirms giving a password to an agent, and it can't be used now: type it instead")
+  if (!await finger.ask(`give ${e.title || "a password"} to an agent`)) throw new Error("Touch ID didn't confirm it")
+  return e.password
 })
 
 // (copied here, not by the page: a window in the background can't touch the clipboard, so it never cleared it on time)
@@ -189,70 +148,63 @@ handle("passwords:copy", async (_win, text) => {
 
 // ---------- the page's calls (the app's windows only) ----------
 
+const held = () => (master().onlyHeld() ? { held: true } : {})
 handle("passwords:status", async () => {
-  const c = config()
+  const c = master().config()
   if (!c) return null
-  const base = { file: c.file, locked: !isUnlocked(), touchId: touchId(), ...(c.key === null ? { held: true } : {}) }
-  try { await load(); return base } catch (e) { return { ...base, error: messageOf(e) } }
+  const base = { file: c.file, locked: !isUnlocked(), touchId: touchId(), ...held() }
+  try {
+    if (isUnlocked()) await reach("", (a) => kdbx().call(OPS.check, a))
+    else if (!fs.existsSync(c.file)) throw new Error(`${path.basename(c.file)} isn't there`)
+    else if (!master().gated() && !master().silent()) throw new Error("its password isn't kept since the app started: type it again")
+    return base
+  } catch (e) { return { ...base, error: messageOf(e) } }
 })
 handle("passwords:choose", async (win) => {
   const r = await dialog.showOpenDialog(win, { title: "Your passwords", buttonLabel: "Choose", properties: ["openFile"], filters: [{ name: "KeePass", extensions: ["kdbx", "*"] }] })
   return r.canceled ? null : r.filePaths[0] ?? null
 })
-// (the password comes from the app's own page, checked by opening the file, then kept with the keyring's key)
+async function openTyped(file: string, typed: string): Promise<string | null> {
+  const password = new TextEncoder().encode(typed)
+  try { await open(file, password) } catch (e) { return messageOf(e) }
+  try { await master().keep(file, password) } catch (e) { lock(); return messageOf(e) } finally { password.fill(0) }
+  await reindex({ file })
+  changed()
+  return null
+}
 handle("passwords:set", async (_win, file, password) => {
   if (typeof file !== "string" || !path.isAbsolute(file) || typeof password !== "string" || !password) throw new Error("give a KeePass file and its password")
-  let data: Buffer
-  try { data = fs.readFileSync(file) } catch { return { error: "the file can't be read" } }
-  try { await (await kdbx()).loadKdbx(data, password) } catch (e) { return { error: messageOf(e) } }
-  const kept = keyring()
-  const tmp = `${CONFIG()}.${process.pid}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify({ file, key: kept ? safeStorage.encryptString(password).toString("base64") : null }), { mode: 0o600 })
-  fs.renameSync(tmp, CONFIG())
-  ;(await import("./argon2.ts")).forgetKeys()
-  held = kept ? null : { file, password }
-  openUntil = Date.now() + OPEN_MS
-  changed()
-  return { file, locked: false, touchId: touchId(), ...(kept ? {} : { held: true }) }
+  const error = await openTyped(file, password)
+  if (error) return { error }
+  return { file, locked: false, touchId: touchId(), ...held() }
 })
 handle("passwords:forget", async () => {
-  fs.rmSync(CONFIG(), { force: true })
-  ;(await import("./argon2.ts")).forgetKeys()
-  held = null
+  master().forget()
+  forgetIndex()
   lock()
   changed()
 })
 handle("passwords:unlock", async (_win, given) => {
-  const c = config()
+  const c = master().config()
   if (!c) return { error: "no passwords file is set up on this computer" }
   if (typeof given === "string" && given) {
-    const kept = passwordOf(c)
-    if (kept === null) {
-      // (no keyring: what's typed is checked by opening the file, then held)
-      try { await (await kdbx()).loadKdbx(fs.readFileSync(c.file), given) } catch (e) { return { error: messageOf(e) } }
-      held = { file: c.file, password: given }
-    } else if (kept.length !== given.length || !crypto.timingSafeEqual(Buffer.from(kept), Buffer.from(given))) return { error: "that isn't its password" }
-  } else {
-    if (!(!app.isPackaged && process.env.VAULTITE_TEST_TOUCHID === "yes")) {
-      if (!touchId()) return { error: "Touch ID can't be used now: type the file's password" }
-      if (!await systemPreferences.promptTouchID("unlock your passwords").then(() => true, () => false)) return { error: "Touch ID didn't confirm it" }
-    }
-    if (passwordOf(c) === null) return { error: "its password isn't kept since the app started: type it" }
+    const error = await openTyped(c.file, given)
+    return error ? { error } : { ok: true }
   }
-  openUntil = Date.now() + OPEN_MS
+  let password: Uint8Array | undefined
+  try {
+    password = await master().ask("unlock your passwords")
+    await open(c.file, password)
+    if (await master().couldBeGated()) await master().keep(c.file, password)
+  } catch (e) { return { error: messageOf(e) } } finally { password?.fill(0) }
+  await reindex({ file: c.file })
   changed()
   return { ok: true }
 })
 handle("passwords:lock", lock)
-handle("passwords:list", async () => {
-  need()
-  const { k, c, db } = await load()
-  return k.listOf(db, c.file)
-})
-handle("passwords:get", async (_win, id): Promise<Full> => {
-  need()
-  const { k, c, db } = await load()
-  const f = k.fullOf(db, c.file, String(id))
+handle("passwords:list", () => shown((a) => kdbx().call(OPS.list, a)))
+handle("passwords:get", async (_win, id) => {
+  const f = await shown((a) => kdbx().call(OPS.get, { ...a, id: String(id) }))
   if (!f) throw new Error("that entry is gone from the file")
   return f
 })
@@ -260,11 +212,11 @@ handle("passwords:save", async (_win, change) => {
   need()
   const c = CHANGE.safeParse(change)
   if (!c.success) throw new Error("nothing to save")
-  return { id: await write((db, k) => k.applyChange(db, c.data)) }
+  return saved("", (a) => kdbx().call(OPS.save, { ...a, change: c.data }))
 })
 handle("passwords:delete", async (_win, id) => {
   need()
-  await write((db, k) => k.removeEntry(db, String(id)))
+  await saved("", (a) => kdbx().call(OPS.delete, { ...a, id: String(id) }))
 })
 handle("passwords:for-page", async (_win, id) => {
   need()

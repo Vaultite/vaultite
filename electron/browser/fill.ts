@@ -9,9 +9,9 @@ import { cdp, cdpAnswer } from "./cdp.ts"
 import type { EnginePage } from "./engine.ts"
 import type { Secrets } from "./keepass.ts"
 import { loginForm, type Input } from "./loginform.ts"
+import { matchesSite } from "./loginsites.ts"
+import { totp } from "./otp.ts"
 import { docOf, filling, keep, markFilled, markHeld, ranNear, siteOf } from "./pagesecrets.ts"
-
-const keepass = () => import("./keepass.ts")
 
 type Field = { input: Input; frame: string }
 
@@ -75,7 +75,6 @@ export type FillOpts = { submit?: boolean
 /** Fill the page's login form (a password and the username before it, a username alone, or a one-time code) with `s`,
  *  then press Enter if `submit`. Says which it filled; throws, saying why, when it can't (nothing more is filled then). */
 export async function fillLogin(p: EnginePage, e: Login, s: Secrets, o: FillOpts = {}): Promise<string[]> {
-  const { matchesSite, totp } = await keepass()
   const url = p.wc.getURL(), doc = docOf(p.wc)
   const fields = await fieldsOf(p)
   const form = loginForm(fields.map((f) => f.input))

@@ -18,8 +18,22 @@ const UPSTREAM = ["int64", "byte-utils", "binary-stream", "var-dictionary", "xml
 for (const name of UPSTREAM) await import(`./test/kdbx/upstream/${name}.ts`)
 await section("upstream", () => run((name, error) => check(name, !error, error instanceof Error ? error.message : error)))
 await import("./test/kdbx/ours.ts")
+await section("argon2's kept keys", async () => {
+  const { forgetKeys } = await import("../electron/browser/argon2.ts")
+  const key = (n: number) => argon2(new TextEncoder().encode("made-up").buffer, new Uint8Array(32).fill(n).buffer, 1024, 2, 32, 1, 2, 0x13).then((k) => Buffer.from(new Uint8Array(k)).toString("hex"))
+  const first = await key(1)
+  forgetKeys()
+  const again = await key(1)
+  check("argon2: forgotten, a key is derived again, the same", first === again && !/^0+$/.test(again))
+  const busy = key(2)
+  forgetKeys()
+  check("argon2: one being derived as they're forgotten still answers who asked", !/^0+$/.test(await busy))
+  forgetKeys()
+  check("argon2: a worker that's gone fails only what waited on it", (await Promise.all([key(1), key(2), key(3)])).every((k, i) => i || k === first))
+  forgetKeys()
+})
 
-// The app reads these files in Electron's main process, whose node:crypto is BoringSSL (no ChaCha20, no Argon2).
+// The app reads these files in an Electron process, whose node:crypto is BoringSSL (no ChaCha20, no Argon2).
 if (!process.versions.electron) {
   let electron = ""
   try { electron = createRequire(import.meta.url)("electron") as unknown as string } catch { /* not installed */ }

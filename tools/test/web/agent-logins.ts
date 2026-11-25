@@ -5,6 +5,8 @@ import { messageOf } from "../../../core/values.ts"
 // A made-up agents.kdbx written here; never a real one.
 await section("agent logins", async () => {
   const kp = await import("../../../electron/browser/keepass.ts")
+  const sites = await import("../../../electron/browser/loginsites.ts")
+  const otp = await import("../../../electron/browser/otp.ts")
   const { loginForm } = await import("../../../electron/browser/loginform.ts")
   const { keep, scrub, scrubDeep } = await import("../../../electron/browser/pagesecrets.ts")
   const { Credentials, Kdbx, ProtectedValue } = await import("../../../electron/browser/kdbx/index.ts")
@@ -77,36 +79,36 @@ await section("agent logins", async () => {
     ["", "https://github.com/", false],
     ["https://github.com", "not a url", false],
   ]
-  const bad = M.filter(([e, p, want]) => kp.matchesSite(e, p) !== want)
+  const bad = M.filter(([e, p, want]) => sites.matchesSite(e, p) !== want)
   check("agent logins: an entry's address matches its own site only (lookalikes, other subdomains, http, ports, public suffixes)", !bad.length, bad)
-  const forLight = kp.entriesFor(opened, "https://lighthouse.example.com/login?next=/").map((e) => e.title).sort().join()
+  const forLight = sites.entriesFor(opened.entries, "https://lighthouse.example.com/login?next=/").map((e) => e.title).sort().join()
   check("agent logins: a page's entries are those naming its site", forLight === "Lighthouse,Lighthouse admin", forLight)
-  check("agent logins: additional URLs (KeePassXC's KP2A_URL) match too", kp.entriesFor(opened, "https://harbor.example.net/").length === 1
-    && kp.entriesFor(opened, "https://eu.harbor.example.org/").length === 1 && !kp.entriesFor(opened, "https://harbor.example.com/").length)
-  const near = kp.nearlyFor(opened, "https://auth.example.com/u/login").map((x) => `${x.entry.title}=${x.url}@${x.domain}`).sort().join()
+  check("agent logins: additional URLs (KeePassXC's KP2A_URL) match too", sites.entriesFor(opened.entries, "https://harbor.example.net/").length === 1
+    && sites.entriesFor(opened.entries, "https://eu.harbor.example.org/").length === 1 && !sites.entriesFor(opened.entries, "https://harbor.example.com/").length)
+  const near = sites.nearlyFor(opened.entries, "https://auth.example.com/u/login").map((x) => `${x.entry.title}=${x.url}@${x.domain}`).sort().join()
   check("agent logins: a sign-in on another host of an entry's domain names the entry (for the error to say what to add)",
     near === "Lighthouse admin=lighthouse.example.com@example.com,Lighthouse=https://lighthouse.example.com/login@example.com,Old=https://old.example.com@example.com"
-    && !kp.nearlyFor(opened, "https://bob.github.io/").length && !kp.nearlyFor(opened, "http://127.0.0.1/").length, near)
+    && !sites.nearlyFor(opened.entries, "https://bob.github.io/").length && !sites.nearlyFor(opened.entries, "http://127.0.0.1/").length, near)
 
   // RFC 6238's vectors (its SHA-1 key, 8 digits), then the forms KeePassXC and KeePass keep a one-time code in.
   const rfc = { key: Buffer.from("12345678901234567890"), period: 30, digits: 8, algorithm: "sha1" as const }
-  const codes = [59, 1111111109, 1234567890, 2000000000].map((s) => kp.totp(rfc, s * 1000))
+  const codes = [59, 1111111109, 1234567890, 2000000000].map((s) => otp.totp(rfc, s * 1000))
   check("agent logins: one-time codes as RFC 6238 computes them", codes.join() === "94287082,07081804,89005924,69279037", codes)
-  const sha256 = kp.totp({ key: Buffer.from("12345678901234567890123456789012"), period: 30, digits: 8, algorithm: "sha256" }, 59_000)
+  const sha256 = otp.totp({ key: Buffer.from("12345678901234567890123456789012"), period: 30, digits: 8, algorithm: "sha256" }, 59_000)
   check("agent logins: SHA-256 codes too", sha256 === "46119246", sha256)
   const B32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
   const forms = [
-    kp.otpOf({ otp: `otpauth://totp/x?secret=${B32}&period=30&digits=8&algorithm=SHA1` }),
-    kp.otpOf({ otp: `key=${B32}&step=30&size=8` }),
-    kp.otpOf({ "TOTP Seed": B32.toLowerCase().replace(/(.{4})/g, "$1 "), "TOTP Settings": "30;8" }),
-    kp.otpOf({ "TimeOtp-Secret-Base32": B32, "TimeOtp-Length": "8" }),
-    kp.otpOf({ "TimeOtp-Secret": "12345678901234567890", "TimeOtp-Length": "8" }),
+    otp.otpOf({ otp: `otpauth://totp/x?secret=${B32}&period=30&digits=8&algorithm=SHA1` }),
+    otp.otpOf({ otp: `key=${B32}&step=30&size=8` }),
+    otp.otpOf({ "TOTP Seed": B32.toLowerCase().replace(/(.{4})/g, "$1 "), "TOTP Settings": "30;8" }),
+    otp.otpOf({ "TimeOtp-Secret-Base32": B32, "TimeOtp-Length": "8" }),
+    otp.otpOf({ "TimeOtp-Secret": "12345678901234567890", "TimeOtp-Length": "8" }),
   ]
-  const formCodes = forms.map((o) => (o && o !== "steam" ? kp.totp(o, 59_000) : String(o)))
+  const formCodes = forms.map((o) => (o && o !== "steam" ? otp.totp(o, 59_000) : String(o)))
   check("agent logins: codes from otpauth, KeeOtp, KeePassXC's old fields and KeePass's TimeOtp fields", formCodes.every((c) => c === "94287082"), formCodes)
-  check("agent logins: Steam's codes are named, not computed wrong", kp.otpOf({ otp: `otpauth://totp/Steam:a?secret=${B32}&encoder=steam` }) === "steam"
-    && kp.otpOf({ "TOTP Seed": B32, "TOTP Settings": "30;S" }) === "steam")
-  check("agent logins: an entry without a one-time code has none", kp.otpOf({ URL: "https://x.com" }) === null)
+  check("agent logins: Steam's codes are named, not computed wrong", otp.otpOf({ otp: `otpauth://totp/Steam:a?secret=${B32}&encoder=steam` }) === "steam"
+    && otp.otpOf({ "TOTP Seed": B32, "TOTP Settings": "30;S" }) === "steam")
+  check("agent logins: an entry without a one-time code has none", otp.otpOf({ URL: "https://x.com" }) === null)
 
   // The page's login form: which inputs get what.
   let n = 0

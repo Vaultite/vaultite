@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Passwords: your KeePass file opens only in a process of its own, which locking ends with every key it held, and it locks
+  by itself after 10 minutes unused. On a Mac with Touch ID its password is sealed to the Secure Enclave, so macOS itself
+  asks for your finger (the first unlock moves it there): saving a login or keeping a secret while locked asks for it too.
 - Browser: passkeys work in a sign-in inside a frame (as on chase.com), not only in the page itself; a frame from
   another site gets them only when its page allows it, as in Chrome.
 - Companion and dictation: a key bumped while you hold the Talk key or a dictation key (fn beside Control, Shift, a letter)

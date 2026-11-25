@@ -1,8 +1,9 @@
-// The user's own KeePass file, for the Passwords page (passwords.ts): its groups and entries, edits, and the groups
+// The user's own KeePass file, for the Passwords page (kdbxfile.ts): its groups and entries, edits, and the groups
 // KeePassXC's KeeShare exports (agents.kdbx), written again as KeePassXC would. Node only, so its tests run without the app.
 import path from "node:path"
 import { Credentials, Kdbx, KdbxUuid, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
-import { FREE_TAG, fieldsOf, otpOf, totp, urlsOf } from "./keepass.ts"
+import { FREE_TAG, fieldsOf, urlsOf } from "./keepass.ts"
+import { otpOf, totp } from "./otp.ts"
 import type { Change } from "./passwordswire.ts"
 
 export type Group = { id: string; name: string; parent: string | null; share: string | null; bin: boolean }

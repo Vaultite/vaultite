@@ -9,7 +9,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { WebRect } from "./webwire.ts"
 
-setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl, logger })
+setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl, logger, enclave: () => import("./enclave.ts").then((m) => m.enclave({ packaged: app.isPackaged, userData: app.getPath("userData") })) })
 
 /** `radius`: its corners' (CSS px), where it meets its pane's rounded card's (one radius: Electron rounds all four). */
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean

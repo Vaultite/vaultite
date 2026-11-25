@@ -27,8 +27,9 @@ Dependencies
   memory.
 - Crypto: node:crypto for SHA-256/512, HMAC, AES-CBC, AES-KDF and randomness, in place of WebCrypto-or-Node branches.
   Electron's BoringSSL has no ChaCha20 or Salsa20, so `chacha20.ts` and `salsa20.ts` stay (tested against OpenSSL's
-  ChaCha20); Argon2 is still the app's (`setArgon2Impl`, noble's in keepass.ts). Browser paths (DOMParser,
-  `global.crypto`, atob) are gone: this runs in Node and Electron's main process only.
+  ChaCha20); Argon2 is still the app's (`setArgon2Impl`, argon2.ts). Browser paths (DOMParser,
+  `global.crypto`, atob) are gone: this runs in Node only, in the app the passwords
+  process (kdbxproc.ts).
 
 Hardening
 - Hashes and MACs (header SHA-256 and HMAC, HMAC blocks, hashed blocks) are compared in constant time.
@@ -39,7 +40,7 @@ Hardening
   unknown one, is skipped as KeePass and KeePassXC do, instead of throwing a TypeError.
 - KDF parameters are bounded: Argon2 memory at most 1 GiB (`MaxArgon2Memory`: KeePassXC's default is 64 MiB; more is
   refused as Unsupported, not run), parallelism and iterations within Argon2's ranges, AES-KDF rounds a safe integer.
-  AES-KDF yields between chunks so the main process never stalls.
+  AES-KDF yields between chunks so its process never stalls.
 - Base64 is decoded strictly (a bad character is FileCorrupt, as atob did; Buffer alone would skip it).
 - Wiped after use: decrypted payloads, inflated XML bytes, protected attachments' plain bytes, derived keys (header
   HMAC key, block keys, the KDF input copy upstream left in `keyWithSeed.buffer.slice`), AES keys, node:crypto's

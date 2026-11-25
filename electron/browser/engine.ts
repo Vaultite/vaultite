@@ -1,16 +1,18 @@
 // The browser engine: each feature adds itself here for every web session and page as they are made.
 import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, UploadData, WebContents, WebRequest, WebRequestFilter } from "electron"
 import { logger, logTo, unlogged, type Logger } from "./enginelog.ts"
+import type { Enclave } from "./masterkey.ts"
 export { logger }
 
 export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
 /** What the engine needs of the app (main.ts hands it once, before any page opens). `localUrl`: whether an address is
  *  this machine's or its network's (core/web.ts). */
-export type EngineHost = { windows: () => EngineWindow[]; localUrl: (url: string) => boolean; logger: (area: string) => Logger }
-let host: EngineHost = { windows: () => [], localUrl: () => true, logger: unlogged }
+export type EngineHost = { windows: () => EngineWindow[]; localUrl: (url: string) => boolean; logger: (area: string) => Logger; enclave: () => Promise<Enclave | null> }
+let host: EngineHost = { windows: () => [], localUrl: () => true, logger: unlogged, enclave: () => Promise.resolve(null) }
 export const setEngineHost = (h: EngineHost) => { host = h; logTo(h.logger) }
 const log = logger("browser")
 export const localUrl = (url: string) => host.localUrl(url)
+export const enclave = () => host.enclave()
 export const appWindows = () => host.windows().filter((w) => !w.isDestroyed())
 export const focusedWindow = () => appWindows().find((w) => w.isFocused()) ?? null
 export const windowById = (id: number) => appWindows().find((w) => w.id === id) ?? null

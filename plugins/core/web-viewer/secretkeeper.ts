@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { setSecretKeeper, webPages } from "@vaultite"
+import { notifyError, setSecretKeeper, webPages } from "@vaultite"
 import { needEngine } from "./engine"
 
 const engine = needEngine("passwords need the desktop app")
@@ -26,7 +26,7 @@ export function useSecretKeeper() {
       setSecretKeeper(st && !st.error ? {
         entries,
         value: (id) => engine("passwords:give", id),
-        keep: (title, value) => engine("passwords:keep-secret", title, value).then(() => {}),
+        keep: (title, value) => engine("passwords:keep-secret", title, value).then(() => {}, (e) => { notifyError(e, "Couldn't keep it in your passwords") }),
       } : null)
     }, () => {})
     check()

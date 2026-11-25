@@ -7,14 +7,14 @@ import path from "node:path"
 import { SETTLE_MS, acting, pageFor, record, serve, settle, taskOf } from "./agent.ts"
 import { BY, type By } from "./agentwire.ts"
 import { allPages, handle, tellAll, type EnginePage } from "./engine.ts"
-import type { Database, Entry } from "./keepass.ts"
+import type { Entry } from "./keepass.ts"
+import { entriesFor, nearlyFor } from "./loginsites.ts"
 import { fillLogin } from "./fill.ts"
+import { kdbx } from "./kdbxhost.ts"
+import { OPS } from "./kdbxwire.ts"
 import { ASSERTED, CREATED, PASSKEY, register, verify, type Passkey } from "./presence.ts"
 import { z } from "zod"
 import { messageOf } from "./messageof.ts"
-
-// (its reader, kdbx/, loads at the first login: a Mac whose agents never log in never loads it)
-const keepass = () => import("./keepass.ts")
 
 const HERE = process.platform === "darwin" ? "this Mac" : "this computer"
 /** What keeps a secret with the system's key (safeStorage): a Mac's Keychain, Linux's keyring (a Secret Service). */
@@ -37,12 +37,10 @@ function config(): Config | null {
 }
 
 const SETUP = `the user sets it up in the desktop app on ${HERE} (an Agents container's menu, Passwords for agents)`
-/** The file, opened now (KeeShare may have just written it). Its errors say what's wrong, never a value. */
-async function database(): Promise<Database> {
+function access() {
   const c = config()
   if (!c) throw new Error(`no passwords for agents on ${HERE}: ${SETUP}`)
-  let data: Buffer
-  try { data = fs.readFileSync(c.file) } catch { throw new Error(`the agents' passwords file isn't there (${path.basename(c.file)}): ${SETUP}`) }
+  try { fs.accessSync(c.file, fs.constants.R_OK) } catch { throw new Error(`the agents' passwords file isn't there (${path.basename(c.file)}): ${SETUP}`) }
   let password: string
   if (c.key === null) {
     if (held?.file !== c.file) throw new Error(`the agents' passwords file is locked since the app started (${HERE} has no keyring to keep its password): the user types it again in Passwords for agents`)
@@ -50,8 +48,12 @@ async function database(): Promise<Database> {
   } else {
     try { password = safeStorage.decryptString(Buffer.from(c.key, "base64")) } catch { throw new Error(`${KEYRING} didn't give the file's password: ${SETUP}`) }
   }
-  const { openDatabase } = await keepass()
-  try { return await openDatabase(data, password) } catch (e) { throw new Error(`the agents' passwords file doesn't open (${messageOf(e)}): ${SETUP}`) }
+  return { file: c.file, password: new TextEncoder().encode(password) }
+}
+const entries = () => opened((a) => kdbx().call(OPS.agentEntries, a))
+async function opened<T>(ask: (a: ReturnType<typeof access>) => Promise<T>): Promise<T> {
+  const a = access()
+  try { return await ask(a) } catch (e) { throw new Error(`the agents' passwords file doesn't open (${messageOf(e)}): ${SETUP}`) } finally { a.password.fill(0) }
 }
 
 // ---------- approvals: an entry without the agent-free tag needs the user's yes, given with their passkey ----------
@@ -189,8 +191,8 @@ handle("logins:status", async () => {
   const kept = c.key === null ? { held: true } : {}
   if (c.key === null && held?.file !== c.file) return { file: c.file, ...kept, locked: true, error: "locked since the app started: type its password again" }
   try {
-    const db = await database()
-    return { file: c.file, ...kept, entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
+    const all = await entries()
+    return { file: c.file, ...kept, entries: all.length, free: all.filter((e) => e.free).length }
   } catch (e) { return { file: c.file, ...kept, error: messageOf(e) } }
 })
 handle("logins:choose", async (win) => {
@@ -201,10 +203,9 @@ handle("logins:choose", async (win) => {
 // what's wrong is answered, for the page to say)
 handle("logins:set", async (_win, file, password) => {
   if (typeof file !== "string" || !path.isAbsolute(file) || typeof password !== "string" || !password) throw new Error("give a KeePass file and its password")
-  let data: Buffer
-  try { data = fs.readFileSync(file) } catch { return { error: "the file can't be read" } }
-  let db: Database
-  try { db = await (await keepass()).openDatabase(data, password) } catch (e) { return { error: messageOf(e) } }
+  try { fs.accessSync(file, fs.constants.R_OK) } catch { return { error: "the file can't be read" } }
+  let all: Entry[]
+  try { all = await kdbx().call(OPS.agentEntries, { file, password: new TextEncoder().encode(password) }) } catch (e) { return { error: messageOf(e) } }
   const kept = keyring()
   const tmp = `${CONFIG()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, JSON.stringify({ file, key: kept ? safeStorage.encryptString(password).toString("base64") : null }), { mode: 0o600 })
@@ -212,7 +213,7 @@ handle("logins:set", async (_win, file, password) => {
   held = kept ? null : { file, password }
   approvals.clear()
   grants.clear()
-  return { file, ...(kept ? {} : { held: true }), entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
+  return { file, ...(kept ? {} : { held: true }), entries: all.length, free: all.filter((e) => e.free).length }
 })
 handle("logins:forget", () => {
   fs.rmSync(CONFIG(), { force: true })
@@ -231,12 +232,11 @@ const named = (e: Entry) => (e.username ? `${e.title} (${e.username})` : e.title
 async function login(p: EnginePage, o: Opts, who: By) {
   const url = p.wc.getURL(), host = new URL(url).host
   const log = (result: string, e?: Entry, approved?: string) => void record(p, who, { action: "login", value: e ? named(e) : "", site: host, result, ...(approved ? { approved } : {}) })
-  const db = await database()
-  const { entriesFor, nearlyFor } = await keepass()
-  const all = entriesFor(db, url)
+  const known = await entries()
+  const all = entriesFor(known, url)
   if (!all.length) {
     log("no entry")
-    const near = nearlyFor(db, url)
+    const near = nearlyFor(known, url)
     if (near.length) {
       const here = new URL(url).hostname
       throw new Error(`no login for ${here}: ${near.map((x) => `${named(x.entry)} is for ${x.url}`).join(", ")}. The user adds ${here} to its addresses in KeePassXC (or *.${near[0].domain}, for every subdomain), or signs in themselves (browser ask)`)
@@ -268,7 +268,7 @@ async function login(p: EnginePage, o: Opts, who: By) {
     return { status: "approval", tab: p.id, site: host, entry: shown(e), grant: id, ask, approve: keys.length ? `${keys.at(-1)!.origin}/api/web-viewer/approve?grant=${id}` : null }
   }
   try {
-    return { ...await fill(p, e, db, o, who, approved), ...(e.free ? {} : { ask }) }
+    return { ...await fill(p, e, o, who, approved), ...(e.free ? {} : { ask }) }
   } catch (err) {
     log(`failed: ${messageOf(err)}`, e, approved)
     throw err
@@ -278,9 +278,9 @@ async function login(p: EnginePage, o: Opts, who: By) {
 /** A submit's navigation may start late on a busy machine: read before it, the agent sees the login page still. */
 const SUBMIT_MS = 2500
 
-async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: By, approved: string) {
+async function fill(p: EnginePage, e: Entry, o: Opts, who: By, approved: string) {
   const url = p.wc.getURL(), host = new URL(url).host
-  const s = db.secrets(e.id)
+  const s = await opened((a) => kdbx().call(OPS.agentSecrets, { ...a, id: e.id }))
   if (!s) throw new Error(`${named(e)} is gone from the agents' passwords`)
   const since = Date.now()
   const filled = await fillLogin(p, e, s, { submit: o.submit === true, started: () => acting(p, who, `logging in to ${host}`) })

@@ -6,7 +6,7 @@ import path from "node:path"
 const { buildHelper } = await import("../plugins/core/audio-recorder/plugin.ts")
 const { buildHelper: buildVersions } = await import("../plugins/core/sync-conflicts/plugin.ts")
 const { dictationSwift } = await import("../electron/dictation-build.ts")
-const { screenSwift, voiceSwift, takeoverSwift, captureSwift } = await import("../electron/swiftbuild.ts")
+const { enclaveSwift, screenSwift, voiceSwift, takeoverSwift, captureSwift } = await import("../electron/swiftbuild.ts")
 const { buildMacAddon } = await import("../electron/macaddons.ts")
 const root = path.join(import.meta.dirname, "..")
 const at = process.argv.indexOf("--cache"), cache = at > 0 ? path.resolve(process.argv[at + 1] ?? "") : null
@@ -19,6 +19,7 @@ const builds: { id: string; name: string; dir: string; build: (dir: string) => P
   { id: "voice", name: "the voice helper", dir: bin, build: (d) => voiceSwift.build(d, ["arm64", "x86_64"]) },
   { id: "takeover", name: "the take-over helper", dir: bin, build: (d) => takeoverSwift.build(d, ["arm64", "x86_64"]) },
   { id: "capture", name: "the capture helper", dir: bin, build: (d) => captureSwift.build(d, ["arm64", "x86_64"]) },
+  { id: "enclave", name: "the Secure Enclave addon", dir: bin, build: (d) => enclaveSwift.build(d, ["arm64", "x86_64"]) },
   { id: "macpermissions", name: "the permissions addon", dir: bin, build: (d) => buildMacAddon("macpermissions", d) },
   { id: "gestures", name: "the gestures addon", dir: bin, build: (d) => buildMacAddon("gestures", d) },
   { id: "menus", name: "the menus addon", dir: bin, build: (d) => buildMacAddon("menus", d) },

@@ -9,13 +9,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
-import { otpOf, totp } from "../../electron/browser/keepass.ts"
+import { otpOf, totp } from "../../electron/browser/otp.ts"
 
 const { args: [VAULT, SHOTS], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-passwords-"))
 
 // ---------- a made-up main file ----------
 const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
+await import("../../electron/browser/keepass.ts")
 const PW = "made-up main password", SECRET = "Lighthouse-7!pw", SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 const db = Kdbx.create(new Credentials(ProtectedValue.fromString(PW)), "Passwords")
 const b64 = (s) => Buffer.from(s).toString("base64")

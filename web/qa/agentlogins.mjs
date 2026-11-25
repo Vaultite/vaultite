@@ -10,12 +10,12 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, pageNotLastScreen, qa, until, wait } from "./lib/qa.mjs"
 import { encode } from "../../electron/browser/cbor.ts"
-import { totp, otpOf } from "../../electron/browser/keepass.ts"
+import { totp, otpOf } from "../../electron/browser/otp.ts"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-logins-"))
 
-const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
+const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts"); await import("../../electron/browser/keepass.ts")
 const DB_PASSWORD = "made-up database password"
 const SECRET = "Q7-lantern!pw word", ADMIN = "Harbor-admin-pw-42", HARBOR = "Harbor-pw-31"
 const SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"

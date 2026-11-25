@@ -21,14 +21,7 @@ export const fileName = (file: string) => file.split(/[\\/]/).pop() ?? file
 const HERE = isMac ? "this Mac" : "this computer"
 
 const engine = needEngine("passwords need the desktop app")
-export const call = <N extends string>(name: N, ...args: unknown[]) => {
-  const p = engine(`passwords:${name}`, ...args)
-  if (OPENING.has(name)) void p.then(() => lapses(), () => {})
-  return p
-}
-const OPENING = new Set(["list", "get", "save", "delete", "unlock", "set"])
-let lapse = 0
-const lapses = () => { clearTimeout(lapse); lapse = window.setTimeout(() => void refresh(), 10 * 60_000 + 2000) }
+export const call = <N extends string>(name: N, ...args: unknown[]) => engine(`passwords:${name}`, ...args)
 export const isLocked = (e: unknown) => e instanceof Error && /(^|: )locked$/.test(e.message)
 
 type State = { status: Status | undefined; groups: Group[]; entries: Row[] | null }
@@ -78,7 +71,7 @@ export async function chooseFile(chosen?: string) {
   try { file = chosen ?? await call("choose") } catch (e) { return notifyError(e, "Couldn't open the file picker") }
   if (!file) return
   const given = await secretDialog({ title: `Password of ${fileName(file)}`, confirm: "Open", field: "secret",
-    body: isMac ? "Kept in this Mac's Keychain, never in the vault." : "Kept in this computer's keyring (with none, only till the app quits), never in the vault." })
+    body: isMac ? "Kept on this Mac, opened by Touch ID where it has it, never in the vault." : "Kept in this computer's keyring (with none, only till the app quits), never in the vault." })
   if (!given) return
   try {
     const r = await call("set", file, given.value)

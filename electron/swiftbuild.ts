@@ -59,3 +59,5 @@ export const takeoverSwift = swiftHelper({ id: "takeover", sources: ["takeover.s
 export const captureSwift = swiftHelper({ id: "capture", sources: ["capture.swift"], macos: "14" })
 export const voiceSwift = swiftHelper({ id: "voice", sources: ["voice.swift"], macos: "14" })
 export const appWindowsSwift = swiftHelper({ id: "appwindows", sources: ["appwindows.swift"], macos: "13" })
+export const enclaveSwift = swiftHelper({ id: "enclave", sources: ["enclave.swift"], macos: "13", salt: "addon",
+  flags: async () => ["-emit-library", "-parse-as-library", "-module-name", "enclave", "-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"] })

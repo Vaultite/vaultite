@@ -1,4 +1,4 @@
-// Your passwords (electron/browser/passwords.ts), end to end in the desktop app on a throwaway vault, against a made-up
+// Your passwords (electron/browser/passwords.ts, masterkey.ts, kdbxproc.ts, electron/enclave.swift), end to end in the desktop app on a throwaway vault, against a made-up
 // main KeePass file written here with an Agents group KeePassXC exports (KeeShare) to a made-up agents.kdbx: set up,
 // locked till unlocked, edits saved into the file (its old copy kept) and the export rewritten, so an agent logs in with
 // what changed at once and its use is listed; then an agent's `vau secret` answered from the passwords, or kept there.
@@ -54,6 +54,7 @@ watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 const engine = (name, ...args) => win.evaluate(([n, a]) => window.vaultite.web.engine(n, ...a), [name, args]).catch((e) => ({ thrown: String(e.message ?? e) }))
+const opener = () => app.evaluate(({ app }) => app.getAppMetrics().some((m) => m.serviceName === "Vaultite passwords" || m.name === "Vaultite passwords"))
 const agentOp = async (id, params) => {
   const r = await fetch(`${origin}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params ?? {}) })
   const j = await r.json().catch(() => ({}))
@@ -63,19 +64,40 @@ await wait(2000)
 
 // ---------- set up, locked, unlocked ----------
 check("not set up yet", (await engine("passwords:status")) === null)
+check("… and no process opens passwords", !(await opener()))
 const wrong = await engine("passwords:set", MAIN, "not it")
 check("a wrong password is said plainly, nothing set", /doesn't open it/.test(wrong?.error ?? "") && (await engine("passwords:status")) === null, wrong)
 const set = await engine("passwords:set", MAIN, MAIN_PW)
 check("set up: unlocked at once", set?.file === MAIN && set.locked === false, set)
 const conf = fs.readFileSync(path.join(USER_DATA, "passwords.json"), "utf8")
 check("its password is never kept as is", !conf.includes(MAIN_PW), conf.slice(0, 60))
+check("unlocked: its own process holds the file open", await opener())
+const sealed = process.platform === "darwin" && !!JSON.parse(conf).sealed
+if (sealed) check("a Mac's Secure Enclave seals its password, the keyring keeps none", JSON.parse(conf).key === null)
 await engine("passwords:lock")
+check("locked: that process is ended, with all it held", await until(async () => !(await opener()), 5000))
 const locked = await engine("passwords:list")
 check("locked: the list refuses", /locked/.test(locked?.thrown ?? ""), locked)
 check("a wrong password doesn't unlock", !!(await engine("passwords:unlock", "nope"))?.error)
 check("the right one unlocks", (await engine("passwords:unlock", MAIN_PW))?.ok === true)
 await engine("passwords:lock")
 check("Touch ID unlocks (a test's stand-in)", (await engine("passwords:unlock"))?.ok === true)
+
+await engine("passwords:lock")
+check("locked: a site's logins still show, no secret", (await engine("passwords:users", "https://bank.example.com"))?.join() === "alice")
+check("locked: … which starts no process where only a finger opens the file", !sealed || !(await opener()))
+const keptLocked = await engine("passwords:keep-secret", "Kept while locked", "kept-locked-1")
+check("locked: a secret is kept in the file, and it stays locked", (await openDatabase(fs.readFileSync(MAIN), MAIN_PW)).secrets(keptLocked?.id)?.password === "kept-locked-1"
+  && (await engine("passwords:status"))?.locked === true, keptLocked)
+if (sealed) {
+  const keyring = await app.evaluate(({ safeStorage }, pw) => safeStorage.encryptString(pw).toString("base64"), MAIN_PW)
+  fs.writeFileSync(path.join(USER_DATA, "passwords.json"), JSON.stringify({ file: MAIN, key: keyring }))
+  check("from before the Enclave: unlocks as it did", (await engine("passwords:unlock"))?.ok === true)
+  const moved = JSON.parse(fs.readFileSync(path.join(USER_DATA, "passwords.json"), "utf8"))
+  check("… and its password moved there, the keyring's copy gone", !!moved.sealed && moved.key === null, Object.keys(moved))
+  await engine("passwords:lock")
+}
+check("unlocked again", (await engine("passwords:unlock"))?.ok === true)
 
 // ---------- edits reach the file and agents' export ----------
 const list = await engine("passwords:list")
@@ -88,8 +110,8 @@ check("an edit saves", typeof saved?.id === "string", saved)
 const reopened = await openDatabase(fs.readFileSync(MAIN), MAIN_PW)
 check("… into the file itself", reopened.secrets(light?.id)?.password === "Lighthouse-pw-2")
 const backups = fs.readdirSync(path.join(USER_DATA, "passwords-backups"))
-const old = await openDatabase(fs.readFileSync(path.join(USER_DATA, "passwords-backups", backups[0])), MAIN_PW)
-check("… its old copy kept", backups.length === 1 && old.secrets(light?.id)?.password === "Lighthouse-pw-1", backups)
+const old = await openDatabase(fs.readFileSync(path.join(USER_DATA, "passwords-backups", backups.sort().at(-1))), MAIN_PW)
+check("… its old copy kept", backups.length === 2 && old.secrets(light?.id)?.password === "Lighthouse-pw-1", backups)
 const shared = await openDatabase(fs.readFileSync(SHARED), SHARE_PW)
 check("… and the Agents export written as KeePassXC would: the same ids, the new password, tagged free, no Bank", shared.entries.length === 1 && shared.entries[0].id === light?.id
   && shared.entries[0].free && shared.secrets(light?.id)?.password === "Lighthouse-pw-2", shared.entries.map((e) => e.title))

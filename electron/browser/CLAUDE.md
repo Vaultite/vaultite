@@ -79,8 +79,17 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   Electron has no back/forward cache, not even with Chromium's BackForwardCache feature on: web/qa/agentlogins.mjs).
 - KeePass files are kdbx/ (kdbxweb, ours now: PROVENANCE.md says what we changed from upstream; a change there goes in
   it too). Node's crypto in Electron is BoringSSL, without ChaCha20 or Argon2: test a crypto change in the app too.
-  Argon2 is argon2.ts (hash-wasm in a worker, each key kept): passwords.ts reads the file for every call, so a
-  derivation per read would cost seconds each.
+  Argon2 is argon2.ts (hash-wasm in a worker, each key kept while unlocked): kdbxfile.ts reads the file for every call,
+  so a derivation per read would cost seconds each.
+- KeePass files open only in the passwords process (kdbxproc.ts, a utilityProcess; kdbxwire.ts is all it's asked): never
+  in main, whose imports reach none of it (tools/test/web/passwords.ts). A lock zeroes its keys and ends it, as a
+  JavaScript string is cleared only so. Electron ignores Node's `--permission` there, so its imports are what's checked.
+- The file's password is masterkey.ts': on a Mac, sealed to a Secure Enclave key only a finger enrolled now uses
+  (`biometryCurrentSet`: the file's own password is the fallback, so the login password isn't one). Not a Keychain item:
+  one with an access control needs an entitlement and a provisioning profile our builds lack (-34018), and the file
+  Keychain takes one and ignores it. The app's own key (safeStorage) goes over it, so another program's Touch ID question
+  doesn't open it. So while locked nothing reads the file without a finger: calls that take no unlock
+  go by passwordsindex.ts, and a save asks for the finger. A test never asks for one (`finger`, `quiet`).
 - A login its entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes an
   agent could give. A passkey is added only by a code the app shows, then Touch ID: agents have computer use, so a
   click proves nothing. The list is encrypted with the Keychain's key.

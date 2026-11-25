@@ -1,6 +1,7 @@
 import { z } from "zod"
 
-const CONFIG = z.object({ file: z.string(), key: z.string().nullable().catch(null) })
+/** `key`: the password, encrypted by the system's keyring. `sealed`: by a Mac's Secure Enclave, then the keyring. */
+const CONFIG = z.object({ file: z.string(), key: z.string().nullable().catch(null), sealed: z.string().optional().catch(undefined) })
 export type Config = z.infer<typeof CONFIG>
 export function configOf(text: string): Config | null {
   try { return CONFIG.parse(JSON.parse(text)) } catch { return null }
