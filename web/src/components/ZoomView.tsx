@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } fr
 import { Maximize, Minus, Plus, type LucideIcon } from "lucide-react"
 import { moves } from "@/core/animation"
 import { useCommandKeys } from "@/core/commands"
-import { PanZoom, type Drawn, type PanZoomOptions } from "@/core/panzoomer"
+import type { Drawn, PanZoom, PanZoomOptions } from "@/core/panzoomer"
 import type { Size } from "@/core/panzoom"
 import { addViewer } from "@/core/viewers"
 import { useZoomTarget } from "@/core/zoom"
@@ -14,15 +14,19 @@ function usePanZoom(box: RefObject<HTMLElement | null>, o: Omit<PanZoomOptions, 
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
-    const z = new PanZoom(el, {
-      size: () => live.current.size(), paint: (v) => {
-        el.toggleAttribute("data-zoomed", !v.fitted)
-        live.current.paint(v)
-      }, pad: o.pad, grows: () => !!live.current.grows?.(), clicks: () => !!live.current.clicks?.(), taps: o.taps, moves,
+    let gone = false, off = () => {}
+    void import("@/core/panzoomer").then(({ PanZoom }) => {
+      if (gone) return
+      const z = new PanZoom(el, {
+        size: () => live.current.size(), paint: (v) => {
+          el.toggleAttribute("data-zoomed", !v.fitted)
+          live.current.paint(v)
+        }, pad: o.pad, grows: () => !!live.current.grows?.(), clicks: () => !!live.current.clicks?.(), taps: o.taps, moves,
+      })
+      zoom.current = z
+      off = addViewer({ box: el, zoom: z })
     })
-    zoom.current = z
-    const off = addViewer({ box: el, zoom: z })
-    return () => { off(); z.destroy(); zoom.current = null }
+    return () => { gone = true; off(); zoom.current?.destroy(); zoom.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one for the box's life; the options are read live
   }, [])
   useZoomTarget(box, (step) => { if (step) zoom.current?.step(step); else zoom.current?.zoomTo(1); return null }, { fit: () => zoom.current?.fit(), keyboardIn: !keys })
@@ -44,6 +48,7 @@ export function ZoomView({ size, vector, label, tools = true, clicks = true, foc
   const paint = ({ k, x, y }: Drawn) => {
     const el = stage.current, dots = devicePixelRatio || 1, whole = (n: number) => Math.round(n * dots) / dots
     if (!el || !size) return
+    el.dataset.drawn = ""
     Object.assign(el.style, { width: `${size.w * k}px`, height: `${size.h * k}px`, transform: `translate(${whole(x)}px, ${whole(y)}px)` })
     if (percent.current) percent.current.textContent = `${Math.round(k * 100)}%`
   }
@@ -53,7 +58,7 @@ export function ZoomView({ size, vector, label, tools = true, clicks = true, foc
   return (
     <div ref={box} tabIndex={0} role="group" aria-label={`Viewer: ${label}`} data-zoom-view data-clicks={clicks || undefined}
       className={cn("group/zoom relative isolate size-full overflow-clip outline-none select-none", !focus && "focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset", className)}>
-      <div ref={stage} className={cn("absolute top-0 left-0", !size && "invisible")}>{children}</div>
+      <div ref={stage} className={cn("invisible absolute top-0 left-0", size && "data-drawn:visible")}>{children}</div>
       {tools && <ZoomTools zoom={zoom} percent={percent} />}
     </div>
   )
