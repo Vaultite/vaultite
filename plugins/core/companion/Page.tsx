@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from "react"
 import { AudioLines, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, Clock, CircleDot, CirclePause, CircleStop, Columns2, CornerDownRight, ExternalLink, Image, Mic, Pencil, Rows2, SquareArrowOutUpRight, X } from "lucide-react"
-import { Arriving, addDays, Button, cn, Empty, errorText, HeadingButton, fmtLongDay, fmtStamp, isDesktop, Loading, menuFor, type MenuItem, notifyError, op, openInSplit, openTab, Panel, today, useTick } from "@vaultite"
+import { Arriving, addDays, Button, cn, Empty, errorText, HeadingButton, fmtLongDay, fmtStamp, isDesktop, Loading, menuFor, type MenuItem, notifyError, op, openInSplit, openTab, openViewer, Panel, today, useTick } from "@vaultite"
 import type { Exchange, PressLine, Spent } from "./conversation"
 import { getState, subscribe } from "./live"
 
@@ -194,7 +194,7 @@ function Details({ e }: { e: Exchange }) {
       {!media ? <Loading /> : (
         <div className="flex flex-col gap-2">
           {media.wav && <div className="flex items-center gap-2"><AudioLines className="size-4 text-muted-foreground" /><audio controls preload="none" src={`data:audio/wav;base64,${media.wav}`} className="h-8 w-full" /></div>}
-          {media.png && <a href={`data:image/png;base64,${media.png}`} target="_blank" rel="noreferrer" aria-label="Its picture of the screen"><img src={`data:image/png;base64,${media.png}`} alt="The screen as they asked" className="max-h-64 rounded-[6px] border border-border object-contain" /></a>}
+          {media.png && <button type="button" aria-label="Its picture of the screen" onClick={() => openViewer({ name: "The screen as they asked", url: `data:image/png;base64,${media.png}` })} className="cursor-zoom-in self-start"><img src={`data:image/png;base64,${media.png}`} alt="The screen as they asked" className="max-h-64 rounded-[6px] border border-border object-contain" /></button>}
           {!media.wav && !media.png && <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground"><Image className="size-3.5" />No audio or picture kept.</span>}
         </div>
       )}

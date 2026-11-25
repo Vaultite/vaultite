@@ -20,6 +20,7 @@ What a user can do in Vaultite, one file per feature: how to reach it, how to dr
 
 ## Features
 - [Edit a note](./edit-note.md): typing in the editor saves to the file.
+- [Pictures](./pictures.md): an image's tab, the viewer, diagrams: zoom and pan.
 - [Rename a file](./rename-file.md): from the file tree's menu, links across the vault follow.
 - [Theme](./theme.md): Settings' Appearance switches light and dark, kept in `.vaultite/appearance.json`.
 - [Command palette](./command-palette.md): find a command by name and run it.

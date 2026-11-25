@@ -217,6 +217,11 @@ export { NotePreview, noteFor } from "@/components/NoteEmbed"
 // saved in place; and any file drawn as `![[file]]` draws it.
 export { FileEditor, NoteEditor, type FileEditorProps, type NoteEditorProps } from "@/components/NoteEditor"
 export { FileEmbed } from "@/components/FileEmbed"
+/** Looking closely: the viewer (a sheet) on a vault file, an address or a drawn diagram, and the parts it's made of. */
+export { openViewer, viewImage } from "@/core/viewer"
+/** A document drawn as wide as its place, zoomed as a PDF is. */
+export { usePageZoom } from "@/core/pagezoom"
+export { ZoomImage, ZoomInPlace, ZoomView } from "@/components/ZoomView"
 // A file docked in a sidebar as a panel: a note edited as in its tab, with its own view on the panel's heading.
 export { DockedFile, DockedViewToggle } from "@/components/DockedFile"
 export { DoIt } from "@/components/DoIt"

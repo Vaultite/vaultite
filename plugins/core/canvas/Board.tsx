@@ -766,7 +766,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   }
 
   return (
-    <div ref={box} tabIndex={embed ? -1 : 0} data-canvas-board={place} data-canvas-nodes={doc.nodes.length} data-canvas-edges={doc.edges.length} data-canvas-selected={sel.size}
+    <div ref={box} data-own-clicks tabIndex={embed ? -1 : 0} data-canvas-board={place} data-canvas-nodes={doc.nodes.length} data-canvas-edges={doc.edges.length} data-canvas-selected={sel.size}
       data-file-drop={editable && !embed ? "" : undefined} data-drops={editable && !embed ? "" : undefined}
       className={cn("absolute inset-0 overflow-hidden bg-background outline-none select-none", !embed && "touch-none",
         (drag?.kind === "pan" || drag?.kind === "move") && drag.moved ? "cursor-grabbing [&_*]:cursor-grabbing" : spacePan ? "cursor-grab" : "cursor-default", embed && "pointer-events-none")}

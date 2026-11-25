@@ -3,7 +3,7 @@ import { ArrowUpRight, Download, SquareArrowOutUpRight, type LucideIcon } from "
 import { dateText } from "@/core/data"
 import { get } from "@/core/http"
 import { localCopy } from "@/core/justsaved"
-import { formatSize, kindIcon, kindName, type FileKind } from "@/core/filekinds"
+import { formatSize, isVector, kindIcon, kindName, type FileKind } from "@/core/filekinds"
 import { gone, openFile } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { saveFile, savesBySharing } from "@/core/savefile"
@@ -13,8 +13,10 @@ import { playerFor } from "@/core/plugins"
 import { useStateFor } from "@/core/statefor"
 import { usePrefs } from "@/core/prefs"
 import { canOpenHere, openOnComputer } from "@/components/FileActions"
-import { cn, plural } from "@/lib/utils"
+import { plural } from "@/lib/utils"
 import { Button, buttonClass } from "@/components/Button"
+import { ZoomImage } from "@/components/ZoomView"
+import type { Size } from "@/core/panzoom"
 
 export type FileInfo = { path: string; kind: FileKind; size: number; mtime: number; ctime: number; pages?: number | null }
 
@@ -86,18 +88,16 @@ export function FileCard({ path, info, note, children }: { path: string; info: F
   )
 }
 
-export function ImageView({ path, info, v, page, onSize }: { path: string; info: FileInfo | null; v: number; page: boolean; onSize: (w: number, h: number) => void }) {
-  const [zoom, setZoom] = useState(false)
-  const [failed, setFailed] = useStateFor([v], () => false)
-  const [ref, h] = useFill(page)
+const STATUS_BAR = 28
+
+export function ImageView({ path, info, v, page, focus, onSize }: { path: string; info: FileInfo | null; v: number; page: boolean; focus?: boolean; onSize?: (w: number, h: number) => void }) {
+  const [size, setSize] = useStateFor<Size | null>([path], () => null)
+  const [failed, setFailed] = useStateFor([path, v], () => false)
   if (failed) return <FileCard path={path} info={info} note="This browser can't show this image." />
   return (
-    <div ref={ref} className={cn("flex rounded-[10px]", zoom ? "overflow-auto" : "items-center justify-center overflow-hidden", !page && "max-h-[75vh]")}
-      style={h ? { height: h } : undefined} data-image-view>
-      <img src={rawUrl(path, { v })} alt={path.split("/").pop()} draggable={false}
-        onLoad={(e) => onSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)} onError={() => setFailed(true)}
-        onClick={() => setZoom((z) => !z)} data-zoomed={zoom || undefined}
-        className={cn("select-none", zoom ? "m-auto max-w-none cursor-zoom-out" : "max-h-full max-w-full cursor-zoom-in object-contain", !page && !zoom && "max-h-[75vh]")} />
+    <div className={page ? "size-full" : "max-h-[75vh] min-h-[25vh] overflow-hidden rounded-[10px]"} style={!page && size ? { aspectRatio: `${size.w} / ${size.h}` } : undefined} data-image-view>
+      <ZoomImage src={rawUrl(path, { v })} label={path.split("/").pop()!} vector={isVector(path)} size={size} focus={focus} pad={page && !focus && isDesktop() ? STATUS_BAR : 12}
+        onSize={(s) => { setSize((was) => (was?.w === s.w && was.h === s.h ? was : s)); onSize?.(s.w, s.h) }} onError={() => setFailed(true)} />
     </div>
   )
 }

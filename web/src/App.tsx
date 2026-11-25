@@ -38,6 +38,9 @@ import { canRenameTab, chooseTabGroup, renameTab, renameTabGroup } from "@/core/
 import { canReopen, reopenLatest } from "@/core/tabarchive"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
+import { viewedName, viewerClick } from "@/core/viewer"
+import { setPictureClick } from "@/core/richmd"
+import { viewerCommands } from "@/core/viewers"
 import { zoomCommands } from "@/core/zoom"
 import { allSwitches, placeOf, switchCommand } from "@/core/switches"
 import { allChoices, choiceCommand } from "@/core/choices"
@@ -114,6 +117,7 @@ const preloadSoon = () => {
 const PhoneDrawers = lazy(() => import("@/components/PhoneDrawer").then((m) => ({ default: m.PhoneDrawers })))
 const Setup = lazy(() => import("@/pages/Setup").then((m) => ({ default: m.Setup })))
 const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
+const Viewer = lazy(() => import("@/components/Viewer"))
 const IconPicker = lazy(() => import("@/components/IconPicker"))
 const IconAsked = memo(function IconAsked() {
   const a = useIconAsk()
@@ -182,8 +186,13 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
   "bundle-incoming/": ["Import a bundle", (_, id) => <IncomingBundle id={id} />],
 }
 
-function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab | Pane) => TabInfo): { body: React.ReactNode; title: string; wide?: boolean } {
+type SheetDrawn = { body: React.ReactNode; title: string; wide?: boolean; fill?: boolean }
+setPictureClick(viewerClick)
+const viewerSheet = (of: string): SheetDrawn => ({ body: <Suspense fallback={<Arriving />}><Viewer id={of} /></Suspense>, title: viewedName(of), wide: true, fill: true })
+
+function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab | Pane) => TabInfo): SheetDrawn {
   const [kind, id] = path.split("/")
+  if (kind === "viewer") return viewerSheet(decodeURIComponent(id ?? ""))
   if (kind === "file") {
     const p = decodeURIComponent(id ?? "")
     return { body: <FileView store={store} path={p} pane={false} />, title: stem(p) }
@@ -506,6 +515,7 @@ export default function App() {
   useCommands(settingsCommands, [onKey, pluginsVersion])
   useCommands(() => textSizeCommands(disabled), [onKey])
   useCommands(zoomCommands, [])
+  useCommands(viewerCommands, [])
   useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [onKey, pluginsVersion])
   const popout = isPopout()
   const bare = useBarsHidden()
@@ -646,7 +656,7 @@ export default function App() {
       <DetailSheet open={!!sheet && !!store} onClose={sheet === "tabs" ? closeSwitcher : closeDetail} path={sheet} depth={depth}
         still={!desktop && sheet === "tabs" && moves()} own={sheet === "tabs"}
         onBack={canBack ? backDetail : undefined} backLabel={prevTitle.length <= 12 ? prevTitle : "Back"}
-        title={sheetDetail?.title ?? ""} wide={sheetDetail?.wide}>
+        title={sheetDetail?.title ?? ""} wide={sheetDetail?.wide} fill={sheetDetail?.fill}>
         {sheetDetail && <Guard key={sheet} what="This sheet" size="tab" reset={sheet}>{sheetDetail.body}</Guard>}
       </DetailSheet>
 

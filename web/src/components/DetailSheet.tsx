@@ -56,9 +56,10 @@ function movedTo(detail: string) {
   try { return `file/${encodeURIComponent(whereNow(decodeURIComponent(detail.slice(5)), 0))}` } catch { return detail }
 }
 
-export function DetailSheet({ open, onClose, onBack, backLabel, title, path, depth, still, own, wide, children }: {
+export function DetailSheet({ open, onClose, onBack, backLabel, title, path, depth, still, own, wide, fill, children }: {
   open: boolean; onClose: () => void
   wide?: boolean
+  fill?: boolean
   own?: boolean
   still?: boolean
   onBack?: () => void; backLabel?: string
@@ -131,7 +132,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
   }, [key, open])
 
   const bar = !!wide && isDesktop()
-  const floating = !onBack && !bar
+  const floating = !onBack && !bar && !fill
   const letGo = () => { drag.current?.quit(); drag.current = null; setDy(0) }
   const header = {
     onPointerDown: (e: PointerEvent) => {
@@ -160,7 +161,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
         "bg-card md:shadow-2xl md:ring-1 md:ring-border/40 md:bg-card/90 md:backdrop-blur-2xl md:backdrop-saturate-200",
         "inset-0 transition-transform duration-(--motion)",
         "md:inset-0 md:m-auto md:max-h-[80dvh] md:w-[calc(100%-2rem)] md:max-w-[560px] md:rounded-[12px]",
-        wide && "md:h-[86dvh] md:max-h-none md:w-[80vw] md:max-w-none md:rounded-[14px]",
+        wide && "md:max-h-none md:max-w-none md:rounded-[14px]", wide && (fill ? "md:h-[92dvh] md:w-[92vw]" : "md:h-[86dvh] md:w-[80vw]"),
         "backdrop:bg-black/35",
         !still && "open:animate-in open:slide-in-from-bottom open:duration-300",
         "md:open:fade-in md:open:zoom-in-95 md:open:slide-in-from-bottom-0 md:open:duration-(--motion)",
@@ -185,7 +186,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
             <div aria-hidden className={cn(
               "pointer-events-none absolute top-1/2 -translate-y-1/2 truncate text-center text-[17px] font-semibold transition-opacity duration-(--motion-fast)",
               onBack ? "inset-x-[128px]" : "inset-x-14 group-has-[#sheet-actions:not(:empty)]:inset-x-[100px]",
-              compact ? "opacity-100" : "opacity-0",
+              compact || fill ? "opacity-100" : "opacity-0",
             )}>{title}</div>
           )}
           <div id="sheet-actions" className="ml-auto flex items-center empty:hidden" />
@@ -197,13 +198,13 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
       </header>
       {/* flex-auto, not flex-1: the sheet has no height of its own, and iOS WebKit sizes a 0% basis in it as 0. */}
       <div ref={scroller} onScroll={(e) => { pos.current.set(key, e.currentTarget.scrollTop); syncCompact() }}
-        className={cn(
+        className={fill ? "relative min-h-0 flex-auto overflow-hidden max-md:pb-(--phone-bar)" : cn(
           "relative min-h-0 flex-auto overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-[calc(var(--phone-bar)+1.5rem)] [scrollbar-gutter:stable] md:px-6 md:pb-7",
           "pr-[max(0px,calc(--spacing(5)-var(--scrollbar-room,0px)))] md:pr-[max(0px,calc(--spacing(6)-var(--scrollbar-room,0px)))]",
           floating ? cn("md:pt-[17px]", !own && "pt-[calc(env(safe-area-inset-top)+22px)]") : "pt-1",
         )}>
         {open && (
-          <div key={key} className={cn(anim && "animate-in fade-in duration-(--motion)", anim === "push" && "slide-in-from-right-8", anim === "pop" && "slide-in-from-left-8")}>
+          <div key={key} className={cn(fill && "h-full", anim && "animate-in fade-in duration-(--motion)", anim === "push" && "slide-in-from-right-8", anim === "pop" && "slide-in-from-left-8")}>
             <InSheet.Provider value><Wide.Provider value={!!wide}>{children}</Wide.Provider></InSheet.Provider>
           </div>
         )}

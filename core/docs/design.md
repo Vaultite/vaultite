@@ -81,7 +81,7 @@ A link goes to a place in a file: [[#Markdown]] a heading in this one, [[Me#Abou
 
 ![[#^design-marks]]
 
-An image, `![[photo.png]]` or `![](photo.png)`, shows where it's written: `|300` sets its width (drag its corner), its buttons open it and show its Markdown, and right-click (hold on a phone) is its menu: copy, open, rename, move, reveal, reset its size, remove it or delete the file.
+An image, `![[photo.png]]` or `![](photo.png)`, shows where it's written: `|300` sets its width (drag its corner), a click opens it in the viewer (zoom with a pinch, ⌘ and scroll, a click or the keys; drag to move), its button shows its Markdown, and right-click (hold on a phone) is its menu: look closer, copy, open, rename, move, reveal, reset its size, remove it or delete the file.
 
 Math: $E = mc^2$ in a line, or a block of its own:
 

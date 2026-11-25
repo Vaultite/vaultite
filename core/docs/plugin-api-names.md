@@ -498,6 +498,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
 - `openView(to, opts?)`: Open a plugin's view, shown once: a pane that has it shows it, else a new tab or the pane to the right.
+- `openViewer(what)`
 - `openWebLink(url, how?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `orderRuns(list)`: The panel's order: needs you, then working, then at rest; the ones at rest newest first, the others oldest first (as they started: a new one doesn't push the rest down).
@@ -853,6 +854,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `useOverConnect()`: overConnect(), as a hook.
 - `usePageLock(on?)`
+- `usePageZoom(ref, apply, keys?)`
 - `usePane()`
 - `usePaneTopBar(ref, title?)`: A view's top bar (ViewBar, the Browser's): without a pane tab bar its pane's title row (Tabs.tsx; not with `title` false, one sliding over the view), clear of what's fixed over the window's…
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…
@@ -897,6 +899,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
+- `viewImage(img, name?)`
 - `viewInfo(to, disabled?, pane?)`: A view as it shows in a tab (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too); `pane`: the pane's id, for what's that pane's (its icon's action).
 - `viewMenuItems(target, disabled?)`: The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target.
 - `viewOnScreen(target, disabled?)`: Whether what a view target shows is on screen in another form (its view's `onScreen`).
@@ -933,7 +936,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WORKSPACES`
 - `Zoom`: A step in (1), out (-1) or back to actual size (0) of what an element draws.
 - `Zoomed`: What a zoom came to, for the line that says so ("Note text 120%"); `actual`: at its own size, so no Reset.
+- `ZoomImage({ src, vector, label, size, onSize, onError, … })`
+- `ZoomInPlace({ onZoomed, keys, className, children })`
 - `ZoomStep`
+- `ZoomView({ size, vector, label, tools, clicks, focus, pad, className, children })`
 
 ### `@vaultite/core/plugins.ts` (plugin.ts)
 - `accessOf(code)`: A folder read's answer: "" read, else the error's code.

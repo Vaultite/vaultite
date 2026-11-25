@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type R
 import { Play } from "lucide-react"
 import { dateText, fmtDay, iso } from "@/core/data"
 import { cleanName, folderOf, folderTarget, joinPath, moveFile, nameProblem, refuseName, stem } from "@/core/files"
-import { formatSize, kindName, kindOf } from "@/core/filekinds"
+import { formatSize, isVector, kindName, kindOf } from "@/core/filekinds"
 import { get } from "@/core/http"
 import { notifyError } from "@/core/notify"
 import { snippet } from "@/core/plaintext"
@@ -16,6 +16,8 @@ import { go, setFocusedPane } from "@/core/workspace"
 import type { MenuItem } from "@/components/ContextMenu"
 import { folderIcon, iconAt, type FolderItem } from "@/components/FileTree"
 import { rawUrl, thumbUrl, useFileInfo } from "@/components/FileViewers"
+import { ZoomImage } from "@/components/ZoomView"
+import type { Size } from "@/core/panzoom"
 import type { SwipeAction } from "@/components/SwipeRow"
 import { cn, plural } from "@/lib/utils"
 
@@ -162,9 +164,7 @@ export function Preview({ n, text, stage }: { n: FolderItem; text?: string; stag
     return <video key={n.path} src={rawUrl(n.path)} poster={thumbUrl(n.path, 1024, n.mtime)} controls playsInline preload="none" className="max-h-full max-w-full rounded-[8px] bg-black/80" />
   }
   if (k === "audio") return <div className="flex size-full flex-col items-center justify-center gap-5">{big}<audio key={n.path} src={rawUrl(n.path)} controls preload="none" className="w-full max-w-sm" /></div>
-  if (k === "image" && stage) {
-    return <img key={n.path} src={rawUrl(n.path)} alt="" draggable={false} className="max-h-full max-w-full rounded-[6px] object-contain" />
-  }
+  if (k === "image" && stage) return <StageImage key={n.path} path={n.path} />
   if (k === "markdown" && n.file) {
     return (
       <div className={cn("aspect-[3/4] max-h-full max-w-full overflow-hidden rounded-[8px]", paper, stage ? "h-full" : "w-full")}>
@@ -175,6 +175,11 @@ export function Preview({ n, text, stage }: { n: FolderItem; text?: string; stag
     )
   }
   return <Picture key={n.path} n={n} px={1024} icon={big} whole className="size-full" />
+}
+
+function StageImage({ path }: { path: string }) {
+  const [size, setSize] = useState<Size | null>(null)
+  return <ZoomImage src={rawUrl(path)} label={path.split("/").pop()!} vector={isVector(path)} size={size} onSize={setSize} clicks={false} pad={0} />
 }
 
 export function playPause(m: HTMLMediaElement | null | undefined) {

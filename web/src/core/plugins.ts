@@ -24,6 +24,7 @@ import { notify, notifyError } from "@/core/notify"
 import { openDetail } from "@/core/nav"
 import { askGrant } from "@/core/grants"
 import { CATEGORIES, categoryOf, OTHER } from "../../../core/categories.ts"
+import { kindOf } from "../../../core/filetypes.ts"
 import { autoUpdates, byPolicy } from "../../../core/updates.ts"
 import { setMarks } from "../../../core/fileprops.ts"
 import { switched } from "../../../core/pluginmeta.ts"
@@ -713,7 +714,7 @@ export function kindFolder(folder: string, disabled = getPrefs().disabled) {
   return PLUGINS.some((p) => p.files?.folders && isEnabled(p.id, disabled) && p.files.folders.some((f) => parts.includes(f)))
 }
 
-export const fillsPane = (path: string, disabled: string[]) => (fileFormatFor(path, disabled) ?? formatFor(path, disabled)?.format)?.layout === "pane"
+export const fillsPane = (path: string, disabled: string[]) => kindOf(path) === "image" || (fileFormatFor(path, disabled) ?? formatFor(path, disabled)?.format)?.layout === "pane"
 
 export function fileFormatFor(path: string, disabled: string[]) {
   if (!/\.md$/i.test(path)) return null

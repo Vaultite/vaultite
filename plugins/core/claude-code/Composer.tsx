@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { ArrowUp, ChevronDown, Clock, Folder, Plus, Square, X } from "lucide-react"
-import { cn, formatSize, haptic, ink, notify, notifyError, op, openMenu, useScopedState, type MenuItem } from "@vaultite"
+import { cn, formatSize, haptic, ink, notify, notifyError, op, openMenu, useScopedState, viewImage, type MenuItem } from "@vaultite"
 import { NEW } from "./titles"
 import { seenOf } from "./seen"
 import type { Entry } from "./chatlog"
@@ -241,7 +241,7 @@ function QueuedRow({ text, tip, sending, children }: { text: string; tip?: strin
 function Thumb({ p, remove }: { p: Picture; remove: () => void }) {
   return (
     <div data-picture className="chat-pic group/pic relative flex shrink-0 items-center gap-2.5 rounded-control border-[0.5px] border-border bg-background/60 p-1.5 pr-3">
-      <img src={p.url} alt="" draggable={false} className="h-full aspect-square shrink-0 rounded-chip bg-muted object-cover" />
+      <img src={p.url} alt={p.name} draggable={false} onClick={(e) => viewImage(e.currentTarget)} className="h-full aspect-square shrink-0 cursor-zoom-in rounded-chip bg-muted object-cover" />
       <span className="flex min-w-0 flex-col leading-tight">
         <span data-picture-name className="truncate text-[13px] font-medium max-md:text-[15px]">{p.name}</span>
         <span className="text-[12px] text-muted-foreground tabular-nums max-md:text-[13px]">{formatSize(p.size)}</span>

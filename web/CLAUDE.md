@@ -63,6 +63,9 @@
 - Panes are drawn flat, so splitting never remounts others. A pane keeps its last tabs drawn but hidden (`data-kept`):
   find the scroller as `[data-pane]`, and take down what a file shows outside itself when its tab hides.
 - Selecting several is `core/select.ts` (Finder's way); several at once is one toast with one Undo.
+- Looking closely at what's drawn (an image, a diagram, a video) is one engine, `core/panzoomer.ts`: `ZoomView` fills its
+  place, `ZoomInPlace` zooms in the page's flow, `openViewer` / `viewImage` open the viewer (a sheet) on what's shown
+  small. A document as wide as its place is `usePageZoom`. Never a click that swaps sizes, nor a zoom of a view's own.
 - Dragging is `core/drag.ts` (pointer events, not dnd-kit or HTML5; files from the computer are HTML5 drops, which a
   note takes anywhere in its place: `core/filedrop.ts`). A finger drags only with `{ touch: true }`.
 - A list reordered by dragging makes way, as browser tabs do (`core/slide.ts`: `slotAt`, `reorder`, `useSlide`), never a

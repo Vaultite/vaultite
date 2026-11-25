@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Pictures are controllable wherever they show. An image's tab fills its pane, and zooms with a pinch, ⌘ and scroll, a
+  click (a double tap on a phone), `+` and `-`, ⇧1 to fit, ⇧2 its width, ⇧0 or ⌘0 its own size, or its buttons; drag,
+  scroll or the arrows move it. An image or a diagram in a note, a chat, a notebook, a book, a replay or a file on
+  another machine opens in the viewer, the same way, at a click. A video zooms where it plays, and Word files, decks and
+  mind maps by a pinch or ⌘+ and ⌘-.
 - Agents panel: sessions sit on shelves (Pinned, Needs you, Working, then Snoozed and Settled folded), with a chip per
   repository to filter by, Pin (⌘⇧P), Snooze, and Settle and next (⌘⇧S), which refuses a session still working or waiting
   on you. Plain shells can be listed too (Plain shells). New Code workspace makes a workspace with the Agents panel alone

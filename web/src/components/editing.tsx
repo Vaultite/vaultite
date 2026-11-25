@@ -1,12 +1,13 @@
 import { useCallback, useMemo, type ReactNode } from "react"
 import { partRoot } from "@/core/roots"
 import type { Store } from "@/core/data"
-import { findEmbed, folderOf, inVault, isMd, openFile, readFile, stem } from "@/core/files"
+import { findEmbed, folderOf, inVault, isMd, readFile, stem } from "@/core/files"
 import { followLink, newLink, resolver, type LinkClick, type Target } from "@/core/links"
 import { attachDropped } from "@/core/conventions"
 import { op } from "@/core/http"
 import type { Dropped } from "@/core/filedrop"
 import { notifyError } from "@/core/notify"
+import { openViewer } from "@/core/viewer"
 import { slashItems } from "@/core/slash"
 import { vocabOf } from "@/core/vocab"
 import { assetPath, openEmbedMenu } from "@/components/EmbedMenu"
@@ -32,10 +33,9 @@ export function assetUrl(store: Store, name: string, from?: string): string | nu
 
 export function imageActions(store: Store): Pick<PreviewConfig, "embedMenu" | "openImage"> {
   return {
-    openImage: (target) => {
+    openImage: (target, src) => {
       const path = assetPath(store, target)
-      if (path) openFile(path, { newTab: true })
-      else if (/^https?:/i.test(target)) window.open(target, "_blank", "noopener")
+      openViewer(path ? { path } : { name: "Image", url: src })
     },
     embedMenu: (target, at, edit) => openEmbedMenu(store, target, at, edit),
   }

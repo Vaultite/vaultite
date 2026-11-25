@@ -326,8 +326,9 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
   const head = useMemo<FileHead>(() => ({ path, fm: {}, type: null }), [path])
   usePublish(pane, () => ({ path, mode: "read", setMode: noop, body: "", views: [], info: facts, head }), [path, facts, noop, head])
   useCommands(() => (live ? moveCommand(path) : []), [live, path])
-  if (missing) return <Missing path={path} pane={pane} />
-  if (!info && read.error !== undefined) return <Unopened path={path} pane={pane}><ReadFailed read={read} what={couldnt(path)} className="mt-2" /></Unopened>
+  const padded = (node: ReactNode) => (pane && kind === "image" ? <PaneScroll>{node}</PaneScroll> : node)
+  if (missing) return padded(<Missing path={path} pane={pane} />)
+  if (!info && read.error !== undefined) return padded(<Unopened path={path} pane={pane}><ReadFailed read={read} what={couldnt(path)} className="mt-2" /></Unopened>)
   const settle = async () => {}
   const duration = (secs: number) => {
     if (!Number.isFinite(secs)) return
@@ -338,9 +339,17 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
     if (e.defaultPrevented || closestOf(e.target, "input, textarea, [contenteditable]")) return
     menuFor(() => mediaItems(path, isOutside(path)))(e)
   }
+  const bar = pane && isDesktop() && <PathBar path={path} settle={settle} locked={isReadOnly(path) || isProtected(path) || isOutside(path)} head={head} className={kind === "image" ? "mb-0" : undefined} />
+  if (kind === "image" && pane) {
+    return (
+      <PaneFile path={path} kind={kind} bar={bar} toggle={null} notices={inTrash(path) && <InTrash path={path} />} onContextMenu={onMenu}>
+        <ImageView path={path} info={info} v={v} page onSize={(w, h) => setExtra(`${w} × ${h}`)} />
+      </PaneFile>
+    )
+  }
   return (
     <article className={cn("file-view", pane && "mx-auto max-w-[1040px] pb-24")} data-path={path} data-kind={kind} onContextMenu={onMenu}>
-      {pane && isDesktop() && <PathBar path={path} settle={settle} locked={isReadOnly(path) || isProtected(path) || isOutside(path)} head={head} />}
+      {bar}
       {(!pane || !isDesktop()) && (
         <>
           <TitleLine icon={Folder} text={folderLine(path)} head={head} pane={pane} />
@@ -349,7 +358,7 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
       )}
       {inTrash(path) && <InTrash path={path} />}
       <div className={cn(!pane && "mt-4")}>
-        {kind === "image" ? <ImageView path={path} info={info} v={v} page={pane} onSize={(w, h) => setExtra(`${w} × ${h}`)} />
+        {kind === "image" ? <ImageView path={path} info={info} v={v} page={false} onSize={(w, h) => setExtra(`${w} × ${h}`)} />
           : kind === "pdf" ? <PdfView path={path} info={info} v={v} page={pane} />
           : kind === "audio" || kind === "video" ? <PlayerView path={path} info={info} v={v} video={kind === "video"} onDuration={duration} />
           : drawn ? <BinaryFormat store={store} format={drawn} path={path} v={v} pane={pane} />

@@ -1,6 +1,7 @@
 import type { Store } from "@/core/data"
 import { inVault, isMd, isMediaEmbed, stem } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
+import { openViewer } from "@/core/viewer"
 import { formatFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { FileCard, MediaEmbed, rawUrl, useFileInfo } from "@/components/FileViewers"
@@ -9,7 +10,6 @@ import { NoteEmbed } from "@/components/NoteEmbed"
 import { cn } from "@/lib/utils"
 
 export function FileEmbed({ store, path, from = "", height, fill }: { store: Store
-  /** The file's vault path. */
   path: string
   /** The file it's shown in (an embedded note doesn't show that file again inside itself). */
   from?: string
@@ -30,8 +30,8 @@ export function FileEmbed({ store, path, from = "", height, fill }: { store: Sto
 
 function ImageEmbed({ path, height, fill }: { path: string; height?: number; fill?: boolean }) {
   const [, v] = useFileInfo(path)
-  const img = <img src={rawUrl(path, { v })} alt={path.split("/").pop()} draggable={false} loading="lazy"
-    className={cn("block select-none", fill ? "size-full object-contain" : "max-w-full rounded-[6px]")} style={!fill && height ? { height } : undefined} />
+  const img = <img src={rawUrl(path, { v })} alt={path.split("/").pop()} draggable={false} loading="lazy" onClick={fill ? undefined : () => openViewer({ path })}
+    className={cn("block select-none", !fill && "cursor-zoom-in", fill ? "size-full object-contain" : "max-w-full rounded-[6px]")} style={!fill && height ? { height } : undefined} />
   return fill ? <div className="size-full overflow-hidden" data-image-embed={path}>{img}</div> : img
 }
 

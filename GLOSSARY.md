@@ -39,6 +39,8 @@ _Avoid_: template, theme, preset.
 _Avoid_: vault, project.
 
 **Tab**: one open file, page or terminal. **Pane**: where tabs show, side by side when split.
+**Viewer**: the sheet where a picture or a diagram is looked at closely: zoomed and panned, as in its own tab.
+_Avoid_: lightbox, preview (that's a glance).
 **Sidebar**: a stack of **panels** on either side. **Palette**: the searchable list of commands and files.
 **Sheet**: a dialog that slides over the page. **Look**: the app's appearance (theme, fonts, translucency).
 _Avoid_: window (the desktop app's own), view, modal.

@@ -256,7 +256,7 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
       data-tone={bg.tone ?? undefined} style={theme?.vars}>
       <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col">
         {bg.style && <div aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
-        <div ref={stage} onClick={onClick} className="relative flex min-h-0 flex-1 cursor-default overflow-hidden px-6 pt-8 pb-16 md:px-16 md:pt-12">
+        <div ref={stage} data-own-clicks onClick={onClick} className="relative flex min-h-0 flex-1 cursor-default overflow-hidden px-6 pt-8 pb-16 md:px-16 md:pt-12">
           <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className="relative m-auto shrink-0">
             <div ref={inner} key={i} data-deck-slide={i + 1} className={cn("absolute top-0 left-0 origin-top-left", title && TITLE)}
               style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
@@ -504,7 +504,7 @@ function Deck({ path, onClose, store }: { path: string; onClose: () => void; sto
         <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {bg.style && <div ref={bgEl} aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
           <div ref={layer} aria-hidden className="pointer-events-none absolute inset-0" />
-          <div ref={stage} onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
+          <div ref={stage} data-own-clicks onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
             className="relative flex min-h-0 flex-1 cursor-default touch-pan-y overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
             <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className={cn("relative mx-auto shrink-0", (deckSize.center || frame.fixed) && "my-auto")}>
               <div ref={inner} key={i} data-deck-slide={i + 1}

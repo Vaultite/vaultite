@@ -1,6 +1,6 @@
 import { createContext, createElement, Fragment, Suspense, useCallback, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { Arriving, cn, haptic, Markdown, namedIcon, PinMap, Switch } from "@vaultite"
+import { Arriving, cn, haptic, Markdown, namedIcon, PinMap, Switch, viewImage } from "@vaultite"
 import type { Tree } from "./sandbox"
 import { obj, objs, type Data } from "./dil"
 import { AppFrame } from "./AppFrame"
@@ -490,7 +490,7 @@ function Progress({ p }: { p: P; k: Tree[] }) {
 function Image({ p }: { p: P; k: Tree[] }) {
   const src = str(p.src ?? p.url)
   if (!src || !/^(https:|data:image\/)/i.test(src)) return str(p.alt) ? <span className="text-muted-foreground">{str(p.alt)}</span> : null
-  return <img src={src} alt={str(p.alt) ?? ""} loading="lazy" referrerPolicy="no-referrer" style={{ maxWidth: "100%", objectFit: FITS.find((f) => f === p.fit) ?? "cover", aspectRatio: str(p.aspectRatio)?.replace(":", "/"), ...boxStyle({ ...p, radius: p.radius ?? "lg" }) }} />
+  return <img src={src} alt={str(p.alt) ?? ""} loading="lazy" referrerPolicy="no-referrer" onClick={(e) => { if (!e.currentTarget.closest("a, button, [role=button]")) viewImage(e.currentTarget) }} style={{ maxWidth: "100%", objectFit: FITS.find((f) => f === p.fit) ?? "cover", aspectRatio: str(p.aspectRatio)?.replace(":", "/"), ...boxStyle({ ...p, radius: p.radius ?? "lg" }) }} />
 }
 
 function Link({ p, k }: { p: P; k: Tree[] }) {

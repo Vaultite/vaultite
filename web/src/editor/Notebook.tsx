@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { classHighlighter, highlightCode } from "@lezer/highlight"
 import type { LanguageSupport } from "@codemirror/language"
 import { Markdown } from "@/components/Markdown"
+import { viewImage } from "@/core/viewer"
 import { cn } from "@/lib/utils"
 import { languageNamed } from "./languages"
 
@@ -47,9 +48,9 @@ function OutputView({ o }: { o: Output }) {
   if (o.output_type === "error") return <pre className={cn(pre, "text-ink-(--red)")}>{(o.traceback?.join("\n") ?? `${o.ename}: ${o.evalue}`).replace(ANSI, "")}</pre>
   const d = o.data ?? {}
   for (const t of ["image/png", "image/jpeg", "image/gif"]) {
-    if (d[t]) return <img src={`data:${t};base64,${join(d[t]).replace(/\s/g, "")}`} alt="Output" className="max-w-full self-start rounded-[6px]" />
+    if (d[t]) return <img src={`data:${t};base64,${join(d[t]).replace(/\s/g, "")}`} alt="Output" onClick={(e) => viewImage(e.currentTarget)} className="max-w-full cursor-zoom-in self-start rounded-[6px]" />
   }
-  if (d["image/svg+xml"]) return <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(join(d["image/svg+xml"]))}`} alt="Output" className="max-w-full self-start" />
+  if (d["image/svg+xml"]) return <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(join(d["image/svg+xml"]))}`} alt="Output" onClick={(e) => viewImage(e.currentTarget)} className="max-w-full cursor-zoom-in self-start" />
   if (d["text/html"]) return <HtmlOutput html={join(d["text/html"])} />
   if (d["text/markdown"]) return <Markdown text={join(d["text/markdown"])} />
   if (d["text/plain"]) return <pre className={pre}>{join(d["text/plain"]).replace(ANSI, "")}</pre>

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { Captions, FileText, PictureInPicture2 } from "lucide-react"
-import { cn, openFile, phoneFiles, type PlayerProps } from "@vaultite"
+import { cn, openFile, phoneFiles, ZoomInPlace, type PlayerProps } from "@vaultite"
 import { btn, icon, Keep, MarkButton, Skip, SpeedButton } from "./Buttons"
 import { Book, Full } from "./Full"
 import { artOf, BACK, captionsOf, FORWARD, getNow, homeOf, presenting, release, setSlot, take, useMeta, useTick, type MediaEl } from "./now"
@@ -58,12 +58,28 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
     <div ref={root} className={cn("flex flex-col", place === "fill" ? "size-full justify-center" : place === "page" && "mx-auto w-full max-w-3xl", full && "max-w-none")} data-player={path}>
       {full ? el && <Full el={el} path={path} />
         : sound && art && <img src={art} alt="" draggable={false} className="mx-auto mb-3 aspect-square w-28 rounded-[10px] object-cover" />}
+      <Stage zooms={video} hidden={full} el={el} place={place}>
       <div data-player-slot hidden={full}
         className={cn("w-full [&>audio]:w-full [&>video]:block [&>video]:w-full [&>video]:bg-black/90", place === "fill" ? "[&>video]:size-full [&>video]:object-contain" : video && !sound && "[&>video]:max-h-[75vh]", box,
           !sound && place === "page" && "[&>video]:rounded-[10px]", sound && "px-3")}
         style={height && video && !sound ? { height } : undefined} />
+      </Stage>
       {!full && place !== "fill" && el && <Controls el={el} path={path} video={video && !sound} mark={place === "page"} />}
       {!full && place === "page" && el && <VideoBook el={el} path={path} />}
+    </div>
+  )
+}
+
+function Stage({ zooms, hidden, el, place, children }: { zooms: boolean; hidden: boolean; el: MediaEl | null; place: PlayerProps["place"]; children: ReactNode }) {
+  const [zoomed, setZoomed] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => { const v = box.current?.querySelector("video"); if (v) v.controls = !zoomed }, [el, zoomed])
+  if (!zooms) return children
+  const play = () => { if (!zoomed || !el) return; if (el.paused) void el.play().catch(() => {}); else el.pause() }
+  const size = place === "fill" ? "size-full" : "w-full"
+  return (
+    <div ref={box} hidden={hidden} onClick={play} className={size} data-player-zoom={zoomed ? "in" : "fit"}>
+      <ZoomInPlace onZoomed={setZoomed} keys={place === "page"} className={cn(size, place === "page" && "rounded-[10px]")}>{children}</ZoomInPlace>
     </div>
   )
 }

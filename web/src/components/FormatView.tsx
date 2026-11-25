@@ -10,6 +10,7 @@ import { usePrefs } from "@/core/prefs"
 import { EmbedHead, rawUrl, useFill } from "@/components/FileViewers"
 import { cn } from "@/lib/utils"
 import { errorText } from "@/core/notify"
+import { viewStill } from "@/core/viewer"
 import { Loading } from "@/components/kit"
 
 export function FormatBox({ place, children }: { place: "page" | "sheet"; children: ReactNode }) {
@@ -39,7 +40,7 @@ export function FormatEmbed({ store, path, height, fill, sub, from }: { store: S
   const drawn = (binary || text !== null) && <FormatGuard>{draw({ store, path, text: text ?? "", ...(binary ? { url: rawUrl(path, { v: n }) } : {}), editable: false, place: "embed", onChange: () => {}, height, ...(sub ? { subpath: sub } : {}), ...(from ? { host: from } : {}) })}</FormatGuard>
   if (fill) return <div className="relative size-full overflow-auto" data-format-embed={path}>{drawn}</div>
   return (
-    <div className="glass overflow-hidden rounded-[12px]" data-format-embed={path}>
+    <div className="glass overflow-hidden rounded-[12px]" data-format-embed={path} onClick={(e) => viewStill(e.target, e.currentTarget)}>
       <EmbedHead path={path} icon={Icon} name={format.page ? fileOf(store, path)?.title ?? stem(path) : path.split("/").pop()!} />
       {box ? <div className="relative" style={{ height: height ?? 360 }}>{drawn || waiting}</div> : drawn || <div className="h-24">{waiting}</div>}
     </div>

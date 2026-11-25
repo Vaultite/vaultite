@@ -1,7 +1,7 @@
 // foliate-js renders pages in same-origin frames with scripts on (a WebKit bug), so `safe` cleans every page first.
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, List } from "lucide-react"
-import { Bar, cn, Loading, menuBelow, openWebLink, errorText } from "@vaultite"
+import { Bar, cn, Loading, menuBelow, openViewer, openWebLink, errorText } from "@vaultite"
 
 import type { Book, TocItem, View } from "foliate-js/view.js"
 
@@ -77,6 +77,13 @@ function guard(book: Book) {
   }
 }
 
+function lookCloser(doc: Document, target: EventTarget | null) {
+  const win = doc.defaultView
+  if (!win || !(target instanceof win.Element) || target.closest("a") || doc.getSelection()?.toString()) return
+  const url = target instanceof win.HTMLImageElement ? target.currentSrc || target.src : target instanceof win.SVGImageElement ? target.href.baseVal : ""
+  if (url) openViewer({ name: "Picture", url })
+}
+
 function pageStyle() {
   const css = getComputedStyle(document.documentElement)
   const fg = css.getPropertyValue("--foreground").trim()
@@ -87,6 +94,7 @@ function pageStyle() {
     body * { color: inherit; background-color: transparent; }
     a, a * { color: ${link} !important; }
     img, svg { max-width: 100%; }
+    img:not(a img) { cursor: zoom-in; }
     p, li, blockquote, dd { line-height: 1.5; hyphens: auto; }`
 }
 
@@ -133,13 +141,14 @@ function Pages({ url, path }: { url: string; path: string }) {
       v.addEventListener("load", (e) => {
         const doc = e.detail.doc
         doc.addEventListener("keydown", keys)
-        if (matchMedia("(pointer: coarse)").matches) doc.addEventListener("click", (ev) => {
+        doc.addEventListener("click", (ev) => {
+          if (!matchMedia("(pointer: coarse)").matches) return lookCloser(doc, ev.target)
           const win = doc.defaultView
           if (win && ev.target instanceof win.Element && ev.target.closest("a") || doc.getSelection()?.toString()) return
           const frame = win?.frameElement?.getBoundingClientRect(), r = box.current?.getBoundingClientRect()
           if (!frame || !r?.width) return
           const at = (frame.left + ev.clientX - r.left) / r.width
-          if (at < 1 / 3) void view.current?.goLeft(); else if (at > 2 / 3) void view.current?.goRight()
+          if (at < 1 / 3) void view.current?.goLeft(); else if (at > 2 / 3) void view.current?.goRight(); else lookCloser(doc, ev.target)
         })
       })
       await v.open(book)

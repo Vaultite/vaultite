@@ -870,6 +870,9 @@ body[data-resizing] [data-status-bar] { transition: none; }
 .vau-editor .cm-image-wrap { position: relative; display: inline-block; max-width: 100%; vertical-align: top; margin: 4px 0; line-height: 0; }
 .vau-editor .cm-image-wrap.is-source { display: block; width: fit-content; margin-top: 2px; }
 .vau-editor .cm-image-wrap.is-source ~ :is(.cm-widgetBuffer, br) { display: none; }
+.vau-editor .cm-block-mermaid { position: relative; }
+:is(.note-prose, .dash-prose, .vau-editor :is(.cm-image-wrap, .cm-block-callout, .cm-block-details, .cm-block-html)) img:not(:is(a, button, [data-url], [data-wiki], [data-md-embed], [data-own-clicks]) img),
+:is(.note-prose, .dash-prose, .vau-editor .cm-content[contenteditable="false"]) .mermaid-diagram:has(svg) { cursor: zoom-in; }
 .vau-editor .cm-image { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; -webkit-touch-callout: none; user-select: none; }
 .vau-editor .is-sized > .cm-image { max-height: none; }
 .vau-editor .cm-image-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; padding: 2px; border-radius: 7px;
@@ -879,9 +882,13 @@ body[data-resizing] [data-status-bar] { transition: none; }
 .vau-editor .cm-image-tools button:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 8%, transparent); }
 .vau-editor .cm-image-resize { position: absolute; right: 3px; bottom: 3px; width: 12px; height: 12px; cursor: nwse-resize; opacity: 0;
   border-right: 2px solid var(--muted-foreground); border-bottom: 2px solid var(--muted-foreground); border-bottom-right-radius: 6px; }
-.vau-editor .cm-image-wrap:hover > :is(.cm-image-tools, .cm-image-resize), .vau-editor .cm-image-wrap.is-resizing > .cm-image-resize,
+.vau-editor :is(.cm-image-wrap:hover > :is(.cm-image-tools, .cm-image-resize), .cm-block-mermaid:hover > .cm-image-tools), .vau-editor .cm-image-wrap.is-resizing > .cm-image-resize,
 .vau-editor .cm-image-tools:focus-within { opacity: 1; }
-@media (hover: none) { .vau-editor :is(.cm-image-tools, .cm-image-resize) { display: none; } }
+@media (hover: none) {
+  .vau-editor .cm-image-wrap > :is(.cm-image-tools, .cm-image-resize) { display: none; }
+  .vau-editor .cm-block-mermaid > .cm-image-tools { opacity: 1; }
+  .vau-editor .cm-block-mermaid > .cm-image-tools button { width: 44px; height: 44px; }
+}
 /* A drawn block is HTML or React, not the editor's text: the editor's break-spaces would draw every newline between its
    tags as an empty line (a callout's or a table's trailing blank line). */
 .vau-editor .cm-block { position: relative; padding: 10px 0 6px; cursor: text; white-space: normal; }
@@ -1124,6 +1131,12 @@ body[data-resizing] [data-status-bar] { transition: none; }
   --pele-series-5: var(--teal); --pele-series-6: var(--yellow); --pele-series-7: var(--purple); --pele-series-8: var(--pink);
 }
 .vau-editor .cm-block-math, .vau-editor .cm-block-mermaid { padding: 8px 0; }
+/* What a viewer draws (components/ZoomView.tsx): a pinch is its own, one finger the page's till it's zoomed. Never a
+   scroller itself (overflow: clip), or the browser would pan it and take a sideways swipe from the app. */
+[data-zoom-view] { touch-action: pan-x pan-y; }
+[data-zoom-view][data-clicks] { cursor: zoom-in; }
+[data-zoom-view][data-zoomed] { touch-action: none; cursor: grab; }
+[data-zoom-view][data-panning] { cursor: grabbing; }
 /* A marked box: tinted and rounded, with a bar at its start in --mark (a callout, a change in History, a plan's event).
    The bar is a line drawn inside the box, never its left border or an inset shadow, which bend round the corners.
    --mark-x / --mark-y: the bar's inset from the box's edge (y from its top and bottom); --mark-tint: the box's tint.

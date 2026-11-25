@@ -27,6 +27,7 @@ import { openMenu } from "@/components/ContextMenu"
 import type { ReadingBlock, ReadingDrawn } from "@/core/define"
 import type { ReadBlock } from "@/core/plugins"
 import { elementOf, htmlOf } from "@/core/dom"
+import { endsDrag, viewDiagram, viewerClick } from "@/core/viewer"
 
 export type PreviewConfig = {
   live: boolean
@@ -34,7 +35,7 @@ export type PreviewConfig = {
   resolves: (target: string) => string | null
   asset: (name: string) => string | null
   embedMenu?: (target: string, at: { x: number; y: number }, edit: EmbedEdit) => void
-  openImage?: (target: string) => void
+  openImage?: (target: string, src: string) => void
   sections: string[]
   renderSection: (name: string, text: string, el: HTMLElement) => Drawn
   renderBlock: (name: string, text: string, el: HTMLElement, edit: BlockEdit) => Drawn
@@ -64,7 +65,6 @@ export type BlockEdit = {
 export type GridCard = { name: string; text: string; wide: boolean; stack: boolean }
 /** What changes a run of blocks in the file, each block by its index in the run (found where it is now). */
 export type GridEdit = {
-  /** The file can be changed. */
   writable: boolean
   /** Block k as an editor's block: its bar (what BlockView adds goes in `bar`) and `source`, how its card shows it. */
   block: (k: number, bar: HTMLElement, source: () => void) => BlockEdit
@@ -76,7 +76,7 @@ export type GridEdit = {
   set: (k: number, key: LayoutKey, value: true | undefined) => void
   history: (redo?: boolean) => void
 }
-export type EmbedEdit = { size: number; writable: boolean; resize: (n: number | null) => void; remove: () => void }
+export type EmbedEdit = { size: number; writable: boolean; resize: (n: number | null) => void; remove: () => void; source: () => void }
 
 export const previewConfig = Facet.define<PreviewConfig, PreviewConfig>({ combine: (v) => v[v.length - 1] })
 
@@ -186,12 +186,14 @@ class Img extends WidgetType {
     const edit = () => embedEdit(view, this.source ? this.at : view.posAtDOM(wrap))
     const tools = document.createElement("span")
     tools.className = "cm-image-tools"
-    tools.append(toolButton(ZOOM_ICON, "Open image", () => view.state.facet(previewConfig).openImage?.(this.target)))
+    const closer = () => view.state.facet(previewConfig).openImage?.(this.target, this.src)
+    img.addEventListener("mousedown", (e) => { if (e.button === 0 && !linked(wrap)) e.preventDefault() })
+    img.addEventListener("click", (e) => { if (!linked(wrap) && !endsDrag()) { e.preventDefault(); closer() } })
+    tools.append(toolButton(ZOOM_ICON, "Look closer", closer))
     if (view.state.facet(EditorView.editable)) {
       tools.append(toolButton(CODE_ICON, this.source ? "Hide Markdown" : "Show Markdown", () => {
         if (this.source) { view.contentDOM.blur(); return }
-        const e = edit()
-        if (e) { view.dispatch({ selection: EditorSelection.cursor(e.to) }); view.focus() }
+        edit()?.source()
       }))
     }
     wrap.append(img, tools)
@@ -209,8 +211,12 @@ class Img extends WidgetType {
     })
     return wrap
   }
-  ignoreEvent(e: Event) { return e.type === "contextmenu" || elementOf(e.target)?.closest(".cm-image-tools, .cm-image-resize") != null }
+  ignoreEvent(e: Event) {
+    const at = elementOf(e.target)
+    return e.type === "contextmenu" || at?.closest(".cm-image-tools, .cm-image-resize") != null || (at?.matches(".cm-image") === true && !linked(at))
+  }
 }
+const linked = (el: Element) => !!el.closest("[data-url], [data-wiki]")
 
 const VOID = /^(br|img|wbr|hr)$/i
 class HtmlInline extends WidgetType {
@@ -286,7 +292,7 @@ function sized(opts: string) {
   return { width: w ? Number(w[1]) : 0, rest: w ? parts.slice(0, -1) : parts }
 }
 
-function embedEdit(view: EditorView, pos: number): (EmbedEdit & { to: number }) | null {
+function embedEdit(view: EditorView, pos: number): EmbedEdit | null {
   const l = view.state.doc.lineAt(pos)
   const hits: { from: number; to: number; write: (w: number | null) => string; width: number }[] = []
   WIKI.lastIndex = 0
@@ -306,8 +312,9 @@ function embedEdit(view: EditorView, pos: number): (EmbedEdit & { to: number }) 
   if (!h) return null
   const { from, to } = h
   return {
-    size: h.width, to, writable: view.state.facet(previewConfig).writable,
+    size: h.width, writable: view.state.facet(previewConfig).writable,
     resize: (w) => view.dispatch({ changes: { from, to, insert: h.write(w) }, userEvent: "input.resize" }),
+    source: () => { view.dispatch({ selection: EditorSelection.cursor(to) }); view.focus() },
     remove: () => {
       const { doc } = view.state
       const blank = !(l.text.slice(0, from - l.from) + l.text.slice(to - l.from)).trim()
@@ -379,6 +386,7 @@ class Block extends WidgetType {
     painted.set(el, this)
     el.addEventListener("mousedown", (e) => { if (pressed(view, el, e) && !this.view) bar.edit.source!() })
     el.addEventListener("click", (e) => { const w = elementOf(e.target)?.closest("[data-wiki], [data-tag]"); if (w && !w.closest("[data-embed]")) e.preventDefault() })
+    if (this.key === "table") el.addEventListener("click", (e) => { if (!view.state.facet(EditorView.editable)) viewerClick(e.target, el) })
     if (!this.view) el.addEventListener("contextmenu", (e) => {
       const l = drawnLink(e.target), menu = view.state.facet(previewConfig).linkMenu
       if (!l || !menu || e.defaultPrevented || l.el.closest("[data-embed]")) return
@@ -413,8 +421,10 @@ function pressed(view: EditorView, el: HTMLElement, e: MouseEvent) {
   const own = elementOf(e.target)?.closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit], [data-md-embed]")
   if ((own && el.contains(own)) || e.defaultPrevented || !view.state.facet(EditorView.editable)) return false
   e.preventDefault()
-  return true
+  return !opensViewer(e.target, el)
 }
+
+const opensViewer = (target: EventTarget | null, block: HTMLElement) => !!elementOf(target)?.matches("img") && block.matches(".cm-block-callout, .cm-block-details, .cm-block-html")
 
 type Member = GridCard & { a: number; b: number }
 class Grid extends WidgetType {
@@ -1344,8 +1354,13 @@ const drawTable = (el: HTMLElement, text: string, view: EditorView, edit: BlockE
   line: edit.line,
   source: () => edit.source?.(),
 })
-function drawMermaid(el: HTMLElement, src: string): Drawn {
+function drawMermaid(el: HTMLElement, src: string, view: EditorView): Drawn {
   renderMermaid(src, el)
+  const tools = document.createElement("span")
+  tools.className = "cm-image-tools"
+  tools.append(toolButton(ZOOM_ICON, "Look closer", () => viewDiagram(el)))
+  el.after(tools)
+  el.addEventListener("click", (e) => { if (!view.state.facet(EditorView.editable)) viewerClick(e.target, el) })
   return { update: (s) => renderMermaid(s, el), destroy: () => dropMermaid(el) }
 }
 function drawMath(el: HTMLElement, tex: string): Drawn {

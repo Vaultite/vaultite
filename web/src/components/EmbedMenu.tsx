@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { AppWindow, Copy, Download, Eraser, Scaling } from "lucide-react"
+import { AppWindow, Code, Copy, Download, Eraser, Scaling, ZoomIn } from "lucide-react"
 import type { Store } from "@/core/data"
 import { openAt } from "@/core/anchors"
 import { kindOf } from "@/core/filekinds"
@@ -9,6 +9,7 @@ import { notify, notifyError } from "@/core/notify"
 import { formatFor } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { openInSplit } from "@/core/splits"
+import { openViewer } from "@/core/viewer"
 import { isDesktop } from "@/core/platform"
 import { saveFile } from "@/core/savefile"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
@@ -38,8 +39,10 @@ function embedItems(store: Store, target: string, edit?: EmbedEdit | null, from 
   const sized = image || (!!path && !note && kindOf(path) !== "audio")
   const anchor = note ? splitAnchor(target)[1] : ""
   const own: MenuItem[] = [
+    ...(image && path ? [{ label: "Look closer", icon: ZoomIn, run: () => openViewer({ path }) }] : []),
     ...(image ? [{ label: "Copy image", icon: Copy, run: () => copyImage(path ? rawUrl(path) : target) }] : []),
     ...(edit?.writable ? [
+      ...(image ? [{ label: "Show Markdown", icon: Code, run: edit.source }] : []),
       ...(sized ? [{ label: "Reset size", icon: Scaling, disabled: !edit.size, run: () => edit.resize(null) }] : []),
       { label: "Remove embed", icon: Eraser, run: edit.remove },
     ] : []),

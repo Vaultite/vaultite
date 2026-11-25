@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Globe, Pause, Play } from "lucide-react"
-import { Bar, Button, cn, dateText, ink, notifyError, openWebLink, usePaneTopBar } from "@vaultite"
+import { Bar, Button, cn, dateText, ink, notifyError, openWebLink, usePaneTopBar, viewImage } from "@vaultite"
 import { hostOf } from "./address"
 import { SiteIcon } from "./icons"
 import { replays, type ReplayKeys } from "./replaykeys"
@@ -148,8 +148,8 @@ function Stage({ run, steps, at }: { run: string; steps: Step[] | null; at: numb
     <div className="relative min-h-[160px] min-w-0 flex-1 bg-foreground/[0.025]" data-web-replay-stage>
       {src && (
         <div className="absolute inset-3 flex items-center justify-center @3xl:inset-5">
-          <img src={src} alt={s ? said(s) : ""} draggable={false}
-            className={cn("max-h-full max-w-full rounded-[8px] object-contain shadow-[0_4px_24px_rgb(0_0_0/0.10)] ring-[0.5px] ring-border transition-opacity duration-150",
+          <img src={src} alt={s ? said(s) : ""} draggable={false} onClick={(e) => viewImage(e.currentTarget)}
+            className={cn("max-h-full cursor-zoom-in max-w-full rounded-[8px] object-contain shadow-[0_4px_24px_rgb(0_0_0/0.10)] ring-[0.5px] ring-border transition-opacity duration-150",
               !own && "opacity-45 grayscale", !big && "blur-[0.5px]")} />
         </div>
       )}

@@ -52,6 +52,8 @@ export function kindName(path: string) {
   return ext ? `${up} file` : "File"
 }
 
+export const isVector = (path: string) => extOf(path) === "svg"
+
 /** "24 KB" */
 export function formatSize(n: number) {
   if (n < 1000) return `${plural(n, "byte")}`

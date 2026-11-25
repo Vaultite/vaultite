@@ -1,6 +1,6 @@
 import { createContext, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { Brain, ChevronRight, CircleAlert, FileText, Folder, Globe, ListTodo, Pencil, Search, SquareTerminal, Bot, Wrench, LoaderCircle, FilePlus } from "lucide-react"
-import { cn, Markdown, moves, plural } from "@vaultite"
+import { cn, Markdown, moves, openViewer, plural } from "@vaultite"
 import type { Entry } from "./chatlog"
 import { ClaudeIcon, ClaudeWorking } from "./ClaudeIcon"
 import { type Driven } from "./driven"
@@ -207,15 +207,14 @@ function Words({ text, live }: { text: string; live: boolean }) {
 }
 
 export function UserMessage({ e, Message }: { e: User; Message?: Driven["Message"] }) {
-  const [big, setBig] = useState<number | null>(null)
   return (
     <div className="flex flex-col items-end gap-1.5" data-entry="user">
       {!!e.images?.length && (
         <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5" data-images>
           {e.images.map((im, n) => (
-            <button key={n} type="button" onClick={() => setBig(big === n ? null : n)} aria-label={big === n ? "Show smaller" : "Show larger"}
-              className="cursor-zoom-in overflow-hidden rounded-card border-[0.5px] border-border bg-muted" aria-pressed={big === n}>
-              <img src={im.src} alt="" draggable={false} className={cn("chat-thumb block object-cover", big === n ? "h-auto max-h-[60vh] max-w-full" : "h-24 max-w-40")} />
+            <button key={n} type="button" onClick={() => openViewer({ name: "Picture", url: im.src })} aria-label="Look closer"
+              className="cursor-zoom-in overflow-hidden rounded-card border-[0.5px] border-border bg-muted">
+              <img src={im.src} alt="" draggable={false} className="chat-thumb block h-24 max-w-40 object-cover" />
             </button>
           ))}
         </div>

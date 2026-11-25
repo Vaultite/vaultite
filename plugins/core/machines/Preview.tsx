@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Wrench } from "lucide-react"
-import { get, machinePath, fmtAgo, dateText, Markdown, Loading, Empty, Bar, errorText } from "@vaultite"
+import { get, machinePath, fmtAgo, dateText, Markdown, Loading, Empty, Bar, errorText, viewImage } from "@vaultite"
 
 type Contents = { path: string; text?: string; base64?: string; truncated: boolean; size: number; mtime?: number | null }
 type Obj = Record<string, unknown>
@@ -11,6 +11,7 @@ const pre = "whitespace-pre-wrap break-words font-mono text-[13px] [overflow-wra
 const small = "inline-flex min-h-11 items-center rounded-lg px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground md:min-h-7"
 
 export const extOf = (p: string) => { const n = p.slice(p.lastIndexOf("/") + 1), i = n.lastIndexOf("."); return i > 0 ? n.slice(i + 1).toLowerCase() : "" }
+const nameOf = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 export const isImage = (p: string) => extOf(p) in IMAGES
 export function fmtSize(n: number) {
   if (n < 1024) return `${n} B`
@@ -56,21 +57,21 @@ export function FilePreview({ id, path, tick }: { id: string; path: string; tick
 
 function Body({ file, ext }: { file: Contents; ext: string }) {
   if (file.text !== undefined) return <pre className={`${pre} rounded-lg border border-border bg-card p-3`} data-file-content>{file.text}</pre>
-  if (IMAGES[ext] && !file.truncated) return <Picture src={`data:image/${IMAGES[ext]};base64,${file.base64}`} size={file.size} />
+  if (IMAGES[ext] && !file.truncated) return <Picture src={`data:image/${IMAGES[ext]};base64,${file.base64}`} size={file.size} name={nameOf(file.path)} />
   return <Empty>{IMAGES[ext] ? "Image too large to preview" : "Binary file"} · {fmtSize(file.size)}. {IMAGES[ext] ? "" : "Text preview is unavailable."}</Empty>
 }
 
 function Rich({ text, ext, file }: { text: string; ext: string; file: Contents }) {
-  if (ext === "svg") return <Picture src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`} size={file.size} />
+  if (ext === "svg") return <Picture src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`} size={file.size} name={nameOf(file.path)} />
   if (ext === "json") { const v = parseJson(text); return v === undefined ? <Body file={file} ext="" /> : <div className="rounded-lg border border-border bg-card p-3"><JsonNode value={v} depth={0} /></div> }
   if (ext === "jsonl" || ext === "ndjson") return <Lines text={text} />
   return <MarkdownFile text={text} />
 }
 
-function Picture({ src, size }: { src: string; size: number }) {
+function Picture({ src, size, name }: { src: string; size: number; name: string }) {
   const [dims, setDims] = useState("")
   return <figure className="space-y-2">
-    <img src={src} alt="" className="max-w-full rounded-lg border border-border" onLoad={(e) => setDims(`${e.currentTarget.naturalWidth} × ${e.currentTarget.naturalHeight}`)} />
+    <img src={src} alt={name} onClick={(e) => viewImage(e.currentTarget)} className="max-w-full cursor-zoom-in rounded-lg border border-border" onLoad={(e) => setDims(`${e.currentTarget.naturalWidth} × ${e.currentTarget.naturalHeight}`)} />
     <figcaption className="text-[13px] text-muted-foreground">{dims ? `${dims} · ` : ""}{fmtSize(size)}</figcaption>
   </figure>
 }

@@ -35,7 +35,7 @@ async function drawPele(el: HTMLElement, d: Diagram) {
   if (diagrams.get(el) !== d || d.src !== src) return
   if (d.mounted) { d.mounted.update(src); return }
   el.textContent = ""
-  d.mounted = p.mount(el, src, { fontSize: 14, onError: () => void drawMermaid(el, d) })
+  d.mounted = p.mount(el, src, { fontSize: 14, zoom: false, onError: () => void drawMermaid(el, d) })
 }
 
 async function drawMermaid(el: HTMLElement, d: Diagram) {
@@ -183,7 +183,28 @@ function fallbackCopy(text: string) {
   return ok
 }
 
-export function richClick(e: { target: EventTarget | null; preventDefault: () => void; stopPropagation: () => void }, root: HTMLElement) {
+let pictureClick = (_target: EventTarget | null, _root: HTMLElement) => false
+export const setPictureClick = (fn: typeof pictureClick) => { pictureClick = fn }
+
+type RichClick = { target: EventTarget | null; preventDefault: () => void; stopPropagation: () => void }
+
+function footnoteClick(t: Element | null, root: HTMLElement) {
+  const ref = t?.closest?.<HTMLElement>("[data-footnote]")
+  if (ref && root.contains(ref)) {
+    const def = [...root.querySelectorAll<HTMLElement>("[data-footnote-def]")].find((d) => d.dataset.footnoteDef === ref.dataset.footnote)
+    if (def) { def.scrollIntoView({ block: "center", behavior: glide() }); flash(def) }
+    return true
+  }
+  const back = t?.closest?.<HTMLElement>("[data-footnote-back]")
+  if (back && root.contains(back)) {
+    const r = [...root.querySelectorAll<HTMLElement>("[data-footnote]")].find((d) => d.dataset.footnote === back.dataset.footnoteBack)
+    if (r) { r.scrollIntoView({ block: "center", behavior: glide() }); flash(r) }
+    return true
+  }
+  return false
+}
+
+export function richClick(e: RichClick, root: HTMLElement) {
   const t = elementOf(e.target)
   const copy = t?.closest<HTMLElement>("[data-copy]")
   if (copy && root.contains(copy)) {
@@ -191,21 +212,9 @@ export function richClick(e: { target: EventTarget | null; preventDefault: () =>
     copyCode(copy, copy.closest(".md-code")?.querySelector("pre")?.textContent ?? "")
     return true
   }
-  const ref = t?.closest?.<HTMLElement>("[data-footnote]")
-  if (ref && root.contains(ref)) {
-    e.preventDefault(); e.stopPropagation()
-    const def = [...root.querySelectorAll<HTMLElement>("[data-footnote-def]")].find((d) => d.dataset.footnoteDef === ref.dataset.footnote)
-    if (def) { def.scrollIntoView({ block: "center", behavior: glide() }); flash(def) }
-    return true
-  }
-  const back = t?.closest?.<HTMLElement>("[data-footnote-back]")
-  if (back && root.contains(back)) {
-    e.preventDefault(); e.stopPropagation()
-    const r = [...root.querySelectorAll<HTMLElement>("[data-footnote]")].find((d) => d.dataset.footnote === back.dataset.footnoteBack)
-    if (r) { r.scrollIntoView({ block: "center", behavior: glide() }); flash(r) }
-    return true
-  }
-  return false
+  if (!footnoteClick(t, root) && !pictureClick(t, root)) return false
+  e.preventDefault(); e.stopPropagation()
+  return true
 }
 
 function flash(el: HTMLElement) {

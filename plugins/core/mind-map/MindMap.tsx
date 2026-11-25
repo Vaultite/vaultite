@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
+import { flushSync } from "react-dom"
+import { usePageZoom } from "@vaultite"
 import type { MindNode } from "./tree"
 
 const ROW = 30, GAP = 44, PAD = 10, MAX_W = 260, MARGIN = 16, H = 24
@@ -47,20 +49,23 @@ function layout(root: MindNode, shut: Set<number>, depth: number) {
 }
 const count = (n: MindNode): number => n.children.reduce((s, c) => s + 1 + count(c), 0)
 
+function withToggled(shut: Set<number>, line: number) {
+  const s = new Set(shut)
+  if (!s.delete(line)) s.add(line)
+  return s
+}
+
 export function MindMap({ root, path, depth = 9, onGo, height }: { root: MindNode; path: string; depth?: number; onGo: (line: number) => void; height?: number }) {
   const [, redraw] = useState(0)
   const shut = folded.get(path) ?? new Set<number>()
   const { all, width, height: h } = useMemo(() => layout(root, shut, depth), [root, depth, shut.size, [...shut].join()])
-  const toggle = (line: number) => {
-    const s = new Set(shut)
-    if (!s.delete(line)) s.add(line)
-    folded.set(path, s)
-    redraw((n) => n + 1)
-  }
+  const toggle = (line: number) => { folded.set(path, withToggled(shut, line)); redraw((n) => n + 1) }
   const W = width + MARGIN * 2 + 24, Hh = h + MARGIN * 2
+  const box = useRef<HTMLDivElement>(null), [zoom, setZoom] = useState(1)
+  usePageZoom(box, (z) => flushSync(() => setZoom(z)), !height)
   return (
-    <div className="overflow-auto" style={height ? { height } : undefined} data-mind-map>
-      <svg width={W} height={Hh} viewBox={`${-MARGIN} ${-MARGIN - ROW / 2} ${W} ${Hh}`} className="block min-w-full" role="tree" aria-label={`Mind map of ${root.text}`}
+    <div ref={box} className="overflow-auto" style={height ? { height } : undefined} data-mind-map>
+      <svg width={W * zoom} height={Hh * zoom} viewBox={`${-MARGIN} ${-MARGIN - ROW / 2} ${W} ${Hh}`} className="block min-w-full" role="tree" aria-label={`Mind map of ${root.text}`}
         style={{ minHeight: height ? height - 2 : undefined }}>
         {all.flatMap((p) => p.kids.map((c) => {
           const a = p.x + p.w, m = (a + c.x) / 2

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react"
-import { linkClick, Loading, openWebLink } from "@vaultite"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { linkClick, Loading, openWebLink, usePageZoom } from "@vaultite"
 import { disarmLinks, DRAWN, linkOf } from "./untrusted"
 
 const STYLE = `
@@ -8,8 +8,22 @@ const STYLE = `
   .docx-wrapper > section.docx { box-shadow: 0 0 0 0.5px var(--border), 0 2px 14px color-mix(in srgb, var(--foreground) 8%, transparent) !important; margin-bottom: 16px !important; }
 `
 
+function useFitPages(keys: boolean) {
+  const host = useRef<HTMLDivElement>(null), pages = useRef<HTMLDivElement>(null), zoom = useRef(1)
+  const refit = useCallback(() => { const el = host.current, b = el?.shadowRoot?.lastElementChild; if (el && b instanceof HTMLElement) fit(el, b, zoom.current) }, [])
+  usePageZoom(pages, (z) => { zoom.current = z; refit() }, keys)
+  useEffect(() => {
+    const el = host.current
+    if (!el) return
+    const ro = new ResizeObserver(refit)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [refit])
+  return { host, pages, refit }
+}
+
 export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
-  const host = useRef<HTMLDivElement>(null)
+  const { host, pages, refit } = useFitPages(!embed)
   const [state, setState] = useState<"loading" | "ok" | string>("loading")
   useEffect(() => {
     const el = host.current
@@ -32,18 +46,11 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
       if (!on) return
       for (const st of body.querySelectorAll("style")) st.textContent = bullets(st.textContent ?? "")
       disarmLinks(body)
-      fit(el, body)
+      refit()
       setState("ok")
     })().catch((e) => { if (on) setState(String(e?.message ?? e)) })
     return () => { on = false }
-  }, [url])
-  useEffect(() => {
-    const el = host.current
-    if (!el) return
-    const ro = new ResizeObserver(() => { const b = el.shadowRoot?.lastElementChild; if (b instanceof HTMLElement) fit(el, b) })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  }, [url, host, refit])
   const click = (e: React.MouseEvent) => {
     const a = e.nativeEvent.composedPath().find((n): n is HTMLAnchorElement => n instanceof HTMLAnchorElement)
     if (!a) return
@@ -54,7 +61,7 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     else if (link?.to === "place") host.current?.shadowRoot?.getElementById(decodeURIComponent(link.id))?.scrollIntoView({ block: "start" })
   }
   return (
-    <div className={embed ? "max-h-[520px] overflow-auto" : undefined}>
+    <div ref={pages} className={embed ? "max-h-[520px] overflow-auto" : "overflow-x-auto"}>
       {state === "loading" && <Loading />}
       {state !== "loading" && state !== "ok" && <p className="p-4 text-[15px] text-muted-foreground">This document couldn't be read: {state}.</p>}
       <div ref={host} onClick={click} data-docx className="select-text" />
@@ -67,11 +74,14 @@ const SYMBOLS: Record<string, string> = { "\uf0b7": "•", "\uf0a7": "▪", "\uf
 const bullets = (css: string) => css.replace(/content:\s*"([^"]*)"/g, (all, text: string) =>
   /[\uf020-\uf0ff]/.test(text) ? `content: "${text.replace(/[\uf020-\uf0ff]/g, (c) => SYMBOLS[c] ?? "•")}"` : all)
 
-function fit(host: HTMLElement, body: HTMLElement) {
+function fit(host: HTMLElement, body: HTMLElement, zoom: number) {
   const page = body.querySelector<HTMLElement>("section.docx")
   const wrapper = body.querySelector<HTMLElement>(".docx-wrapper")
   if (!page || !wrapper) return
   wrapper.style.zoom = ""
   const room = host.clientWidth, need = page.offsetWidth + 16
-  if (room > 0 && need > room) wrapper.style.zoom = String(room / need)
+  if (room <= 0) return
+  const k = Math.min(1, room / need) * zoom
+  wrapper.style.zoom = k === 1 ? "" : String(k)
+  wrapper.style.width = k * need > room ? "max-content" : ""
 }

@@ -10,6 +10,7 @@ import type { Act, Shown } from "./index"
 import { HOLD } from "./hold"
 import { trackSoon } from "../core/unsaved"
 import { closestOf } from "@/core/dom"
+import { PanZoom } from "../core/panzoomer"
 
 const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
 
@@ -408,9 +409,19 @@ function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { typ
 const LOAD_MS = 15_000, ROUNDS = 3
 
 function Lightbox({ m, close }: { m: Media; close: () => void }) {
+  const box = useRef<HTMLButtonElement>(null), pic = useRef<HTMLImageElement>(null), zoom = useRef<PanZoom | null>(null)
+  useEffect(() => {
+    const el = box.current, img = pic.current
+    if (!el || !img) return
+    const z = zoom.current = new PanZoom(el, {
+      size: () => (img.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight } : null), pad: 56, taps: true, moves: () => !matchMedia("(prefers-reduced-motion: reduce)").matches,
+      paint: ({ k, x, y }) => { Object.assign(img.style, { width: `${img.naturalWidth * k}px`, height: `${img.naturalHeight * k}px`, transform: `translate(${x}px, ${y}px)`, visibility: "visible" }) },
+    })
+    return () => z.destroy()
+  }, [])
   return (
-    <button type="button" aria-label="Close the picture" data-lightbox {...HOLD} className="sd-lightbox pointer-events-auto fixed inset-0 grid cursor-zoom-out place-items-center" onClick={close}>
-      <img src={m.url} alt={m.caption ?? m.name ?? ""} draggable={false} className="max-h-[88vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" />
+    <button ref={box} type="button" aria-label="Close the picture" data-lightbox {...HOLD} className="sd-lightbox pointer-events-auto fixed inset-0 cursor-zoom-out overflow-hidden" onClick={() => (zoom.current?.zoomed ? zoom.current.fit() : close())}>
+      <img ref={pic} src={m.url} alt={m.caption ?? m.name ?? ""} draggable={false} onLoad={() => zoom.current?.refresh()} className="invisible absolute top-0 left-0 max-w-none rounded-lg shadow-2xl" />
       {m.caption && <span className="sd-lightbox-caption">{m.caption}</span>}
     </button>
   )

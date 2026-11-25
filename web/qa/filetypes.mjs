@@ -131,7 +131,7 @@ const ok = (name, v) => { out[name] = v }
   ok("imgLoaded", await page.evaluate(() => document.querySelector("[data-image-view] img")?.naturalWidth ?? 0))
   ok("imgStatus", await status())
   await page.locator("[data-image-view] img").click(); await ui.idle()
-  ok("imgZoom", await page.locator("[data-image-view] img[data-zoomed]").count())
+  ok("imgZoom", await page.locator("[data-image-view] [data-zoomed]").count())
   await shot("image")
   await open("logo.svg")
   ok("svgLoaded", await page.evaluate(() => document.querySelector("[data-image-view] img")?.naturalWidth ?? 0))
