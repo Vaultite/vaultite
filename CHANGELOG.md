@@ -15,7 +15,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   another site gets them only when its page allows it, as in Chrome.
 - Companion and dictation: a key bumped while you hold the Talk key or a dictation key (fn beside Control, Shift, a letter)
   no longer drops what you said or stops it listening: it goes on till you let go. Only a shortcut (a key at once, or with
-  nothing said) and Esc cancel it.
+  nothing said) and Esc cancel it. Option then Control talks on a busy Mac too.
 - Companion: a task you hand over with Do it is yours, not its answer: it no longer takes your last ask's words into the
   job or shows in the talk as what the companion said, nor does an edit it let pass.
 - Server: a Claude Code process that quits before it reads what it was asked no longer takes the server down with it.

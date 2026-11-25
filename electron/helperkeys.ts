@@ -36,7 +36,7 @@ let slipped = ""
 /** A chord (⌃⌥, fn⌃): the companion's if it's a Talk key, else dictation's, as a key's press and release. */
 export function chordHeard(m: Extract<ScreenEvent, { event: "chord" }>) {
   const t = m.t === undefined ? {} : { t: m.t }, name = m.name, e: FnEvent = m.other ? { other: m.other, ...t } : { down: m.on, ...t }
-  if (!m.other && m.on) slipped = mods.talking(Date.now()) ? name : ""
+  if (!m.other && m.on) slipped = mods.talking(m.t ?? Date.now()) ? name : ""
   if (slipped === name) return
   if (prefs.talk.includes(name)) {
     if (!m.other && m.on) takeBackDictation()

@@ -443,31 +443,34 @@ const held = new Set<Key>()
 let live = false
 /** One key pressed or let go, as screen.swift sends it: a watched key's own event (alone or not), else "something
  *  else" once a watched one was heard; then the chord's state. */
-function press(k: Key, on: boolean) {
+function press(k: Key, on: boolean, t: number) {
   const code = { ctrl: CTRL, ropt: ROPT, lopt: LOPT }[k]
   if (on) held.add(k); else held.delete(k)
-  if (code === ROPT) { live = true; H.heard({ event: "mod", code, on, alone: on && held.size === 1, at: Date.now() }) }
+  if (code === ROPT) { live = true; H.heard({ event: "mod", code, on, alone: on && held.size === 1, at: t }) }
   else if (live) { live = false; H.heard({ event: "mod", other: "modifier" }) }
   const chordOn = held.has("ctrl") && (held.has("ropt") || held.has("lopt")) && held.size === 2
-  if (chordOn !== chordWas) H.heard({ event: "chord", name: "control_option", on: chordOn })
+  if (chordOn !== chordWas) H.heard({ event: "chord", name: "control_option", on: chordOn, t })
   chordWas = chordOn
 }
 let chordWas = false
-const orders: [string, [Key, boolean, number][]][] = [
+const orders: [string, [Key, boolean, number][], number?][] = [
   ["⌃ then right ⌥, ⌥ let go first", [["ctrl", true, 30], ["ropt", true, 600], ["ropt", false, 30], ["ctrl", false, 300]]],
   ["⌃ then right ⌥, ⌃ let go first", [["ctrl", true, 30], ["ropt", true, 600], ["ctrl", false, 30], ["ropt", false, 300]]],
   ["right ⌥ then ⌃ at once", [["ropt", true, 60], ["ctrl", true, 600], ["ropt", false, 30], ["ctrl", false, 300]]],
   ["right ⌥, a moment, then ⌃", [["ropt", true, 320], ["ctrl", true, 600], ["ctrl", false, 30], ["ropt", false, 300]]],
+  ["right ⌥, a moment, then ⌃, heard late", [["ropt", true, 320], ["ctrl", true, 600], ["ctrl", false, 30], ["ropt", false, 300]], 500],
   ["⌃ then left ⌥", [["ctrl", true, 30], ["lopt", true, 600], ["lopt", false, 30], ["ctrl", false, 300]]],
   ["left ⌥ then ⌃", [["lopt", true, 30], ["ctrl", true, 600], ["ctrl", false, 30], ["lopt", false, 300]]],
 ]
 /** Whether a dictation press reached the page and wasn't taken back (a down with no "other" after it). */
 const dictated = (got: unknown[]) => { let open = false; for (const m of got as { down?: boolean; other?: boolean }[]) { if (m.down === true) open = true; else if (m.other) open = false } return open }
-for (const [name, steps] of orders) {
+for (const [name, steps, late = 0] of orders) {
+  let t = Date.now()
+  const step = async ([k, on, after]: [Key, boolean, number]) => { press(k, on, t); t += after; await wait(after + (k === "ropt" && on ? late : 0)) }
   // (in a window: its page gets nothing of the companion's press, nor a dictation left started; the companion listens)
   focused = { isDestroyed: () => false, send(ch, m) { if (ch === "vaultite:fn") this.got.push(m) }, got: [] }
   const inBefore = asks().length
-  for (const [k, on, after] of steps) { press(k, on); await wait(after); if (on && held.size === 2) check(`⌃⌥ in a window (${name}): the companion listens at the pointer`, await until(() => H.scene()!.summon?.state === "listening", 1000), H.scene()!.summon) }
+  for (const s of steps) { await step(s); if (s[1] && held.size === 2) check(`⌃⌥ in a window (${name}): the companion listens at the pointer`, await until(() => H.scene()!.summon?.state === "listening", 1000), H.scene()!.summon) }
   check(`⌃⌥ in a window (${name}): one ask to the companion, the page told nothing of it, no dictation left started`, await until(() => asks().length === inBefore + 1) &&
     !focused.got.some((m) => "talk" in (m as object)) && !dictated(focused.got), [focused.got, asks().length - inBefore])
   H.heard({ event: "esc" })
@@ -475,7 +478,8 @@ for (const [name, steps] of orders) {
   // (outside the app: the companion comes at the pointer; no field gets words)
   focused = null
   const before = asks().length
-  for (const [k, on, after] of steps) { press(k, on); await wait(after); if (on && held.size === 2) check(`⌃⌥ outside the app (${name}): the companion listens at the pointer`, await until(() => H.scene()!.summon?.state === "listening", 1000), H.scene()!.summon) }
+  t = Date.now()
+  for (const s of steps) { await step(s); if (s[1] && held.size === 2) check(`⌃⌥ outside the app (${name}): the companion listens at the pointer`, await until(() => H.scene()!.summon?.state === "listening", 1000), H.scene()!.summon) }
   check(`⌃⌥ outside the app (${name}): what was said goes to the companion, once`, await until(() => asks().length === before + 1), asks().slice(-1))
   H.heard({ event: "esc" })
   await wait(300)
