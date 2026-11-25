@@ -58,6 +58,9 @@ export default async ($: VaultTest) => {
     check("knocks: past its life it expires and never comes", old.every((k) => k.state === "expired") && K.pick(old, pause({ now: T + 600_001 })) === null)
     const two = K.addKnock([mk("x", "normal", T, "claude-1")], mk("y", "normal", T + 1, "claude-1"), () => false)
     check("knocks: a session's new knock replaces its last", two.find((k) => k.id === "x")?.state === "expired" && two.find((k) => k.id === "y")?.state === "waiting")
+    const inbox = (id: string, open = "view:inbox") => K.makeKnock({ id, from: "", who: "Inbox", line: id, open }, T)
+    const asked = K.addKnock([inbox("four"), inbox("other", "Notes/A.md"), mk("z1", "normal")], inbox("five"), () => false)
+    check("knocks: from no session, a new one opening the same replaces its last, no other", asked.map((k) => `${k.id}:${k.state}`).join() === "four:expired,other:waiting,z1:waiting,five:waiting", asked)
     const muted = K.addKnock([], mk("z", "high", T, "claude-2"), (f) => f === "claude-2")
     check("knocks: a muted session's knocks come ignored", muted[0].state === "ignored")
     let bad = ""

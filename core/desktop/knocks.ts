@@ -46,8 +46,9 @@ export function makeKnock(p: { id: string; from: string; who: string; line: stri
   return k
 }
 
+const sameAsker = (x: Knock, k: Knock) => x.from === k.from && (!!k.from || (!!k.open && x.open === k.open && x.who === k.who))
 export function addKnock(ks: Knock[], k: Knock, muted: (from: string) => boolean): Knock[] {
-  const out = ks.map((x) => (k.from && x.from === k.from && !over(x) ? { ...x, state: "expired" as const } : x))
+  const out = ks.map((x) => (sameAsker(x, k) && !over(x) ? { ...x, state: "expired" as const } : x))
   out.push(k.from && muted(k.from) ? { ...k, state: "ignored" } : k)
   return out
 }
