@@ -1,4 +1,4 @@
-import { Compartment, Prec, type Extension } from "@codemirror/state"
+import { Compartment, EditorSelection, findClusterBreak, Prec, type EditorState, type Extension } from "@codemirror/state"
 import { EditorView, ViewPlugin } from "@codemirror/view"
 import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirror/language"
 import { beginKeys, followLink, getStore, isMac, linksIn, logError, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
@@ -235,6 +235,26 @@ function appKey(view: EditorView, e: KeyboardEvent, getCM: VimModule["getCM"]) {
   return runShortcut(e)
 }
 
+function pastLineEndsOntoLastLetter(state: EditorState): EditorSelection | null {
+  const { doc, selection } = state
+  let moved = false
+  const ranges = selection.ranges.map((r) => {
+    const line = doc.lineAt(r.head)
+    if (!r.empty || !line.length || r.head !== line.to) return r
+    moved = true
+    return EditorSelection.cursor(line.from + findClusterBreak(line.text, line.length, false))
+  })
+  return moved ? EditorSelection.create(ranges, selection.mainIndex) : null
+}
+const blockOnALetter = (getCM: VimModule["getCM"]) => ViewPlugin.define((view) => {
+  const clip = () => {
+    const vim = getCM(view)?.state.vim
+    const to = vim && !vim.insertMode && !vim.visualMode ? pastLineEndsOntoLastLetter(view.state) : null
+    if (to) view.dispatch({ selection: to, userEvent: "select.vim" })
+  }
+  return { update(u) { if (u.selectionSet || u.docChanged) queueMicrotask(clip) } }
+})
+
 let parts: Extension | null = null
 async function vimParts(): Promise<Extension> {
   if (parts) return parts
@@ -246,6 +266,7 @@ async function vimParts(): Promise<Extension> {
       e.preventDefault(); return true
     } })),
     vim({ status: false }),
+    blockOnALetter(getCM),
     theme,
     ViewPlugin.define((view) => {
       const cm = getCM(view)
