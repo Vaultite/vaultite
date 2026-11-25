@@ -1,9 +1,12 @@
 // An update's install (electron/update.sh install) on throwaway bundles: staged and checked beside the app, swapped in
 // once it quit and nothing opened it again, then opened (a stand-in: no real app starts, quits or shows). In npm test.
-import { spawn, type ChildProcess } from "node:child_process"
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
+import http from "node:http"
 import path from "node:path"
-import { check, exit, modesEnforced, section, sleep, standIn, summary, tempDir } from "./test/lib.ts"
+import { check, exit, freePort, modesEnforced, section, sleep, standIn, summary, tempDir } from "./test/lib.ts"
+import { gitEnv } from "../core/gitenv.ts"
+import { removeReadOnly, writable } from "../core/update/store.ts"
 import { afterUpdate, installedCommit } from "../electron/installed.ts"
 
 const t0 = Date.now()
@@ -59,6 +62,13 @@ try { commit = JSON.parse(fs.readFileSync(app + "/" + b + "/electron/build.json"
 fs.appendFileSync(${JSON.stringify(opened)}, JSON.stringify({ app, commit, leftNew: fs.existsSync(app + ".new"), leftOld: fs.existsSync(app + ".old") }) + "\\n")`)
 const opens = () => (fs.existsSync(opened) ? fs.readFileSync(opened, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [])
 
+function readOnlyCache(app: string) {
+  const cache = path.join(app, RES, ".compile-cache", "v24")
+  fs.mkdirSync(cache, { recursive: true })
+  fs.writeFileSync(path.join(cache, "a1b2"), "code")
+  for (const p of [path.join(cache, "a1b2"), cache, path.dirname(cache)]) fs.chmodSync(p, 0o555)
+}
+
 type Install = { child: ChildProcess; staged: Promise<boolean>; done: Promise<number | null>; log: () => string; events: string[] }
 /** update.sh install for the app `pid` stands for: the old app installed, the new build in update.noindex. */
 let n = 0
@@ -66,9 +76,8 @@ function install(o: { next?: string; build?: string; omit?: string; print?: stri
   const dir = path.join(tmp, `case-${++n}`), apps = path.join(dir, "Applications"), next = path.join(dir, "update.noindex")
   fs.mkdirSync(apps, { recursive: true })
   makeBuild(bundle(apps), OLD)
-  const cache = path.join(bundle(apps), RES, ".compile-cache", "v24")
-  if (o.cached) { fs.mkdirSync(cache, { recursive: true }); fs.writeFileSync(path.join(cache, "a1b2"), "code"); for (const p of [path.join(cache, "a1b2"), cache, path.dirname(cache)]) fs.chmodSync(p, 0o555) }
   makeBuild(bundle(next), o.build ?? NEW, { omit: o.omit, print: o.print })
+  if (o.cached) for (const at of [bundle(apps), bundle(next), `${bundle(apps)}.new`, `${bundle(apps)}.old`]) readOnlyCache(at)
   fs.writeFileSync(path.join(next, "commit"), `${o.next ?? NEW}\n`)
   fs.rmSync(opened, { force: true })
   const env: NodeJS.ProcessEnv = { ...process.env, VAULTITE_UPDATE_OPEN: OPEN }
@@ -101,6 +110,54 @@ await section("staged, swapped in once the app quit, then opened", async () => {
   const o = opens()
   check("it's opened once, after the swap was done", o.length === 1 && o[0].commit === NEW && !o[0].leftNew && !o[0].leftOld, o)
   check("the log says what it installed", i.log().includes(`installed ${NEW}`), i.log())
+})
+
+await section("update.sh build over builds whose compile cache is read-only", async () => {
+  const dir = path.join(tmp, "builds"), repo = path.join(dir, "repo"), src = path.join(dir, "source.noindex"), next = path.join(dir, "update.noindex")
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", ...args], { cwd: repo, encoding: "utf8", stdio: "pipe", env: gitEnv() }).trim()
+  const at = `dist-app/${MAC ? `mac-arm64/${NAME}.app` : "linux-unpacked"}`
+  const offlineDeps = { dependencies: { lamp: "file:lamp" } }
+  const files = { "package.json": JSON.stringify({ name: "lighthouse", version: "1.0.0", productName: NAME, scripts: { "app:build": "node build.mjs" }, ...offlineDeps }),
+    "package-lock.json": JSON.stringify({ name: "lighthouse", version: "1.0.0", lockfileVersion: 3, packages: { "": { name: "lighthouse", version: "1.0.0", ...offlineDeps }, lamp: { version: "1.0.0" }, "node_modules/lamp": { resolved: "lamp", link: true } } }),
+    "lamp/package.json": JSON.stringify({ name: "lamp", version: "1.0.0" }),
+    ".gitignore": "node_modules\ndist-app\n", "electron/sign.cjs": "// EnableCookieEncryption\n",
+    "build.mjs": `import fs from "node:fs"
+const app = ${JSON.stringify(`${at}/${RES}`)}, cache = app + "/.compile-cache/v24"
+fs.mkdirSync(cache, { recursive: true })
+fs.copyFileSync("package.json", app + "/package.json")
+fs.writeFileSync(cache + "/a1b2", "code")
+for (const p of [cache + "/a1b2", cache, app + "/.compile-cache"]) fs.chmodSync(p, 0o555)
+if (fs.existsSync("FAIL")) process.exit(1)
+` }
+  for (const d of ["electron", "lamp"]) fs.mkdirSync(path.join(repo, d), { recursive: true })
+  for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(repo, f), text)
+  git("init", "--quiet", "-b", "main")
+  const commit = (msg: string, fail: boolean) => {
+    if (fail) fs.writeFileSync(path.join(repo, "FAIL"), ""); else fs.rmSync(path.join(repo, "FAIL"), { force: true })
+    git("add", "-A"); git("commit", "--quiet", "--allow-empty", "-m", msg)
+    return git("rev-parse", "HEAD")
+  }
+  const build = () => { const r = spawnSync(SHELL, [SCRIPT, "build", src, repo, OLD], { encoding: "utf8", env: gitEnv() }); return { code: r.status, last: r.stdout.trim().split("\n").pop(), out: r.stdout + r.stderr } }
+  const has = (c: string) => fs.existsSync(path.join(bundle(next), RES, ".compile-cache/v24/a1b2")) && fs.readFileSync(path.join(next, "commit"), "utf8").trim() === c
+  const one = commit("first", false), a = build()
+  check("the first build is in update.noindex, its cache read-only", a.code === 0 && a.last === one && has(one), a)
+  const two = commit("second", false), b = build()
+  check("the next replaces it", b.code === 0 && b.last === two && has(two), b)
+  commit("third", true)
+  const c = build()
+  check("one that fails after it was packed leaves the last as it was", c.code !== 0 && has(two) && fs.existsSync(path.join(src, at)), c)
+  const four = commit("fourth", false), d = build()
+  check("...and the next goes in over what it left", d.code === 0 && d.last === four && has(four), d)
+})
+
+await section("a tree with read-only folders is deleted (core/update/store.ts)", async () => {
+  const app = path.join(tmp, "read-only", bundle(""))
+  readOnlyCache(app)
+  if (modesEnforced) check("rmSync alone can't", (() => { try { fs.rmSync(app, { recursive: true, force: true }); return false } catch { return fs.existsSync(app) } })())
+  removeReadOnly(app)
+  check("removeReadOnly does", !fs.existsSync(app))
+  removeReadOnly(app)
+  check("...and nothing there is fine", !fs.existsSync(app))
 })
 
 await section("a copy that isn't the build is never staged", async () => {
@@ -328,6 +385,74 @@ await section("the app's updates as one machine: each event's move and effects (
     && JSON.stringify(offerMessage({ commit: "web/src changed", how: "worktree", behind: null, restart: { kind: "offered" } }, "L", false)) === JSON.stringify({ type: "update", text: "web/src changed: relaunch to run them", label: "Relaunch" }))
 })
 
+await section("a background update that fails: kept, counted and told once (electron/updatelogic.ts)", async () => {
+  const { START, step, buildFailure, describe, failed, failedMessage, FAILURES_TOLD_AFTER } = await import("../electron/updatelogic.ts")
+  type U = typeof START
+  type E = Parameters<typeof step>[1]
+  const C = "c".repeat(40), D = "d".repeat(40)
+  const play = (events: E[], from: U = START) => events.reduce<{ s: U; told: string[] }>(({ s, told }, e) => {
+    const r = step(s, e)
+    return { s: r.to, told: [...told, ...r.do.flatMap((d) => (d.kind === "failed" ? [d.tell] : []))] }
+  }, { s: from, told: [] })
+  const started = (byHand: boolean): E[] => [{ type: "check", byHand, via: "build", off: false, recent: false }, { type: "pinned", want: "" }]
+  const ended = (code: number | null, out: string, quitting = false): E => ({ type: "built", code, out, built: code === 0 ? C : null, quitting })
+  const building: E = { type: "building", commit: C }, noticed: E = { type: "noticed" }
+  const fails = (out = "npm ERR!", code: number | null = 1) => [...started(false), building, ended(code, out)]
+  const offline = [...started(false), ended(128, "fatal: unable to access 'https://github.com/': Could not resolve host: github.com")]
+  const works = [...started(false), building, ended(0, `${C}\n`)], current = [...started(false), ended(3, "")]
+  const times = (n: number, run: E[]) => Array.from({ length: n }, () => run).flat()
+  const counted = (events: E[]) => failed(play(events).s)?.times
+  const told = (events: E[], from?: U) => play(events, from).told.join(" ")
+
+  for (const line of ["rm: dist-app/mac-arm64/L.app/a1b2: Permission denied", "rm: cannot remove 'dist-app/a1b2': Permission denied", "mv: rename dist-app/mac-arm64/L.app to /u/L.app: Directory not empty"]) {
+    check(`its reason: ${line.slice(0, 20)}…`, buildFailure(`@building ${C}\n${line}\n`).startsWith("The last build couldn't be deleted (Permission denied)"))
+  }
+  const one = play(fails())
+  check("one: nobody told, and the log's line says it failed and why", one.told.length === 0 && describe(one.s) === "idle, failed (1 in a row): The new version didn't build.", describe(one.s))
+  const several = play(times(FAILURES_TOLD_AFTER, fails()))
+  check(`${FAILURES_TOLD_AFTER} in a row: a notice, no dialog`, several.told.join() === "notice", several.told)
+  check("...saying the app, its machine, how often and why", failedMessage(several.s, "Lighthouse", "studio") === "Lighthouse on studio couldn't update 3 times in a row. The new version didn't build.")
+  check("...given again at the next when no vault took it", told(fails(), several.s) === "notice")
+  check("...never again once one did", told([noticed, ...times(5, fails())], several.s) === "")
+  for (const [what, run] of [["one that works", works], ["nothing newer", current]] as const) {
+    check(`${what} clears it, and the next failures are told anew`, counted([...fails(), ...run]) === undefined && told([noticed, ...run, ...times(FAILURES_TOLD_AFTER, fails())], several.s) === "notice")
+  }
+  const away = play(times(9, offline))
+  check("offline: kept as failed, never counted or told", describe(away.s) === "idle, failed: It couldn't reach the network." && !away.told.length, describe(away.s))
+  check("...npm's install offline too", counted(fails("npm error code ENOTFOUND\nnpm error network request failed")) === 0)
+  check("...and a fetch that stalled till it was stopped", counted([...started(false), ended(null, "")]) === 0)
+  check("...between two failures it neither counts nor clears", counted([...fails(), ...offline, ...fails()]) === 2)
+  check("a build's own words about a connection count", counted(fails("FAIL smoke: connection refused")) === 1)
+  check("...and a build stopped after its 45 minutes", counted(fails("", null)) === 1)
+  check("a build stopped as the app quits isn't a failure", counted([...started(false), building, ended(null, "", true)]) === undefined)
+  check("by hand: the dialog, so no notice after it", told([...started(true), ended(1, "x"), ...times(5, fails())]) === "dialog")
+  check("...one about the network only doesn't stand in for the notice", told([...started(true), offline[2], ...times(FAILURES_TOLD_AFTER, fails())]) === "dialog notice")
+
+  const store = (next: string, state = "failed"): E[] => [{ type: "check", byHand: false, via: "store", off: false, recent: false }, { type: "looked", state, why: "its new shell didn't build", next, quitting: false }]
+  check("the store's looks at one commit that failed: one failure", counted(times(9, store(C))) === 1)
+  check("...three commits: told", told([C, D, "e".repeat(40)].flatMap((n) => store(n))) === "notice")
+  check("...waiting changes nothing, current clears", counted([...store(C), ...store(D, "waiting")]) === 1 && counted([...store(C), ...store(D, "current")]) === undefined)
+})
+
+await section("updates that keep failing are told by one vault's server (electron/attached.ts)", async () => {
+  const { tellOneVault } = await import("../electron/attached.ts")
+  const asked: { url?: string; body: string }[] = [], logged: string[] = []
+  const servers: http.Server[] = []
+  const server = async (status: number) => {
+    const port = await freePort()
+    const s = http.createServer((q, r) => { let body = ""; q.on("data", (b) => (body += b)).on("end", () => { asked.push({ url: q.url, body }); r.writeHead(status).end("{}") }) })
+    servers.push(s)
+    await new Promise<void>((ok) => s.listen(port, "127.0.0.1", ok))
+    return port
+  }
+  const down = await server(503), up = await server(200), other = await server(200), all = [down, up, other]
+  const tell = (of: number[]) => tellOneVault(of, (l) => logged.push(l), "Lighthouse hasn't updated", "/logs/update.log")
+  check("the first server that takes it, and no other", await tell(all) && asked.length === 2 && asked.every((a) => a.url === "/api/ops/ui.notify"
+    && a.body === JSON.stringify({ text: "Lighthouse hasn't updated", error: true, actionOpen: "/logs/update.log" })), asked)
+  check("...none did: false, so it's told at the next failure, and the log says both", !await tell([down]) && !await tell([]) && logged.length === 3 && logged[0].includes("told the user"), logged)
+  for (const s of servers) { s.closeAllConnections(); s.close() }
+})
+
 await section("a Linux package the feed doesn't serve is its package manager's to update (electron/updatelogic.ts)", async () => {
   const { packageManaged } = await import("../electron/updatelogic.ts")
   check("the AUR's (pacman) is pacman's; the AppImage, the .deb and other systems update themselves", packageManaged("linux", "pacman")
@@ -372,4 +497,5 @@ await section("moved into Applications from its disk image: a copy already there
     /if \(![^\n]*\bdriven\b[^\n]*\) return false/.test(offer) && /const driven = !!process\.env\.VAULTITE_QUIET/.test(main))
 })
 
+writable(tmp, true)
 await exit(summary("update", t0))

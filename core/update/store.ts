@@ -139,13 +139,14 @@ export function writable(dir: string, on: boolean) {
   const walk = (p: string) => {
     const st = fs.lstatSync(p)
     if (st.isSymbolicLink()) return
-    if (st.isDirectory() && on) fs.chmodSync(p, st.mode | 0o200)
+    const mode = on ? st.mode | 0o200 : st.mode & ~0o222, set = () => { if (mode !== st.mode) fs.chmodSync(p, mode) }
+    if (on) set()
     if (st.isDirectory()) for (const n of fs.readdirSync(p)) walk(path.join(p, n))
-    fs.chmodSync(p, on ? st.mode | 0o200 : st.mode & ~0o222)
+    if (!on) set()
   }
   if (fs.existsSync(dir)) walk(dir)
 }
-function remove(dir: string) {
+export function removeReadOnly(dir: string) {
   if (!fs.existsSync(dir)) return
   writable(dir, true)
   fs.rmSync(dir, { recursive: true, force: true })
@@ -156,7 +157,7 @@ async function cloneDir(from: string, to: string, run: Exec) {
     else if (process.platform === "linux") await run("cp", ["-R", "--reflink=auto", from, to], { cwd: path.dirname(to) })
     else throw new Error("no cp")
   } catch {
-    fs.rmSync(to, { recursive: true, force: true })
+    removeReadOnly(to)
     fs.cpSync(from, to, { recursive: true, mode: fs.constants.COPYFILE_FICLONE, verbatimSymlinks: true })
   }
 }
@@ -217,9 +218,9 @@ export function rootStore(o: StoreOptions) {
     const blob = await git(["rev-parse", `${sha}:package-lock.json`])
     const at = path.join(deps, blob)
     if (fs.existsSync(path.join(at, ".ready"))) return { blob, at, made: false }
-    remove(at)
+    removeReadOnly(at)
     const tmp = path.join(deps, `.tmp-${blob}-${process.pid}`)
-    remove(tmp)
+    removeReadOnly(tmp)
     fs.mkdirSync(deps, { recursive: true })
     const near = fs.readdirSync(deps).filter((n) => /^[0-9a-f]{40}$/.test(n) && fs.existsSync(path.join(deps, n, ".ready")))
       .map((n) => ({ n, t: fs.statSync(path.join(deps, n, ".ready")).mtimeMs })).sort((a, b) => b.t - a.t)[0]
@@ -238,7 +239,7 @@ export function rootStore(o: StoreOptions) {
       fs.renameSync(tmp, at)
       writable(at, false)
       for (const c of CACHES) writable(path.join(at, "node_modules", c), true)
-    } catch (e) { remove(tmp); remove(at); throw e }
+    } catch (e) { removeReadOnly(tmp); removeReadOnly(at); throw e }
     log(`store: deps ${blob.slice(0, 7)} for ${sha.slice(0, 7)}${near ? ` (from ${near.n.slice(0, 7)})` : ""}`)
     return { blob, at, made: true }
   }
@@ -268,7 +269,7 @@ export function rootStore(o: StoreOptions) {
   const prepared = (sha: string): Root | null => { const m = metaOf(sha); return m && fs.existsSync(rootOf(sha)) ? m : null }
 
   async function drop(root: string) {
-    remove(root)
+    removeReadOnly(root)
     await git(["worktree", "prune"]).catch(() => {})
   }
 
@@ -357,7 +358,7 @@ export function rootStore(o: StoreOptions) {
       try { names = fs.readdirSync(roots) } catch { /* none */ }
       for (const n of names) if (!keep.has(n)) { await drop(path.join(roots, n)); fs.rmSync(path.join(dir, "meta", `${n}.json`), { force: true }); gone.push(n) }
       const used = new Set([...keep].map((s) => metaOf(s)?.deps).filter(Boolean))
-      try { for (const n of fs.readdirSync(deps)) if (!used.has(n)) { remove(path.join(deps, n)); gone.push(`deps/${n}`) } } catch { /* none */ }
+      try { for (const n of fs.readdirSync(deps)) if (!used.has(n)) { removeReadOnly(path.join(deps, n)); gone.push(`deps/${n}`) } } catch { /* none */ }
       if (gone.length) log(`store: removed ${gone.length} (${gone.map((g) => g.replace(/([0-9a-f]{7})[0-9a-f]{33}/, "$1")).join(", ")})`)
       return gone
     })

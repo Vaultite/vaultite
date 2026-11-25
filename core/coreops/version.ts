@@ -37,7 +37,7 @@ export function verdict(o: { given: string; full: string | null; parts: PartRuns
     if (app === "unknown") return not(true, `${pre}the desktop app runs it and didn't say how it updates (an older app)`)
     if (!app.available || app.mode === "off") return behind(not(true, `${pre}the desktop app's updates are off`), part, "never")
     if (app.mode === "notify") return behind(not(true, `${pre}the desktop app ${app.ready ? `has ${short(app.ready)} ready` : "offers updates"}: it runs once someone restarts the app`), part, "restart")
-    return behind(not(false, `${pre}the desktop app updates by itself${app.doing ? `: ${app.doing}` : app.ready ? `: ${short(app.ready)} ready, restarting when nobody's using it` : ""}`), part, "itself")
+    return behind(not(false, `${pre}the desktop app updates by itself${app.doing ? `: ${app.doing}` : app.ready ? `: ${short(app.ready)} ready, restarting when nobody's using it` : app.failed ? `, but failed: ${app.failed.why}` : ""}`), part, "itself")
   }
   // (only the desktop app's own processes behind: theirs are the desktop app's updates, even beside a service's)
   const app_ = lagging.filter((p) => p.id === "desktop" || p.id === "helper")
@@ -208,6 +208,8 @@ const processLine = (p: Process) => `${p.label}: ${p.commit ? `started on ${shor
 const appUpdates = (): Promise<AppUpdates | "unknown" | null> => !inDesktop() ? Promise.resolve(null)
   : desktopCall("app:updates", [], 5000).then((a) => { const r = AppUpdates.safeParse(a); return r.success ? r.data : "unknown" }, () => "unknown" as const)
 
+const failedLine = (f: AppUpdates["failed"]) => (f ? `; failed${f.times > 1 ? ` ${f.times} times in a row` : ""}: ${f.why}` : "")
+
 function updatesLine(u: UpdateStatus, app: AppUpdates | "unknown" | null) {
   if (u.branch) return `following ${u.branch}, ${u.state}: ${u.why}`
   if (!app) return "off (not a service install following a branch, nor in the desktop app)"
@@ -217,5 +219,5 @@ function updatesLine(u: UpdateStatus, app: AppUpdates | "unknown" | null) {
   const ready = app.ready ? `: ${app.ready.slice(0, 7)} ready, ${app.how === "relaunch" ? "relaunch to run it (a couple of seconds)" : "restart to update"}` : ""
   const store = app.store ? `; through its code store: ${app.store.state}, ${app.store.why}` : ""
   const root = app.root?.fellBack ? `; it fell back from ${app.root.fellBack.commit?.slice(0, 7) ?? "a root"} (${app.root.fellBack.why})` : ""
-  return `by the desktop app, ${app.mode}, from ${app.from}${app.doing ? `: ${app.doing}` : ready}${store}${root}`
+  return `by the desktop app, ${app.mode}, from ${app.from}${app.doing ? `: ${app.doing}` : ready}${failedLine(app.failed)}${store}${root}`
 }

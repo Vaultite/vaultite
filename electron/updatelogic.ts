@@ -22,8 +22,9 @@ type Restart =
   | { kind: "restarting" }
 
 export type Offer = { commit: string; how: How; behind: string | null; restart: Restart }
-export type Updates = { look: Look; offer: Offer | null }
-export const START: Updates = { look: { kind: "idle" }, offer: null }
+export type Failed = { timesButForTheNetwork: number; why: string; told: boolean; commit: string | null }
+export type Updates = { look: Look; offer: Offer | null; failed: Failed | null }
+export const START: Updates = { look: { kind: "idle" }, offer: null, failed: null }
 
 export type ReleaseOutcome = { kind: "current" } | { kind: "downloaded" } | { kind: "failed"; why: string }
 
@@ -33,7 +34,8 @@ export type UpdateEvent =
   | { type: "pin-failed" }
   | { type: "building"; commit: string }
   | { type: "built"; code: number | null; out: string; built: string | null; quitting: boolean }
-  | { type: "looked"; state: string | null; why: string; quitting: boolean }
+  | { type: "looked"; state: string | null; why: string; next?: string; quitting: boolean }
+  | { type: "noticed" }
   | { type: "release-found"; version: string }
   | { type: "release-looked"; outcome: ReleaseOutcome; quitting: boolean }
   | { type: "offered"; commit: string; how: How; again?: boolean; behind?: string | null }
@@ -54,11 +56,12 @@ export type Effect =
   | { kind: "note"; to: string }
   | { kind: "leave"; then: Leave }
   | { kind: "current"; current: Current }
-  | { kind: "failed"; why: string }
+  | { kind: "failed"; why: string; tell: "dialog" | "notice" }
 
 type Step = { to: Updates; do: Effect[]; ignored?: true }
 
 export const AWAY_S = 10 * 60
+export const FAILURES_TOLD_AFTER = 3
 export const PREPARING = "an update is being prepared"
 
 export function restartWaitsOn(s: { othersOpen: boolean; pages: number; safe: number; idle: number; talked: number; busy: string | null }): string | null {
@@ -107,25 +110,12 @@ function move(p: Updates, e: UpdateEvent): Step {
     case "building":
       if (p.look.kind !== "building") return refuse()
       return go(look({ ...p.look, to: e.commit }), { kind: "status" })
-    case "built": {
-      if (p.look.kind !== "building") return refuse()
-      const { byHand, want } = p.look
-      let s = go(look({ kind: "idle" }), { kind: "status" })
-      const last = e.out.trim().split("\n").pop()?.trim() ?? ""
-      if (e.code === 0 && last === e.built) { const o = offered(s.to, last, "install", byHand); s = { to: o.to, do: [...s.do, ...o.do] } }
-      else if (byHand && e.code === 3) s.do.push({ kind: "current", current: { via: "build", pinned: !!want } })
-      else if (byHand && !e.quitting && !going(s.to.offer)) s.do.push({ kind: "failed", why: buildFailure(e.out) })
-      if (s.to.offer && s.to.offer.commit !== e.built && !going(s.to.offer)) s = { ...s, to: { ...s.to, offer: null } }
-      s.do.push({ kind: "menu" })
-      return s
-    }
-    case "looked": {
-      if (p.look.kind !== "store") return refuse()
-      const byHand = p.look.byHand, d: Effect[] = []
-      if (byHand && e.state === "current" && !p.offer) d.push({ kind: "current", current: { via: "store", why: e.why } })
-      else if (byHand && e.state === "failed" && !e.quitting) d.push({ kind: "failed", why: sentence(e.why) })
-      return go(look({ kind: "idle" }), ...d, ...when(byHand, { kind: "status" }), { kind: "menu" }, ...when(p.offer?.restart.kind === "waiting", { kind: "weigh" }))
-    }
+    case "built":
+      return p.look.kind === "building" ? built(p, p.look, e) : refuse()
+    case "looked":
+      return p.look.kind === "store" ? looked(p, p.look.byHand, e) : refuse()
+    case "noticed":
+      return p.failed ? go({ ...p, failed: { ...p.failed, told: true } }) : stay()
     case "release-found":
       if (p.look.kind !== "release") return refuse()
       return go(look({ ...p.look, downloading: e.version }), { kind: "status" })
@@ -133,7 +123,7 @@ function move(p: Updates, e: UpdateEvent): Step {
       if (p.look.kind !== "release") return refuse()
       const byHand = p.look.byHand, d: Effect[] = []
       if (byHand && e.outcome.kind === "current") d.push({ kind: "current", current: { via: "release" } })
-      else if (byHand && e.outcome.kind === "failed" && !e.quitting) d.push({ kind: "failed", why: e.outcome.why })
+      else if (byHand && e.outcome.kind === "failed" && !e.quitting) d.push({ kind: "failed", why: e.outcome.why, tell: "dialog" })
       return go(look({ kind: "idle" }), ...d, { kind: "status" }, { kind: "menu" })
     }
     case "offered":
@@ -169,7 +159,7 @@ function move(p: Updates, e: UpdateEvent): Step {
       if (o?.restart.kind !== "staging") return refuse()
       if (e.ok) return go({ ...p, offer: { ...o, restart: { kind: "restarting" } } }, { kind: "leave", then: "quit" })
       return go({ ...p, offer: null }, { kind: "unnote" }, { kind: "status" }, { kind: "menu" },
-        ...when(o.restart.byHand, { kind: "failed", why: "The new version couldn't be put in place (update.log says why)." }))
+        ...when(o.restart.byHand, { kind: "failed", why: "The new version couldn't be put in place (update.log says why).", tell: "dialog" }))
     }
     case "quit": {
       const o = p.offer, d: Effect[] = [{ kind: "stop-build" }]
@@ -187,6 +177,39 @@ function offered(p: Updates, commit: string, how: How, again: boolean, behind?: 
   if (!again && was?.commit === commit && was.how === how) return { to: { ...p, offer: { ...was, behind: kept } }, do: [] }
   return { to: { ...p, offer: { commit, how, behind: kept, restart: was?.restart ?? { kind: "offered" } } }, do: [{ kind: "tell" }, { kind: "menu" }, { kind: "weigh" }] }
 }
+
+function built(p: Updates, { byHand, want, to }: Extract<Look, { kind: "building" }>, e: Extract<UpdateEvent, { type: "built" }>): Step {
+  const idle: Updates = { ...p, look: { kind: "idle" } }, last = e.out.trim().split("\n").pop()?.trim() ?? ""
+  let s: Step = { to: idle, do: [] }
+  if (e.code === 0 && last === e.built) s = offered({ ...idle, failed: null }, last, "install", byHand)
+  else if (e.code === 3) s = { to: { ...idle, failed: null }, do: when(byHand, { kind: "current", current: { via: "build", pinned: !!want } }) }
+  else if (!e.quitting && !going(p.offer)) {
+    const network = networkFailed(e.out, !to) || (e.code === null && !to)
+    s = failing(idle, { why: network ? OFFLINE : buildFailure(e.out), byHand, network, commit: null })
+  }
+  const stale = s.to.offer && s.to.offer.commit !== e.built && !going(s.to.offer)
+  return { to: stale ? { ...s.to, offer: null } : s.to, do: [{ kind: "status" }, ...s.do, { kind: "menu" }] }
+}
+
+function looked(p: Updates, byHand: boolean, e: Extract<UpdateEvent, { type: "looked" }>): Step {
+  const idle: Updates = { ...p, look: { kind: "idle" } }
+  let s: Step = { to: idle, do: [] }
+  if (e.state === "current") s = { to: { ...idle, failed: null }, do: when(byHand && !p.offer, { kind: "current", current: { via: "store", why: e.why } }) }
+  else if (e.state === "failed" && !e.quitting) s = failing(idle, { why: sentence(e.why), byHand, network: networkFailed(e.why, false), commit: e.next ?? null })
+  return { to: s.to, do: [...s.do, ...when(byHand, { kind: "status" }), { kind: "menu" }, ...when(p.offer?.restart.kind === "waiting", { kind: "weigh" })] }
+}
+
+function failing(p: Updates, e: { why: string; byHand: boolean; network: boolean; commit: string | null }): Step {
+  const was = p.failed, sameCommit = e.commit !== null && e.commit === was?.commit
+  const times = (was?.timesButForTheNetwork ?? 0) + (e.network || sameCommit ? 0 : 1)
+  const told = !!was?.told || (e.byHand && !e.network)
+  return { to: { ...p, failed: { timesButForTheNetwork: times, why: e.why, told, commit: e.commit } },
+    do: [...when(e.byHand, { kind: "failed", why: e.why, tell: "dialog" }), ...when(!e.network && !told && times >= FAILURES_TOLD_AFTER, { kind: "failed", why: e.why, tell: "notice" })] }
+}
+
+export const failed = (s: Updates) => (s.failed ? { times: s.failed.timesButForTheNetwork, why: s.failed.why } : undefined)
+export const failedMessage = (s: Updates, name: string, machine: string) =>
+  `${name} on ${machine} couldn't update ${failed(s)?.times} times in a row. ${failed(s)?.why}`
 
 export function statusOf(s: Updates, name: string): { text: string; restart: boolean } | null {
   if (going(s.offer)) return { text: "Restarting to update…", restart: true }
@@ -210,7 +233,13 @@ export function menuItem(s: Updates, o: { worktree: boolean; updatable: boolean 
   return { label: busy ? "Checking for updates…" : "Check for updates…", enabled: !busy, act: "check" }
 }
 
+const OFFLINE = "It couldn't reach the network."
+const GIT_FETCH_OFFLINE = /could(?: not|n't) (?:resolve host|connect)|failed to connect|connection (?:timed out|refused|reset|closed)|operation timed out|network is unreachable|no route to host|recv failure|SSL_ERROR_SYSCALL|empty reply from server|early EOF|RPC failed|returned error: 5\d\d/i
+const NPM_OFFLINE = /\bnpm (?:error|ERR!) (?:network\b|code (?:ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONN\w+|ENETUNREACH))/
+const networkFailed = (out: string, fetching: boolean) => NPM_OFFLINE.test(out) || (fetching && GIT_FETCH_OFFLINE.test(out))
+
 export function buildFailure(out: string): string {
+  if (/^(?:rm|mv): .*(?:Permission denied|Directory not empty)$/m.test(out)) return "The last build couldn't be deleted (Permission denied)."
   if (/^boot: \d+ failed/m.test(out)) return "The new version didn't pass its startup check."
   if (/no code signing identity in the keychain: not building/.test(out)) return "This Mac has no code signing identity, and an update signed without one would sign you out of every site: add one (a self-signed code signing certificate will do)."
   if (/not building an update signed ad hoc/.test(out)) return "The new version couldn't be signed: the keychain may be locked. The next check tries again."
@@ -218,9 +247,11 @@ export function buildFailure(out: string): string {
   return "The new version didn't build."
 }
 
+const failedSaid = (f: ReturnType<typeof failed>) => (f ? `, failed${f.times ? ` (${f.times} in a row)` : ""}: ${f.why}` : "")
+
 export function describe(s: Updates): string {
   const { look: l, offer: o } = s, by = "byHand" in l && l.byHand ? " by hand" : ""
   const to = l.kind === "building" ? l.to : l.kind === "release" ? l.downloading : null
   const r = o?.restart.kind === "waiting" ? `waits: ${o.restart.on}` : o?.restart.kind
-  return `${l.kind}${by}${to ? ` ${to.slice(0, 7)}` : ""}${o ? `, ${o.how} ${o.how === "worktree" ? o.commit : short(o.commit)} ${r}` : ""}`
+  return `${l.kind}${by}${to ? ` ${to.slice(0, 7)}` : ""}${o ? `, ${o.how} ${o.how === "worktree" ? o.commit : short(o.commit)} ${r}` : ""}${failedSaid(failed(s))}`
 }

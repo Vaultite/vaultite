@@ -6,6 +6,7 @@ import net from "node:net"
 import path from "node:path"
 import { appData, devApp, instanceAt, instances, instancesOf, ownedNow, shellDir } from "./devinstance.ts"
 import { webStale } from "./webfresh.ts"
+import { removeReadOnly } from "../core/update/store.ts"
 import { codeOf } from "../core/values.ts"
 import { fingerprint } from "./shell/print.mjs"
 
@@ -39,7 +40,7 @@ function buildShell(print: string) {
   if (webStale(ROOT)) run("npm", ["run", "build"])
   try {
     run(process.execPath, [path.join(ROOT, "electron", "stamp.ts")], { VAULTITE_CHANNEL: "dev" })
-    fs.rmSync(path.join(ROOT, "dist-app"), { recursive: true, force: true })
+    removeReadOnly(path.join(ROOT, "dist-app"))
     run(path.join(ROOT, "node_modules", ".bin", "electron-builder"), ["--dir", "-c", CONFIG])
   } finally {
     for (const f of ["build.json", "shell.json", "cli.json"]) fs.rmSync(path.join(ROOT, "electron", f), { force: true })
@@ -47,10 +48,10 @@ function buildShell(print: string) {
   const out = fs.readdirSync(path.join(ROOT, "dist-app")).map((d) => path.join(ROOT, "dist-app", d, `${NAME}.app`)).find((a) => fs.existsSync(a))
   if (!out) throw new Error("electron-builder made no app in dist-app/")
   const to = path.join(shellDir(DATA, print), `${NAME}.app`)
-  fs.rmSync(to, { recursive: true, force: true })
+  removeReadOnly(to)
   fs.mkdirSync(path.dirname(to), { recursive: true })
   fs.renameSync(out, to)
-  fs.rmSync(path.join(ROOT, "dist-app"), { recursive: true, force: true })
+  removeReadOnly(path.join(ROOT, "dist-app"))
   return to
 }
 
@@ -125,9 +126,9 @@ async function main() {
       process.exit(1)
     }
     const shell = shellFor(print) ?? buildShell(print)
-    fs.rmSync(`${INSTALLED}.new`, { recursive: true, force: true })
+    removeReadOnly(`${INSTALLED}.new`)
     run("ditto", [shell, `${INSTALLED}.new`])
-    fs.rmSync(INSTALLED, { recursive: true, force: true })
+    removeReadOnly(INSTALLED)
     fs.renameSync(`${INSTALLED}.new`, INSTALLED)
     return void console.log(`Installed this worktree's shell as ${INSTALLED}.`)
   }
