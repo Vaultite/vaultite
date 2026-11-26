@@ -41,7 +41,8 @@
     "ios": "VAULTITE_CLEAN_BUILD=1 vite build && npm run build:offline && cap sync ios && cap open ios",
     "android": "VAULTITE_CLEAN_BUILD=1 vite build && cap sync android && cd android && ./gradlew --quiet assembleDebug",
     "android:release": "VAULTITE_CLEAN_BUILD=1 vite build && cap sync android && cd android && ./gradlew --quiet assembleRelease",
-    "build:offline": "VAULTITE_OFFLINE=1 vite build -c vite.demo.config.ts"
+    "capacitor:copy:after": "node tools/phone_copy.ts",
+    "build:offline":"VAULTITE_OFFLINE=1 vite build -c vite.demo.config.ts"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.3.0",

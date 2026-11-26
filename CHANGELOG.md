@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The Android app builds again (a nightly's APK was missing since the server's files were compressed at build), and the
+  phone apps leave out those compressed copies, which only the server sends.
 - The new-file menu has one entry for tables of notes, New base (a `.base` file), where it had New database too; `/base`
   still puts one in a note.
 - Vaultite Nightly no longer emails everyone watching the repository's releases each night: its one release is updated

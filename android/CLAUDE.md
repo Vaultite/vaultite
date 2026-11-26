@@ -12,6 +12,8 @@
 - Back closes what's over the page first: the page says whether something is open (`web/src/core/androidapp.ts`) and
   the shell sends a real Escape key (a script's doesn't close a `<dialog>`); then history, then out of the app.
 - The project is Capacitor's template, edited by hand: `cap sync android` only copies the web build and its config.
+  The copy leaves out the server's precompressed `.br` and `.gz` (`tools/phone_copy.ts`, Capacitor's `copy:after`
+  hook): Android's asset merger reads `x.js.gz` as `x.js`, and the pair fails the build as duplicates.
   Build on Linux or a Mac with JDK 21 and the SDK (`npm run android`); CI's `android.yml` builds each release's APK.
 - Signing: the release key comes from CI's secrets (`android.yml`); a build without it uses the debug key, and a phone
   refuses to update an installed APK to one signed with another key.
