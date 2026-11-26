@@ -6,6 +6,7 @@ import zlib from "node:zlib"
 import { check, exit, freePort, summary, tempDir, testServer, waitFor } from "./test/lib.ts"
 import { KEEP_DAYS, keepAssets, keptAsset } from "../core/keptassets.ts"
 import { copyOf, ENCODINGS, precompress, pruneCache } from "../core/precompressed.ts"
+import { dropPrecompressed } from "./phone_copy.ts"
 const began = Date.now()
 const tmp = tempDir("vaultite-assets-test-")
 
@@ -17,6 +18,12 @@ function build(dist: string, n: number, files: Record<string, string>) {
 }
 const code = (word: string) => `export const view = '${word}'\n` + `// ${word} `.repeat(400) + "\n"
 const DAY = 86_400_000, t = Date.UTC(2026, 10, 18)
+
+const phone = path.join(tmp, "phone")
+fs.mkdirSync(path.join(phone, "assets"), { recursive: true })
+for (const f of ["index.html", "assets/main-X.js", "assets/main-X.js.gz", "assets/main-X.js.br", "assets/a.css.gz"]) fs.writeFileSync(path.join(phone, f), f)
+check("the phone apps' copy drops the precompressed copies", dropPrecompressed(phone) === 3 &&
+  fs.readdirSync(phone, { recursive: true, encoding: "utf8" }).sort().join(",") === ["assets", path.join("assets", "main-X.js"), "index.html"].sort().join(","))
 
 const dist = path.join(tmp, "dist"), kept = path.join(tmp, "kept")
 build(dist, 1, { "main-Build001.js": "one", "View-AAAAAAAA.js": "old view", "shared-CCCCCCCC.js": "shared" })
