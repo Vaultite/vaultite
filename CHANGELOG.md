@@ -109,9 +109,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   picture (shown while it comes back) is only ever of its own page.
 - Browser: sharing "A window or screen…" into a call (a room's Share, a meeting's Present) opens macOS's picker again.
   It asked Chromium for a window that doesn't exist, so the share failed with nothing shown.
-- Browser: agents' replays no longer fill the disk. A step that sees the page as it was keeps no new picture (an
-  agent polling an idle tab costs about nothing), old runs are removed every hour rather than only at launch, and all
-  runs together stay under 4 GB, the least recently written removed first.
+- Browser: agents' replays no longer fill the disk. A step that only reads a page (a script, a snapshot) takes a
+  picture only when the page's address or title changed, or once a minute; a picture the same as a recent one isn't
+  kept again; and all runs together stay under 3 GB, checked every 15 minutes: the least recently written run goes
+  first, and a run over that alone loses its oldest pictures, its steps kept.
 - Browser: Google's "Couldn't sign you in" offers to copy a login only of the account refused, from a container
   signed in as it, never another account's from another container.
 - Updates: an agent browsing where no one watches (an always-on one in its own container) no longer holds the

@@ -16,7 +16,7 @@ import { messageOf } from "./messageof.ts"
 import { ACT, ANSWER, ASKER, AT, BY, PAGE_TEXT, WAIT, type Act, type Answer, type Asker, type By, type Field, type Upload, type Wait } from "./agentwire.ts"
 import { forgetSteps, noteStep } from "./pagesteps.ts"
 import { fileInputNear } from "./fileinput.ts"
-import { forgetFrames, frameHash, keptFrame, pruneRuns, PRUNE_EVERY_MS, repeatOf } from "./runstore.ts"
+import { forgetFrames, frameHash, keptFrame, looksNow, pruneRuns, PRUNE_EVERY_MS, repeatOf } from "./runstore.ts"
 
 export const THUMB_WIDTH = 320
 
@@ -483,7 +483,7 @@ export async function record(p: EnginePage, asked: By, step: Step) {
     const dir = path.join(RUNS(), run)
     fs.mkdirSync(dir, { recursive: true })
     let shot = ""
-    if (!p.wc.isDestroyed() && !await exposed(p)) {
+    if (!p.wc.isDestroyed() && looksNow(p.id, run, step.action, `${docOf(p.wc)} ${p.wc.getURL()} ${p.wc.getTitle()}`, t) && !await exposed(p)) {
       await p.wake()
       const img = await p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
       if (img && !img.isEmpty()) {
