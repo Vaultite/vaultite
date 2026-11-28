@@ -1,0 +1,38 @@
+# Vaultite server in Docker Compose. Run from the repo root:
+#   docker compose -f docker/compose.yaml up -d
+# then open http://localhost:8793
+#
+# The app needs Node >= 23.6; the image base is node:24-bookworm.
+# The vault lives in a named volume mounted at /app/vault.
+
+services:
+  vaultite:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: vaultite
+    ports:
+      - "8793:8793"
+    volumes:
+      - vaultite-vault:/app/vault
+    # The app refuses requests whose Host isn't local to it ("this app
+    # doesn't answer for <host>", server.ts foreign()). Set the host you
+    # reach it by (e.g. your tailnet name like yourhost.tailnet.ts.net);
+    # localhost and 127.0.0.1 always work. Set VAULTITE_HOSTS in the
+    # environment or a .env file next to this one to change it.
+    environment:
+      # The app answers for its tailnet name(s) once Tailscale is up;
+      # this exports that DNS name as VAULTITE_HOSTS when you don't set it.
+      VAULTITE_HOSTS: "${VAULTITE_HOSTS:-}"
+      # Tailscale: set TS_AUTHKEY (an ephemeral or preauth key) to bring
+      # the machine onto the tailnet.
+      TS_AUTHKEY: "${TS_AUTHKEY:-}"
+      TS_HOSTNAME: "${TS_HOSTNAME:-}"
+    # Tailscale in a container: the machine's interface and /dev/net/tun.
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+
+volumes:
+  vaultite-vault:

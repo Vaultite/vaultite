@@ -1,0 +1,10 @@
+.git
+node_modules
+dist-app
+dist-test
+web/dist
+web/qa/shots
+.tsbuild
+.compile-cache
+*.log
+.env
